@@ -1,5 +1,5 @@
 // ============================================================================
-//  DeepSeek Harness Unofficial Launcher V2.0.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份助手
+//  DeepSeek Harness Toolkit V2.0.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
 // ----------------------------------------------------------------------------
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 //  v2 重构封装：DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）
@@ -7,7 +7,7 @@
 //  功能：安装/修复、启动 Web 界面、运行状态监控、卸载（含两步确认清数据）、
 //        数据备份/恢复、多语言、自动倒计时选择、彩色输出。
 //
-//  编译： csc.exe /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Unofficial Launcher V2.0.0.exe" dsh_v2.cs
+//  编译： csc.exe /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit V2.0.0.exe" dsh_v2.cs
 // ============================================================================
 
 using System;
@@ -21,10 +21,10 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 
-[assembly: AssemblyTitle("DeepSeek Harness Unofficial Launcher V2.0.0")]
-[assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份助手。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.0.0")]
+[assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
-[assembly: AssemblyProduct("DeepSeek Harness Unofficial Launcher")]
+[assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
 [assembly: AssemblyVersion("2.0.0.0")]
 [assembly: AssemblyFileVersion("2.0.0.0")]
 
@@ -36,7 +36,7 @@ public static class Program
     const string NPM_OFFICIAL = "https://registry.npmjs.org";
     const string GITHUB_HANDLE = "github.com/sakanamaru";
     const string DATA_DIR     = ".dsh";
-    const string ROOT_MARKER  = ".dsh_launcher_root";   // 启动器根目录标记文件（双重防误删验证之一）
+    const string ROOT_MARKER  = ".dsh_launcher_root";   // 工具箱根目录标记文件（防误删验证；随包分发）
     const int    WEB_PORT     = 3080;
     static string webHost = "127.0.0.1";
     static string cfgWs = null;          // 手动指定的工作区路径（配置 ws=，空=自动探测）   // 访问入口：127.0.0.1 / localhost（浏览器缓存异常时可切换）
@@ -55,7 +55,7 @@ public static class Program
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Unofficial Launcher V2.0.0"; } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.0.0"; } catch { }
         StateDir = ResolveStateDir();
         EnsureRootMarker();   // 完整安装 → 静默补标记（新包自带标记，此行主要兼容旧版本目录）
         LoadConfig();
@@ -77,7 +77,7 @@ public static class Program
             }
         }
         // 单例防多开：交互模式检测已有实例则提示退出（CLI 子命令不受限制，便于脚本/自检调用）
-        _singleMutex = new Mutex(false, "DSH-Launcher-Unofficial-V2.0.0-single");
+        _singleMutex = new Mutex(false, "DSH-Toolkit-V2.0.0-single");
         bool haveLock;
         try { haveLock = _singleMutex.WaitOne(0); }
         catch (AbandonedMutexException) { haveLock = true; } // 上一实例异常退出，本实例接管
@@ -141,7 +141,7 @@ public static class Program
     static void Banner()
     {
         CL(ConsoleColor.Cyan,   "==============================================");
-        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Unofficial Launcher V2.0.0");
+        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.0.0");
         CL(ConsoleColor.Cyan,   "==============================================");
         C(ConsoleColor.Gray,    "  v1 脚本协助 : "); CL(ConsoleColor.White, "SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
         C(ConsoleColor.Gray,    "  v2 重构封装 : "); CL(ConsoleColor.White, "DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
@@ -451,7 +451,7 @@ public static class Program
             string p = Path.Combine(StateDir, ROOT_MARKER);
             if (File.Exists(p)) return;
             if (!LooksLikeFullInstall(StateDir)) return;
-            File.WriteAllText(p, "DeepSeek Harness Unofficial Launcher V2.0.0" + Environment.NewLine);
+            File.WriteAllText(p, "DeepSeek Harness Toolkit V2.0.0" + Environment.NewLine);
             File.SetAttributes(p, FileAttributes.Hidden);
         }
         catch (Exception ex) { LogErr("创建根目录标记失败: " + ex.Message); }
@@ -778,7 +778,7 @@ public static class Program
                     string wsDest = Path.Combine(dest, "_workspace", sub);
                     CopyTree(w, wsDest, true);
                     File.WriteAllText(Path.Combine(wsDest, ".dshws"),
-                                      "DeepSeek Harness Unofficial Launcher workspace\n" + w + "\n",
+                                      "DeepSeek Harness Toolkit workspace\n" + w + "\n",
                                       new UTF8Encoding(false));
                 }
             }
@@ -845,7 +845,7 @@ public static class Program
         return p;
     }
 
-    /// <summary>工作区：本程序所在目录的上两级（exe 在 …\技术\DeepSeek Harness Unofficial Launcher V2.0.0\ 时，工作区为 …\）。
+    /// <summary>工作区：本程序所在目录的上两级（exe 在 …\技术\DeepSeek Harness Toolkit V2.0.0\ 时，工作区为 …\）。
     /// 若探测结果落在用户主目录/桌面/Windows/盘根等明显不合理位置，返回 null（由调用方改为手动输入）。</summary>
     static string WorkspaceRoot()
     {
@@ -1088,7 +1088,7 @@ public static class Program
         }
         catch
         {
-            string alt = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DeepSeekHarnessLauncher");
+            string alt = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DeepSeekHarnessLauncher");   // 兼容旧版（改名前的备用状态目录），不随产品改名迁移
             try { Directory.CreateDirectory(alt); } catch { }
             return alt;
         }
@@ -1302,9 +1302,9 @@ public static class Program
     {
         Banner();
         Console.WriteLine(T("用法：", "Usage:"));
-        Console.WriteLine("  DeepSeek Harness Unofficial Launcher V2.0.0.exe install | start | uninstall | check | about | help");
-        Console.WriteLine(T("  不带参数启动交互菜单（首次 5 秒自动安装，之后 5 秒自动启动）。",
-                            "  Without arguments: interactive menu (auto-install on first run, auto-start afterwards)."));
+        Console.WriteLine("  DeepSeek Harness Toolkit V2.0.0.exe install | start | uninstall | check | about | help");
+        Console.WriteLine(T("  不带参数启动交互菜单（dsh 已安装时 5 秒自动启动；未安装时按 1 选择安装）。",
+                            "  Without arguments: interactive menu (auto-start in 5s when dsh is installed; press 1 to install when not)."));
     }
 
     // ---------------- 自检 ----------------
@@ -1312,7 +1312,7 @@ public static class Program
     static void Selftest(string[] args)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("== DeepSeek Harness Unofficial Launcher selftest ==");
+        sb.AppendLine("== DeepSeek Harness Toolkit selftest ==");
         try
         {
             var asm = Assembly.GetExecutingAssembly();
