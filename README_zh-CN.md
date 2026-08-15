@@ -4,6 +4,8 @@
 
 **[English](README.md) · [简体中文](README_zh-CN.md)**
 
+<img src="logo.png" alt="DeepSeek Harness Unofficial Launcher" width="220"/>
+
 </div>
 
 DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具：
