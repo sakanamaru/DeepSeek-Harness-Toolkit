@@ -36,6 +36,7 @@ public static class Program
     const string NPM_OFFICIAL = "https://registry.npmjs.org";
     const string GITHUB_HANDLE = "github.com/sakanamaru";
     const string DATA_DIR     = ".dsh";
+    const string ROOT_MARKER  = ".dsh_launcher_root";   // 启动器根目录标记文件（双重防误删验证之一）
     const int    WEB_PORT     = 3080;
     static string webHost = "127.0.0.1";
     static string cfgWs = null;          // 手动指定的工作区路径（配置 ws=，空=自动探测）   // 访问入口：127.0.0.1 / localhost（浏览器缓存异常时可切换）
@@ -45,6 +46,7 @@ public static class Program
     static string StateDir;
     static bool autoApplied = false;   // 自动倒计时是否已在本程序本次运行中用过
     static Mutex _singleMutex;         // 单例防多开：交互模式同一时刻只允许一个实例
+    static bool markerAtStartup;       // 本次启动前根目录标记文件是否已存在（删除类操作的双重验证依据）
 
     // ---------------- 入口 ----------------
 
@@ -56,6 +58,9 @@ public static class Program
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
         try { Console.Title = "DeepSeek Harness Unofficial Launcher V2.0.0"; } catch { }
         StateDir = ResolveStateDir();
+        // 记录"本次启动前"标记是否存在：删除类操作要求标记来自上一个会话（防 exe 被单独复制到新目录后误删）
+        markerAtStartup = File.Exists(Path.Combine(StateDir, ROOT_MARKER));
+        EnsureRootMarker();
         LoadConfig();
         if (args.Length > 0)
         {
@@ -427,6 +432,23 @@ public static class Program
         return null;
     }
 
+    // ---------------- 根目录标记（防误删双重验证） ----------------
+
+    /// <summary>在启动器根目录创建隐藏标记文件。删除类操作（卸载/清除数据）要求此标记存在。</summary>
+    static void EnsureRootMarker()
+    {
+        try
+        {
+            string p = Path.Combine(StateDir, ROOT_MARKER);
+            if (!File.Exists(p))
+            {
+                File.WriteAllText(p, "DeepSeek Harness Unofficial Launcher V2.0.0" + Environment.NewLine);
+                File.SetAttributes(p, FileAttributes.Hidden);
+            }
+        }
+        catch (Exception ex) { LogErr("创建根目录标记失败: " + ex.Message); }
+    }
+
     // ---------------- 卸载 ----------------
 
     static void Uninstall()
@@ -438,9 +460,14 @@ public static class Program
         string confirm = ReadLineTrim();
         if (confirm != "y" && confirm != "Y") { Warn(T("已取消。", "Cancelled.")); return; }
 
+        // 卸载前必须确认服务已停止：运行中卸载会导致文件占用、部分文件残留。运行中则阻止删除
         if (IsPortOpen(WEB_PORT, 600))
-            Warn(T("检测到 Web 服务正在运行，建议先关闭 dsh web 窗口再卸载（避免文件占用导致卸载失败）。",
-                   "Web service is running. Close the dsh web window first to avoid locked files."));
+        {
+            Error(T("检测到 dsh Web 服务正在运行（端口 " + WEB_PORT + "）。\n  为避免文件占用与数据损坏，请先关闭 dsh web 的黑色服务窗口，再重新执行卸载。",
+                    "dsh Web service is running (port " + WEB_PORT + ").\n  Close the dsh web window first, then retry the uninstall."));
+            Pause();
+            return;
+        }
 
         Info(T("执行 npm 卸载...", "Running npm uninstall..."));
         int code = RunVisible("cmd.exe", "/c npm uninstall -g @deepseek-ai/dsh");
@@ -474,7 +501,15 @@ public static class Program
         }
 
         string dir = DataRoot();
-        // 防呆安全锁：目标必须"看起来像 dsh 数据目录"才允许清除，杜绝路径错乱/误操作误删其他文件夹
+        // 双重验证 1/2：标记文件必须在"本次启动前"已存在于启动器根目录（防路径飘移，拒绝删除非本工具目录）
+        if (!markerAtStartup)
+        {
+            Error(T("启动器根目录在本次启动前没有标记文件（" + ROOT_MARKER + "），为防误删已拒绝执行清除。\n  提示：请从解压后的完整目录运行，勿将 exe 单独复制到其他位置。",
+                    "The root marker file (" + ROOT_MARKER + ") did not exist before this launch; refused to wipe to prevent accidental deletion.\n  Run from the full extracted folder; do not copy the exe alone elsewhere."));
+            Pause();
+            return;
+        }
+        // 双重验证 2/2：目标必须"看起来像 dsh 数据目录"才允许清除，杜绝路径错乱/误操作误删其他文件夹
         if (Directory.Exists(dir) && !LooksLikeDshData(dir))
         {
             Error(T("拒绝清除：" + dir + "\n  该目录不含 dsh 数据标记（settings.yaml / credentials.yaml / sessions 等），为防止误删已中止。",
