@@ -125,7 +125,7 @@ $wsdir2 = Join-Path $T 'ws_nested'; NewDir $wsdir2; NewDir (Join-Path $wsdir2 'd
 [IO.File]::WriteAllText((Join-Path $wsdir2 'dsh-data-20250101-000000\x.txt'), 'fake')
 $o = ("5`n1`n$wsdir2`n`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
 $dummy = @(Get-ChildItem -LiteralPath $bkdir -Recurse -Filter 'x.txt' -ErrorAction SilentlyContinue).Count
-TC '18 nested backup skipped' ((($o -join ' ').Contains('跳过') -or ($o -join ' ').Contains('skipped')) -and ($dummy -eq 0))
+TC '18 nested backup skipped' ((($o -join ' ').Contains('跳过') -or ($o -join ' ').Contains('skipping') -or ($o -join ' ').Contains('skipped')) -and ($dummy -eq 0))
 
 Write-Output ""; Write-Output "=== integration results ==="
 $results | ForEach-Object { Write-Output $_ }
