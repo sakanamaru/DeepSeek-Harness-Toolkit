@@ -111,12 +111,35 @@ dsh **未安装**时菜单等待你选择（按 1 安装），不会自动安装
 
 **可复现发布（源码即产物）**：每个 GitHub Release 的 exe 均由 **GitHub Actions CI** 从本仓库源码自动编译生成，并在同一流水线里重新生成 `hashes.txt`——仓库自身不存放任何二进制文件。
 
+## 开发与测试
+
+无需任何测试框架或第三方依赖：
+
+- **单元测试（同程序集测试代理）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
+  ```
+  "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs
+  unittests.exe
+  ```
+  退出码 0=全过。覆盖：路径往返（含 UNC / 中文空格）、工作区黑名单（19 拒绝 + 3 允许）、dsh 数据目录标记、端口探测。
+
+- **集成测试（打桩端到端矩阵）**：变体 A/C 自动打桩，真实探测 3080：
+  ```
+  pwsh -NoProfile -File tests\integration.ps1
+  ```
+  只触碰打桩数据目录 `~/.dsh_test`，**绝不接触真实 `~/.dsh`**；3080 未开启时"运行中"相关用例标记 SKIP 而非 FAIL。退出码 0=全过。
+
+- **CI**：GitHub Actions 的 `test` 任务在每次推送 / 手动触发时自动运行以上两套测试。
+
 ## 目录结构
 
 ```
 DeepSeek Harness Toolkit V2.0.0.exe   主程序（带图标）
 dsh_v2.cs           v2 源码（C#5，单文件，无第三方依赖）
 build_exe.cmd       重编译脚本
+tests/              单元/集成测试（无第三方依赖；不随发布包分发）
+.dsh_launcher_root  安装标记（随包分发；误删保护）
+icon.ico            程序图标源文件
+logo.png            产品 Logo PNG（1536×1536）
 icon.ico            程序图标源文件
 logo.png            logo 源图（PNG，1536×1536）
 .dsh_launcher_root  安装标记（随包分发，防误删验证）

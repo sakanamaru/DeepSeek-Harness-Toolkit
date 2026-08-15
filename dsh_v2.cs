@@ -49,6 +49,7 @@ public static class Program
 
     // ---------------- 入口 ----------------
 
+#if !UNIT
     public static void Main(string[] args)
     {
         // .NET Framework 长路径支持：开启后 >260 字符路径可用（须在首次文件操作前设置）
@@ -89,6 +90,7 @@ public static class Program
         }
         Menu();
     }
+#endif
 
     // ---------------- 语言 ----------------
 
@@ -99,7 +101,7 @@ public static class Program
             if (lang == Lang.Zh) return true;
             if (lang == Lang.En) return false;
             try { return CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "zh"; }
-            catch { return true; }
+            catch { LogErr("IsZh: 读取系统语言异常，默认中文"); return true; }
         }
     }
 
@@ -603,7 +605,7 @@ public static class Program
                 catch { return f; }
             }
         }
-        catch { }
+        catch { LogErr("FindLockedFile: 枚举目录异常"); }
         return null;
     }
 
@@ -858,7 +860,7 @@ public static class Program
         }
         string ws = null;
         try { ws = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..")); }
-        catch { return null; }
+        catch { LogErr("WorkspaceRoot: 自动探测路径异常"); return null; }
         return LooksLikeWorkspace(ws) ? ws : null;
     }
 
@@ -896,7 +898,7 @@ public static class Program
             }
             return true;
         }
-        catch { return false; }
+        catch { LogErr("LooksLikeWorkspace: 路径异常，按拒绝处理 " + p); return false; }
     }
 
     static void OpenBackupFolder()
@@ -1090,6 +1092,7 @@ public static class Program
         {
             string alt = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DeepSeekHarnessLauncher");   // 兼容旧版（改名前的备用状态目录），不随产品改名迁移
             try { Directory.CreateDirectory(alt); } catch { }
+            LogErr("ResolveStateDir: 目录不可写，改用备用目录 " + alt);
             return alt;
         }
     }
@@ -1196,7 +1199,7 @@ public static class Program
                 return so.Trim();
             }
         }
-        catch { return ""; }
+        catch { LogErr("RunCapture: 执行异常，返回空 " + exe); return ""; }
     }
 
     static int RunVisible(string file, string args)
@@ -1352,4 +1355,16 @@ public static class Program
         try { Console.ReadKey(true); } catch { }
         Console.WriteLine();
     }
+
+#if UNIT
+    // 单元测试代理（仅 /define:UNIT 构建存在）：嵌套类可访问外层 private 成员，生产构建无此类型
+    public static class Test
+    {
+        public static string PathP(string p) { return Program.P(p); }
+        public static string PathTrim(string p) { return Program.TrimP(p); }
+        public static bool WorkspaceOk(string p) { return Program.LooksLikeWorkspace(p); }
+        public static bool DshData(string p) { return Program.LooksLikeDshData(p); }
+        public static bool PortOpen(int port, int ms) { return Program.IsPortOpen(port, ms); }
+    }
+#endif
 }
