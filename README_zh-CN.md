@@ -118,7 +118,7 @@ DeepSeek Harness Toolkit V2.0.0.exe   主程序（带图标）
 dsh_v2.cs           v2 源码（C#5，单文件，无第三方依赖）
 build_exe.cmd       重编译脚本
 icon.ico            程序图标源文件
-logo.png            logo 源图（PNG，由 ChatGPT 生成）
+logo.png            logo 源图（PNG，1536×1536）
 .dsh_launcher_root  安装标记（随包分发，防误删验证）
 README.md           说明文档（中英双语）
 README_zh-CN.md     说明文档（简体中文版）
@@ -154,7 +154,7 @@ logs/               运行错误日志目录（已被 .gitignore 排除，切勿
 ## 致谢
 
 - [DeepSeek Harness (dsh)](https://www.npmjs.com/package/@deepseek-ai/dsh)
-- 图标 / Logo：由 ChatGPT（OpenAI）协助生成
+- 图标 / Logo：由 ChatGPT（OpenAI）协助生成（v2 已重新裁切）
 - v1 脚本协助 : SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 - v2 重构封装 : DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）
 - GitHub    : @sakanamaru  https://github.com/sakanamaru
