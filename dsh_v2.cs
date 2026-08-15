@@ -172,8 +172,8 @@ public static class Program
                     Info(T("检测到 dsh 已安装，5 秒后将自动【启动 Web 界面】（按任意键可手动选择）",
                            "dsh detected. Auto-running【Start Web UI】in 5s (press any key to choose manually)."));
                 else
-                    Info(T("未检测到 dsh，5 秒后将自动【安装 dsh】（按任意键可手动选择）",
-                           "dsh not found. Auto-running【Install dsh】in 5s (press any key to choose manually)."));
+                    CL(ConsoleColor.Gray, T("  dsh 未安装：按 1 开始安装（默认官方源），其余操作可正常使用。",
+                                            "  dsh not installed: press 1 to install (official registry default); other actions still work."));
             }
             Console.WriteLine();
             CL(ConsoleColor.White, "  1) " + T("安装 / 修复 dsh", "Install / Repair dsh"));
@@ -186,7 +186,7 @@ public static class Program
             CL(ConsoleColor.White, "  0) " + T("退出", "Exit"));
             Console.WriteLine();
 
-            string choice = autoApplied ? ReadChoice("  > ") : CountdownInput("  > ", def);
+            string choice = autoApplied ? ReadChoice("  > ") : (installed ? CountdownInput("  > ", def) : ReadChoice("  > "));
             autoApplied = true;   // 首次倒计时（含按键接管）后，本次运行不再自动执行
             SafeClear();
             switch (choice)
@@ -254,9 +254,15 @@ public static class Program
         Banner();
         CheckNode();
         Console.WriteLine();
-        Info(T("[2/3] 开始安装 dsh（镜像源仅对本次安装生效，不修改全局配置）...",
-               "[2/3] Installing dsh (mirror applies to this install only)..."));
-        string[] registries = { NPM_MIRROR, NPM_OFFICIAL };
+        Info(T("[2/3] 开始安装 dsh（安装源仅对本次安装生效，不修改全局配置）...",
+               "[2/3] Installing dsh (source applies to this install only)..."));
+        Console.WriteLine();
+        CL(ConsoleColor.White, T("  安装源：", "  Install source:"));
+        CL(ConsoleColor.White, "  1) " + T("官方源 npmjs.org（默认，推荐）", "Official npmjs.org (default, recommended)"));
+        CL(ConsoleColor.White, "  2) " + T("国内镜像 npmmirror（更快）", "China mirror npmmirror (faster)"));
+        Console.Write("  > ");
+        string srcSel = ReadLineTrim().Trim();
+        string[] registries = srcSel == "2" ? new string[] { NPM_MIRROR, NPM_OFFICIAL } : new string[] { NPM_OFFICIAL, NPM_MIRROR };
         bool ok = false;
         for (int i = 0; i < registries.Length; i++)
         {

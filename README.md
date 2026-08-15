@@ -24,8 +24,8 @@ A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](htt
 
 | Feature | Description |
 | --- | --- |
-| Smart Start | Detects service status on launch: running → status page; stopped → 5-second countdown auto-start/install |
-| Install & Repair | Uses the npmmirror mirror, retries the official registry on failure, never touches your global npm config |
+| Smart Start | Detects service status on launch: running → status page; stopped → 5-second countdown auto-start (only when dsh is installed; if not installed, the menu waits for your choice — nothing is auto-installed) |
+| Install & Repair | Asks for the source: **official npmjs.org by default**, npmmirror offered as opt-in; always retries the other registry on failure; never touches your global npm config |
 | Status Monitor | Auto-refreshes service status/port/uptime every 3s; red alert on disconnect; 1=back / 2=open WebUI |
 | Backup & Restore | One-click backup of the data directory to `backup\` (supports **multiple workspaces**: auto-detected, then add paths one by one, empty Enter to finish; stored separately under `_workspace\name\`, restorable one by one); auto-skips `node_modules` and its own backup folders; supports list restore, cross-PC import, and opening the backup folder |
 | Uninstall | Data kept by default; wiping needs two-step confirmation (today's date + `yes`) with **auto-backup first**; wiping is blocked while dsh web is running (avoid file locks) |
@@ -49,7 +49,7 @@ This tool does **not replace** the official way; it serves those who prefer not 
 | | Official (npm CLI) | This tool |
 | --- | --- | --- |
 | Target users | Developers comfortable with the terminal | Regular users / batch installs / remote assistance |
-| Install | Install Node.js first, then type commands | Double-click the exe: detects the environment, installs and starts automatically |
+| Install | Install Node.js first, then type commands | Double-click the exe: detects the environment and starts automatically; you choose **(press 1)** whether to install dsh |
 | Daily use | Manually open a terminal and browser every time | Detects on launch: auto-starts, opens the browser, monitors every 3s |
 | Ops | None | Backup/restore/cross-PC import, uninstall (two-step confirm), entry switch, bilingual UI |
 | Troubleshooting | Raw terminal errors | Friendly messages, health page, selftest report |
@@ -68,14 +68,14 @@ Double-click `DeepSeek Harness Unofficial Launcher V2.0.0.exe`, or use the comma
 DeepSeek Harness Unofficial Launcher V2.0.0.exe install|start|uninstall|check|about|help
 ```
 
-Launching without arguments opens the interactive menu: first run auto-selects after a 5-second countdown (interruptible), later launches auto-start the Web UI, and go straight to the status page when the service is already running.
+Launching without arguments opens the interactive menu: when dsh is already installed the first run auto-starts the Web UI after a 5-second countdown (interruptible), and later launches auto-start too; when dsh is **not** installed the menu waits for your choice (press 1 to install) — nothing is auto-installed. With the service already running, it goes straight to the status page.
 
 **About workspaces:** backup auto-detects the workspace (two levels above the exe, rejecting obvious system/user dirs); you can also set it manually and persistently via menu **7 Entry → 3 Set workspace path** (the `ws=` line in `launcher.config`). **Multiple workspaces** are supported — add paths one by one (empty Enter to finish) — packed under `_workspace\name\` and restored one by one.
 
 ### First run (3 steps)
 
 1. **Unzip** the release into its own folder (e.g. `D:\tools\`) — backups and config live next to the exe; putting it on the Desktop makes a mess
-2. **Double-click the exe**: it auto-installs dsh on first run (npmmirror by default, ~1–3 min); run it again afterwards
+2. **Double-click the exe**: dsh not installed → the menu waits for you; press **1** to install (official registry by default, npmmirror as an option, ~1–3 min); run it again afterwards
 3. Then choose **2 Start Web UI** in the menu and the browser opens automatically
 
 ### FAQ
@@ -124,7 +124,7 @@ logs/                Error log dir (gitignored — never commit)
 ## Security Notes
 
 - Uninstall "Wipe all data" deletes the dsh data directory (`~/.dsh`, including sessions and API credentials) — the tool auto-backs it up to `backup\` first
-- Deletion is guarded **three ways**: uninstall is **blocked while the dsh Web service is running**; wiping requires the launcher root marker (`.dsh_launcher_root`, left in the launcher folder by a previous session — guards against a stray exe copied elsewhere) **plus** dsh-data markers inside the target (`settings.yaml` / `credentials.yaml` / `sessions` …); any mismatch is refused
+- Deletion is guarded **three ways**: uninstall is **blocked while the dsh Web service is running**; wiping requires the launcher root marker (`.dsh_launcher_root`, shipped inside the package folder — a stray exe copied elsewhere is permanently refused and never self-seeds the marker) **plus** dsh-data markers inside the target (`settings.yaml` / `credentials.yaml` / `sessions` …); any mismatch is refused
 - This tool only touches local data; the source contains no credentials or personal information
 
 ## Redistribution & Credits (please read)
