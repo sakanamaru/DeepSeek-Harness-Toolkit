@@ -15,6 +15,27 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    name: unit + integration tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & run unit tests (same-assembly, /define:UNIT)
+        shell: pwsh
+        run: |
+          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          & $csc /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs /warn:4
+          if ($LASTEXITCODE -ne 0) { throw "unit test build failed" }
+          .\unittests.exe
+          if ($LASTEXITCODE -ne 0) { throw "unit tests failed" }
+
+      - name: Run integration tests (stubbed matrix, no real ~/.dsh touched)
+        shell: pwsh
+        run: |
+          .\tests\integration.ps1 -RepoRoot (Get-Location).Path
+          if ($LASTEXITCODE -ne 0) { throw "integration tests failed" }
+
   build:
     runs-on: windows-latest
     steps:
