@@ -100,6 +100,8 @@ DeepSeek Harness Unofficial Launcher V2.0.0.exe install|start|uninstall|check|ab
 
 或双击本目录 `build_exe.cmd`。
 
+**可复现发布（源码即产物）**：每个 GitHub Release 的 exe 均由 **GitHub Actions CI** 从本仓库源码自动编译生成，并在同一流水线里重新生成 `hashes.txt`——仓库自身不存放任何二进制文件。
+
 ## 目录结构
 
 ```
