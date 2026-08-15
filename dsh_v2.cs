@@ -856,7 +856,8 @@ public static class Program
         return LooksLikeWorkspace(ws) ? ws : null;
     }
 
-    /// <summary>粗判路径是否像一个合理的工作区目录（拒绝系统级/用户级目录）。</summary>
+    /// <summary>判定路径是否像"合理的用户工作区"。仅用于自动探测：系统级/用户级/常见奇怪目录一律拒绝；
+    /// 手动输入的路径（备份附加、恢复目标、ws= 配置）不受本函数限制。</summary>
     static bool LooksLikeWorkspace(string p)
     {
         try
@@ -864,13 +865,29 @@ public static class Program
             p = Path.GetFullPath(p).TrimEnd('\\');
             if (p.Length == 0) return false;
             if (p.Length <= 3 && p[1] == ':') return false;                 // 盘根：C:\ D:\
-            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile).TrimEnd('\\');
-            string win = Environment.GetFolderPath(Environment.SpecialFolder.Windows).TrimEnd('\\');
             string pc = p.ToLowerInvariant();
-            string hc = home.ToLowerInvariant();
-            string wc = win.ToLowerInvariant();
-            if (pc == hc || pc.StartsWith(hc + "\\")) return false;         // 用户主目录及其子目录（含桌面）
-            if (pc == wc || pc.StartsWith(wc + "\\")) return false;         // Windows 目录
+            // 各盘根下（或 UNC 根）的保留名字：只查第一段，避免误伤深层同名目录
+            string[] topNames = { "$recycle.bin", "system volume information", "perflogs", "inetpub",
+                                  "recovery", "windows.old", "$windows.~bt", "$windows.~ws", "$winreagent", "users" };
+            string[] segs = p.Split('\\');
+            foreach (string r in topNames)
+                if (segs.Length > 1 && segs[1].ToLowerInvariant() == r) return false;
+            // 系统/用户根目录及其子树
+            string[] roots = {
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),          // 用户主目录（含桌面/下载/文档）
+                Path.GetDirectoryName(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)), // C:\Users 整级
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),              // C:\Windows
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),// C:\ProgramData
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),         // C:\Program Files
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)       // C:\Program Files (x86)
+            };
+            foreach (string r in roots)
+            {
+                if (string.IsNullOrEmpty(r)) continue;
+                string rc = r.TrimEnd('\\').ToLowerInvariant();
+                if (rc.Length == 0) continue;
+                if (pc == rc || pc.StartsWith(rc + "\\")) return false;
+            }
             return true;
         }
         catch { return false; }
