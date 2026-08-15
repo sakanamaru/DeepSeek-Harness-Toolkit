@@ -1,5 +1,11 @@
 # DeepSeek Harness Unofficial Launcher V2.0.0
 
+<div align="center">
+
+**[English](README.md) · [简体中文](README_zh-CN.md)**
+
+</div>
+
 **中文**：DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具：安装、启动、监控、卸载，附带数据备份/恢复，双击即用。
 **English**: A third-party, unofficial launcher / ops tool for the DeepSeek Harness (dsh) Web UI: install, start, monitor, uninstall, plus data backup & restore — double-click and go.
 
@@ -103,6 +109,8 @@ dsh_v2.cs           v2 源码（C#5，单文件，无第三方依赖）/ v2 sour
 build_exe.cmd       重编译脚本 / Rebuild script
 icon.ico            程序图标源文件 / Program icon source
 logo.png            logo 源图（PNG，由 ChatGPT 生成）/ Original logo PNG (generated with ChatGPT)
+README.md           说明文档（中英双语）/ Docs (bilingual)
+README_zh-CN.md     说明文档（简体中文版）/ Docs (Simplified Chinese)
 hashes.txt          发布文件 SHA-256 校验清单 / SHA-256 manifest of released files
 backup/             数据备份目录（已被 .gitignore 排除，切勿提交）/ Backup dir (gitignored — never commit)
 logs/               运行错误日志目录（已被 .gitignore 排除，切勿提交）/ Error log dir (gitignored — never commit)
