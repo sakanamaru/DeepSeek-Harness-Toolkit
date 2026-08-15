@@ -1,5 +1,9 @@
+# 本地备份与运行时生成（切勿提交）
 backup/
 launcher.config
 logs/
+.dsh_launcher_root
+
+# 临时文件
 *.tmp
 *.log

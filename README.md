@@ -123,6 +123,7 @@ logs/                Error log dir (gitignored — never commit)
 ## Security Notes
 
 - Uninstall "Wipe all data" deletes the dsh data directory (`~/.dsh`, including sessions and API credentials) — the tool auto-backs it up to `backup\` first
+- Deletion is guarded **three ways**: uninstall is **blocked while the dsh Web service is running**; wiping requires the launcher root marker (`.dsh_launcher_root`, left in the launcher folder by a previous session — guards against a stray exe copied elsewhere) **plus** dsh-data markers inside the target (`settings.yaml` / `credentials.yaml` / `sessions` …); any mismatch is refused
 - This tool only touches local data; the source contains no credentials or personal information
 
 ## Redistribution & Credits (please read)
