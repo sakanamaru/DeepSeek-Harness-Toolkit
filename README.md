@@ -1,12 +1,12 @@
-# DeepSeek Harness Unofficial Launcher V2.0.0
+# DeepSeek Harness Toolkit V2.0.0
 
 <div align="center">
 
 **[English](README.md) · [简体中文](README_zh-CN.md)**
 
-<img src="logo.png" alt="DeepSeek Harness Unofficial Launcher" width="220"/>
+<img src="logo.png" alt="DeepSeek Harness Toolkit" width="220"/>
 
-**DeepSeek Harness Unofficial Launcher — Windows installer, monitor, backup & restore tool**
+**DeepSeek Harness Toolkit — Windows installer, monitor, backup & restore tool**
 
 </div>
 
@@ -71,10 +71,10 @@ This tool does **not replace** the official way; it serves those who prefer not 
 
 ## Usage
 
-Double-click `DeepSeek Harness Unofficial Launcher V2.0.0.exe`, or use the command line:
+Double-click `DeepSeek Harness Toolkit V2.0.0.exe`, or use the command line:
 
 ```
-DeepSeek Harness Unofficial Launcher V2.0.0.exe install|start|uninstall|check|about|help
+DeepSeek Harness Toolkit V2.0.0.exe install|start|uninstall|check|about|help
 ```
 
 Launching without arguments opens the interactive menu: when dsh is already installed the first run auto-starts the Web UI after a 5-second countdown (interruptible), and later launches auto-start too; when dsh is **not** installed the menu waits for your choice (press 1 to install) — nothing is auto-installed. With the service already running, it goes straight to the status page.
@@ -102,7 +102,7 @@ Launching without arguments opens the interactive menu: when dsh is already inst
 Requires the built-in .NET Framework 4.x on Windows (preinstalled on Win10/Win11).
 
 ```
-"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Unofficial Launcher V2.0.0.exe" dsh_v2.cs
+"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit V2.0.0.exe" dsh_v2.cs
 ```
 
 Or double-click `build_exe.cmd` in this directory.
@@ -112,7 +112,7 @@ Or double-click `build_exe.cmd` in this directory.
 ## Directory Layout
 
 ```
-DeepSeek Harness Unofficial Launcher V2.0.0.exe   Main program (with icon)
+DeepSeek Harness Toolkit V2.0.0.exe   Main program (with icon)
 dsh_v2.cs            v2 source (C#5, single file, no third-party deps)
 build_exe.cmd        Rebuild script
 icon.ico             Program icon source

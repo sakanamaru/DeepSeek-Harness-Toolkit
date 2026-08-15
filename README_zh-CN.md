@@ -1,10 +1,10 @@
-# DeepSeek Harness Unofficial Launcher V2.0.0
+# DeepSeek Harness Toolkit V2.0.0
 
 <div align="center">
 
 **[English](README.md) · [简体中文](README_zh-CN.md)**
 
-<img src="logo.png" alt="DeepSeek Harness Unofficial Launcher" width="220"/>
+<img src="logo.png" alt="DeepSeek Harness Toolkit" width="220"/>
 
 **DeepSeek Harness 非官方 Windows 安装、监控与数据管理工具**
 
@@ -70,10 +70,10 @@ dsh web
 
 ## 使用
 
-双击 `DeepSeek Harness Unofficial Launcher V2.0.0.exe` 即可；或命令行：
+双击 `DeepSeek Harness Toolkit V2.0.0.exe` 即可；或命令行：
 
 ```
-DeepSeek Harness Unofficial Launcher V2.0.0.exe install|start|uninstall|check|about|help
+DeepSeek Harness Toolkit V2.0.0.exe install|start|uninstall|check|about|help
 ```
 
 无参数启动为交互菜单：dsh 已安装时首次运行 5 秒倒计时自动启动（可按键接管），之后每次打开也自动启动 Web 界面；
@@ -104,7 +104,7 @@ dsh **未安装**时菜单等待你选择（按 1 安装），不会自动安装
 需要 Windows 自带的 .NET Framework 4.x（Win10 / Win11 默认已安装）：
 
 ```
-"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Unofficial Launcher V2.0.0.exe" dsh_v2.cs
+"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit V2.0.0.exe" dsh_v2.cs
 ```
 
 或双击本目录 `build_exe.cmd`。
@@ -114,7 +114,7 @@ dsh **未安装**时菜单等待你选择（按 1 安装），不会自动安装
 ## 目录结构
 
 ```
-DeepSeek Harness Unofficial Launcher V2.0.0.exe   主程序（带图标）
+DeepSeek Harness Toolkit V2.0.0.exe   主程序（带图标）
 dsh_v2.cs           v2 源码（C#5，单文件，无第三方依赖）
 build_exe.cmd       重编译脚本
 icon.ico            程序图标源文件
