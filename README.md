@@ -108,6 +108,7 @@ dsh_v2.cs            v2 source (C#5, single file, no third-party deps)
 build_exe.cmd        Rebuild script
 icon.ico             Program icon source
 logo.png             Original logo PNG (generated with ChatGPT)
+.dsh_launcher_root   Install marker (shipped with the package; deletion guard)
 README.md            Docs (English)
 README_zh-CN.md      Docs (Simplified Chinese)
 hashes.txt           SHA-256 manifest of released files
