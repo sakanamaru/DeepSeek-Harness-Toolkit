@@ -43,7 +43,6 @@ A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](htt
 | Entry | Pick and remember `127.0.0.1` / `localhost`: if the entry opens abnormally (often stale browser cache), switch with one key |
 | Long Paths | Built-in long path support (`\\?\`, >260 chars) for backup/restore; nested backup packages (`dsh-data-*`) are auto-skipped |
 | Multi-language | Follow system / Simplified Chinese / English, persisted |
-| Credits | v1 / v2 contributors credited in-app and in file properties |
 
 ## Relation to the Official Deployment
 
