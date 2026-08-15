@@ -110,6 +110,7 @@ dsh_v2.cs           v2 源码（C#5，单文件，无第三方依赖）
 build_exe.cmd       重编译脚本
 icon.ico            程序图标源文件
 logo.png            logo 源图（PNG，由 ChatGPT 生成）
+.dsh_launcher_root  安装标记（随包分发，防误删验证）
 README.md           说明文档（中英双语）
 README_zh-CN.md     说明文档（简体中文版）
 hashes.txt          发布文件 SHA-256 校验清单

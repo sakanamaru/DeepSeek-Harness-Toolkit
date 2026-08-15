@@ -2,7 +2,6 @@
 backup/
 launcher.config
 logs/
-.dsh_launcher_root
 
 # 临时文件
 *.tmp

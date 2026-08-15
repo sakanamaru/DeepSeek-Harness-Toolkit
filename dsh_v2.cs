@@ -46,7 +46,6 @@ public static class Program
     static string StateDir;
     static bool autoApplied = false;   // 自动倒计时是否已在本程序本次运行中用过
     static Mutex _singleMutex;         // 单例防多开：交互模式同一时刻只允许一个实例
-    static bool markerAtStartup;       // 本次启动前根目录标记文件是否已存在（删除类操作的双重验证依据）
 
     // ---------------- 入口 ----------------
 
@@ -58,9 +57,7 @@ public static class Program
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
         try { Console.Title = "DeepSeek Harness Unofficial Launcher V2.0.0"; } catch { }
         StateDir = ResolveStateDir();
-        // 记录"本次启动前"标记是否存在：删除类操作要求标记来自上一个会话（防 exe 被单独复制到新目录后误删）
-        markerAtStartup = File.Exists(Path.Combine(StateDir, ROOT_MARKER));
-        EnsureRootMarker();
+        EnsureRootMarker();   // 完整安装 → 静默补标记（新包自带标记，此行主要兼容旧版本目录）
         LoadConfig();
         if (args.Length > 0)
         {
@@ -207,6 +204,7 @@ public static class Program
                     return;
                 default:
                     Warn(T("无效输入，请重新选择。", "Invalid input, please choose again."));
+                    if (inputEof) return;   // 输入流已结束（如管道测试/重定向），避免死循环
                     break;
             }
         }
@@ -246,7 +244,7 @@ public static class Program
             Console.WriteLine();
             return k.KeyChar.ToString();
         }
-        catch { Console.WriteLine(); Thread.Sleep(2000); return ""; }
+        catch { inputEof = true; Console.WriteLine(); Thread.Sleep(2000); return ""; }
     }
 
     // ---------------- 安装 ----------------
@@ -258,11 +256,11 @@ public static class Program
         Console.WriteLine();
         Info(T("[2/3] 开始安装 dsh（镜像源仅对本次安装生效，不修改全局配置）...",
                "[2/3] Installing dsh (mirror applies to this install only)..."));
-        string[] registries = { NPM_MIRROR, NPM_MIRROR, NPM_OFFICIAL };
+        string[] registries = { NPM_MIRROR, NPM_OFFICIAL };
         bool ok = false;
         for (int i = 0; i < registries.Length; i++)
         {
-            Info(string.Format(T("第 {0}/3 次尝试，源：{1}", "Attempt {0}/3, registry: {1}"), i + 1, registries[i]));
+            Info(string.Format(T("第 {0}/{1} 次尝试，源：{2}", "Attempt {0}/{1}, registry: {2}"), i + 1, registries.Length, registries[i]));
             int code = RunVisible("cmd.exe", "/c npm install -g --registry=" + registries[i] + " @deepseek-ai/dsh");
             if (code == 0) { ok = true; break; }
             Warn(string.Format(T("失败（退出码 {0}）", "Failed (exit code {0})"), code));
@@ -328,7 +326,7 @@ public static class Program
                 var psi = new ProcessStartInfo("cmd.exe", "/k dsh web")
                 {
                     UseShellExecute = true,
-                    WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
+                    WorkingDirectory = WorkspaceRoot() ?? AppDomain.CurrentDomain.BaseDirectory   // 与备份/恢复的工作区保持一致
                 };
                 Process.Start(psi);
             }
@@ -370,6 +368,7 @@ public static class Program
         string dver = RunDshVersion();
         DateTime? upSince = null;
         bool wasUp = false;
+        int redirectCycles = 0;   // 无控制台（管道/重定向）模式：刷新几次后自动退出，避免死循环
         while (true)
         {
             SafeClear();
@@ -404,6 +403,9 @@ public static class Program
             string k = WaitKeyChar(3000);
             if (k == "1") return;            // 返回菜单
             if (k == "2") OpenBrowser();     // 快捷打开 WebUI，留在监控页
+            bool redir = true;
+            try { redir = Console.IsInputRedirected; } catch { redir = true; }
+            if (redir) { redirectCycles++; if (redirectCycles >= 5) return; }   // 管道模式自动退出
             // 其他按键忽略，继续自动刷新
         }
     }
@@ -432,21 +434,30 @@ public static class Program
         return null;
     }
 
-    // ---------------- 根目录标记（防误删双重验证） ----------------
+    // ---------------- 根目录标记（防误删验证） ----------------
 
-    /// <summary>在启动器根目录创建隐藏标记文件。删除类操作（卸载/清除数据）要求此标记存在。</summary>
+    /// <summary>标记文件随安装包分发；此处仅在"目录看起来是完整安装（含配套文件）"时静默补建，兼容旧版本目录。
+    /// 单独复制的 exe（无配套文件）永远不会自建标记，从而永久被删除类操作拒绝。</summary>
     static void EnsureRootMarker()
     {
         try
         {
             string p = Path.Combine(StateDir, ROOT_MARKER);
-            if (!File.Exists(p))
-            {
-                File.WriteAllText(p, "DeepSeek Harness Unofficial Launcher V2.0.0" + Environment.NewLine);
-                File.SetAttributes(p, FileAttributes.Hidden);
-            }
+            if (File.Exists(p)) return;
+            if (!LooksLikeFullInstall(StateDir)) return;
+            File.WriteAllText(p, "DeepSeek Harness Unofficial Launcher V2.0.0" + Environment.NewLine);
+            File.SetAttributes(p, FileAttributes.Hidden);
         }
         catch (Exception ex) { LogErr("创建根目录标记失败: " + ex.Message); }
+    }
+
+    /// <summary>目录是否包含足够多的配套文件，可视为完整安装（标记随包分发 + 兼容旧目录的迁移判断）。</summary>
+    static bool LooksLikeFullInstall(string dir)
+    {
+        int n = 0;
+        foreach (string f in new string[] { "dsh_v2.cs", "build_exe.cmd", "hashes.txt", "icon.ico", "README.md" })
+            try { if (File.Exists(Path.Combine(dir, f))) n++; } catch { }
+        return n >= 2;
     }
 
     // ---------------- 卸载 ----------------
@@ -501,11 +512,12 @@ public static class Program
         }
 
         string dir = DataRoot();
-        // 双重验证 1/2：标记文件必须在"本次启动前"已存在于启动器根目录（防路径飘移，拒绝删除非本工具目录）
-        if (!markerAtStartup)
+        // 防误删验证：必须来自完整安装（随包分发的标记文件，或 ≥2 个配套文件）；单独复制的 exe 一律拒绝
+        bool rootOk = File.Exists(Path.Combine(StateDir, ROOT_MARKER)) || LooksLikeFullInstall(StateDir);
+        if (!rootOk)
         {
-            Error(T("启动器根目录在本次启动前没有标记文件（" + ROOT_MARKER + "），为防误删已拒绝执行清除。\n  提示：请从解压后的完整目录运行，勿将 exe 单独复制到其他位置。",
-                    "The root marker file (" + ROOT_MARKER + ") did not exist before this launch; refused to wipe to prevent accidental deletion.\n  Run from the full extracted folder; do not copy the exe alone elsewhere."));
+            Error(T("未检测到完整安装（缺少标记文件 " + ROOT_MARKER + " 且缺少配套文件）。\n  请从解压后的完整目录运行本程序；切勿将 exe 单独复制后执行清除。已拒绝删除。",
+                    "This does not look like a full installation (no marker " + ROOT_MARKER + " and no companion files).\n  Run from the complete extracted folder; do not copy the exe alone. Deletion refused."));
             Pause();
             return;
         }
@@ -811,10 +823,21 @@ public static class Program
     }
 
     /// <summary>加 \\?\ 前缀绕过 260 字符限制（配合 Main 里的长路径开关，兼容无注册表策略的机器）。</summary>
-    static string P(string p) { return p.StartsWith(@"\\?\") ? p : @"\\?\" + p; }
+    static string P(string p)   // 统一转 \\?\ 前缀（UNC 走 \\?\UNC\，否则 System.IO 对长路径会失败）
+    {
+        if (string.IsNullOrEmpty(p)) return p;
+        if (p.StartsWith(@"\\?\")) return p;
+        if (p.StartsWith(@"\\")) return @"\\?\UNC\" + p.Substring(2);   // \\server\share → \\?\UNC\server\share
+        return @"\\?\" + p;
+    }
 
-    /// <summary>去掉 \\?\ 前缀。</summary>
-    static string TrimP(string p) { return p.StartsWith(@"\\?\") ? p.Substring(4) : p; }
+    static string TrimP(string p)   // \\?\ 前缀还原（UNC 还原为 \\server\share）
+    {
+        if (string.IsNullOrEmpty(p)) return p;
+        if (p.StartsWith(@"\\?\UNC")) return @"\\" + p.Substring(8);
+        if (p.StartsWith(@"\\?\")) return p.Substring(4);
+        return p;
+    }
 
     /// <summary>工作区：本程序所在目录的上两级（exe 在 …\技术\DeepSeek Harness Unofficial Launcher V2.0.0\ 时，工作区为 …\）。
     /// 若探测结果落在用户主目录/桌面/Windows/盘根等明显不合理位置，返回 null（由调用方改为手动输入）。</summary>
@@ -1080,10 +1103,51 @@ public static class Program
 
     // ---------------- 通用工具 ----------------
 
+    /// <summary>解析可执行文件：带路径直接返回；裸名先查 PATH，再查常见安装目录；都找不到原样返回（交给系统报错）。</summary>
+    static string ResolveExe(string name)
+    {
+        try
+        {
+            if (name.IndexOf(Path.DirectorySeparatorChar) >= 0 || name.IndexOf('/') >= 0)
+                return File.Exists(name) ? name : name;
+            foreach (string dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';'))
+            {
+                string d = dir.Trim();
+                if (d.Length == 0) continue;
+                try { string f = Path.Combine(d, name); if (File.Exists(f)) return f; } catch { }
+            }
+            string[] extra = {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs", name),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "nodejs", name),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm", name)
+            };
+            foreach (string f in extra) { try { if (File.Exists(f)) return f; } catch { } }
+        }
+        catch { }
+        return name;
+    }
+
+    /// <summary>给被启动进程补充 node/npm 常用目录的 PATH，避免 winget 新装后当前会话 PATH 未刷新导致找不到命令。</summary>
+    static void MergeNodePath(ProcessStartInfo psi)
+    {
+        try
+        {
+            var add = new System.Collections.Generic.List<string>();
+            add.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm"));
+            add.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs"));
+            add.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "nodejs"));
+            string merged = string.Join(";", add) + ";" + (Environment.GetEnvironmentVariable("PATH") ?? "");
+            psi.EnvironmentVariables["PATH"] = merged;
+        }
+        catch { }
+    }
+
+    /// <summary>后台采集命令输出：双流异步排空 + 15 秒超时强杀，杜绝子进程挂起导致的卡死。</summary>
     static string RunCapture(string exe, string args)
     {
         try
         {
+            exe = ResolveExe(exe);
             var psi = new ProcessStartInfo(exe, args)
             {
                 UseShellExecute = false,
@@ -1091,10 +1155,21 @@ public static class Program
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
+            MergeNodePath(psi);
             using (var p = Process.Start(psi))
             {
-                string so = p.StandardOutput.ReadToEnd();
-                p.WaitForExit(15000);
+                var tOut = p.StandardOutput.ReadToEndAsync();
+                var tErr = p.StandardError.ReadToEndAsync();
+                if (!p.WaitForExit(15000))
+                {
+                    try { p.Kill(); } catch { }
+                    p.WaitForExit();
+                    LogErr("命令执行超时（15 秒），已强制结束: " + exe + " " + args);
+                    return "";
+                }
+                string so = tOut.Result;
+                string err = tErr.Result;
+                if (!string.IsNullOrWhiteSpace(err)) LogErr("命令 stderr: " + err.Trim());
                 return so.Trim();
             }
         }
@@ -1105,7 +1180,9 @@ public static class Program
     {
         try
         {
+            file = ResolveExe(file);
             var psi = new ProcessStartInfo(file, args) { UseShellExecute = false };
+            MergeNodePath(psi);
             using (var p = Process.Start(psi))
             {
                 p.WaitForExit();
