@@ -78,27 +78,27 @@ $o = ("1`n2`n`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String); TC '9 install
 # 10-12 卸载守卫
 $d = Join-Path $T 'stray'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe'); Seed-DT
 $o = ("6`ny`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
-TC '10 stray uninstall refused' ($o.Contains('未检测到完整安装') -and (Test-Path (Join-Path $dt 'settings.yaml')))
+TC '10 stray uninstall refused' (($o.Contains('未检测到完整安装') -or $o.Contains('does not look like a full installation')) -and (Test-Path (Join-Path $dt 'settings.yaml')))
 $d = Join-Path $T 'full'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe')
 [IO.File]::WriteAllText((Join-Path $d '.dsh_launcher_root'), 'DeepSeek Harness Toolkit V2.0.0' + [Environment]::NewLine)
 $o = ("6`ny`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
-TC '11 full uninstall wiped' ($o.Contains('数据已清除') -and (-not (Test-Path (Join-Path $dt 'settings.yaml'))))
+TC '11 full uninstall wiped' (($o.Contains('数据已清除') -or $o.Contains('Data wiped')) -and (-not (Test-Path (Join-Path $dt 'settings.yaml'))))
 $d = Join-Path $T 'cli'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe'); Seed-DT
 $o = ("y`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') uninstall 2>&1 | Out-String)
-TC '12 cli uninstall refused' ($o.Contains('未检测到完整安装'))
+TC '12 cli uninstall refused' ($o.Contains('未检测到完整安装') -or $o.Contains('does not look like a full installation'))
 
 # 13-14,19 真实端口（3080 未开则 SKIP）
 if ($portLive) {
     $pn0 = (Get-Process node -ErrorAction SilentlyContinue | Measure-Object).Count
     $o = ("2`n0`n" | & $tC 2>&1 | Out-String); $pn1 = (Get-Process node -ErrorAction SilentlyContinue | Measure-Object).Count
-    TC '13 running->monitor' ($o.Contains('运行中') -and ($pn1 -le $pn0 + 1)) ('node:' + $pn0 + '->' + $pn1)
-    $o = (& $tC check 2>&1 | Out-String); TC '14 check live' ($o.Contains('已在运行'))
+    TC '13 running->monitor' (($o.Contains('运行中') -or $o.Contains('RUNNING')) -and ($pn1 -le $pn0 + 1)) ('node:' + $pn0 + '->' + $pn1)
+    $o = (& $tC check 2>&1 | Out-String); TC '14 check live' ($o.Contains('已在运行') -or $o.Contains('running'))
     $d = Join-Path $T 'fullC'; NewDir $d; Copy-Item $tC (Join-Path $d 't.exe')
     [IO.File]::WriteAllText((Join-Path $d '.dsh_launcher_root'), 'DeepSeek Harness Toolkit V2.0.0' + [Environment]::NewLine)
     $o = ("6`ny`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
-    TC '19 uninstall blocked while running' ($o.Contains('请先关闭'))
+    TC '19 uninstall blocked while running' ($o.Contains('请先关闭') -or $o.Contains('Close the dsh web window first'))
 } else {
-    $o = (& $tC check 2>&1 | Out-String); TC '14 check stopped' ($o.Contains('未启动'))
+    $o = (& $tC check 2>&1 | Out-String); TC '14 check stopped' ($o.Contains('未启动') -or $o.Contains('not started'))
     $results.Add('13 monitor(needs 3080)              SKIP')
     $results.Add('19 uninstall-block(needs 3080)      SKIP')
 }
@@ -115,17 +115,17 @@ TC '15 backup e2e' $ok15
 $wr = Join-Path $T 'restore_ws'; NewDir $wr
 $o = ("5`n2`n1`ny`n$wr`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
 # 注意：恢复前预备份与主备份可能落在同一秒（dest 同名合并），故不按"备份数+1"断言，改用文案+文件
-TC '16 restore e2e (+pre-backup)' (($o.Contains('恢复前自动备份当前数据')) -and ($o.Contains('恢复完成')) -and (Test-Path (Join-Path $wr 'report.txt')) -and (Test-Path (Join-Path $dt 'settings.yaml')))
+TC '16 restore e2e (+pre-backup)' (($o.Contains('恢复前自动备份当前数据') -or $o.Contains('Auto-backing up current data before restore')) -and ($o.Contains('恢复完成') -or $o.Contains('Restore done')) -and (Test-Path (Join-Path $wr 'report.txt')) -and (Test-Path (Join-Path $dt 'settings.yaml')))
 $foreign = Join-Path $T 'foreign'; NewDir $foreign
 if ($B) { Copy-Item -LiteralPath $B.FullName -Destination (Join-Path $foreign $B.Name) -Recurse -Force }
 $o = ("5`n3`n$foreign`ny`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
 $bk2 = @(Get-ChildItem -LiteralPath $bkdir -Directory -ErrorAction SilentlyContinue).Count
-TC '17 import e2e' (($o.Contains('导入前自动备份当前数据')) -and ($o.Contains('恢复完成')) -and ($bk2 -ge 1))
+TC '17 import e2e' (($o.Contains('导入前自动备份当前数据') -or $o.Contains('Auto-backing up current data before import')) -and ($o.Contains('恢复完成') -or $o.Contains('Restore done')) -and ($bk2 -ge 1))
 $wsdir2 = Join-Path $T 'ws_nested'; NewDir $wsdir2; NewDir (Join-Path $wsdir2 'dsh-data-20250101-000000')
 [IO.File]::WriteAllText((Join-Path $wsdir2 'dsh-data-20250101-000000\x.txt'), 'fake')
 $o = ("5`n1`n$wsdir2`n`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
 $dummy = @(Get-ChildItem -LiteralPath $bkdir -Recurse -Filter 'x.txt' -ErrorAction SilentlyContinue).Count
-TC '18 nested backup skipped' ((($o -join ' ').Contains('跳过')) -and ($dummy -eq 0))
+TC '18 nested backup skipped' ((($o -join ' ').Contains('跳过') -or ($o -join ' ').Contains('skipped')) -and ($dummy -eq 0))
 
 Write-Output ""; Write-Output "=== integration results ==="
 $results | ForEach-Object { Write-Output $_ }
