@@ -1,5 +1,5 @@
 # SHA-256 校验清单 - DeepSeek Harness Unofficial Launcher V2.0.0
-# 生成时间: 2026-08-15 19:37:23  版次: 最终发布版(多工作区+长路径+双语+logo)
+# 生成时间: 2026-08-15 19:40:02  版次: 最终发布版(多工作区+长路径+双语+logo+语言切换)
 # 生成方式: PowerShell Get-FileHash
 
 75d650c5fa4708741fed9dcf3bd1c8b00e87b8584e675b3f63d3e1feb57914ab  DeepSeek Harness Unofficial Launcher V2.0.0.exe
@@ -7,5 +7,6 @@ f9f4c93fcd2429403c25fec189ca85d011fb1b6b24a49666180812a130163c2a  dsh_v2.cs
 9f5244424687d64fb8227e1fe43122863cbd63f5cfcd9b02977541244b95f782  build_exe.cmd
 835e25e8414cb20228d77369521f11fb8cc818efe7bad928cbf7374b3a2bb478  icon.ico
 1b8a8e33a40dbcb5abf8bc348edd4a9549d8737b8938b9fc686f1c68f05e2c63  logo.png
-2ef26c40b9df765199c9ac548fa6077ff3871f0ead563cda3a1e6dec9dff348b  README.md
+908f5cb69379c2f825fff27bfad7b50ed4bc9d35d524818cf3f8c7daf4cf16a5  README.md
+748b34d7680e3444e6de410fc3e9d8e7cfec8b2a93be3a149d84475ba3765fd5  README_zh-CN.md
 99cf00e4bfe139e6c41941cceee833d81ba14ef74e7b7c37798ae16c02288bb5  LICENSE
