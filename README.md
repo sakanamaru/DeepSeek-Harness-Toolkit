@@ -6,9 +6,19 @@
 
 <img src="logo.png" alt="DeepSeek Harness Unofficial Launcher" width="220"/>
 
+**DeepSeek Harness Unofficial Launcher — Windows installer, monitor, backup & restore tool**
+
 </div>
 
-A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](https://www.npmjs.com/package/@deepseek-ai/dsh) (dsh) Web UI — install, start, monitor, uninstall, plus data backup & restore. Double-click and go.
+A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](https://www.npmjs.com/package/@deepseek-ai/dsh) (dsh) Web UI. **Double-click and go.**
+
+**What makes it different from running the npm package bare:**
+
+- 🔧 **Install & repair** — official npmjs.org registry by default, npmmirror as an opt-in; auto-fallback to the other source; never touches your global npm config
+- 📊 **Smart start + live monitor** — 5-second countdown auto-start (when dsh is installed); 3s status auto-refresh with red alert on disconnect
+- 💾 **Backup & restore** — one-click data backup to `backup\` with **multi-workspace** support (`_workspace\name\`, restorable one by one), **cross-PC import**, long-path safe
+- 🛡️ **Wipe protection** — two-step confirm (date + `yes`) with **auto-backup first**; blocked while the web service is running; a package-shipped root marker permanently refuses a stray exe copied elsewhere
+- 🌍 **One exe, bilingual menu** — Simplified Chinese / English, built on .NET Framework 4.x (preinstalled on Win10/11), nothing else to install
 
 > ⚠️ This project is **unofficial** and is not affiliated with DeepSeek.
 
