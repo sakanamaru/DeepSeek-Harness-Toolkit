@@ -44,6 +44,7 @@ public static class Program
     static Lang lang = Lang.Auto;
     static string StateDir;
     static bool autoApplied = false;   // 自动倒计时是否已在本程序本次运行中用过
+    static Mutex _singleMutex;         // 单例防多开：交互模式同一时刻只允许一个实例
 
     // ---------------- 入口 ----------------
 
@@ -72,6 +73,17 @@ public static class Program
                     Help();
                     return;
             }
+        }
+        // 单例防多开：交互模式检测已有实例则提示退出（CLI 子命令不受限制，便于脚本/自检调用）
+        _singleMutex = new Mutex(false, "DSH-Launcher-Unofficial-V2.0.0-single");
+        bool haveLock;
+        try { haveLock = _singleMutex.WaitOne(0); }
+        catch (AbandonedMutexException) { haveLock = true; } // 上一实例异常退出，本实例接管
+        if (!haveLock)
+        {
+            Info(T("检测到程序已在运行，请切换到已打开的窗口（本实例自动退出）。",
+                   "The launcher is already running — switch to the open window (this instance exits)."));
+            return;
         }
         Menu();
     }
@@ -462,6 +474,14 @@ public static class Program
         }
 
         string dir = DataRoot();
+        // 防呆安全锁：目标必须"看起来像 dsh 数据目录"才允许清除，杜绝路径错乱/误操作误删其他文件夹
+        if (Directory.Exists(dir) && !LooksLikeDshData(dir))
+        {
+            Error(T("拒绝清除：" + dir + "\n  该目录不含 dsh 数据标记（settings.yaml / credentials.yaml / sessions 等），为防止误删已中止。",
+                    "Refused to wipe: " + dir + "\n  No dsh data markers found (settings.yaml / credentials.yaml / sessions etc.); aborted to prevent accidental deletion."));
+            Pause();
+            return;
+        }
         // 清除数据前自动备份到备份目录
         if (Directory.Exists(dir))
         {
@@ -532,6 +552,17 @@ public static class Program
         }
         catch { }
         return null;
+    }
+
+    /// <summary>防呆校验：目录含任一 dsh 数据标记（文件或子目录）即视为 dsh 数据目录。</summary>
+    static bool LooksLikeDshData(string dir)
+    {
+        foreach (string marker in new string[] { "settings.yaml", "credentials.yaml", "sessions", "profiles", "storages" })
+        {
+            string p = Path.Combine(dir, marker);
+            if (File.Exists(p) || Directory.Exists(p)) return true;
+        }
+        return false;
     }
 
     /// <summary>清除数据的两步确认：第 1 步输入当天日期（yyyyMMdd），第 2 步输入 yes。</summary>
