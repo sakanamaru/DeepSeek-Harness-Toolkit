@@ -103,14 +103,20 @@ jobs:
           if ($tag -eq '') { Write-Output 'no release tag provided; skipping release upload'; exit 0 }
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -ne 0) { Write-Output "release '$tag' not found; skipping upload (create it with: gh release create $tag)"; exit 0 }
-          gh release upload $tag "DeepSeek Harness Toolkit.exe" --repo $env:GITHUB_REPOSITORY --clobber
-          gh release upload $tag hashes.txt --repo $env:GITHUB_REPOSITORY --clobber
+          function Upload([string]$file, [string]$tag, [string]$repo) {
+            for ($i = 1; $i -le 5; $i++) {
+              gh release upload $tag $file --repo $repo --clobber
+              if ($LASTEXITCODE -eq 0) { return }
+              Write-Output "upload retry $i (transient GitHub 5xx) for $file"
+              Start-Sleep -Seconds 5
+            }
+            throw "upload failed after retries: $file"
+          }
+          Upload "DeepSeek Harness Toolkit.exe" $tag $env:GITHUB_REPOSITORY
+          Upload "hashes.txt" $tag $env:GITHUB_REPOSITORY
           $assets = gh release view $tag --repo $env:GITHUB_REPOSITORY --json assets --jq '.assets[].name'
-          # 改名迁移安全网：清理与当前命名不一致的旧 exe 资产（注意：GitHub 会把空格转成点，须按服务器端点分名比较）
-          $currentExe = 'DeepSeek.Harness.Toolkit.exe'   # GitHub 把空格转点，按服务器端点分名；只保留精确当前名
-          $oldExes = $assets | Where-Object { $_ -like '*.exe' -and $_ -ne $currentExe }
+          # 改名迁移安全网：清理与当前命名不一致的旧 exe 资产（GitHub 把空格转点，按服务器端点分名比较）
+          $oldExes = $assets | Where-Object { $_ -like '*.exe' -and $_ -ne 'DeepSeek.Harness.Toolkit.exe' }
           foreach ($oe in $oldExes) { gh release delete-asset $tag $oe --repo $env:GITHUB_REPOSITORY }
-          $oldZip = $assets | Where-Object { $_ -like '*.zip' } | Select-Object -First 1
-          if ($oldZip) { gh release delete-asset $tag $oldZip --repo $env:GITHUB_REPOSITORY }
-          gh release upload $tag 'DeepSeek-Harness-Toolkit_v2.1.0_upload-package.zip' --repo $env:GITHUB_REPOSITORY
+          Upload 'DeepSeek-Harness-Toolkit_v2.1.0_upload-package.zip' $tag $env:GITHUB_REPOSITORY
           Write-Output "assets refreshed on release $tag"
