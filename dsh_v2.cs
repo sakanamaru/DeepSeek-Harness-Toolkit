@@ -7,7 +7,7 @@
 //  功能：安装/修复、启动 Web 界面、运行状态监控、卸载（含两步确认清数据）、
 //        数据备份/恢复、多语言、自动倒计时选择、彩色输出。
 //
-//  编译： csc.exe /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit V2.1.0.exe" dsh_v2.cs
+//  编译： csc.exe /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit.exe" dsh_v2.cs /warn:4
 // ============================================================================
 
 using System;
@@ -397,7 +397,7 @@ public static class Program
         StatusMonitor();   // 无论成败都进入状态监控页
     }
 
-    static string WebUrl() { return "http://" + webHost + ":3080"; }
+    static string WebUrl() { return "http://" + webHost + ":" + WEB_PORT; }
     static void OpenBrowser() { OpenUrl(WebUrl()); }
 
     static void OpenUrl(string url)
@@ -546,7 +546,8 @@ public static class Program
         Console.WriteLine();
         Console.Write(T("  是否同时【清除全部数据】（会话记录/设置/API 凭据）？\n  输入 y 继续，其他任意键保留数据：",
                         "  Also WIPE ALL DATA (sessions/settings/API credentials)?\n  Type y to continue, any other key keeps data: "));
-        if (ReadLineTrim() != "y") { Info(T("数据已保留。", "Data kept.")); Pause(); return; }
+        string wipeAsk = ReadLineTrim();
+        if (wipeAsk != "y" && wipeAsk != "Y") { Info(T("数据已保留。", "Data kept.")); Pause(); return; }
 
         if (!TwoStepConfirm()) { Warn(T("已取消清除数据。", "Wipe cancelled.")); Pause(); return; }
 
@@ -583,7 +584,12 @@ public static class Program
             Info(T("清除前自动备份数据到备份目录...", "Auto-backing up data before wipe..."));
             string bk = DoBackup(dir, null, BackupKind.PreWipe);   // 清除数据前的自动安全备份
             if (bk != null) Success(T("已备份：" + bk, "Backup saved: " + bk));
-            else Warn(T("自动备份失败，仍将执行清除。", "Auto-backup failed; wipe will proceed."));
+            else
+            {
+                Error(T("清除前自动备份失败，已中止清除（请先手动备份或检查磁盘空间）。", "Pre-wipe backup failed; wipe aborted (back up manually or check disk space first)."));
+                Pause();
+                return;
+            }
         }
         C(ConsoleColor.Red, T("  正在删除：" + dir + " ...", "  Deleting: " + dir + " ..."));
         Console.WriteLine();
@@ -729,7 +735,8 @@ public static class Program
         {
             Console.Write(T("  检测到工作区（" + guess + "）。是否同时备份？输入 y 包含：",
                             "  Workspace detected (" + guess + "). Include it? Type y: "));
-            if (ReadLineTrim() == "y") wsList.Add(guess);
+            string addAsk = ReadLineTrim();
+            if (addAsk == "y" || addAsk == "Y") wsList.Add(guess);
         }
         // 多工作区：逐个输入路径，直接回车结束
         while (true)
@@ -772,6 +779,7 @@ public static class Program
         string[] dirs = Directory.GetDirectories(root);
         Array.Sort(dirs);
         Array.Reverse(dirs);
+        if (dirs.Length == 0) { Warn(T("备份目录为空，尚无任何备份。", "Backup folder is empty; no backups yet.")); Pause(); return; }
         Console.WriteLine();
         for (int i = 0; i < dirs.Length; i++)
             CL(ConsoleColor.White, "  " + (i + 1) + ") " + Path.GetFileName(dirs[i]));
@@ -785,7 +793,8 @@ public static class Program
         string dst = DataRoot();
         Console.Write(T("  恢复将覆盖当前数据（建议先关闭 dsh web）。确认？输入 y 继续：",
                         "  Restore overwrites current data (close dsh web first). Type y to continue: "));
-        if (ReadLineTrim() != "y") { Warn(T("已取消。", "Cancelled.")); return; }
+        string restoreAsk = ReadLineTrim();
+        if (restoreAsk != "y" && restoreAsk != "Y") { Warn(T("已取消。", "Cancelled.")); return; }
         // v2.1 安全：dsh 运行中拒绝恢复（与卸载/清除一致，防止覆盖正在使用的数据）
         if (ProbeService() != ServiceState.Down)
         {
@@ -797,7 +806,13 @@ public static class Program
         if (Directory.Exists(dst))
         {
             Info(T("恢复前自动备份当前数据...", "Auto-backing up current data before restore..."));
-            DoBackup(dst, null, BackupKind.PreRestore);
+            string preBk = DoBackup(dst, null, BackupKind.PreRestore);
+            if (preBk == null)
+            {
+                Error(T("恢复前自动备份失败，已中止恢复（请先手动备份或检查磁盘空间）。", "Pre-restore backup failed; restore aborted (back up manually or check disk space first)."));
+                Pause();
+                return;
+            }
         }
         RestoreFromSource(bk);
         Pause();
@@ -809,12 +824,13 @@ public static class Program
     /// <summary>备份数据目录；wsList 非空时把每个工作区放入备份包 _workspace\<名字>\（含 .dshws 标记）；kind 决定目录名来源后缀，备份成功后自动执行保留策略清理。</summary>
     static string DoBackup(string source, List<string> wsList, BackupKind kind)
     {
+        string dest = null;
         try
         {
             if (!Directory.Exists(source)) return null;
             string root = BackupsRoot();
             Directory.CreateDirectory(root);
-            string dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + BackupSuffix(kind));
+            dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + BackupSuffix(kind));
             CopyTree(source, dest, true);
             if (wsList != null)
             {
@@ -840,7 +856,12 @@ public static class Program
                        "Retention: removed " + removed.Count + " old auto backup(s): " + string.Join(", ", removed.ToArray())));
             return dest;
         }
-        catch (Exception ex) { LogErr("备份失败: " + ex); return null; }
+        catch (Exception ex)
+        {
+            LogErr("备份失败: " + ex);
+            if (dest != null) { try { if (Directory.Exists(dest)) { ClearReadOnlyRecursive(dest); Directory.Delete(dest, true); } } catch { } }   // 清理半成品，避免残目录伪装成有效备份
+            return null;
+        }
     }
 
     // ---------------- 备份保留策略（v2.1：只清理自动类，手动永久保留） ----------------
@@ -930,7 +951,7 @@ public static class Program
                 using (var t = new FileStream(P(fd), FileMode.Create, FileAccess.Write, FileShare.None))
                     s.CopyTo(t);
             }
-            catch { if (!skipLocked) throw; }            // 备份模式：被锁/坏文件跳过；恢复模式：如实报错
+            catch (Exception ex) { if (!skipLocked) throw; LogErr("备份: 跳过无法复制的文件 " + TrimP(f) + " : " + ex.Message); }   // 备份模式：被锁/坏文件跳过并记日志；恢复模式：如实报错
         }
     }
 
@@ -951,7 +972,7 @@ public static class Program
         return p;
     }
 
-    /// <summary>工作区：本程序所在目录的上两级（exe 在 …\技术\DeepSeek Harness Toolkit V2.0.0\ 时，工作区为 …\）。
+    /// <summary>工作区：本程序所在目录的上两级（exe 在 …\DeepSeek Harness Toolkit\ 时，工作区为 …\）。
     /// 若探测结果落在用户主目录/桌面/Windows/盘根等明显不合理位置，返回 null（由调用方改为手动输入）。</summary>
     static string WorkspaceRoot()
     {
@@ -1101,7 +1122,8 @@ public static class Program
         C(ConsoleColor.Gray, "    - " + T("工作区", "workspace") + " : "); CL(ConsoleColor.White, hasWs ? T("有", "yes") : T("无", "no"));
         if (!hasData && !hasWs) { Warn(T("该目录不是有效的备份。", "Not a valid backup directory.")); Pause(); return; }
         Console.Write(T("  确认导入？输入 y 继续：", "  Confirm import? Type y: "));
-        if (ReadLineTrim() != "y") { Warn(T("已取消。", "Cancelled.")); return; }
+        string importAsk = ReadLineTrim();
+        if (importAsk != "y" && importAsk != "Y") { Warn(T("已取消。", "Cancelled.")); return; }
         // v2.1 安全：dsh 运行中拒绝导入（与恢复/清除一致）
         if (ProbeService() != ServiceState.Down)
         {
@@ -1114,7 +1136,13 @@ public static class Program
         if (Directory.Exists(dst))
         {
             Info(T("导入前自动备份当前数据...", "Auto-backing up current data before import..."));
-            DoBackup(dst, null, BackupKind.PreImport);
+            string preBk = DoBackup(dst, null, BackupKind.PreImport);
+            if (preBk == null)
+            {
+                Error(T("导入前自动备份失败，已中止导入（请先手动备份或检查磁盘空间）。", "Pre-import backup failed; import aborted (back up manually or check disk space first)."));
+                Pause();
+                return;
+            }
         }
         RestoreFromSource(path);
         Pause();
@@ -1204,6 +1232,7 @@ public static class Program
         {
             string alt = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DeepSeekHarnessLauncher");   // 兼容旧版（改名前的备用状态目录），不随产品改名迁移
             try { Directory.CreateDirectory(alt); } catch { }
+            StateDir = alt;   // 先回填 StateDir，LogErr 才能写入日志
             LogErr("ResolveStateDir: 目录不可写，改用备用目录 " + alt);
             return alt;
         }
@@ -1249,7 +1278,7 @@ public static class Program
         try
         {
             if (name.IndexOf(Path.DirectorySeparatorChar) >= 0 || name.IndexOf('/') >= 0)
-                return File.Exists(name) ? name : name;
+                return name;   // 带路径原样返回（交给系统报错）
             foreach (string dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';'))
             {
                 string d = dir.Trim();
@@ -1359,11 +1388,15 @@ public static class Program
 
     static bool IsPortOpen(int port, int timeoutMs)
     {
-        using (var c = new TcpClient())
+        try
         {
-            var t = c.ConnectAsync(IPAddress.Loopback, port);
-            return t.Wait(timeoutMs) && c.Connected;
+            using (var c = new TcpClient())
+            {
+                var t = c.ConnectAsync(IPAddress.Loopback, port);
+                return t.Wait(timeoutMs) && c.Connected;   // Wait 超时返回 false；连接快速失败(faulted)抛 AggregateException 时按 false 处理
+            }
         }
+        catch { return false; }   // 端口关闭/连接被拒等一律视为"未打开"
     }
 
     // ---------------- 服务状态三态（v2.1: 端口 + HTTP 探测，避免被其他程序占用 3080 误判） ----------------
