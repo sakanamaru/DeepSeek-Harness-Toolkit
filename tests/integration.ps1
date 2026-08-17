@@ -23,7 +23,7 @@ function Build-Variant($variant, $outExe) {
     $text = [IO.File]::ReadAllText($src, [Text.UTF8Encoding]::new($false))
     $pats = @(
         @{ o = 'const string DATA_DIR     = ".dsh";';                                                   n = 'const string DATA_DIR     = ".dsh_test";' },
-        @{ o = '"DSH-Toolkit-V2.0.0-single"';                                                           n = '"DSH-Toolkit-TEST-single"' },
+        @{ o = '"DeepSeek-Harness-Toolkit-single"';                                                        n = '"DSH-Toolkit-TEST-single"' },
         @{ o = 'string choice = autoApplied ? ReadChoice("  > ") : (installed ? CountdownInput("  > ", def) : ReadChoice("  > "));'; n = 'string choice = ReadLineTrim(); // TEST line-driven' },
         @{ o = 'int code = RunVisible("cmd.exe", "/c npm install -g --registry=" + registries[i] + " @deepseek-ai/dsh");'; n = 'int code = 0; // TEST install no-op' },
         @{ o = 'int code = RunVisible("cmd.exe", "/c npm uninstall -g @deepseek-ai/dsh");';            n = 'int code = 0; // TEST npm no-op' }
@@ -32,6 +32,8 @@ function Build-Variant($variant, $outExe) {
         # 变体 A：端口全打桩（菜单/卸载流程可离线跑通）；变体 C 保留真实端口（测"运行中"路径）
         $pats += @{ o = 'if (IsPortOpen(WEB_PORT, 800))'; n = 'if (false && IsPortOpen(WEB_PORT, 800))' }
         $pats += @{ o = 'if (IsPortOpen(WEB_PORT, 600))'; n = 'if (false && IsPortOpen(WEB_PORT, 600))' }
+        # v2.1：ProbeService 也要打桩——它内部裸调 IsPortOpen，不打桩会让"运行中拒绝"误触发（16/17 在 3080 开启时被拒）
+        $pats += @{ o = 'return JudgeState(IsPortOpen(WEB_PORT, 800), HttpReady(WebUrl(), 800));'; n = 'return JudgeState(false, false); // TEST stub' }
     }
     foreach ($p in $pats) {
         if ([regex]::Matches($text, [regex]::Escape($p.o)).Count -lt 1) { Write-Error ("锚点漂移（请同步 integration.ps1）: " + $p.o.Substring(0, 50)); exit 2 }
@@ -49,6 +51,8 @@ NewDir $T
 $tA = Join-Path $T 'tA.exe'; $tC = Join-Path $T 'tC.exe'
 Build-Variant 'A' $tA
 Build-Variant 'C' $tC
+# 交互用例统一关闭启动更新检查（避免每次启动连 GitHub 的随机耗时/超时）
+[IO.File]::WriteAllText((Join-Path $T 'launcher.config'), ('lang=zh' + [Environment]::NewLine + 'check_update=off' + [Environment]::NewLine))
 $portLive = Test-NetConnection -ComputerName 127.0.0.1 -Port 3080 -InformationLevel Quiet -WarningAction SilentlyContinue
 $date = Get-Date -Format 'yyyyMMdd'
 $dt = Join-Path $env:USERPROFILE '.dsh_test'
@@ -59,7 +63,7 @@ Write-Output ("环境: 3080=" + $(if ($portLive) { '运行中' } else { '未运�
 # 1-5 基础 / CLI
 & $tA selftest *> $null;   TC '1 selftest' ($LASTEXITCODE -eq 0)
 $o = (& $tA help 2>&1 | Out-String);    TC '2 help' ($o.Contains('install | start | uninstall'))
-$o = (& $tA about 2>&1 | Out-String);   TC '3 about' (($o.Contains('DeepSeek Harness Toolkit V2.0.0')) -and ($o.Contains('sakanamaru')))
+$o = (& $tA about 2>&1 | Out-String);   TC '3 about' (($o.Contains('DeepSeek Harness Toolkit V2.1.0')) -and ($o.Contains('sakanamaru')))
 $o = (& $tA check 2>&1 | Out-String);   TC '4 check CLI' ($o.Contains('dsh'))
 $sw = [Diagnostics.Stopwatch]::StartNew(); $o = ("0`n" | & $tA 2>&1 | Out-String); $sw.Stop()
 TC '5 menu exit 0' ($sw.ElapsedMilliseconds -lt 2000) ($sw.ElapsedMilliseconds.ToString() + 'ms')
@@ -80,7 +84,7 @@ $d = Join-Path $T 'stray'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe'); Seed
 $o = ("6`ny`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
 TC '10 stray uninstall refused' (($o.Contains('未检测到完整安装') -or $o.Contains('does not look like a full installation')) -and (Test-Path (Join-Path $dt 'settings.yaml')))
 $d = Join-Path $T 'full'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe')
-[IO.File]::WriteAllText((Join-Path $d '.dsh_launcher_root'), 'DeepSeek Harness Toolkit V2.0.0' + [Environment]::NewLine)
+[IO.File]::WriteAllText((Join-Path $d '.dsh_launcher_root'), 'DeepSeek Harness Toolkit V2.1.0' + [Environment]::NewLine)
 $o = ("6`ny`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
 TC '11 full uninstall wiped' (($o.Contains('数据已清除') -or $o.Contains('Data wiped')) -and (-not (Test-Path (Join-Path $dt 'settings.yaml'))))
 $d = Join-Path $T 'cli'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe'); Seed-DT
@@ -94,7 +98,8 @@ if ($portLive) {
     TC '13 running->monitor' (($o.Contains('运行中') -or $o.Contains('RUNNING')) -and ($pn1 -le $pn0 + 1)) ('node:' + $pn0 + '->' + $pn1)
     $o = (& $tC check 2>&1 | Out-String); TC '14 check live' ($o.Contains('已在运行') -or $o.Contains('running'))
     $d = Join-Path $T 'fullC'; NewDir $d; Copy-Item $tC (Join-Path $d 't.exe')
-    [IO.File]::WriteAllText((Join-Path $d '.dsh_launcher_root'), 'DeepSeek Harness Toolkit V2.0.0' + [Environment]::NewLine)
+    [IO.File]::WriteAllText((Join-Path $d 'launcher.config'), ('lang=zh' + [Environment]::NewLine + 'check_update=off' + [Environment]::NewLine))
+    [IO.File]::WriteAllText((Join-Path $d '.dsh_launcher_root'), 'DeepSeek Harness Toolkit V2.1.0' + [Environment]::NewLine)
     $o = ("6`ny`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
     TC '19 uninstall blocked while running' ($o.Contains('请先关闭') -or $o.Contains('Close the dsh web window first'))
 } else {
@@ -126,6 +131,37 @@ $wsdir2 = Join-Path $T 'ws_nested'; NewDir $wsdir2; NewDir (Join-Path $wsdir2 'd
 $o = ("5`n1`n$wsdir2`n`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
 $dummy = @(Get-ChildItem -LiteralPath $bkdir -Recurse -Filter 'x.txt' -ErrorAction SilentlyContinue).Count
 TC '18 nested backup skipped' ((($o -join ' ').Contains('跳过') -or ($o -join ' ').Contains('skipping') -or ($o -join ' ').Contains('skipped')) -and ($dummy -eq 0))
+
+# 20 保留策略（v2.1）：只清自动类（超 keep_backups 删最旧），手动备份永久保留
+$d20 = Join-Path $T 'ret'; NewDir $d20; Copy-Item $tA (Join-Path $d20 't.exe')
+[IO.File]::WriteAllText((Join-Path $d20 'launcher.config'), ('lang=zh' + [Environment]::NewLine + 'keep_backups=4' + [Environment]::NewLine))
+$bk20 = Join-Path $d20 'backup'; NewDir $bk20
+foreach ($n in @('01', '02')) { NewDir (Join-Path $bk20 ('dsh-data-20260101-0000' + $n)) }               # 手动 2 份（无后缀）
+foreach ($n in @('01', '02', '03', '04', '05')) { NewDir (Join-Path $bk20 ('dsh-data-20260101-000' + $n + '-pre-restore')) }   # 自动类 5 份
+$o = ("5`n1`n`n0`n" | & (Join-Path $d20 't.exe') 2>&1 | Out-String)   # 手动备份触发保留策略
+$preCnt = @(Get-ChildItem -LiteralPath $bk20 -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '*pre-restore' }).Count
+$man1 = Test-Path (Join-Path $bk20 'dsh-data-20260101-000001')
+$man2 = Test-Path (Join-Path $bk20 'dsh-data-20260101-000002')
+$oldestGone = -not (Test-Path (Join-Path $bk20 'dsh-data-20260101-000001-pre-restore'))
+$retMsg = (($o -join ' ').Contains('保留策略') -or ($o -join ' ').Contains('Retention'))
+TC '20 retention auto-only' (($preCnt -eq 4) -and $man1 -and $man2 -and $oldestGone -and $retMsg)
+
+# 21/22 运行中拒绝（v2.1 🔴2：Restore/Import 在 dsh 运行中禁止；变体 C 真实端口）
+if ($portLive) {
+    $d21 = Join-Path $T 'fullC21'; NewDir $d21; Copy-Item $tC (Join-Path $d21 't.exe')
+    [IO.File]::WriteAllText((Join-Path $d21 'launcher.config'), ('lang=zh' + [Environment]::NewLine + 'check_update=off' + [Environment]::NewLine))
+    NewDir (Join-Path $d21 'backup\dsh-data-20260101-000001')
+    [IO.File]::WriteAllText((Join-Path $d21 'backup\dsh-data-20260101-000001\settings.yaml'), 'x')
+    $o21 = ("5`n2`n1`ny`n0`n" | & (Join-Path $d21 't.exe') 2>&1 | Out-String)
+    TC '21 restore blocked while running' ($o21.Contains('请先关闭') -or $o21.Contains('Close the dsh web window first'))
+    $foreign21 = Join-Path $T 'foreign21'; NewDir $foreign21
+    if ($B) { Copy-Item -LiteralPath $B.FullName -Destination (Join-Path $foreign21 $B.Name) -Recurse -Force }
+    $o22 = ("5`n3`n$foreign21`ny`n0`n" | & (Join-Path $d21 't.exe') 2>&1 | Out-String)
+    TC '22 import blocked while running' ($o22.Contains('请先关闭') -or $o22.Contains('Close the dsh web window first'))
+} else {
+    $results.Add('21 restore-block(needs 3080)        SKIP')
+    $results.Add('22 import-block(needs 3080)         SKIP')
+}
 
 Write-Output ""; Write-Output "=== integration results ==="
 $results | ForEach-Object { Write-Output $_ }

@@ -1,5 +1,5 @@
 // ============================================================================
-//  DeepSeek Harness Toolkit V2.0.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
+//  DeepSeek Harness Toolkit V2.1.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
 // ----------------------------------------------------------------------------
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 //  v2 重构封装：DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）
@@ -7,7 +7,7 @@
 //  功能：安装/修复、启动 Web 界面、运行状态监控、卸载（含两步确认清数据）、
 //        数据备份/恢复、多语言、自动倒计时选择、彩色输出。
 //
-//  编译： csc.exe /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit V2.0.0.exe" dsh_v2.cs
+//  编译： csc.exe /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit V2.1.0.exe" dsh_v2.cs
 // ============================================================================
 
 using System;
@@ -21,12 +21,12 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 
-[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.0.0")]
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.1.0")]
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
-[assembly: AssemblyVersion("2.0.0.0")]
-[assembly: AssemblyFileVersion("2.0.0.0")]
+[assembly: AssemblyVersion("2.1.0.0")]
+[assembly: AssemblyFileVersion("2.1.0.0")]
 
 public static class Program
 {
@@ -40,6 +40,8 @@ public static class Program
     const int    WEB_PORT     = 3080;
     static string webHost = "127.0.0.1";
     static string cfgWs = null;          // 手动指定的工作区路径（配置 ws=，空=自动探测）   // 访问入口：127.0.0.1 / localhost（浏览器缓存异常时可切换）
+    static int cfgKeep = 10;             // 备份保留策略：自动类备份最多保留份数（配置 keep_backups=，最小 3）
+    static bool cfgCheckUpdate = true;   // 启动时静默检查更新（配置 check_update=off 关闭）
     const int    AUTO_SECONDS = 5;
 
     static Lang lang = Lang.Auto;
@@ -56,7 +58,7 @@ public static class Program
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Toolkit V2.0.0"; } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.1.0"; } catch { }
         StateDir = ResolveStateDir();
         EnsureRootMarker();   // 完整安装 → 静默补标记（新包自带标记，此行主要兼容旧版本目录）
         LoadConfig();
@@ -78,7 +80,7 @@ public static class Program
             }
         }
         // 单例防多开：交互模式检测已有实例则提示退出（CLI 子命令不受限制，便于脚本/自检调用）
-        _singleMutex = new Mutex(false, "DSH-Toolkit-V2.0.0-single");
+        _singleMutex = new Mutex(false, "DeepSeek-Harness-Toolkit-single");   // 产品级固定单实例锁：跨版本（v2.0/v2.1/v2.1.1…）永远互斥
         bool haveLock;
         try { haveLock = _singleMutex.WaitOne(0); }
         catch (AbandonedMutexException) { haveLock = true; } // 上一实例异常退出，本实例接管
@@ -126,7 +128,7 @@ public static class Program
 
     // ---------------- 错误日志 ----------------
 
-    /// <summary>把错误追加写入 StateDir\logs\launcher.log（带时间戳；超过 200KB 自动重置为新文件）。</summary>
+    /// <summary>把错误追加写入 StateDir\logs\launcher.log（带时间戳；超过 1MB 归档为 launcher.log.1，不再直接丢弃）。</summary>
     static void LogErr(string msg)
     {
         try
@@ -134,16 +136,33 @@ public static class Program
             string dir = Path.Combine(StateDir, "logs");
             Directory.CreateDirectory(dir);
             string file = Path.Combine(dir, "launcher.log");
-            if (File.Exists(file) && new FileInfo(file).Length > 200 * 1024) File.Delete(file);
+            RotateLogIfNeeded(file, 1024 * 1024);
             File.AppendAllText(file, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss ") + msg + Environment.NewLine, new UTF8Encoding(false));
         }
         catch { }
     }
 
+    /// <summary>日志轮转：现有文件超过 maxBytes 时归档为 file+".1"（覆盖旧归档）并留下新的空文件，返回是否发生轮转。（单测可直接调用）</summary>
+    static bool RotateLogIfNeeded(string file, long maxBytes)
+    {
+        try
+        {
+            if (File.Exists(file) && new FileInfo(file).Length > maxBytes)
+            {
+                if (File.Exists(file + ".1")) File.Delete(file + ".1");
+                File.Move(file, file + ".1");
+                File.WriteAllText(file, "");   // 轮转后留下新的空日志
+                return true;
+            }
+        }
+        catch { }
+        return false;
+    }
+
     static void Banner()
     {
         CL(ConsoleColor.Cyan,   "==============================================");
-        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.0.0");
+        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.1.0");
         CL(ConsoleColor.Cyan,   "==============================================");
         C(ConsoleColor.Gray,    "  v1 脚本协助 : "); CL(ConsoleColor.White, "SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
         C(ConsoleColor.Gray,    "  v2 重构封装 : "); CL(ConsoleColor.White, "DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
@@ -155,9 +174,10 @@ public static class Program
 
     static void Menu()
     {
+        bool updateChecked = !cfgCheckUpdate;   // v2.1：菜单首次显示后静默检查一次更新（失败/离线静默）
+        // 打开即检测（仅启动时一次）：服务已在运行 → 直接进入状态监控页（返回后进常规菜单，不再自动执行）
         if (IsPortOpen(WEB_PORT, 800))
         {
-            // 打开即检测：服务已在运行 → 直接进入状态监控页（返回后进常规菜单，不再自动执行）
             autoApplied = true;
             Start();
         }
@@ -165,6 +185,14 @@ public static class Program
         {
             SafeClear();
             Banner();
+            if (!updateChecked)
+            {
+                updateChecked = true;
+                string nu = LatestVersion();
+                if (nu != null)
+                    Info(T("发现新版本 v" + nu + "（当前 v" + CurrentVersion() + "）。前往 GitHub Releases 下载更新。",
+                           "Update available: v" + nu + " (current v" + CurrentVersion() + "). Visit GitHub Releases to download."));
+            }
             bool installed = LocateDsh() != null;
             string def = installed ? "2" : "1";
             Console.WriteLine();
@@ -322,7 +350,7 @@ public static class Program
             Pause();
             return;
         }
-        if (IsPortOpen(WEB_PORT, 800))
+        if (ProbeService() != ServiceState.Down)   // 服务在跑（含启动中）→ 不重复启动
         {
             Info(T("检测到服务已在运行。", "Service already running."));
         }
@@ -331,7 +359,7 @@ public static class Program
             Info(T("启动 dsh web（服务器窗口请保持开启）...", "Starting dsh web (keep the server window open)..."));
             try
             {
-                var psi = new ProcessStartInfo("cmd.exe", "/k dsh web")
+                var psi = new ProcessStartInfo("cmd.exe", "/k \"" + dsh + "\" web")   // 用 LocateDsh 完整路径启动，不受 PATH/npm prefix 影响
                 {
                     UseShellExecute = true,
                     WorkingDirectory = WorkspaceRoot() ?? AppDomain.CurrentDomain.BaseDirectory   // 与备份/恢复的工作区保持一致
@@ -348,14 +376,14 @@ public static class Program
             bool up = false;
             for (int i = 0; i < 60; i++)
             {
-                if (IsPortOpen(WEB_PORT, 600)) { up = true; break; }
+                if (ProbeService() == ServiceState.Ready) { up = true; break; }   // 端口 + HTTP 均就绪才算启动成功
                 Thread.Sleep(1000);
             }
             if (up) Success(T("服务已就绪。", "Service is ready."));
             else Error(T("60 秒内未就绪。请查看 dsh web 窗口日志（端口占用或启动报错）。",
                          "Not ready in 60s. Check the dsh web window log (port in use or startup error)."));
         }
-        if (IsPortOpen(WEB_PORT, 500)) OpenBrowser();   // 服务在线才打开浏览器
+        if (ProbeService() == ServiceState.Ready) OpenBrowser();   // 服务就绪才打开浏览器
         StatusMonitor();   // 无论成败都进入状态监控页
     }
 
@@ -376,18 +404,20 @@ public static class Program
         string dver = RunDshVersion();
         DateTime? upSince = null;
         bool wasUp = false;
-        int redirectCycles = 0;   // 无控制台（管道/重定向）模式：刷新几次后自动退出，避免死循环
         while (true)
         {
             SafeClear();
             Banner();
             CL(ConsoleColor.White, "  " + T("▍ 运行状态监控", "▍ Runtime Status Monitor"));
             Console.WriteLine();
-            bool up = IsPortOpen(WEB_PORT, 500);
+            ServiceState st = ProbeService();
+            bool up = st == ServiceState.Ready;
             if (up && upSince == null) upSince = DateTime.Now;
             if (!up) upSince = null;
             C(ConsoleColor.Gray, "  Web 服务  : ");
-            CL(up ? ConsoleColor.Green : ConsoleColor.Red, up ? T("● 运行中", "● RUNNING") : T("● 已停止", "● STOPPED"));
+            if (st == ServiceState.Ready) CL(ConsoleColor.Green, T("● 运行中", "● RUNNING"));
+            else if (st == ServiceState.Listening) CL(ConsoleColor.Yellow, T("● 启动中（端口已开，服务未就绪）", "● STARTING (port open, not ready)"));
+            else CL(ConsoleColor.Red, T("● 已停止", "● STOPPED"));
             C(ConsoleColor.Gray, "  地址      : "); CL(ConsoleColor.White, WebUrl());
             C(ConsoleColor.Gray, "  运行时长  : ");
             CL(up && upSince != null ? ConsoleColor.Green : ConsoleColor.Gray,
@@ -408,12 +438,12 @@ public static class Program
             C(ConsoleColor.White, "  2) " + T("打开 WebUI", "Open Web UI"));
             Console.WriteLine();
             Console.WriteLine();
+            bool redir = true;
+            try { redir = Console.IsInputRedirected; } catch { redir = true; }
+            if (redir) return;   // v2.1：管道/重定向模式显示一轮即返回（供脚本/测试取状态），不空等
             string k = WaitKeyChar(3000);
             if (k == "1") return;            // 返回菜单
             if (k == "2") OpenBrowser();     // 快捷打开 WebUI，留在监控页
-            bool redir = true;
-            try { redir = Console.IsInputRedirected; } catch { redir = true; }
-            if (redir) { redirectCycles++; if (redirectCycles >= 5) return; }   // 管道模式自动退出
             // 其他按键忽略，继续自动刷新
         }
     }
@@ -453,7 +483,7 @@ public static class Program
             string p = Path.Combine(StateDir, ROOT_MARKER);
             if (File.Exists(p)) return;
             if (!LooksLikeFullInstall(StateDir)) return;
-            File.WriteAllText(p, "DeepSeek Harness Toolkit V2.0.0" + Environment.NewLine);
+            File.WriteAllText(p, "DeepSeek Harness Toolkit V2.1.0" + Environment.NewLine);
             File.SetAttributes(p, FileAttributes.Hidden);
         }
         catch (Exception ex) { LogErr("创建根目录标记失败: " + ex.Message); }
@@ -541,7 +571,7 @@ public static class Program
         if (Directory.Exists(dir))
         {
             Info(T("清除前自动备份数据到备份目录...", "Auto-backing up data before wipe..."));
-            string bk = DoBackup(dir);
+            string bk = DoBackup(dir, null, BackupKind.PreWipe);   // 清除数据前的自动安全备份
             if (bk != null) Success(T("已备份：" + bk, "Backup saved: " + bk));
             else Warn(T("自动备份失败，仍将执行清除。", "Auto-backup failed; wipe will proceed."));
         }
@@ -600,7 +630,8 @@ public static class Program
             {
                 try
                 {
-                    using (var s = new FileStream(f, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
+                    // 只读打开 + 允许共享：只有真正被独占的文件才报锁定，正常读取中的文件不再误报
+                    using (var s = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)) { }
                 }
                 catch { return f; }
             }
@@ -714,7 +745,7 @@ public static class Program
             else { wsList.Add(full); Success(T("已添加工作区：" + full, "Workspace added: " + full)); }
         }
         Info(T("正在备份（自动跳过 node_modules）...", "Backing up (skipping node_modules)..."));
-        string bk = DoBackup(src, wsList);
+        string bk = DoBackup(src, wsList, BackupKind.Manual);   // 用户主动备份（手动，永久保留）
         if (bk != null)
         {
             Success(T("备份完成：" + bk, "Backup done: " + bk));
@@ -745,27 +776,35 @@ public static class Program
         Console.Write(T("  恢复将覆盖当前数据（建议先关闭 dsh web）。确认？输入 y 继续：",
                         "  Restore overwrites current data (close dsh web first). Type y to continue: "));
         if (ReadLineTrim() != "y") { Warn(T("已取消。", "Cancelled.")); return; }
+        // v2.1 安全：dsh 运行中拒绝恢复（与卸载/清除一致，防止覆盖正在使用的数据）
+        if (ProbeService() != ServiceState.Down)
+        {
+            Error(T("dsh web 仍在运行，数据被占用无法安全恢复。\n  请先关闭 dsh web，再重新执行恢复。",
+                    "dsh web is still running; data is in use and cannot be restored safely.\n  Close the dsh web window first, then retry the restore."));
+            Pause();
+            return;
+        }
         if (Directory.Exists(dst))
         {
             Info(T("恢复前自动备份当前数据...", "Auto-backing up current data before restore..."));
-            DoBackup(dst);
+            DoBackup(dst, null, BackupKind.PreRestore);
         }
         RestoreFromSource(bk);
         Pause();
     }
 
     /// <summary>备份数据目录到备份目录（自动跳过 node_modules 与被锁文件），返回备份路径；失败返回 null。</summary>
-    static string DoBackup(string source) { return DoBackup(source, null); }
+    static string DoBackup(string source) { return DoBackup(source, null, BackupKind.Manual); }
 
-    /// <summary>备份数据目录；wsList 非空时把每个工作区放入备份包 _workspace\<名字>\（含 .dshws 标记）。</summary>
-    static string DoBackup(string source, List<string> wsList)
+    /// <summary>备份数据目录；wsList 非空时把每个工作区放入备份包 _workspace\<名字>\（含 .dshws 标记）；kind 决定目录名来源后缀，备份成功后自动执行保留策略清理。</summary>
+    static string DoBackup(string source, List<string> wsList, BackupKind kind)
     {
         try
         {
             if (!Directory.Exists(source)) return null;
             string root = BackupsRoot();
             Directory.CreateDirectory(root);
-            string dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+            string dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + BackupSuffix(kind));
             CopyTree(source, dest, true);
             if (wsList != null)
             {
@@ -784,9 +823,64 @@ public static class Program
                                       new UTF8Encoding(false));
                 }
             }
+            // v2.1 保留策略：备份成功后清理自动类旧备份（手动备份永久保留）
+            var removed = EnforceBackupRetention();
+            if (removed.Count > 0)
+                Info(T("保留策略：已清理 " + removed.Count + " 个旧自动备份：" + string.Join(", ", removed.ToArray()),
+                       "Retention: removed " + removed.Count + " old auto backup(s): " + string.Join(", ", removed.ToArray())));
             return dest;
         }
         catch (Exception ex) { LogErr("备份失败: " + ex); return null; }
+    }
+
+    // ---------------- 备份保留策略（v2.1：只清理自动类，手动永久保留） ----------------
+
+    /// <summary>备份来源：Manual=用户主动备份（永久保留）；Auto/Pre*=系统自动产生（参与保留策略清理）。</summary>
+    public enum BackupKind { Manual, Auto, PreRestore, PreImport, PreWipe }
+
+    /// <summary>自动类备份目录名的来源后缀（手动无后缀，兼容旧版产物）。</summary>
+    static string BackupSuffix(BackupKind k)
+    {
+        switch (k)
+        {
+            case BackupKind.Auto: return "-auto";
+            case BackupKind.PreRestore: return "-pre-restore";
+            case BackupKind.PreImport: return "-pre-import";
+            case BackupKind.PreWipe: return "-pre-wipe";
+            default: return "";
+        }
+    }
+
+    /// <summary>备份目录名是否属于"自动类"（自动类参与保留策略清理；手动备份永久保留）。</summary>
+    static bool IsAutoBackupName(string name)
+    {
+        return name.EndsWith("-auto") || name.EndsWith("-pre-restore") || name.EndsWith("-pre-import") || name.EndsWith("-pre-wipe");
+    }
+
+    /// <summary>保留策略：仅清理自动类备份（-auto / -pre-*），手动备份永久保留；自动类超过 cfgKeep 份时按最旧删除、保底 3 份。返回被清理的目录名列表（空=未清理）。</summary>
+    static List<string> EnforceBackupRetention()
+    {
+        var removed = new List<string>();
+        try
+        {
+            string root = BackupsRoot();
+            if (!Directory.Exists(root)) return removed;
+            var autos = new List<string>();
+            foreach (string d in Directory.GetDirectories(root))
+            {
+                string name = Path.GetFileName(d);
+                if (name.StartsWith("dsh-data-") && IsAutoBackupName(name)) autos.Add(d);
+            }
+            autos.Sort();   // 名字时间戳字典序 = 时间序，旧的在前面
+            int keep = cfgKeep; if (keep < 3) keep = 3;
+            for (int i = 0; i < autos.Count - keep; i++)
+            {
+                try { Directory.Delete(autos[i], true); removed.Add(Path.GetFileName(autos[i])); }
+                catch (Exception ex) { LogErr("保留策略清理失败: " + autos[i] + " : " + ex.Message); }
+            }
+        }
+        catch (Exception ex) { LogErr("保留策略执行异常: " + ex.Message); }
+        return removed;
     }
 
     /// <summary>把字符串变成安全的文件夹名（去掉 Windows 非法字符）。</summary>
@@ -998,11 +1092,19 @@ public static class Program
         if (!hasData && !hasWs) { Warn(T("该目录不是有效的备份。", "Not a valid backup directory.")); Pause(); return; }
         Console.Write(T("  确认导入？输入 y 继续：", "  Confirm import? Type y: "));
         if (ReadLineTrim() != "y") { Warn(T("已取消。", "Cancelled.")); return; }
+        // v2.1 安全：dsh 运行中拒绝导入（与恢复/清除一致）
+        if (ProbeService() != ServiceState.Down)
+        {
+            Error(T("dsh web 仍在运行，数据被占用无法安全导入。\n  请先关闭 dsh web，再重新执行导入。",
+                    "dsh web is still running; data is in use and cannot be imported safely.\n  Close the dsh web window first, then retry the import."));
+            Pause();
+            return;
+        }
         string dst = DataRoot();
         if (Directory.Exists(dst))
         {
             Info(T("导入前自动备份当前数据...", "Auto-backing up current data before import..."));
-            DoBackup(dst);
+            DoBackup(dst, null, BackupKind.PreImport);
         }
         RestoreFromSource(path);
         Pause();
@@ -1112,6 +1214,8 @@ public static class Program
                     if (v == "localhost" || v == "127.0.0.1") webHost = v; }
                 if (t.StartsWith("ws=")) { string v = t.Substring(3).Trim().Trim('"');
                     if (v.Length > 0) { try { cfgWs = Path.GetFullPath(v); } catch { cfgWs = null; } } }
+                if (t.StartsWith("keep_backups=")) { int v; if (int.TryParse(t.Substring(13).Trim(), out v) && v >= 3) cfgKeep = v; }   // 备份保留策略：自动类最多保留份数（最小 3）
+                if (t.StartsWith("check_update=")) { string v = t.Substring(13).Trim().ToLowerInvariant(); if (v.Length > 0) cfgCheckUpdate = v != "off"; }   // 启动更新检查开关
             }
         }
         catch { }
@@ -1122,7 +1226,7 @@ public static class Program
         try
         {
             string v = lang == Lang.Zh ? "zh" : (lang == Lang.En ? "en" : "auto");
-            File.WriteAllText(ConfigPath(), "lang=" + v + Environment.NewLine + "host=" + webHost + Environment.NewLine + "ws=" + (cfgWs ?? "") + Environment.NewLine, new UTF8Encoding(false));
+            File.WriteAllText(ConfigPath(), "lang=" + v + Environment.NewLine + "host=" + webHost + Environment.NewLine + "ws=" + (cfgWs ?? "") + Environment.NewLine + "keep_backups=" + cfgKeep + Environment.NewLine + "check_update=" + (cfgCheckUpdate ? "on" : "off") + Environment.NewLine, new UTF8Encoding(false));
         }
         catch { }
     }
@@ -1252,6 +1356,108 @@ public static class Program
         }
     }
 
+    // ---------------- 服务状态三态（v2.1: 端口 + HTTP 探测，避免被其他程序占用 3080 误判） ----------------
+
+    public enum ServiceState { Down, Listening, Ready }
+
+    /// <summary>纯判定：端口开 + HTTP 就绪 → Ready；仅端口开 → Listening；否则 Down。（单测可直接调用）</summary>
+    static ServiceState JudgeState(bool portOpen, bool httpOk)
+    {
+        if (!portOpen) return ServiceState.Down;
+        return httpOk ? ServiceState.Ready : ServiceState.Listening;
+    }
+
+    /// <summary>HTTP GET 探测：2xx/3xx 视为服务就绪（dsh 主页 200/302 均算）。</summary>
+    static bool HttpReady(string url, int ms)
+    {
+        try
+        {
+            var req = (HttpWebRequest)WebRequest.Create(url);
+            req.Method = "GET";
+            req.Timeout = ms;
+            req.AllowAutoRedirect = true;
+            using (var resp = (HttpWebResponse)req.GetResponse())
+            {
+                int code = (int)resp.StatusCode;
+                return code >= 200 && code < 400;
+            }
+        }
+        catch { return false; }
+    }
+
+    /// <summary>服务三态探测入口：先端口（快速/可打桩），再 HTTP 验证身份（确认是 dsh 而非其他程序）。</summary>
+    static ServiceState ProbeService()
+    {
+        return JudgeState(IsPortOpen(WEB_PORT, 800), HttpReady(WebUrl(), 800));   // HTTP 探测 800ms 上限：正常 <100ms，挂起时快速降级
+    }
+
+    // ---------------- 自动检查更新（v2.1: 启动静默查询 GitHub Releases，发现新版本才提示） ----------------
+
+    static Func<string, int, string> HttpGetImpl = null;   // 单测注入点（为空走真实实现）
+
+    /// <summary>GET 指定 URL，成功返回正文，失败/超时返回 null。GitHub API 要求 User-Agent。</summary>
+    static string HttpGet(string url, int ms)
+    {
+        if (HttpGetImpl != null) return HttpGetImpl(url, ms);
+        try
+        {
+            var req = (HttpWebRequest)WebRequest.Create(url);
+            req.Method = "GET";
+            req.Timeout = ms;
+            req.UserAgent = "DeepSeek-Harness-Toolkit";
+            using (var resp = (HttpWebResponse)req.GetResponse())
+            using (var sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+                return sr.ReadToEnd();
+        }
+        catch { return null; }
+    }
+
+    /// <summary>从 GitHub Releases API JSON 提取 tag_name（"v2.1.0" → "2.1.0"），失败返回 null。（单测可直接调用）</summary>
+    static string ParseLatestTag(string body)
+    {
+        try
+        {
+            int i = body.IndexOf("\"tag_name\"", StringComparison.OrdinalIgnoreCase);
+            if (i < 0) return null;
+            int q1 = body.IndexOf('"', i + 10);
+            int q2 = body.IndexOf('"', q1 + 1);
+            if (q1 < 0 || q2 < 0) return null;
+            return body.Substring(q1 + 1, q2 - q1 - 1).TrimStart('v', 'V');
+        }
+        catch { return null; }
+    }
+
+    /// <summary>版本号比较："a 低于 b" 返回负数，"相等" 0，"a 高于 b" 正数。支持 "2.1.0" 式分段。（单测可直接调用）</summary>
+    static int CompareVersions(string a, string b)
+    {
+        string[] pa = (a ?? "").Split('.');
+        string[] pb = (b ?? "").Split('.');
+        for (int i = 0; i < Math.Max(pa.Length, pb.Length); i++)
+        {
+            int x = 0, y = 0;
+            int.TryParse(i < pa.Length ? pa[i] : "0", out x);
+            int.TryParse(i < pb.Length ? pb[i] : "0", out y);
+            if (x != y) return x < y ? -1 : 1;
+        }
+        return 0;
+    }
+
+    static string CurrentVersion()
+    {
+        var v = Assembly.GetExecutingAssembly().GetName().Version;
+        return v.Major + "." + v.Minor + "." + v.Build;
+    }
+
+    /// <summary>查询最新版：无更新或网络失败返回 null（静默），有更新返回新版本号。</summary>
+    static string LatestVersion()
+    {
+        string body = HttpGet("https://api.github.com/repos/sakanamaru/DeepSeek-Harness-Toolkit/releases/latest", 4000);
+        if (body == null) return null;
+        string tag = ParseLatestTag(body);
+        if (tag == null) return null;
+        return CompareVersions(CurrentVersion(), tag) < 0 ? tag : null;
+    }
+
     static bool inputEof = false;
     static string ReadLineTrim()
     {
@@ -1278,7 +1484,9 @@ public static class Program
             string v = RunDshVersion();
             C(ConsoleColor.Gray, "  dsh 版本   : "); CL(ConsoleColor.White, string.IsNullOrWhiteSpace(v) ? T("（读取失败）", "(read failed)") : v);
         }
-        C(ConsoleColor.Gray, "  Web 端口   : "); CL(ConsoleColor.White, IsPortOpen(WEB_PORT, 800) ? WebUrl() + " " + T("已在运行", "running") : T("未启动", "not started"));
+        C(ConsoleColor.Gray, "  Web 服务   : "); ServiceState stC = ProbeService();
+        CL(ConsoleColor.White, stC == ServiceState.Ready ? WebUrl() + " " + T("已在运行", "running")
+            : (stC == ServiceState.Listening ? T("启动中（端口已开，服务未就绪）", "starting (port open, not ready)") : T("未启动", "not started")));
         C(ConsoleColor.Gray, "  UI 语言    : "); CL(ConsoleColor.White, lang == Lang.Auto ? T("跟随系统", "follow system") : (lang == Lang.Zh ? "简体中文" : "English"));
         Pause();
     }
@@ -1305,7 +1513,7 @@ public static class Program
     {
         Banner();
         Console.WriteLine(T("用法：", "Usage:"));
-        Console.WriteLine("  DeepSeek Harness Toolkit V2.0.0.exe install | start | uninstall | check | about | help");
+        Console.WriteLine("  DeepSeek Harness Toolkit v2.1.0 install | start | uninstall | check | about | help");
         Console.WriteLine(T("  不带参数启动交互菜单（dsh 已安装时 5 秒自动启动；未安装时按 1 选择安装）。",
                             "  Without arguments: interactive menu (auto-start in 5s when dsh is installed; press 1 to install when not)."));
     }
@@ -1365,6 +1573,18 @@ public static class Program
         public static bool WorkspaceOk(string p) { return Program.LooksLikeWorkspace(p); }
         public static bool DshData(string p) { return Program.LooksLikeDshData(p); }
         public static bool PortOpen(int port, int ms) { return Program.IsPortOpen(port, ms); }
+        public static void SetKeep(int v) { Program.cfgKeep = v; }
+        public static void SetStateDir(string d) { Program.StateDir = d; }
+        public static bool RotateLog(string file, long max) { return Program.RotateLogIfNeeded(file, max); }
+        public static string BkSuffix(BackupKind k) { return Program.BackupSuffix(k); }
+        public static bool IsAutoName(string n) { return Program.IsAutoBackupName(n); }
+        public static List<string> Retention() { return Program.EnforceBackupRetention(); }
+        public static ServiceState JudgeState(bool port, bool http) { return Program.JudgeState(port, http); }
+        public static int CmpVer(string a, string b) { return Program.CompareVersions(a, b); }
+        public static string ParseTag(string body) { return Program.ParseLatestTag(body); }
+        public static string Latest() { return Program.LatestVersion(); }
+        public static string CurVer() { return Program.CurrentVersion(); }
+        public static void SetHttpGet(Func<string, int, string> f) { Program.HttpGetImpl = f; }
     }
 #endif
 }
