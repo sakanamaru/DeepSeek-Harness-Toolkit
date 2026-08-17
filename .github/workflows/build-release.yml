@@ -37,6 +37,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "integration tests failed" }
 
   build:
+    needs: test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,17 +72,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git symbolic-ref -q HEAD
-          if ($LASTEXITCODE -eq 0) {
-            git add hashes.txt
-            git commit -m "build: regenerate hashes.txt from CI build" 2>$null
-            if ($LASTEXITCODE -eq 0) {
-              git push
-              Write-Output "hashes.txt committed and pushed"
-            } else {
-              Write-Output "hashes.txt unchanged; nothing to commit"
-            }
-          } else {
+          if ($LASTEXITCODE -ne 0) {
             Write-Output "detached HEAD (tag-triggered build): hashes.txt generated locally, commit skipped"
+            exit 0
+          }
+          git add hashes.txt
+          git commit -m "build: regenerate hashes.txt from CI build" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            git push
+            if ($LASTEXITCODE -ne 0) { throw "git push failed" }
+            Write-Output "hashes.txt committed and pushed"
+          } else {
+            Write-Output "hashes.txt unchanged; nothing to commit"
           }
 
       - name: Pack upload zip (12 files)
