@@ -1,4 +1,4 @@
-# DeepSeek Harness Toolkit V2.0.0
+# DeepSeek Harness Toolkit V2.1.0
 
 <div align="center">
 
@@ -15,10 +15,10 @@ A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](htt
 **What makes it different from running the npm package bare:**
 
 - 🔧 **Install & repair** — official npmjs.org registry by default, npmmirror as an opt-in; auto-fallback to the other source; never touches your global npm config
-- 📊 **Smart start + live monitor** — 5-second countdown auto-start (when dsh is installed); 3s status auto-refresh with red alert on disconnect
-- 💾 **Backup & restore** — one-click data backup to `backup\` with **multi-workspace** support (`_workspace\name\`, restorable one by one), **cross-PC import**, long-path safe
+- 📊 **Smart start + 3-state monitor** — TCP + HTTP verified: **running / starting / stopped** (a foreign service on :3080 is no longer mistaken for dsh); 3s status auto-refresh with red alert on disconnect
+- 💾 **Backup & retention** — one-click backup to `backup\` with **multi-workspace** support; **manual backups are kept forever**, auto/protection backups are auto-cleaned (newest N kept, floor 3, `keep_backups=`); restore/import are refused while dsh is running; cross-PC import, long-path safe
 - 🛡️ **Wipe protection** — two-step confirm (date + `yes`) with **auto-backup first**; blocked while the web service is running; a package-shipped root marker permanently refuses a stray exe copied elsewhere
-- 🌍 **One exe, bilingual menu** — Simplified Chinese / English, built on .NET Framework 4.x (preinstalled on Win10/11), nothing else to install
+- 🌍 **One exe, bilingual menu** — Simplified Chinese / English, built on .NET Framework 4.x (preinstalled on Win10/11); **silent update check** on launch (GitHub Releases, `check_update=off` to disable); **1 MB log rotation** (`launcher.log → launcher.log.1`)
 
 > ⚠️ This project is **unofficial** and is not affiliated with DeepSeek.
 
@@ -34,15 +34,26 @@ A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](htt
 
 | Feature | Description |
 | --- | --- |
-| Smart Start | Detects service status on launch: running → status page; stopped → 5-second countdown auto-start (only when dsh is installed; if not installed, the menu waits for your choice — nothing is auto-installed) |
+| Smart Start | Detects service status on launch (3-state: **running / starting / stopped** — TCP + HTTP verified so a foreign service on :3080 is not mistaken for dsh): running → status page; stopped → 5-second countdown auto-start (only when dsh is installed; if not installed, the menu waits for your choice — nothing is auto-installed) |
 | Install & Repair | Asks for the source: **official npmjs.org by default**, npmmirror offered as opt-in; always retries the other registry on failure; never touches your global npm config |
-| Status Monitor | Auto-refreshes service status/port/uptime every 3s; red alert on disconnect; 1=back / 2=open WebUI |
-| Backup & Restore | One-click backup of the data directory to `backup\` (supports **multiple workspaces**: auto-detected, then add paths one by one, empty Enter to finish; stored separately under `_workspace\name\`, restorable one by one); auto-skips `node_modules` and its own backup folders; supports list restore, cross-PC import, and opening the backup folder |
+| Status Monitor | Auto-refreshes service status (3-state)/port/uptime every 3s; red alert on disconnect; 1=back / 2=open WebUI |
+| Backup & Restore | One-click backup of the data directory to `backup\` (supports **multiple workspaces**: auto-detected, then add paths one by one, empty Enter to finish; stored separately under `_workspace\name\`, restorable one by one); auto-skips `node_modules` and its own backup folders; supports list restore, cross-PC import, and opening the backup folder; **manual backups (no suffix) are kept forever**, auto/protection backups (`-auto` / `-pre-*`) beyond `keep_backups` (default 10, min 3) are oldest-first cleaned; **restore/import are refused while dsh is running** (same guard as wipe) |
 | Uninstall | Data kept by default; wiping needs two-step confirmation (today's date + `yes`) with **auto-backup first**; wiping is blocked while dsh web is running (avoid file locks) |
+| Update Check | On launch, silently queries the GitHub Releases API; only prompts when a newer version exists (with a link); offline/API failure is silent; disable with `check_update=off` |
+| Log Rotation | `logs\launcher.log` archived to `launcher.log.1` once it exceeds 1 MB (one history file kept) — no more silent log loss |
 | Data Location | Auto-locates the dsh data directory (prefers `~/.dsh`, falls back to `%APPDATA%` etc.) |
 | Entry | Pick and remember `127.0.0.1` / `localhost`: if the entry opens abnormally (often stale browser cache), switch with one key |
 | Long Paths | Built-in long path support (`\\?\`, >260 chars) for backup/restore; nested backup packages (`dsh-data-*`) are auto-skipped |
 | Multi-language | Follow system / Simplified Chinese / English, persisted |
+
+## What's New in v2.1
+
+- **Backup retention policy** — backups without a suffix (manual) are **kept forever**; auto / protection backups (`-auto`, `-pre-restore`, `-pre-import`, `-pre-wipe`) beyond `keep_backups` (default 10, min 3) are cleaned oldest-first, with the list printed before deletion
+- **Three-state service detection** — TCP open + HTTP 2xx/3xx = **running**; TCP only = **starting (not ready)**; neither = **stopped** (startup wait, monitor, `check` and open-browser all use it)
+- **Restore / Import refused while dsh is running** — same guard as uninstall/wipe (no more "you should close it first" only)
+- **Silent update check** on launch (GitHub Releases API; prompts only when a newer version exists; `check_update=off` to disable) and **1 MB log rotation** (`launcher.log → launcher.log.1`)
+- **Version-free single-instance lock** (`DeepSeek-Harness-Toolkit-single`) — v2.0 and v2.1 can never open two interactive instances on the same machine at once
+- Internal version banner / About / assembly metadata now say **V2.1.0** (the exe file name keeps the product name `… V2.0.0.exe`; it is a fixed product name, not a version marker)
 
 ## Relation to the Official Deployment
 
@@ -118,9 +129,9 @@ No test framework or third-party dependency is required.
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs
   unittests.exe
   ```
-  Exit code 0 = all green. Path round-trips (incl. UNC / non-ASCII), workspace blacklist (19 reject + 3 allow), dsh-data markers, port probing.
+  Exit code 0 = all green. Path round-trips (incl. UNC / non-ASCII), workspace blacklist (19 reject + 3 allow), dsh-data markers, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection.
 
-- **Integration tests** — stubbed end-to-end matrix (variants A/C, real 3080 probing):
+- **Integration tests** — 22-case stubbed end-to-end matrix (variants A/C, real 3080 probing; retention policy, restore/import blocked while running, bilingual asserts):
   ```
   pwsh -NoProfile -File tests\integration.ps1
   ```
@@ -147,7 +158,7 @@ logs/                Error log dir (gitignored — never commit)
 
 ## Error Log
 
-- Runtime errors (backup/restore/uninstall failures, process start failures, etc.) are written to `logs\launcher.log` next to the exe (timestamped, auto-reset over 200 KB)
+- Runtime errors (backup/restore/uninstall failures, process start failures, etc.) are written to `logs\launcher.log` next to the exe (timestamped; once it exceeds 1 MB it is rotated to `launcher.log.1` and a fresh log starts — one history file is kept)
 - The log records error messages and file paths only — never passwords/API credentials; it is gitignored and never committed
 
 ## Security Notes
