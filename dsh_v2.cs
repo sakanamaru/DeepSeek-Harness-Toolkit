@@ -755,7 +755,8 @@ public static class Program
                 string ee = e.TrimEnd('\\');
                 string ff = full.TrimEnd('\\');
                 if (string.Equals(ee, ff, StringComparison.OrdinalIgnoreCase)) { dup = true; break; }
-                if (ff.StartsWith(ee + "\\", StringComparison.OrdinalIgnoreCase)) { nested = true; break; }
+                if (ff.StartsWith(ee + "\\", StringComparison.OrdinalIgnoreCase) ||
+                    ee.StartsWith(ff + "\\", StringComparison.OrdinalIgnoreCase)) { nested = true; break; }
             }
             if (dup) Warn(T("该目录已在列表中，跳过：" + full, "Already in the list, skipped: " + full));
             else if (nested) Warn(T("该目录位于已选工作区之内，跳过：" + full, "Inside an already-selected workspace, skipped: " + full));
@@ -927,7 +928,7 @@ public static class Program
 
     static void CopyTree(string src, string dst, bool skipLocked)
     {
-        src = src.TrimEnd('\\'); dst = dst.TrimEnd('\\');
+        src = TrimTrailingSep(src); dst = TrimTrailingSep(dst);
         Directory.CreateDirectory(P(dst));
         foreach (string d in Directory.GetDirectories(P(src)))
         {
@@ -969,6 +970,17 @@ public static class Program
         if (string.IsNullOrEmpty(p)) return p;
         if (p.StartsWith(@"\\?\UNC")) return @"\\" + p.Substring(8);
         if (p.StartsWith(@"\\?\")) return p.Substring(4);
+        return p;
+    }
+
+    /// <summary>去掉结尾分隔符，但保留盘根语义（D:\ 不会变成 D:，UNC 共享根不会丢失尾部斜杠）。</summary>
+    static string TrimTrailingSep(string p)
+    {
+        if (string.IsNullOrEmpty(p)) return p;
+        string root = null;
+        try { root = Path.GetPathRoot(p); } catch { root = null; }
+        p = p.TrimEnd('\\');
+        if (root != null && p.Length < root.Length) return root;   // 盘根被 trim 掉时还原
         return p;
     }
 
@@ -1253,7 +1265,7 @@ public static class Program
                     if (v == "localhost" || v == "127.0.0.1") webHost = v; }
                 if (t.StartsWith("ws=")) { string v = t.Substring(3).Trim().Trim('"');
                     if (v.Length > 0) { try { cfgWs = Path.GetFullPath(v); } catch { cfgWs = null; } } }
-                if (t.StartsWith("keep_backups=")) { int v; if (int.TryParse(t.Substring(13).Trim(), out v) && v >= 3) cfgKeep = v; }   // 备份保留策略：自动类最多保留份数（最小 3）
+                if (t.StartsWith("keep_backups=")) { int v; if (int.TryParse(t.Substring(13).Trim(), out v)) cfgKeep = (v < 3) ? 3 : v; }   // 备份保留策略：自动类最多保留份数（最小 3，直接夹到 3 而非忽略）
                 if (t.StartsWith("check_update=")) { string v = t.Substring(13).Trim().ToLowerInvariant(); if (v.Length > 0) cfgCheckUpdate = v != "off"; }   // 启动更新检查开关
             }
         }
