@@ -52,7 +52,7 @@ A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](htt
 - **Three-state service detection** — TCP open + HTTP 2xx/3xx = **running**; TCP only = **starting (not ready)**; neither = **stopped** (startup wait, monitor, `check` and open-browser all use it)
 - **Restore / Import refused while dsh is running** — same guard as uninstall/wipe (no more "you should close it first" only)
 - **Silent update check** on launch (GitHub Releases API; prompts only when a newer version exists; `check_update=off` to disable) and **1 MB log rotation** (`launcher.log → launcher.log.1`)
-- **Version-free single-instance lock** (`DeepSeek-Harness-Toolkit-single`) — v2.0 and v2.1 can never open two interactive instances on the same machine at once
+- **Version-free single-instance lock** (`DeepSeek-Harness-Toolkit-single`, plus the legacy v2.0 lock name — an already-published v2.0 exe is mutually exclusive too): v2.0 and v2.1 can never open two interactive instances on the same machine at once
 - Internal version banner / About / assembly metadata now say **V2.1.0** (the exe file name keeps the product name `… V2.0.0.exe`; it is a fixed product name, not a version marker)
 
 ## Relation to the Official Deployment

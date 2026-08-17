@@ -24,6 +24,7 @@ function Build-Variant($variant, $outExe) {
     $pats = @(
         @{ o = 'const string DATA_DIR     = ".dsh";';                                                   n = 'const string DATA_DIR     = ".dsh_test";' },
         @{ o = '"DeepSeek-Harness-Toolkit-single"';                                                        n = '"DSH-Toolkit-TEST-single"' },
+        @{ o = '"DSH-Toolkit-V2.0.0-single"';                                                           n = '"DSH-Toolkit-TEST-legacy"' },
         @{ o = 'string choice = autoApplied ? ReadChoice("  > ") : (installed ? CountdownInput("  > ", def) : ReadChoice("  > "));'; n = 'string choice = ReadLineTrim(); // TEST line-driven' },
         @{ o = 'int code = RunVisible("cmd.exe", "/c npm install -g --registry=" + registries[i] + " @deepseek-ai/dsh");'; n = 'int code = 0; // TEST install no-op' },
         @{ o = 'int code = RunVisible("cmd.exe", "/c npm uninstall -g @deepseek-ai/dsh");';            n = 'int code = 0; // TEST npm no-op' }
@@ -67,6 +68,30 @@ $o = (& $tA about 2>&1 | Out-String);   TC '3 about' (($o.Contains('DeepSeek Har
 $o = (& $tA check 2>&1 | Out-String);   TC '4 check CLI' ($o.Contains('dsh'))
 $sw = [Diagnostics.Stopwatch]::StartNew(); $o = ("0`n" | & $tA 2>&1 | Out-String); $sw.Stop()
 TC '5 menu exit 0' ($sw.ElapsedMilliseconds -lt 2000) ($sw.ElapsedMilliseconds.ToString() + 'ms')
+
+# 23 单实例锁：双锁任一被占（新锁 / v2.0 旧锁）→ 第二个实例拒绝（轮询 holder 就绪，避免冷启动竞态）
+$hcs = Join-Path $T 'holder.cs'
+[IO.File]::WriteAllText($hcs, 'using System; using System.Threading; class H { [STAThread] static void Main(string[] a) { string n = (a != null && a.Length > 0) ? a[0] : "x"; var m = new Mutex(false, n); bool g = false; try { g = m.WaitOne(0); } catch (AbandonedMutexException) { g = true; } if (g) { Console.WriteLine("OK"); Thread.Sleep(30000); } } }', [Text.Encoding]::ASCII)
+$holderExe = Join-Path $T 'holder.exe'
+& "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo ("/out:"+$holderExe) $hcs 2>&1 | Out-Null
+function Start-Holder([string]$lockName, [string]$outFile) {
+    $hp = Start-Process -FilePath $holderExe -ArgumentList $lockName -RedirectStandardOutput $outFile -PassThru
+    $deadline = (Get-Date).AddSeconds(6)
+    while ((Get-Date) -lt $deadline) {
+        if ((Test-Path $outFile) -and ((Get-Content $outFile -ErrorAction SilentlyContinue) -contains 'OK')) { return $hp }
+        if ($hp.HasExited) { return $hp }
+        Start-Sleep -Milliseconds 200
+    }
+    return $hp
+}
+$h1 = Start-Holder 'DSH-Toolkit-TEST-single' (Join-Path $T 'h1.txt')
+$o23a = ("0`n" | & $tA 2>&1 | Out-String)
+TC '23a second instance refused (new lock held)' ($o23a.Contains('已在运行') -or $o23a.Contains('already running'))
+Stop-Process -Id $h1.Id -Force -ErrorAction SilentlyContinue
+$h2 = Start-Holder 'DSH-Toolkit-TEST-legacy' (Join-Path $T 'h2.txt')
+$o23b = ("0`n" | & $tA 2>&1 | Out-String)
+TC '23b second instance refused (legacy v2.0 lock held)' ($o23b.Contains('已在运行') -or $o23b.Contains('already running'))
+Stop-Process -Id $h2.Id -Force -ErrorAction SilentlyContinue
 
 # 6-9 配置 / 安装源
 $d = Join-Path $T 'lang'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe')

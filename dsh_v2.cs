@@ -48,6 +48,7 @@ public static class Program
     static string StateDir;
     static bool autoApplied = false;   // 自动倒计时是否已在本程序本次运行中用过
     static Mutex _singleMutex;         // 单例防多开：交互模式同一时刻只允许一个实例
+    static Mutex _legacyMutex;         // 旧 v2.0 锁（已发布的 v2.0 exe 使用该名，保证新旧版本互斥）
 
     // ---------------- 入口 ----------------
 
@@ -80,14 +81,22 @@ public static class Program
             }
         }
         // 单例防多开：交互模式检测已有实例则提示退出（CLI 子命令不受限制，便于脚本/自检调用）
-        _singleMutex = new Mutex(false, "DeepSeek-Harness-Toolkit-single");   // 产品级固定单实例锁：跨版本（v2.0/v2.1/v2.1.1…）永远互斥
+        // v2.1.0：同时持有产品级新锁 + v2.0 旧锁——与已发布的 v2.0 exe（旧锁名）双向互斥，
+        // 同时保证 v2.1 及未来版本之间互斥（新锁）
+        _singleMutex = new Mutex(false, "DeepSeek-Harness-Toolkit-single");   // 产品级固定单实例锁
+        _legacyMutex = new Mutex(false, "DSH-Toolkit-V2.0.0-single");         // 旧锁名：与已发布的 v2.0 exe 互斥
         bool haveLock;
         try { haveLock = _singleMutex.WaitOne(0); }
         catch (AbandonedMutexException) { haveLock = true; } // 上一实例异常退出，本实例接管
-        if (!haveLock)
+        bool haveLegacy = true;
+        try { haveLegacy = _legacyMutex.WaitOne(0); }
+        catch (AbandonedMutexException) { haveLegacy = true; }
+        if (!haveLock || !haveLegacy)
         {
-            Info(T("检测到程序已在运行，请切换到已打开的窗口（本实例自动退出）。",
-                   "The launcher is already running — switch to the open window (this instance exits)."));
+            if (haveLock) { try { _singleMutex.ReleaseMutex(); } catch { } }    // 只释放自己已拿到的
+            if (haveLegacy) { try { _legacyMutex.ReleaseMutex(); } catch { } }
+            Info(T("检测到程序已在运行（含旧版本 v2.0），请切换到已打开的窗口（本实例自动退出）。",
+                   "The launcher is already running (incl. v2.0) — switch to the open window (this instance exits)."));
             return;
         }
         Menu();
