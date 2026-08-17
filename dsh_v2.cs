@@ -831,7 +831,7 @@ public static class Program
             if (!Directory.Exists(source)) return null;
             string root = BackupsRoot();
             Directory.CreateDirectory(root);
-            dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + BackupSuffix(kind));
+            dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff") + BackupSuffix(kind));
             CopyTree(source, dest, true);
             if (wsList != null)
             {
