@@ -52,7 +52,7 @@ DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具
 - **运行中禁止恢复/导入** — 与卸载/清除数据同一防线（不再只是"建议先关闭"）
 - **启动静默检查更新**（GitHub Releases API，仅新版本存在时提示；`check_update=off` 关闭）＋ **1MB 日志轮转**（`launcher.log → launcher.log.1`）
 - **单实例锁产品级固定且兼容旧版**（`DeepSeek-Harness-Toolkit-single`，同时占用 v2.0 旧锁名——已发布的 v2.0 exe 同样互斥）— v2.0 与 v2.1 无法在同一机器同时打开两个交互实例
-- 内部版本横幅 / 关于页 / 程序集元数据统一显示 **V2.1.0**（exe 文件名保持 `… V2.0.0.exe`——它是产品固定名，不是版本号）
+- exe 文件名统一为**不携带版本号的产品名 `DeepSeek Harness Toolkit.exe`**——版本信息在横幅 / 关于页 / 程序集元数据（**V2.1.0**）与 Release tag 中
 
 ## 和官方部署方式的关系
 
@@ -81,10 +81,10 @@ dsh web
 
 ## 使用
 
-双击 `DeepSeek Harness Toolkit V2.0.0.exe` 即可；或命令行：
+双击 `DeepSeek Harness Toolkit.exe` 即可；或命令行：
 
 ```
-DeepSeek Harness Toolkit V2.0.0.exe install|start|uninstall|check|about|help
+DeepSeek Harness Toolkit.exe install|start|uninstall|check|about|help
 ```
 
 无参数启动为交互菜单：dsh 已安装时首次运行 5 秒倒计时自动启动（可按键接管），之后每次打开也自动启动 Web 界面；
@@ -115,7 +115,7 @@ dsh **未安装**时菜单等待你选择（按 1 安装），不会自动安装
 需要 Windows 自带的 .NET Framework 4.x（Win10 / Win11 默认已安装）：
 
 ```
-"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit V2.0.0.exe" dsh_v2.cs
+"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit.exe" dsh_v2.cs
 ```
 
 或双击本目录 `build_exe.cmd`。
@@ -144,7 +144,7 @@ dsh **未安装**时菜单等待你选择（按 1 安装），不会自动安装
 ## 目录结构
 
 ```
-DeepSeek Harness Toolkit V2.0.0.exe   主程序（带图标）
+DeepSeek Harness Toolkit.exe   主程序（带图标）
 dsh_v2.cs           v2 源码（C#5，单文件，无第三方依赖）
 build_exe.cmd       重编译脚本
 tests/              单元/集成测试（无第三方依赖；不随发布包分发）
@@ -168,9 +168,11 @@ logs/               运行错误日志目录（已被 .gitignore 排除，切勿
 
 ## 安全提示
 
+- 完整安全策略见 `SECURITY.md`（漏洞请通过 GitHub Security Advisories 私密上报）
 - 卸载「清除全部数据」会删除 dsh 数据目录（`~/.dsh`，含会话与 API 凭据），程序会在清除前自动备份到 `backup\` 目录
 - **删除操作三重防误删**：dsh Web 服务运行中直接**阻止卸载**；清除数据要求启动器根目录存在标记文件 `.dsh_launcher_root`（须为上一次运行所留，防止 exe 被单独复制到其他位置后误删）**且**目标目录含 dsh 数据特征（settings.yaml / credentials.yaml / sessions 等）；任一不满足即拒绝删除
 - 本工具仅操作本机数据，源码不包含任何凭据或个人信息
+- 备份为逐文件 best-effort 复制（非事务快照）——最稳妥的做法是**备份前先停止 dsh**
 
 ## 转载与署名（请务必阅读）
 

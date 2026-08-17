@@ -53,7 +53,7 @@ A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](htt
 - **Restore / Import refused while dsh is running** — same guard as uninstall/wipe (no more "you should close it first" only)
 - **Silent update check** on launch (GitHub Releases API; prompts only when a newer version exists; `check_update=off` to disable) and **1 MB log rotation** (`launcher.log → launcher.log.1`)
 - **Version-free single-instance lock** (`DeepSeek-Harness-Toolkit-single`, plus the legacy v2.0 lock name — an already-published v2.0 exe is mutually exclusive too): v2.0 and v2.1 can never open two interactive instances on the same machine at once
-- Internal version banner / About / assembly metadata now say **V2.1.0** (the exe file name keeps the product name `… V2.0.0.exe`; it is a fixed product name, not a version marker)
+- The exe file name is now the **version-free product name** `DeepSeek Harness Toolkit.exe` — version lives in the banner / About / assembly metadata (**V2.1.0**) and the release tag
 
 ## Relation to the Official Deployment
 
@@ -82,10 +82,10 @@ This tool does **not replace** the official way; it serves those who prefer not 
 
 ## Usage
 
-Double-click `DeepSeek Harness Toolkit V2.0.0.exe`, or use the command line:
+Double-click `DeepSeek Harness Toolkit.exe`, or use the command line:
 
 ```
-DeepSeek Harness Toolkit V2.0.0.exe install|start|uninstall|check|about|help
+DeepSeek Harness Toolkit.exe install|start|uninstall|check|about|help
 ```
 
 Launching without arguments opens the interactive menu: when dsh is already installed the first run auto-starts the Web UI after a 5-second countdown (interruptible), and later launches auto-start too; when dsh is **not** installed the menu waits for your choice (press 1 to install) — nothing is auto-installed. With the service already running, it goes straight to the status page.
@@ -113,7 +113,7 @@ Launching without arguments opens the interactive menu: when dsh is already inst
 Requires the built-in .NET Framework 4.x on Windows (preinstalled on Win10/Win11).
 
 ```
-"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit V2.0.0.exe" dsh_v2.cs
+"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit.exe" dsh_v2.cs
 ```
 
 Or double-click `build_exe.cmd` in this directory.
@@ -142,7 +142,7 @@ No test framework or third-party dependency is required.
 ## Directory Layout
 
 ```
-DeepSeek Harness Toolkit V2.0.0.exe   Main program (with icon)
+DeepSeek Harness Toolkit.exe   Main program (with icon)
 dsh_v2.cs            v2 source (C#5, single file, no third-party deps)
 build_exe.cmd        Rebuild script
 icon.ico             Program icon source
@@ -163,9 +163,11 @@ logs/                Error log dir (gitignored — never commit)
 
 ## Security Notes
 
+- Full policy: see `SECURITY.md` (private reporting via GitHub Security Advisories).
 - Uninstall "Wipe all data" deletes the dsh data directory (`~/.dsh`, including sessions and API credentials) — the tool auto-backs it up to `backup\` first
 - Deletion is guarded **three ways**: uninstall is **blocked while the dsh Web service is running**; wiping requires the launcher root marker (`.dsh_launcher_root`, shipped inside the package folder — a stray exe copied elsewhere is permanently refused and never self-seeds the marker) **plus** dsh-data markers inside the target (`settings.yaml` / `credentials.yaml` / `sessions` …); any mismatch is refused
 - This tool only touches local data; the source contains no credentials or personal information
+- Backups are a best-effort file copy, not a transaction snapshot — for the most consistent backup, stop dsh before backing up
 
 ## Redistribution & Credits (please read)
 

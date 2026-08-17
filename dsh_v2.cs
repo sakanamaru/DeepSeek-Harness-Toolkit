@@ -184,8 +184,9 @@ public static class Program
     static void Menu()
     {
         bool updateChecked = !cfgCheckUpdate;   // v2.1：菜单首次显示后静默检查一次更新（失败/离线静默）
-        // 打开即检测（仅启动时一次）：服务已在运行 → 直接进入状态监控页（返回后进常规菜单，不再自动执行）
-        if (IsPortOpen(WEB_PORT, 800))
+        // 打开即检测（仅启动时一次）：服务已就绪（端口+HTTP）→ 直接进入状态监控页（返回后进常规菜单，不再自动执行）
+        // 用三态探测而非裸端口：外部程序占用 3080 只会显示"启动中"，不再误触发整个服务流程
+        if (ProbeService() == ServiceState.Ready)
         {
             autoApplied = true;
             Start();
