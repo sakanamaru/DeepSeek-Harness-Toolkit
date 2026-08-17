@@ -31,7 +31,7 @@ function Build-Variant($variant, $outExe) {
     )
     if ($variant -eq 'A') {
         # 变体 A：端口全打桩（菜单/卸载流程可离线跑通）；变体 C 保留真实端口（测"运行中"路径）
-        $pats += @{ o = 'if (IsPortOpen(WEB_PORT, 800))'; n = 'if (false && IsPortOpen(WEB_PORT, 800))' }
+        $pats += @{ o = 'if (ProbeService() == ServiceState.Ready)'; n = 'if (false && ProbeService() == ServiceState.Ready)' }
         $pats += @{ o = 'if (IsPortOpen(WEB_PORT, 600))'; n = 'if (false && IsPortOpen(WEB_PORT, 600))' }
         # v2.1：ProbeService 也要打桩——它内部裸调 IsPortOpen，不打桩会让"运行中拒绝"误触发（16/17 在 3080 开启时被拒）
         $pats += @{ o = 'return JudgeState(IsPortOpen(WEB_PORT, 800), HttpReady(WebUrl(), 800));'; n = 'return JudgeState(false, false); // TEST stub' }
