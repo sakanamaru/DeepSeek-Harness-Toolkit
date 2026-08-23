@@ -195,6 +195,23 @@ public static class UnitTests
         // P1 修复契约：备份源不存在 -> null（UpdateDsh 据此跳过 pre-update 备份而非中止）
         Check(Program.Test.DoBackup(Path.Combine(Path.GetTempPath(), "dsht-no-such-" + Guid.NewGuid().ToString("N"))) == null, "DoBackup missing source -> null");
 
+        Console.WriteLine("[11] protection backup strictness (v2.1.2)");
+        // Pre*（保护性）备份遇到被锁文件 -> 整体失败(null)；手动备份 best-effort 成功且跳过被锁文件
+        string sdir = Path.Combine(Path.GetTempPath(), "dsht-strict-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(sdir);
+        File.WriteAllText(Path.Combine(sdir, "ok.txt"), "1");
+        string lockF = Path.Combine(sdir, "locked.bin");
+        File.WriteAllText(lockF, "x");
+        var lockStream = new FileStream(lockF, FileMode.Open, FileAccess.ReadWrite, FileShare.None);   // 独占锁定：复制必然失败
+        try
+        {
+            Check(Program.Test.DoBackupKind(sdir, Program.BackupKind.PreRestore) == null, "Pre* backup fails when a file is locked (strict)");
+            Check(Program.Test.DoBackupKind(sdir, Program.BackupKind.Manual) != null, "Manual backup skips locked file (best-effort)");
+        }
+        finally { lockStream.Dispose(); }
+        try { Directory.Delete(sdir, true); } catch { }
+        try { Directory.Delete(Path.Combine(runDir, "backup"), true); } catch { }   // 清掉本块产生的备份目录
+
         Console.WriteLine("");
         Console.WriteLine("== " + (total - fails) + "/" + total + " passed, " + fails + " failed ==");
         Environment.Exit(fails == 0 ? 0 : 1);

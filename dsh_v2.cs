@@ -1,5 +1,5 @@
 // ============================================================================
-//  DeepSeek Harness Toolkit V2.1.1  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
+//  DeepSeek Harness Toolkit V2.1.2  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
 // ----------------------------------------------------------------------------
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 //  v2 重构封装：DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）
@@ -21,12 +21,12 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 
-[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.1.1")]
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.1.2")]
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
-[assembly: AssemblyVersion("2.1.1.0")]
-[assembly: AssemblyFileVersion("2.1.1.0")]
+[assembly: AssemblyVersion("2.1.2.0")]
+[assembly: AssemblyFileVersion("2.1.2.0")]
 
 public static class Program
 {
@@ -61,7 +61,7 @@ public static class Program
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Toolkit V2.1.1"; } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.1.2"; } catch { }
         StateDir = ResolveStateDir();
         EnsureRootMarker();   // 完整安装 → 静默补标记（新包自带标记，此行主要兼容旧版本目录）
         LoadConfig();
@@ -174,7 +174,7 @@ public static class Program
     static void Banner()
     {
         CL(ConsoleColor.Cyan,   "==============================================");
-        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.1.1");
+        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.1.2");
         CL(ConsoleColor.Cyan,   "==============================================");
         C(ConsoleColor.Gray,    "  v1 脚本协助 : "); CL(ConsoleColor.White, "SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
         C(ConsoleColor.Gray,    "  v2 重构封装 : "); CL(ConsoleColor.White, "DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
@@ -303,7 +303,10 @@ public static class Program
             Info(string.Format(T("第 {0}/{1} 次尝试，源：{2}", "Attempt {0}/{1}, registry: {2}"), i + 1, registries.Length, registries[i]));
             int code = RunVisible("cmd.exe", "/c npm install -g --registry=" + registries[i] + " " + pkg);
             if (code == 0) return 0;
-            Warn(string.Format(T("失败（退出码 {0}）", "Failed (exit code {0})"), code));
+            if (code == -2)
+                Warn(T("安装/更新超时（10 分钟），已终止。请检查网络或稍后重试。", "Timed out after 10 minutes; terminated. Check the network and retry."));
+            else
+                Warn(string.Format(T("失败（退出码 {0}）", "Failed (exit code {0})"), code));
         }
         return -1;
     }
@@ -517,7 +520,7 @@ public static class Program
             string p = Path.Combine(StateDir, ROOT_MARKER);
             if (File.Exists(p)) return;
             if (!LooksLikeFullInstall(StateDir)) return;
-            File.WriteAllText(p, "DeepSeek Harness Toolkit V2.1.1" + Environment.NewLine);
+            File.WriteAllText(p, "DeepSeek Harness Toolkit V2.1.2" + Environment.NewLine);
             File.SetAttributes(p, FileAttributes.Hidden);
         }
         catch (Exception ex) { LogErr("创建根目录标记失败: " + ex.Message); }
@@ -856,7 +859,10 @@ public static class Program
             string root = BackupsRoot();
             Directory.CreateDirectory(root);
             dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff") + BackupSuffix(kind));
-            CopyTree(source, dest, true);
+            // v2.1.2 安全：保护性备份（Pre*）严格模式——任意文件复制失败 → 整个备份失败 → 中止后续危险操作；
+            // 手动/自动备份保持 best-effort（跳过被锁文件并记日志）
+            bool strict = kind == BackupKind.PreWipe || kind == BackupKind.PreRestore || kind == BackupKind.PreImport || kind == BackupKind.PreUpdate;
+            CopyTree(source, dest, !strict);
             if (wsList != null)
             {
                 var used = new List<string>();
@@ -868,7 +874,7 @@ public static class Program
                     while (used.Contains(sub)) { sub = name + "_" + k; k++; }
                     used.Add(sub);
                     string wsDest = Path.Combine(dest, "_workspace", sub);
-                    CopyTree(w, wsDest, true);
+                    CopyTree(w, wsDest, !strict);
                     File.WriteAllText(Path.Combine(wsDest, ".dshws"),
                                       "DeepSeek Harness Toolkit workspace\n" + w + "\n",
                                       new UTF8Encoding(false));
@@ -1384,6 +1390,7 @@ public static class Program
         catch { LogErr("RunCapture: 执行异常，返回空 " + exe); return ""; }
     }
 
+    /// <summary>前台执行可见子进程；npm/winget 等长操作设置 10 分钟超时，超时强杀并返回 -2（明确失败），启动失败返回 -1。</summary>
     static int RunVisible(string file, string args)
     {
         try
@@ -1393,7 +1400,13 @@ public static class Program
             MergeNodePath(psi);
             using (var p = Process.Start(psi))
             {
-                p.WaitForExit();
+                if (!p.WaitForExit(10 * 60 * 1000))   // v2.1.2：10 分钟超时（原无限等待，npm/winget 挂起会卡死）
+                {
+                    try { p.Kill(); } catch { }
+                    p.WaitForExit();
+                    LogErr("长时间操作超时（10 分钟），已强制结束: " + file + " " + args);
+                    return -2;   // 超时终止
+                }
                 return p.ExitCode;
             }
         }
@@ -1554,11 +1567,13 @@ public static class Program
 
     // ---------------- v2.1.1：dsh 更新管理 ----------------
 
-    /// <summary>查询 npm 上 @deepseek-ai/dsh 的最新版本；失败/离线返回 null。</summary>
+    /// <summary>查询 npm 上 @deepseek-ai/dsh 的最新版本；失败/离线/版本非法返回 null。</summary>
     static string GetLatestDshVersion()
     {
         string v = RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh version 2>nul");
-        return string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+        if (string.IsNullOrWhiteSpace(v)) return null;
+        v = v.Trim();
+        return IsCleanVersion(v) ? v : null;   // v2.1.2：合法版本校验，防 registry 脏数据/错误信息混入
     }
 
     /// <summary>解析 npm 版本输出为字符串数组（容错单行数组 / JSON 多行格式）。</summary>
@@ -1878,6 +1893,7 @@ public static class Program
         public static void RecordVer(string v) { Program.RecordDshVersion(v); }
         public static void ResetVersions() { Program.cfgDshVersions = ""; }
         public static string DoBackup(string src) { return Program.DoBackup(src); }
+        public static string DoBackupKind(string src, BackupKind k) { return Program.DoBackup(src, null, k); }
     }
 #endif
 }

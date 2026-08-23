@@ -1,4 +1,4 @@
-# DeepSeek Harness Toolkit V2.1.1
+# DeepSeek Harness Toolkit V2.1.2
 
 <div align="center">
 
@@ -53,7 +53,13 @@ DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具
 - **运行中禁止恢复/导入** — 与卸载/清除数据同一防线（不再只是"建议先关闭"）
 - **启动静默检查更新**（GitHub Releases API，仅新版本存在时提示；`check_update=off` 关闭）＋ **1MB 日志轮转**（`launcher.log → launcher.log.1`）
 - **单实例锁产品级固定且兼容旧版**（`DeepSeek-Harness-Toolkit-single`，同时占用 v2.0 旧锁名——已发布的 v2.0 exe 同样互斥）— v2.0 与 v2.1 无法在同一机器同时打开两个交互实例
-- exe 文件名统一为**不携带版本号的产品名 `DeepSeek Harness Toolkit.exe`**——版本信息在横幅 / 关于页 / 程序集元数据（**V2.1.1**）与 Release tag 中
+- exe 文件名统一为**不携带版本号的产品名 `DeepSeek Harness Toolkit.exe`**——版本信息在横幅 / 关于页 / 程序集元数据（**V2.1.2**）与 Release tag 中
+
+## v2.1.2 更新了什么
+
+- **保护性备份严格化** — Pre-清除 / Pre-恢复 / Pre-导入 / Pre-更新 备份遇到**任意文件复制失败**（被锁/损坏）即整体失败、**中止后续危险操作**（不再用有缺漏的安全网继续）；手动/自动备份保持 best-effort（跳过并记日志）
+- **dsh 最新版本合法性校验** — `npm view` 得到的版本先过干净版本过滤（拒绝预发布/垃圾值），非法视为离线
+- **长操作 10 分钟超时** — `npm install/uninstall`、`winget` 超时强杀并明确提示失败（原无限等待会卡死）
 
 ## v2.1.1 更新了什么
 

@@ -63,8 +63,8 @@ Write-Output ("环境: 3080=" + $(if ($portLive) { '运行中' } else { '未运�
 
 # 1-5 基础 / CLI
 & $tA selftest *> $null;   TC '1 selftest' ($LASTEXITCODE -eq 0)
-$o = (& $tA help 2>&1 | Out-String);    TC '2 help' ($o.Contains('install | start | uninstall'))
-$o = (& $tA about 2>&1 | Out-String);   TC '3 about' (($o.Contains('DeepSeek Harness Toolkit V2.1.1')) -and ($o.Contains('sakanamaru')))
+$o = (& $tA help 2>&1 | Out-String);    TC '2 help' ($o.Contains('install | start | uninstall | update'))
+$o = (& $tA about 2>&1 | Out-String);   TC '3 about' (($o.Contains('DeepSeek Harness Toolkit V2.1.2')) -and ($o.Contains('sakanamaru')))
 $o = (& $tA check 2>&1 | Out-String);   TC '4 check CLI' ($o.Contains('dsh'))
 $sw = [Diagnostics.Stopwatch]::StartNew(); $o = ("0`n" | & $tA 2>&1 | Out-String); $sw.Stop()
 TC '5 menu exit 0' ($sw.ElapsedMilliseconds -lt 2000) ($sw.ElapsedMilliseconds.ToString() + 'ms')
@@ -109,7 +109,7 @@ $d = Join-Path $T 'stray'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe'); Seed
 $o = ("6`ny`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
 TC '10 stray uninstall refused' (($o.Contains('未检测到完整安装') -or $o.Contains('does not look like a full installation')) -and (Test-Path (Join-Path $dt 'settings.yaml')))
 $d = Join-Path $T 'full'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe')
-[IO.File]::WriteAllText((Join-Path $d '.dsh_launcher_root'), 'DeepSeek Harness Toolkit V2.1.1' + [Environment]::NewLine)
+[IO.File]::WriteAllText((Join-Path $d '.dsh_launcher_root'), 'DeepSeek Harness Toolkit V2.1.2' + [Environment]::NewLine)
 $o = ("6`ny`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
 TC '11 full uninstall wiped' (($o.Contains('数据已清除') -or $o.Contains('Data wiped')) -and (-not (Test-Path (Join-Path $dt 'settings.yaml'))))
 $d = Join-Path $T 'cli'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe'); Seed-DT
@@ -124,7 +124,7 @@ if ($portLive) {
     $o = (& $tC check 2>&1 | Out-String); TC '14 check live' ($o.Contains('已在运行') -or $o.Contains('running'))
     $d = Join-Path $T 'fullC'; NewDir $d; Copy-Item $tC (Join-Path $d 't.exe')
     [IO.File]::WriteAllText((Join-Path $d 'launcher.config'), ('lang=zh' + [Environment]::NewLine + 'check_update=off' + [Environment]::NewLine))
-    [IO.File]::WriteAllText((Join-Path $d '.dsh_launcher_root'), 'DeepSeek Harness Toolkit V2.1.1' + [Environment]::NewLine)
+    [IO.File]::WriteAllText((Join-Path $d '.dsh_launcher_root'), 'DeepSeek Harness Toolkit V2.1.2' + [Environment]::NewLine)
     $o = ("6`ny`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
     TC '19 uninstall blocked while running' ($o.Contains('请先关闭') -or $o.Contains('Close the dsh web window first'))
 } else {
