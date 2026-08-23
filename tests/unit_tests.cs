@@ -177,11 +177,15 @@ public static class UnitTests
         Check(Program.Test.ParseVersions(null).Length == 0 && Program.Test.ParseVersions("").Length == 0, "empty -> empty");
         // 干净版本判断
         Check(Program.Test.CleanVer("2.1.0") && Program.Test.CleanVer("1.0") && !Program.Test.CleanVer("2.1.0-beta.1") && !Program.Test.CleanVer("abc") && !Program.Test.CleanVer("1.2.3.4"), "clean version filter");
-        // 版本过滤：去 pre-release、排序、取最近 N 倒序
+        // 版本过滤：保留 pre-release（核心段干净即可）、排序、取最近 N 倒序
         string[] f1 = Program.Test.FilterVers(new string[] { "1.0.0", "2.0.0", "0.9.0", "2.1.0-beta.1", "garbage", "1.5.0" }, 3);
-        Check(f1.Length == 3 && f1[0] == "2.0.0" && f1[1] == "1.5.0" && f1[2] == "1.0.0", "filter keeps clean, sorts desc, takes N");
+        Check(f1.Length == 3 && f1[0] == "2.1.0-beta.1" && f1[1] == "2.0.0" && f1[2] == "1.5.0", "filter keeps pre-release, sorts desc, takes N");
         string[] f2 = Program.Test.FilterVers(new string[] { "1.0.0", "2.0.0" }, 10);
         Check(f2.Length == 2 && f2[0] == "2.0.0", "N > count keeps all, newest first");
+        // v2.1.2 回归修复：pre-release（rc）版本支持——dsh 正式发布均为 rc
+        Check(Program.Test.SanitizeLatest("0.1.1-rc.2") == "0.1.1-rc.2" && Program.Test.SanitizeLatest("v2.1.0") == "2.1.0", "sanitize accepts rc / v-prefix");
+        Check(Program.Test.SanitizeLatest("garbage") == null && Program.Test.SanitizeLatest("latest") == null && Program.Test.SanitizeLatest("") == null && Program.Test.SanitizeLatest(null) == null, "sanitize rejects garbage");
+        Check(Program.Test.CmpVer("0.1.1", "0.1.1-rc.2") == 0 && Program.Test.CmpVer("0.1.1-rc.2", "0.2.0") < 0 && Program.Test.CmpVer("2.1.0-beta.1", "2.1.0") == 0, "CompareVersions strips pre-release suffix");
         // 历史版本记忆：去重、最新在前、截断 10
         Program.Test.ResetVersions();
         Program.Test.RecordVer("v2.0.0");

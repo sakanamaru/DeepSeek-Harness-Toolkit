@@ -1522,11 +1522,19 @@ public static class Program
         catch { return null; }
     }
 
-    /// <summary>版本号比较："a 低于 b" 返回负数，"相等" 0，"a 高于 b" 正数。支持 "2.1.0" 式分段。（单测可直接调用）</summary>
+    /// <summary>取版本核心段（去掉 -rc/-beta 等 pre-release 后缀）："0.1.1-rc.2" → "0.1.1"。</summary>
+    static string CoreVersion(string v)
+    {
+        if (string.IsNullOrEmpty(v)) return v ?? "";
+        int d = v.IndexOf('-');
+        return d >= 0 ? v.Substring(0, d) : v;
+    }
+
+    /// <summary>版本号比较："a 低于 b" 返回负数，"相等" 0，"a 高于 b" 正数。比较前剥掉 pre-release 后缀（rc 与同核心正式版视为相等）。</summary>
     static int CompareVersions(string a, string b)
     {
-        string[] pa = (a ?? "").Split('.');
-        string[] pb = (b ?? "").Split('.');
+        string[] pa = CoreVersion(a).Split('.');
+        string[] pb = CoreVersion(b).Split('.');
         for (int i = 0; i < Math.Max(pa.Length, pb.Length); i++)
         {
             int x = 0, y = 0;
@@ -1567,13 +1575,19 @@ public static class Program
 
     // ---------------- v2.1.1：dsh 更新管理 ----------------
 
+    /// <summary>校验并清洗 npm view 返回的最新版本：核心段必须是干净数字版本（允许 -rc/-beta 等 pre-release 后缀），非法/垃圾返回 null。</summary>
+    static string SanitizeLatestVersion(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        string v = raw.Trim();
+        if (v.StartsWith("v", StringComparison.OrdinalIgnoreCase)) v = v.Substring(1);
+        return IsCleanVersion(CoreVersion(v)) ? v : null;
+    }
+
     /// <summary>查询 npm 上 @deepseek-ai/dsh 的最新版本；失败/离线/版本非法返回 null。</summary>
     static string GetLatestDshVersion()
     {
-        string v = RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh version 2>nul");
-        if (string.IsNullOrWhiteSpace(v)) return null;
-        v = v.Trim();
-        return IsCleanVersion(v) ? v : null;   // v2.1.2：合法版本校验，防 registry 脏数据/错误信息混入
+        return SanitizeLatestVersion(RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh version 2>nul"));
     }
 
     /// <summary>解析 npm 版本输出为字符串数组（容错单行数组 / JSON 多行格式）。</summary>
@@ -1599,8 +1613,7 @@ public static class Program
         var clean = new List<string>();
         foreach (string v in all)
         {
-            if (v.IndexOf('-') >= 0) continue;
-            if (!IsCleanVersion(v)) continue;
+            if (!IsCleanVersion(CoreVersion(v))) continue;   // 核心段必须是干净数字版本（允许 -rc/-beta 后缀；dsh 的正式发布均为 rc）
             clean.Add(v);
         }
         clean.Sort(CompareVersions);
@@ -1889,6 +1902,7 @@ public static class Program
         public static string[] ParseVersions(string raw) { return Program.ParseNpmVersions(raw); }
         public static string[] FilterVers(string[] all, int n) { return Program.FilterVersions(all, n); }
         public static bool CleanVer(string v) { return Program.IsCleanVersion(v); }
+        public static string SanitizeLatest(string raw) { return Program.SanitizeLatestVersion(raw); }
         public static string DshVersions() { return Program.cfgDshVersions; }
         public static void RecordVer(string v) { Program.RecordDshVersion(v); }
         public static void ResetVersions() { Program.cfgDshVersions = ""; }
