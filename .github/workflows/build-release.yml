@@ -89,9 +89,13 @@ jobs:
       - name: Pack upload zip (12 files)
         shell: pwsh
         run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -in @('main','master','')) { $tag = "${{ inputs.release_tag }}" }
+          if ($tag -eq '') { $tag = 'dev' }
+          $zipName = "DeepSeek-Harness-Toolkit_${tag}_upload-package.zip"
           $items = @('DeepSeek Harness Toolkit.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','.gitignore','hashes.txt','.dsh_launcher_root')
-          Compress-Archive -Path $items -DestinationPath 'DeepSeek-Harness-Toolkit_v2.1.0_upload-package.zip' -CompressionLevel Optimal
-          Write-Output ("zip: " + [math]::Round((Get-Item 'DeepSeek-Harness-Toolkit_v2.1.0_upload-package.zip').Length/1KB,1) + " KB")
+          Compress-Archive -Path $items -DestinationPath $zipName -CompressionLevel Optimal
+          Write-Output ("zip: " + [math]::Round((Get-Item $zipName).Length/1KB,1) + " KB")
 
       - name: Attach / refresh release assets
         shell: pwsh
@@ -118,5 +122,6 @@ jobs:
           # 改名迁移安全网：清理与当前命名不一致的旧 exe 资产（GitHub 把空格转点，按服务器端点分名比较）
           $oldExes = $assets | Where-Object { $_ -like '*.exe' -and $_ -ne 'DeepSeek.Harness.Toolkit.exe' }
           foreach ($oe in $oldExes) { gh release delete-asset $tag $oe --repo $env:GITHUB_REPOSITORY }
-          Upload 'DeepSeek-Harness-Toolkit_v2.1.0_upload-package.zip' $tag $env:GITHUB_REPOSITORY
+          $zipName = "DeepSeek-Harness-Toolkit_${tag}_upload-package.zip"
+          Upload $zipName $tag $env:GITHUB_REPOSITORY
           Write-Output "assets refreshed on release $tag"
