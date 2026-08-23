@@ -1,4 +1,4 @@
-# DeepSeek Harness Toolkit V2.1.1
+# DeepSeek Harness Toolkit V2.1.2
 
 <div align="center">
 
@@ -54,7 +54,13 @@ A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](htt
 - **Restore / Import refused while dsh is running** — same guard as uninstall/wipe (no more "you should close it first" only)
 - **Silent update check** on launch (GitHub Releases API; prompts only when a newer version exists; `check_update=off` to disable) and **1 MB log rotation** (`launcher.log → launcher.log.1`)
 - **Version-free single-instance lock** (`DeepSeek-Harness-Toolkit-single`, plus the legacy v2.0 lock name — an already-published v2.0 exe is mutually exclusive too): v2.0 and v2.1 can never open two interactive instances on the same machine at once
-- The exe file name is now the **version-free product name** `DeepSeek Harness Toolkit.exe` — version lives in the banner / About / assembly metadata (**V2.1.1**) and the release tag
+- The exe file name is now the **version-free product name** `DeepSeek Harness Toolkit.exe` — version lives in the banner / About / assembly metadata (**V2.1.2**) and the release tag
+
+## What's New in v2.1.2
+
+- **Protection backups are now strict** — a Pre-wipe / Pre-restore / Pre-import / Pre-update backup that fails to copy ANY file (locked/corrupt) now aborts the whole dangerous operation, instead of continuing with an incomplete safety net; manual/auto backups stay best-effort (skip + log)
+- **dsh latest-version sanity check** — the version returned by `npm view` is validated with the clean-version filter (rejects pre-release/garbage); an invalid value is treated as "offline"
+- **10-minute timeout for long operations** — `npm install/uninstall` and `winget` are force-terminated after 10 minutes with a clear failure message instead of hanging forever
 
 ## What's New in v2.1.1
 
