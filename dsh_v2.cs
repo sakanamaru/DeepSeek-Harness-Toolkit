@@ -1,5 +1,5 @@
 // ============================================================================
-//  DeepSeek Harness Toolkit V2.1.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
+//  DeepSeek Harness Toolkit V2.1.1  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
 // ----------------------------------------------------------------------------
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 //  v2 重构封装：DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）
@@ -21,12 +21,12 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 
-[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.1.0")]
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.1.1")]
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
-[assembly: AssemblyVersion("2.1.0.0")]
-[assembly: AssemblyFileVersion("2.1.0.0")]
+[assembly: AssemblyVersion("2.1.1.0")]
+[assembly: AssemblyFileVersion("2.1.1.0")]
 
 public static class Program
 {
@@ -42,6 +42,8 @@ public static class Program
     static string cfgWs = null;          // 手动指定的工作区路径（配置 ws=，空=自动探测）   // 访问入口：127.0.0.1 / localhost（浏览器缓存异常时可切换）
     static int cfgKeep = 10;             // 备份保留策略：自动类备份最多保留份数（配置 keep_backups=，最小 3）
     static bool cfgCheckUpdate = true;   // 启动时静默检查更新（配置 check_update=off 关闭）
+    static bool cfgCheckDshUpdate = true; // v2.1.1：检测 dsh 本体更新开关（配置 check_dsh_update=off 关闭）
+    static string cfgDshVersions = "";    // v2.1.1：本机装过的 dsh 历史版本（逗号分隔，最近 10 个）
     const int    AUTO_SECONDS = 5;
 
     static Lang lang = Lang.Auto;
@@ -59,7 +61,7 @@ public static class Program
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Toolkit V2.1.0"; } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.1.1"; } catch { }
         StateDir = ResolveStateDir();
         EnsureRootMarker();   // 完整安装 → 静默补标记（新包自带标记，此行主要兼容旧版本目录）
         LoadConfig();
@@ -71,6 +73,7 @@ public static class Program
                 case "start":     case "s": Start();   return;
                 case "uninstall": case "u": Uninstall(); return;
                 case "check":     case "c": Check();   return;
+                case "update":    case "up": UpdateDsh(); return;
                 case "about":     case "a": About();   return;
                 case "help":      case "h": Help();    return;
                 case "selftest": Selftest(args); return;
@@ -171,7 +174,7 @@ public static class Program
     static void Banner()
     {
         CL(ConsoleColor.Cyan,   "==============================================");
-        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.1.0");
+        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.1.1");
         CL(ConsoleColor.Cyan,   "==============================================");
         C(ConsoleColor.Gray,    "  v1 脚本协助 : "); CL(ConsoleColor.White, "SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
         C(ConsoleColor.Gray,    "  v2 重构封装 : "); CL(ConsoleColor.White, "DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
@@ -223,6 +226,7 @@ public static class Program
             CL(ConsoleColor.White, "  5) " + T("备份 / 恢复", "Backup / Restore"));
             CL(ConsoleColor.White, "  6) " + T("卸载 dsh", "Uninstall dsh"));
             CL(ConsoleColor.White, "  7) " + T("访问入口 / Entry", "Entry Address"));
+            CL(ConsoleColor.White, "  8) " + T("更新 dsh", "Update dsh"));
             CL(ConsoleColor.White, "  0) " + T("退出", "Exit"));
             Console.WriteLine();
 
@@ -238,6 +242,7 @@ public static class Program
                 case "5": BackupMenu(); break;
                 case "6": Uninstall(); break;
                 case "7": EntryMenu(); break;
+                case "8": UpdateDsh(); break;
                 case "0":
                 case "q":
                     CL(ConsoleColor.Gray, T("  再见~", "  Bye~"));
@@ -289,6 +294,20 @@ public static class Program
 
     // ---------------- 安装 ----------------
 
+    /// <summary>npm 全局安装/更新 dsh 指定版本（version 空=最新）；多源依次尝试，返回 0=成功，-1=全部失败。</summary>
+    static int NpmInstallDsh(string version, string[] registries)
+    {
+        string pkg = "@deepseek-ai/dsh" + (string.IsNullOrEmpty(version) ? "" : "@" + version);
+        for (int i = 0; i < registries.Length; i++)
+        {
+            Info(string.Format(T("第 {0}/{1} 次尝试，源：{2}", "Attempt {0}/{1}, registry: {2}"), i + 1, registries.Length, registries[i]));
+            int code = RunVisible("cmd.exe", "/c npm install -g --registry=" + registries[i] + " " + pkg);
+            if (code == 0) return 0;
+            Warn(string.Format(T("失败（退出码 {0}）", "Failed (exit code {0})"), code));
+        }
+        return -1;
+    }
+
     static void Install()
     {
         Banner();
@@ -303,21 +322,26 @@ public static class Program
         Console.Write("  > ");
         string srcSel = ReadLineTrim().Trim();
         string[] registries = srcSel == "2" ? new string[] { NPM_MIRROR, NPM_OFFICIAL } : new string[] { NPM_OFFICIAL, NPM_MIRROR };
-        bool ok = false;
-        for (int i = 0; i < registries.Length; i++)
+        // v2.1.1：版本选择（回车=最新，L=历史版本列表）
+        string ver = "";
+        CL(ConsoleColor.White, T("  版本：回车=最新版，L=查看历史版本", "  Version: Enter=latest, L=list versions"));
+        Console.Write("  > ");
+        string vsel = ReadLineTrim().Trim();
+        if (vsel == "L" || vsel == "l")
         {
-            Info(string.Format(T("第 {0}/{1} 次尝试，源：{2}", "Attempt {0}/{1}, registry: {2}"), i + 1, registries.Length, registries[i]));
-            int code = RunVisible("cmd.exe", "/c npm install -g --registry=" + registries[i] + " @deepseek-ai/dsh");
-            if (code == 0) { ok = true; break; }
-            Warn(string.Format(T("失败（退出码 {0}）", "Failed (exit code {0})"), code));
+            ver = ListDshVersions();
+            if (ver == null) { Info(T("已取消安装。", "Install cancelled.")); Pause(); return; }
         }
-        if (!ok) { Error(T("安装失败。请检查网络后重试。", "Install failed. Check your network and retry.")); Pause(); return; }
+        int code0 = NpmInstallDsh(ver, registries);
+        if (code0 != 0) { Error(T("安装失败。请检查网络后重试。", "Install failed. Check your network and retry.")); Pause(); return; }
 
         Console.WriteLine();
         Success(T("安装成功！正在验证...", "Installed! Verifying..."));
-        string ver = RunDshVersion();
-        Success(T("dsh 版本：" + (string.IsNullOrWhiteSpace(ver) ? T("？（请新开终端验证）", "? (verify in a new terminal)") : ver),
-                  "dsh version: " + (string.IsNullOrWhiteSpace(ver) ? "? (verify in a new terminal)" : ver)));
+        string nv = RunDshVersion();
+        string disp = string.IsNullOrWhiteSpace(nv) ? ver : nv;
+        if (disp.Length > 0) RecordDshVersion(disp);
+        Success(T("dsh 版本：" + (string.IsNullOrWhiteSpace(nv) ? T("？（请新开终端验证）", "? (verify in a new terminal)") : nv),
+                  "dsh version: " + (string.IsNullOrWhiteSpace(nv) ? "? (verify in a new terminal)" : nv)));
         Console.WriteLine();
         Info(T("接下来：选择【2 启动 Web 界面】即可打开浏览器。", "Next: choose【Start Web UI】to open the browser."));
         Pause();
@@ -493,7 +517,7 @@ public static class Program
             string p = Path.Combine(StateDir, ROOT_MARKER);
             if (File.Exists(p)) return;
             if (!LooksLikeFullInstall(StateDir)) return;
-            File.WriteAllText(p, "DeepSeek Harness Toolkit V2.1.0" + Environment.NewLine);
+            File.WriteAllText(p, "DeepSeek Harness Toolkit V2.1.1" + Environment.NewLine);
             File.SetAttributes(p, FileAttributes.Hidden);
         }
         catch (Exception ex) { LogErr("创建根目录标记失败: " + ex.Message); }
@@ -868,7 +892,7 @@ public static class Program
     // ---------------- 备份保留策略（v2.1：只清理自动类，手动永久保留） ----------------
 
     /// <summary>备份来源：Manual=用户主动备份（永久保留）；Auto/Pre*=系统自动产生（参与保留策略清理）。</summary>
-    public enum BackupKind { Manual, Auto, PreRestore, PreImport, PreWipe }
+    public enum BackupKind { Manual, Auto, PreRestore, PreImport, PreWipe, PreUpdate }
 
     /// <summary>自动类备份目录名的来源后缀（手动无后缀，兼容旧版产物）。</summary>
     static string BackupSuffix(BackupKind k)
@@ -879,6 +903,7 @@ public static class Program
             case BackupKind.PreRestore: return "-pre-restore";
             case BackupKind.PreImport: return "-pre-import";
             case BackupKind.PreWipe: return "-pre-wipe";
+            case BackupKind.PreUpdate: return "-pre-update";
             default: return "";
         }
     }
@@ -886,7 +911,7 @@ public static class Program
     /// <summary>备份目录名是否属于"自动类"（自动类参与保留策略清理；手动备份永久保留）。</summary>
     static bool IsAutoBackupName(string name)
     {
-        return name.EndsWith("-auto") || name.EndsWith("-pre-restore") || name.EndsWith("-pre-import") || name.EndsWith("-pre-wipe");
+        return name.EndsWith("-auto") || name.EndsWith("-pre-restore") || name.EndsWith("-pre-import") || name.EndsWith("-pre-wipe") || name.EndsWith("-pre-update");
     }
 
     /// <summary>保留策略：仅清理自动类备份（-auto / -pre-*），手动备份永久保留；自动类超过 cfgKeep 份时按最旧删除、保底 3 份。返回被清理的目录名列表（空=未清理）。</summary>
@@ -1267,6 +1292,8 @@ public static class Program
                     if (v.Length > 0) { try { cfgWs = Path.GetFullPath(v); } catch { cfgWs = null; } } }
                 if (t.StartsWith("keep_backups=")) { int v; if (int.TryParse(t.Substring(13).Trim(), out v)) cfgKeep = (v < 3) ? 3 : v; }   // 备份保留策略：自动类最多保留份数（最小 3，直接夹到 3 而非忽略）
                 if (t.StartsWith("check_update=")) { string v = t.Substring(13).Trim().ToLowerInvariant(); if (v.Length > 0) cfgCheckUpdate = v != "off"; }   // 启动更新检查开关
+                if (t.StartsWith("check_dsh_update=")) { string v = t.Substring(17).Trim().ToLowerInvariant(); if (v.Length > 0) cfgCheckDshUpdate = v != "off"; }   // v2.1.1：dsh 本体更新检测开关
+                if (t.StartsWith("dsh_versions=")) { string v = t.Substring(13).Trim(); if (v.Length > 0) cfgDshVersions = v; }   // v2.1.1：本机 dsh 历史版本
             }
         }
         catch { }
@@ -1277,7 +1304,7 @@ public static class Program
         try
         {
             string v = lang == Lang.Zh ? "zh" : (lang == Lang.En ? "en" : "auto");
-            File.WriteAllText(ConfigPath(), "lang=" + v + Environment.NewLine + "host=" + webHost + Environment.NewLine + "ws=" + (cfgWs ?? "") + Environment.NewLine + "keep_backups=" + cfgKeep + Environment.NewLine + "check_update=" + (cfgCheckUpdate ? "on" : "off") + Environment.NewLine, new UTF8Encoding(false));
+            File.WriteAllText(ConfigPath(), "lang=" + v + Environment.NewLine + "host=" + webHost + Environment.NewLine + "ws=" + (cfgWs ?? "") + Environment.NewLine + "keep_backups=" + cfgKeep + Environment.NewLine + "check_update=" + (cfgCheckUpdate ? "on" : "off") + Environment.NewLine + "check_dsh_update=" + (cfgCheckDshUpdate ? "on" : "off") + Environment.NewLine + "dsh_versions=" + cfgDshVersions + Environment.NewLine, new UTF8Encoding(false));
         }
         catch { }
     }
@@ -1525,6 +1552,196 @@ public static class Program
 
     // ---------------- 体检 / 关于 / 帮助 ----------------
 
+    // ---------------- v2.1.1：dsh 更新管理 ----------------
+
+    /// <summary>查询 npm 上 @deepseek-ai/dsh 的最新版本；失败/离线返回 null。</summary>
+    static string GetLatestDshVersion()
+    {
+        string v = RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh version 2>nul");
+        return string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+    }
+
+    /// <summary>解析 npm 版本输出为字符串数组（容错单行数组 / JSON 多行格式）。</summary>
+    static string[] ParseNpmVersions(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return new string[0];
+        string s = raw.Trim();
+        if (s.StartsWith("[")) s = s.Substring(1);
+        if (s.EndsWith("]")) s = s.Substring(0, s.Length - 1);
+        string[] parts = s.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+        var list = new List<string>();
+        foreach (string p in parts)
+        {
+            string v = p.Trim().Trim('\'', '"');
+            if (v.Length > 0) list.Add(v);
+        }
+        return list.ToArray();
+    }
+
+    /// <summary>过滤干净的三段式版本（去 pre-release/坏串），升序后取最近 n 个并倒序（最新在前）。</summary>
+    static string[] FilterVersions(string[] all, int n)
+    {
+        var clean = new List<string>();
+        foreach (string v in all)
+        {
+            if (v.IndexOf('-') >= 0) continue;
+            if (!IsCleanVersion(v)) continue;
+            clean.Add(v);
+        }
+        clean.Sort(CompareVersions);
+        var recent = new List<string>();
+        for (int i = Math.Max(0, clean.Count - n); i < clean.Count; i++) recent.Add(clean[i]);
+        recent.Reverse();
+        return recent.ToArray();
+    }
+
+    /// <summary>是否为 数字[.数字[.数字]] 的干净版本串。</summary>
+    static bool IsCleanVersion(string v)
+    {
+        if (v.Length == 0) return false;
+        string[] seg = v.Split('.');
+        if (seg.Length < 1 || seg.Length > 3) return false;
+        foreach (string s in seg)
+        {
+            if (s.Length == 0) return false;
+            for (int i = 0; i < s.Length; i++)
+                if (s[i] < '0' || s[i] > '9') return false;
+        }
+        return true;
+    }
+
+    /// <summary>显示历史版本列表（0/回车=取消），返回用户选中的版本；取消返回 null。本机装过的版本带 * 标记。</summary>
+    static string ListDshVersions()
+    {
+        string raw = RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh versions 2>nul");
+        string[] recent = FilterVersions(ParseNpmVersions(raw), 10);
+        if (recent.Length == 0)
+        {
+            Warn(T("无法获取版本列表（离线或源不可用）。", "Cannot get version list (offline or registry unavailable)."));
+            return null;
+        }
+        Console.WriteLine();
+        CL(ConsoleColor.White, T("  可选版本（* = 本机安装过）：", "  Available versions (* = installed before):"));
+        for (int i = 0; i < recent.Length; i++)
+            CL(ConsoleColor.White, "  " + (i + 1) + ") v" + recent[i] + (HasDshVersion(recent[i]) ? " *" : ""));
+        CL(ConsoleColor.Gray, "  0) " + T("取消", "Cancel"));
+        Console.Write("  > ");
+        string sel = ReadLineTrim().Trim();
+        int idx;
+        if (int.TryParse(sel, out idx) && idx >= 1 && idx <= recent.Length) return recent[idx - 1];
+        return null;
+    }
+
+    /// <summary>记录本机装过的 dsh 版本（去重、最新在前、最多 10 个）。</summary>
+    static void RecordDshVersion(string ver)
+    {
+        ver = ver.Trim().TrimStart('v');
+        if (ver.Length == 0) return;
+        var list = new List<string>();
+        if (cfgDshVersions.Length > 0)
+            list.AddRange(cfgDshVersions.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries));
+        list.RemoveAll(x => x.Trim().Equals(ver, StringComparison.OrdinalIgnoreCase));
+        list.Insert(0, ver);
+        while (list.Count > 10) list.RemoveAt(list.Count - 1);
+        cfgDshVersions = string.Join(",", list.ToArray());
+        SaveConfig();
+    }
+
+    /// <summary>历史列表中是否含指定版本。</summary>
+    static bool HasDshVersion(string ver)
+    {
+        if (cfgDshVersions.Length == 0) return false;
+        foreach (string x in cfgDshVersions.Split(','))
+            if (x.Trim().Equals(ver, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    /// <summary>v2.1.1：更新/换版本 dsh（菜单 8）。守卫 → 检测 → 选版本 → 双确认 → pre-update 备份 → 安装 → 记忆。</summary>
+    static void UpdateDsh()
+    {
+        Banner();
+        if (ProbeService() == ServiceState.Ready)
+        {
+            Error(T("dsh Web 服务正在运行，请先停止再更新（菜单 2 启动界面中可停止）。", "dsh web is running. Stop it first (from the Start UI screen)."));
+            Pause(); return;
+        }
+        string cur = RunDshVersion();
+        if (string.IsNullOrWhiteSpace(cur))
+        {
+            Warn(T("未检测到已安装的 dsh。请先通过菜单 1 安装。", "No installed dsh detected. Install via menu 1 first."));
+            Pause(); return;
+        }
+        string latest = GetLatestDshVersion();
+        if (latest != null)
+        {
+            if (CompareVersions(cur, latest) >= 0)
+                Info(T("当前已是最新版本 v" + cur + "。输入 L 可重装或切换历史版本。", "Already up to date (v" + cur + "). Enter L to reinstall or switch versions."));
+            else
+                Info(T("发现新版本：当前 v" + cur + " → 最新 v" + latest, "Update available: v" + cur + " -> v" + latest));
+        }
+        else
+        {
+            Warn(T("无法获取最新版本（离线或源不可用）。输入 L 可尝试历史版本列表。", "Cannot reach the registry. Enter L to list versions."));
+        }
+        Console.WriteLine();
+        CL(ConsoleColor.White, T("  回车=安装最新版，L=列出历史版本，其他=取消：", "  Enter=install latest, L=list versions, anything else=cancel:"));
+        Console.Write("  > ");
+        string sel = ReadLineTrim().Trim();
+        if (inputEof) { Info(T("已取消。", "Cancelled.")); Pause(); return; }
+        string target = null;
+        if (sel == "L" || sel == "l")
+        {
+            target = ListDshVersions();
+            if (target == null) { Info(T("已取消。", "Cancelled.")); Pause(); return; }
+        }
+        else if (sel.Length == 0)
+        {
+            if (latest == null) { Error(T("无法确定目标版本，请改用 L 手动选择。", "Cannot determine target version; use L to pick one.")); Pause(); return; }
+            target = latest;
+        }
+        else
+        {
+            Info(T("已取消。", "Cancelled.")); Pause(); return;
+        }
+        // 双确认：① y/Y ② 输入 update
+        Console.WriteLine();
+        CL(ConsoleColor.Yellow, T("  ⚠️ 警告：更新可能存在破坏性变更（覆盖当前 dsh 安装；配置/插件可能不兼容）。", "  ⚠️ Warning: this update may be destructive (overwrites the dsh install; config/plugins may be incompatible)."));
+        Info(T("  当前 v" + cur + " → 目标 v" + target + "。确认后将先自动备份 ~/.dsh 数据，再执行安装。", "  v" + cur + " -> v" + target + ". Your ~/.dsh data will be backed up first, then install runs."));
+        CL(ConsoleColor.White, T("  是否继续？(y/N)：", "  Continue? (y/N): "));
+        string a1 = ReadLineTrim().Trim();
+        if (a1 != "y" && a1 != "Y") { Info(T("已取消，未做任何更改。", "Cancelled; nothing changed.")); Pause(); return; }
+        CL(ConsoleColor.White, T("  请再次确认：输入 update 执行更新（其他键取消）：", "  Confirm again: type update to proceed (anything else cancels): "));
+        string a2 = ReadLineTrim().Trim();
+        if (a2 != "update") { Info(T("已取消，未做任何更改。", "Cancelled; nothing changed.")); Pause(); return; }
+        // pre-update 备份（失败即中止，沿用 v2.1 安全逻辑）
+        string preBk = DoBackup(DataRoot(), null, BackupKind.PreUpdate);
+        if (preBk == null)
+        {
+            Error(T("更新前自动备份失败，已中止更新（请先手动备份或检查磁盘空间）。", "Pre-update backup failed; update aborted (back up manually or check disk space first)."));
+            Pause(); return;
+        }
+        try { File.WriteAllText(Path.Combine(preBk, "version.txt"), cur, new UTF8Encoding(false)); } catch { }   // 记录旧版本号供回滚
+        Info(T("已自动备份：" + preBk, "Auto backup: " + preBk));
+        // 执行安装
+        string[] regs = new string[] { NPM_OFFICIAL, NPM_MIRROR };
+        int code = NpmInstallDsh(target, regs);
+        if (code == 0)
+        {
+            Success(T("更新成功！正在验证...", "Updated! Verifying..."));
+            string nv = RunDshVersion();
+            string disp = string.IsNullOrWhiteSpace(nv) ? target : nv;
+            if (disp.Length > 0) RecordDshVersion(disp);
+            Success(T("dsh 版本：" + (string.IsNullOrWhiteSpace(nv) ? T("？（请新开终端验证）", "? (verify in a new terminal)") : nv),
+                      "dsh version: " + (string.IsNullOrWhiteSpace(nv) ? "? (verify in a new terminal)" : nv)));
+        }
+        else
+        {
+            Error(T("更新失败。数据已备份于 " + preBk + "；可用命令回滚：npm install -g @deepseek-ai/dsh@" + cur,
+                    "Update failed. Data backed up at " + preBk + "; roll back with: npm install -g @deepseek-ai/dsh@" + cur));
+        }
+        Pause();
+    }
+
     static void Check()
     {
         Banner();
@@ -1538,6 +1755,15 @@ public static class Program
         {
             string v = RunDshVersion();
             C(ConsoleColor.Gray, "  dsh 版本   : "); CL(ConsoleColor.White, string.IsNullOrWhiteSpace(v) ? T("（读取失败）", "(read failed)") : v);
+            if (cfgCheckDshUpdate)
+            {
+                string latest = GetLatestDshVersion();
+                C(ConsoleColor.Gray, "  dsh 最新   : ");
+                if (string.IsNullOrEmpty(latest)) CL(ConsoleColor.Gray, T("（离线，未获取）", "(offline, n/a)"));
+                else if (string.IsNullOrWhiteSpace(v) || CompareVersions(v, latest) < 0)
+                    CL(ConsoleColor.Yellow, latest + (string.IsNullOrWhiteSpace(v) ? "" : T("（当前 " + v + "，有更新）", " (current " + v + ", update available)")));
+                else CL(ConsoleColor.White, latest + T("（已是最新）", " (up to date)"));
+            }
         }
         C(ConsoleColor.Gray, "  Web 服务   : "); ServiceState stC = ProbeService();
         CL(ConsoleColor.White, stC == ServiceState.Ready ? WebUrl() + " " + T("已在运行", "running")
@@ -1640,6 +1866,12 @@ public static class Program
         public static string Latest() { return Program.LatestVersion(); }
         public static string CurVer() { return Program.CurrentVersion(); }
         public static void SetHttpGet(Func<string, int, string> f) { Program.HttpGetImpl = f; }
+        public static string[] ParseVersions(string raw) { return Program.ParseNpmVersions(raw); }
+        public static string[] FilterVers(string[] all, int n) { return Program.FilterVersions(all, n); }
+        public static bool CleanVer(string v) { return Program.IsCleanVersion(v); }
+        public static string DshVersions() { return Program.cfgDshVersions; }
+        public static void RecordVer(string v) { Program.RecordDshVersion(v); }
+        public static void ResetVersions() { Program.cfgDshVersions = ""; }
     }
 #endif
 }
