@@ -42,8 +42,8 @@ public static class Program
     static string cfgWs = null;          // 手动指定的工作区路径（配置 ws=，空=自动探测）   // 访问入口：127.0.0.1 / localhost（浏览器缓存异常时可切换）
     static int cfgKeep = 10;             // 备份保留策略：自动类备份最多保留份数（配置 keep_backups=，最小 3）
     static bool cfgCheckUpdate = true;   // 启动时静默检查更新（配置 check_update=off 关闭）
-    static bool cfgCheckDshUpdate = true; // v2.1.1：检测 dsh 本体更新开关（配置 check_dsh_update=off 关闭）
-    static string cfgDshVersions = "";    // v2.1.1：本机装过的 dsh 历史版本（逗号分隔，最近 10 个）
+    static bool cfgCheckDshUpdate = true; // 检测 dsh 本体更新开关（配置 check_dsh_update=off 关闭）
+    static string cfgDshVersions = "";    // 本机装过的 dsh 历史版本（逗号分隔，最近 10 个）
     const int    AUTO_SECONDS = 5;
 
     static Lang lang = Lang.Auto;
@@ -294,9 +294,15 @@ public static class Program
 
     // ---------------- 安装 ----------------
 
-    /// <summary>npm 全局安装/更新 dsh 指定版本（version 空=最新）；多源依次尝试，返回 0=成功，-1=全部失败。</summary>
+    /// <summary>npm 全局安装/更新 dsh 指定版本（version 空=最新）；多源依次尝试，返回 0=成功，-1=全部失败。
+    /// 版本号会拼进 cmd 命令行，故入口做严格白名单复核（防注入，纵深防御）。</summary>
     static int NpmInstallDsh(string version, string[] registries)
     {
+        if (!string.IsNullOrEmpty(version) && !IsValidNpmVersion(version))
+        {
+            Error(T("版本号不合法，已拒绝安装：" + version, "Invalid version string; install refused: " + version));
+            return -1;
+        }
         string pkg = "@deepseek-ai/dsh" + (string.IsNullOrEmpty(version) ? "" : "@" + version);
         for (int i = 0; i < registries.Length; i++)
         {
@@ -325,7 +331,7 @@ public static class Program
         Console.Write("  > ");
         string srcSel = ReadLineTrim().Trim();
         string[] registries = srcSel == "2" ? new string[] { NPM_MIRROR, NPM_OFFICIAL } : new string[] { NPM_OFFICIAL, NPM_MIRROR };
-        // v2.1.1：版本选择（回车=最新，L=历史版本列表）
+        // 版本选择（回车=最新，L=历史版本列表）
         string ver = "";
         CL(ConsoleColor.White, T("  版本：回车=最新版，L=查看历史版本", "  Version: Enter=latest, L=list versions"));
         Console.Write("  > ");
@@ -511,6 +517,19 @@ public static class Program
 
     // ---------------- 根目录标记（防误删验证） ----------------
 
+    /// <summary>标记文件有效：存在且内容含产品名（防"伪造空 marker 文件"诱导清除；版本无关，兼容未来版本演进）。</summary>
+    static bool RootMarkerValid(string dir)
+    {
+        try
+        {
+            string p = Path.Combine(dir, ROOT_MARKER);
+            if (!File.Exists(p)) return false;
+            string c = File.ReadAllText(p, new UTF8Encoding(false));
+            return c.IndexOf("DeepSeek Harness Toolkit", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+        catch { return false; }
+    }
+
     /// <summary>标记文件随安装包分发；此处仅在"目录看起来是完整安装（含配套文件）"时静默补建，兼容旧版本目录。
     /// 单独复制的 exe（无配套文件）永远不会自建标记，从而永久被删除类操作拒绝。</summary>
     static void EnsureRootMarker()
@@ -588,12 +607,13 @@ public static class Program
         }
 
         string dir = DataRoot();
-        // 防误删验证：必须来自完整安装（随包分发的标记文件，或 ≥2 个配套文件）；单独复制的 exe 一律拒绝
-        bool rootOk = File.Exists(Path.Combine(StateDir, ROOT_MARKER)) || LooksLikeFullInstall(StateDir);
+        // 防误删验证（严格）：必须存在**有效**的根目录标记 .dsh_launcher_root（随包分发/自动补建，内容含产品名）；
+        // 仅"看起来像完整安装"（≥2 个配套文件）或伪造的空 marker 不再放行——杜绝诱导清除
+        bool rootOk = RootMarkerValid(StateDir);
         if (!rootOk)
         {
-            Error(T("未检测到完整安装（缺少标记文件 " + ROOT_MARKER + " 且缺少配套文件）。\n  请从解压后的完整目录运行本程序；切勿将 exe 单独复制后执行清除。已拒绝删除。",
-                    "This does not look like a full installation (no marker " + ROOT_MARKER + " and no companion files).\n  Run from the complete extracted folder; do not copy the exe alone. Deletion refused."));
+            Error(T("未检测到完整安装（缺少有效标记文件 " + ROOT_MARKER + "）。\n  请从解压后的完整目录运行本程序；切勿将 exe 单独复制后执行清除。已拒绝删除。",
+                    "This does not look like a full installation (no valid marker " + ROOT_MARKER + ").\n  Run from the complete extracted folder; do not copy the exe alone. Deletion refused."));
             Pause();
             return;
         }
@@ -1298,8 +1318,8 @@ public static class Program
                     if (v.Length > 0) { try { cfgWs = Path.GetFullPath(v); } catch { cfgWs = null; } } }
                 if (t.StartsWith("keep_backups=")) { int v; if (int.TryParse(t.Substring(13).Trim(), out v)) cfgKeep = (v < 3) ? 3 : v; }   // 备份保留策略：自动类最多保留份数（最小 3，直接夹到 3 而非忽略）
                 if (t.StartsWith("check_update=")) { string v = t.Substring(13).Trim().ToLowerInvariant(); if (v.Length > 0) cfgCheckUpdate = v != "off"; }   // 启动更新检查开关
-                if (t.StartsWith("check_dsh_update=")) { string v = t.Substring(17).Trim().ToLowerInvariant(); if (v.Length > 0) cfgCheckDshUpdate = v != "off"; }   // v2.1.1：dsh 本体更新检测开关
-                if (t.StartsWith("dsh_versions=")) { string v = t.Substring(13).Trim(); if (v.Length > 0) cfgDshVersions = v; }   // v2.1.1：本机 dsh 历史版本
+                if (t.StartsWith("check_dsh_update=")) { string v = t.Substring(17).Trim().ToLowerInvariant(); if (v.Length > 0) cfgCheckDshUpdate = v != "off"; }   // dsh 本体更新检测开关
+                if (t.StartsWith("dsh_versions=")) { string v = t.Substring(13).Trim(); if (v.Length > 0) cfgDshVersions = v; }   // 本机 dsh 历史版本
             }
         }
         catch { }
@@ -1573,15 +1593,16 @@ public static class Program
 
     // ---------------- 体检 / 关于 / 帮助 ----------------
 
-    // ---------------- v2.1.1：dsh 更新管理 ----------------
+    // ---------------- dsh 更新管理 ----------------
 
-    /// <summary>校验并清洗 npm view 返回的最新版本：核心段必须是干净数字版本（允许 -rc/-beta 等 pre-release 后缀），非法/垃圾返回 null。</summary>
+    /// <summary>校验并清洗 npm view 返回的最新版本：整串必须通过严格白名单（数字核心段 + 可选预发布段），
+    /// 防止恶意 registry 返回带命令字符（空格/&/;/|/&gt;/&lt; 等）的版本串导致注入；非法/垃圾返回 null。</summary>
     static string SanitizeLatestVersion(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
         string v = raw.Trim();
         if (v.StartsWith("v", StringComparison.OrdinalIgnoreCase)) v = v.Substring(1);
-        return IsCleanVersion(CoreVersion(v)) ? v : null;
+        return IsValidNpmVersion(v) ? v : null;
     }
 
     /// <summary>查询 npm 上 @deepseek-ai/dsh 的最新版本；失败/离线/版本非法返回 null。</summary>
@@ -1607,13 +1628,13 @@ public static class Program
         return list.ToArray();
     }
 
-    /// <summary>过滤干净的三段式版本（去 pre-release/坏串），升序后取最近 n 个并倒序（最新在前）。</summary>
+    /// <summary>过滤干净的版本串（严格白名单：数字核心段 + 可选预发布段，防注入），升序后取最近 n 个并倒序（最新在前）。</summary>
     static string[] FilterVersions(string[] all, int n)
     {
         var clean = new List<string>();
         foreach (string v in all)
         {
-            if (!IsCleanVersion(CoreVersion(v))) continue;   // 核心段必须是干净数字版本（允许 -rc/-beta 后缀；dsh 的正式发布均为 rc）
+            if (!IsValidNpmVersion(v)) continue;   // 严格整串校验（预发布段仅字母数字与 .-，拒绝任何命令字符）
             clean.Add(v);
         }
         clean.Sort(CompareVersions);
@@ -1635,6 +1656,23 @@ public static class Program
             for (int i = 0; i < s.Length; i++)
                 if (s[i] < '0' || s[i] > '9') return false;
         }
+        return true;
+    }
+
+    /// <summary>严格 npm 版本白名单：核心段数字 . 分隔（1-3 段），允许一个 - 预发布段，其字符仅限 [0-9A-Za-z.-]。
+    /// 任何空格/&amp; /; /| /&gt; /&lt; /$ /引号等命令注入字符一律拒绝；调用方可放心的用它拼进命令行。</summary>
+    static bool IsValidNpmVersion(string v)
+    {
+        if (string.IsNullOrWhiteSpace(v)) return false;
+        if (!IsCleanVersion(CoreVersion(v))) return false;
+        int d = v.IndexOf('-');
+        if (d < 0) return true;                       // 无预发布段：核心段已是白名单（IsCleanVersion 只含数字与点）
+        if (v.IndexOf('-', d + 1) >= 0) return false; // 只允许一个 -
+        string pre = v.Substring(d + 1);
+        if (pre.Length == 0) return false;
+        foreach (char c in pre)
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '.' || c == '-'))
+                return false;
         return true;
     }
 
@@ -1684,7 +1722,7 @@ public static class Program
         return false;
     }
 
-    /// <summary>v2.1.1：更新/换版本 dsh（菜单 8）。守卫 → 检测 → 选版本 → 双确认 → pre-update 备份 → 安装 → 记忆。</summary>
+    /// <summary>更新/换版本 dsh（菜单 8）。守卫 → 检测 → 选版本 → 双确认 → pre-update 备份 → 安装 → 记忆。</summary>
     static void UpdateDsh()
     {
         Banner();
@@ -1908,6 +1946,8 @@ public static class Program
         public static void ResetVersions() { Program.cfgDshVersions = ""; }
         public static string DoBackup(string src) { return Program.DoBackup(src); }
         public static string DoBackupKind(string src, BackupKind k) { return Program.DoBackup(src, null, k); }
+        public static bool RootMarker(string dir) { return Program.RootMarkerValid(dir); }
+        public static bool FullInstall(string dir) { return Program.LooksLikeFullInstall(dir); }
     }
 #endif
 }

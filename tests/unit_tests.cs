@@ -5,6 +5,7 @@
 //       所有被测方法为 dsh_v2.cs 内的内部 static 方法，同程序集直接访问，无第三方依赖。
 using System;
 using System.IO;
+using System.Text;
 
 public static class UnitTests
 {
@@ -165,7 +166,7 @@ public static class UnitTests
         Check(Program.Test.Latest() == null, "network failure -> silent null");
         Program.Test.SetHttpGet(null);
 
-        Console.WriteLine("[10] dsh update management (v2.1.1)");
+        Console.WriteLine("[10] dsh update management");
         // BackupKind.PreUpdate 后缀 + 自动类识别
         Check(Program.Test.BkSuffix(Program.BackupKind.PreUpdate) == "-pre-update", "pre-update suffix");
         Check(Program.Test.IsAutoName("dsh-data-20260101-000001-pre-update"), "pre-update -> auto");
@@ -186,6 +187,12 @@ public static class UnitTests
         Check(Program.Test.SanitizeLatest("0.1.1-rc.2") == "0.1.1-rc.2" && Program.Test.SanitizeLatest("v2.1.0") == "2.1.0", "sanitize accepts rc / v-prefix");
         Check(Program.Test.SanitizeLatest("garbage") == null && Program.Test.SanitizeLatest("latest") == null && Program.Test.SanitizeLatest("") == null && Program.Test.SanitizeLatest(null) == null, "sanitize rejects garbage");
         Check(Program.Test.CmpVer("0.1.1", "0.1.1-rc.2") == 0 && Program.Test.CmpVer("0.1.1-rc.2", "0.2.0") < 0 && Program.Test.CmpVer("2.1.0-beta.1", "2.1.0") == 0, "CompareVersions strips pre-release suffix");
+        // v2.1.2 安全加固：严格整串白名单——拒绝任何命令注入字符（空格/&/;/|/>/</引号/反引号等），含预发布段
+        Check(Program.Test.SanitizeLatest("1.2.3&calc") == null && Program.Test.SanitizeLatest("1.2.3; calc.exe") == null && Program.Test.SanitizeLatest("1.2.3|cmd") == null && Program.Test.SanitizeLatest("1.2.3>nul") == null && Program.Test.SanitizeLatest("1.2.3<in") == null && Program.Test.SanitizeLatest("1.2.3-rc.2 & echo pwned") == null && Program.Test.SanitizeLatest("1.2.3-rc.2\" & whoami") == null, "sanitize rejects injection characters");
+        Check(Program.Test.SanitizeLatest("1.2.3-rc.2-beta.3") == null && Program.Test.SanitizeLatest("1.2.3-") == null, "sanitize rejects double dash / trailing dash");
+        Check(Program.Test.SanitizeLatest("v1.2.3") == "1.2.3" && Program.Test.SanitizeLatest("1.2.3") == "1.2.3" && Program.Test.SanitizeLatest("0.1.1-rc.2") == "0.1.1-rc.2" && Program.Test.SanitizeLatest("1.2.3-alpha") == "1.2.3-alpha", "sanitize keeps valid versions");
+        string[] fi = Program.Test.FilterVers(new string[] { "1.0.0", "1.2.3&calc", "2.0.0-rc.1;x", "3.0.0-beta.2" }, 10);
+        Check(fi.Length == 2 && fi[0] == "3.0.0-beta.2" && fi[1] == "1.0.0", "filter drops injection strings");
         // 历史版本记忆：去重、最新在前、截断 10
         Program.Test.ResetVersions();
         Program.Test.RecordVer("v2.0.0");
@@ -215,6 +222,20 @@ public static class UnitTests
         finally { lockStream.Dispose(); }
         try { Directory.Delete(sdir, true); } catch { }
         try { Directory.Delete(Path.Combine(runDir, "backup"), true); } catch { }   // 清掉本块产生的备份目录
+
+        Console.WriteLine("[12] wipe root-marker strictness (pre-review)");
+        string mdir = Path.Combine(Path.GetTempPath(), "dsht-marker-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(mdir);
+        Check(!Program.Test.RootMarker(mdir), "no marker -> invalid");
+        File.WriteAllText(Path.Combine(mdir, ".dsh_launcher_root"), "", new UTF8Encoding(false));
+        Check(!Program.Test.RootMarker(mdir), "empty marker -> invalid (forged empty file rejected)");
+        File.WriteAllText(Path.Combine(mdir, ".dsh_launcher_root"), "garbage\n", new UTF8Encoding(false));
+        Check(!Program.Test.RootMarker(mdir), "garbage marker -> invalid");
+        File.WriteAllText(Path.Combine(mdir, ".dsh_launcher_root"), "DeepSeek Harness Toolkit V2.1.2\n", new UTF8Encoding(false));
+        Check(Program.Test.RootMarker(mdir), "product-name marker -> valid");
+        File.WriteAllText(Path.Combine(mdir, ".dsh_launcher_root"), "deepseek harness toolkit V9.9.9\n", new UTF8Encoding(false));
+        Check(Program.Test.RootMarker(mdir), "version-agnostic marker -> valid");
+        try { Directory.Delete(mdir, true); } catch { }
 
         Console.WriteLine("");
         Console.WriteLine("== " + (total - fails) + "/" + total + " passed, " + fails + " failed ==");
