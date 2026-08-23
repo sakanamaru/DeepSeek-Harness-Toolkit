@@ -165,6 +165,34 @@ public static class UnitTests
         Check(Program.Test.Latest() == null, "network failure -> silent null");
         Program.Test.SetHttpGet(null);
 
+        Console.WriteLine("[10] dsh update management (v2.1.1)");
+        // BackupKind.PreUpdate 后缀 + 自动类识别
+        Check(Program.Test.BkSuffix(Program.BackupKind.PreUpdate) == "-pre-update", "pre-update suffix");
+        Check(Program.Test.IsAutoName("dsh-data-20260101-000001-pre-update"), "pre-update -> auto");
+        // 版本输出解析（单行数组 + JSON 多行 + 空）
+        string[] p1 = Program.Test.ParseVersions("[ '0.1.0', '1.0.0', '2.0.0' ]");
+        Check(p1.Length == 3 && p1[1] == "1.0.0", "parse single-line array");
+        string[] p2 = Program.Test.ParseVersions("[\n  \"1.0.0\",\n  \"2.0.0\"\n]");
+        Check(p2.Length == 2 && p2[0] == "1.0.0", "parse JSON multiline");
+        Check(Program.Test.ParseVersions(null).Length == 0 && Program.Test.ParseVersions("").Length == 0, "empty -> empty");
+        // 干净版本判断
+        Check(Program.Test.CleanVer("2.1.0") && Program.Test.CleanVer("1.0") && !Program.Test.CleanVer("2.1.0-beta.1") && !Program.Test.CleanVer("abc") && !Program.Test.CleanVer("1.2.3.4"), "clean version filter");
+        // 版本过滤：去 pre-release、排序、取最近 N 倒序
+        string[] f1 = Program.Test.FilterVers(new string[] { "1.0.0", "2.0.0", "0.9.0", "2.1.0-beta.1", "garbage", "1.5.0" }, 3);
+        Check(f1.Length == 3 && f1[0] == "2.0.0" && f1[1] == "1.5.0" && f1[2] == "1.0.0", "filter keeps clean, sorts desc, takes N");
+        string[] f2 = Program.Test.FilterVers(new string[] { "1.0.0", "2.0.0" }, 10);
+        Check(f2.Length == 2 && f2[0] == "2.0.0", "N > count keeps all, newest first");
+        // 历史版本记忆：去重、最新在前、截断 10
+        Program.Test.ResetVersions();
+        Program.Test.RecordVer("v2.0.0");
+        Program.Test.RecordVer("2.1.0");
+        Program.Test.RecordVer("2.0.0");   // 重复 -> 去重并提到最前
+        Check(Program.Test.DshVersions() == "2.0.0,2.1.0", "record dedupes, newest first");
+        for (int i = 0; i < 12; i++) Program.Test.RecordVer("1." + i + ".0");
+        string[] hv = Program.Test.DshVersions().Split(',');
+        Check(hv.Length == 10 && hv[0] == "1.11.0", "history truncated to 10, newest first");
+        Program.Test.ResetVersions();
+
         Console.WriteLine("");
         Console.WriteLine("== " + (total - fails) + "/" + total + " passed, " + fails + " failed ==");
         Environment.Exit(fails == 0 ? 0 : 1);

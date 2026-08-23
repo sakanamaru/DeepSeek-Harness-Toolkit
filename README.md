@@ -1,4 +1,4 @@
-# DeepSeek Harness Toolkit V2.1.0
+# DeepSeek Harness Toolkit V2.1.1
 
 <div align="center">
 
@@ -14,11 +14,11 @@ A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](htt
 
 **What makes it different from running the npm package bare:**
 
-- 🔧 **Install & repair** — official npmjs.org registry by default, npmmirror as an opt-in; auto-fallback to the other source; never touches your global npm config
+- 🔧 **Install / repair / update** — official npmjs.org registry by default, npmmirror as an opt-in; auto-fallback to the other source; never touches your global npm config; optional historical version list on install/update (v2.1.1)
 - 📊 **Smart start + 3-state monitor** — TCP + HTTP verified: **running / starting / stopped** (a foreign service on :3080 is no longer mistaken for dsh); 3s status auto-refresh with red alert on disconnect
 - 💾 **Backup & retention** — one-click backup to `backup\` with **multi-workspace** support; **manual backups are kept forever**, auto/protection backups are auto-cleaned (newest N kept, floor 3, `keep_backups=`); restore/import are refused while dsh is running; cross-PC import, long-path safe
 - 🛡️ **Wipe protection** — two-step confirm (date + `yes`) with **auto-backup first**; blocked while the web service is running; a package-shipped root marker permanently refuses a stray exe copied elsewhere
-- 🌍 **One exe, bilingual menu** — Simplified Chinese / English, built on .NET Framework 4.x (preinstalled on Win10/11); **silent update check** on launch (GitHub Releases, `check_update=off` to disable); **1 MB log rotation** (`launcher.log → launcher.log.1`)
+- 🌍 **One exe, bilingual menu** — Simplified Chinese / English, built on .NET Framework 4.x (preinstalled on Win10/11); **silent update check** on launch (GitHub Releases, `check_update=off` to disable; dsh update detection `check_dsh_update=off`); **1 MB log rotation** (`launcher.log → launcher.log.1`)
 
 > ⚠️ This project is **unofficial** and is not affiliated with DeepSeek.
 
@@ -35,11 +35,12 @@ A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](htt
 | Feature | Description |
 | --- | --- |
 | Smart Start | Detects service status on launch (3-state: **running / starting / stopped** — TCP + HTTP verified so a foreign service on :3080 is not mistaken for dsh): running → status page; stopped → 5-second countdown auto-start (only when dsh is installed; if not installed, the menu waits for your choice — nothing is auto-installed) |
-| Install & Repair | Asks for the source: **official npmjs.org by default**, npmmirror offered as opt-in; always retries the other registry on failure; never touches your global npm config |
+| Install & Repair | Asks for the source: **official npmjs.org by default**, npmmirror offered as opt-in; always retries the other registry on failure; never touches your global npm config; Enter=latest, L=list historical versions to install (v2.1.1) |
 | Status Monitor | Auto-refreshes service status (3-state)/port/uptime every 3s; red alert on disconnect; 1=back / 2=open WebUI |
 | Backup & Restore | One-click backup of the data directory to `backup\` (supports **multiple workspaces**: auto-detected, then add paths one by one, empty Enter to finish; stored separately under `_workspace\name\`, restorable one by one); auto-skips `node_modules` and its own backup folders; supports list restore, cross-PC import, and opening the backup folder; **manual backups (no suffix) are kept forever**, auto/protection backups (`-auto` / `-pre-*`) beyond `keep_backups` (default 10, min 3) are oldest-first cleaned; **restore/import are refused while dsh is running** (same guard as wipe) |
 | Uninstall | Data kept by default; wiping needs two-step confirmation (today's date + `yes`) with **auto-backup first**; wiping is blocked while dsh web is running (avoid file locks) |
-| Update Check | On launch, silently queries the GitHub Releases API; only prompts when a newer version exists (with a link); offline/API failure is silent; disable with `check_update=off` |
+| Update Check | On launch, silently queries the GitHub Releases API; only prompts when a newer version exists (with a link); offline/API failure is silent; disable with `check_update=off`; **dsh update detection** shown by `check` (`check_dsh_update=off`) |
+| Update dsh | Menu 8: detect new version → pick version (Enter=latest / L=list) → ⚠️ destructive-warning **double confirm** → auto backup first (`-pre-update` + old version) → npm install → remembers local history (max 10, `*` marked); refused while dsh runs; on failure restore from backup or roll back by version (v2.1.1) |
 | Log Rotation | `logs\launcher.log` archived to `launcher.log.1` once it exceeds 1 MB (one history file kept) — no more silent log loss |
 | Data Location | Auto-locates the dsh data directory (prefers `~/.dsh`, falls back to `%APPDATA%` etc.) |
 | Entry | Pick and remember `127.0.0.1` / `localhost`: if the entry opens abnormally (often stale browser cache), switch with one key |
@@ -53,7 +54,13 @@ A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](htt
 - **Restore / Import refused while dsh is running** — same guard as uninstall/wipe (no more "you should close it first" only)
 - **Silent update check** on launch (GitHub Releases API; prompts only when a newer version exists; `check_update=off` to disable) and **1 MB log rotation** (`launcher.log → launcher.log.1`)
 - **Version-free single-instance lock** (`DeepSeek-Harness-Toolkit-single`, plus the legacy v2.0 lock name — an already-published v2.0 exe is mutually exclusive too): v2.0 and v2.1 can never open two interactive instances on the same machine at once
-- The exe file name is now the **version-free product name** `DeepSeek Harness Toolkit.exe` — version lives in the banner / About / assembly metadata (**V2.1.0**) and the release tag
+- The exe file name is now the **version-free product name** `DeepSeek Harness Toolkit.exe` — version lives in the banner / About / assembly metadata (**V2.1.1**) and the release tag
+
+## What's New in v2.1.1
+
+- **dsh update management** — Menu 8 "Update dsh": npm latest-version detection + historical version list (pre-release filtered) + auto-backup before update (`-pre-update` + old version recorded) + ⚠️ destructive-warning **double confirm**; refused while dsh is running; local version history remembered (max 10, `*` marked in the list); `check` shows the latest dsh version
+- **Install with version choice** — Enter=latest, or L to pick from the historical version list
+- New config `check_dsh_update=off` disables dsh update detection
 
 ## Relation to the Official Deployment
 
