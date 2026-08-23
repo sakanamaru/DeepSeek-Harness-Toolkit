@@ -108,6 +108,11 @@ $o = ("1`n2`n`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String); TC '9 install
 $d = Join-Path $T 'stray'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe'); Seed-DT
 $o = ("6`ny`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
 TC '10 stray uninstall refused' (($o.Contains('未检测到完整安装') -or $o.Contains('does not look like a full installation')) -and (Test-Path (Join-Path $dt 'settings.yaml')))
+# 10b stray exe + 2 个配套文件（伪造"像安装目录"）+ 无 marker -> 必须拒绝（防 LooksLikeFullInstall 绕过回归）
+$d = Join-Path $T 'strayCmp'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe')
+[IO.File]::WriteAllText((Join-Path $d 'dsh_v2.cs'), 'x'); [IO.File]::WriteAllText((Join-Path $d 'build_exe.cmd'), '@echo off')
+$o = ("6`ny`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
+TC '10b stray+companion refused' ($o.Contains('未检测到完整安装') -or $o.Contains('does not look like a full installation'))
 $d = Join-Path $T 'full'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe')
 [IO.File]::WriteAllText((Join-Path $d '.dsh_launcher_root'), 'DeepSeek Harness Toolkit V2.1.2' + [Environment]::NewLine)
 $o = ("6`ny`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
@@ -143,7 +148,7 @@ $ok15 = $false
 if ($B) { $ok15 = (Test-Path -LiteralPath (Join-Path $B.FullName '_workspace')) -and (Test-Path -LiteralPath (Join-Path $B.FullName 'settings.yaml')) }
 TC '15 backup e2e' $ok15
 $wr = Join-Path $T 'restore_ws'; NewDir $wr
-$o = ("5`n2`n1`ny`n$wr`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
+$o = ("5`n2`n1`ny`n$wr`ny`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
 # 注意：恢复前预备份与主备份可能落在同一秒（dest 同名合并），故不按"备份数+1"断言，改用文案+文件
 TC '16 restore e2e (+pre-backup)' (($o.Contains('恢复前自动备份当前数据') -or $o.Contains('Auto-backing up current data before restore')) -and ($o.Contains('恢复完成') -or $o.Contains('Restore done')) -and (Test-Path (Join-Path $wr 'report.txt')) -and (Test-Path (Join-Path $dt 'settings.yaml')))
 $foreign = Join-Path $T 'foreign'; NewDir $foreign
