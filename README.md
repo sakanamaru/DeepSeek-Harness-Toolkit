@@ -14,7 +14,7 @@ A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](htt
 
 **What makes it different from running the npm package bare:**
 
-- 🔧 **Install / repair / update** — official npmjs.org registry by default, npmmirror as an opt-in; auto-fallback to the other source; never touches your global npm config; optional historical version list on install/update (v2.1.1)
+- 🔧 **Install / repair / update** — official npmjs.org registry by default, npmmirror as an opt-in; auto-fallback to the other source; never touches your global npm config; optional historical version list on install/update
 - 📊 **Smart start + 3-state monitor** — TCP + HTTP verified: **running / starting / stopped** (a foreign service on :3080 is no longer mistaken for dsh); 3s status auto-refresh with red alert on disconnect
 - 💾 **Backup & retention** — one-click backup to `backup\` with **multi-workspace** support; **manual backups are kept forever**, auto/protection backups are auto-cleaned (newest N kept, floor 3, `keep_backups=`); restore/import are refused while dsh is running; cross-PC import, long-path safe
 - 🛡️ **Wipe protection** — two-step confirm (date + `yes`) with **auto-backup first**; blocked while the web service is running; a package-shipped root marker permanently refuses a stray exe copied elsewhere
@@ -35,12 +35,12 @@ A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](htt
 | Feature | Description |
 | --- | --- |
 | Smart Start | Detects service status on launch (3-state: **running / starting / stopped** — TCP + HTTP verified so a foreign service on :3080 is not mistaken for dsh): running → status page; stopped → 5-second countdown auto-start (only when dsh is installed; if not installed, the menu waits for your choice — nothing is auto-installed) |
-| Install & Repair | Asks for the source: **official npmjs.org by default**, npmmirror offered as opt-in; always retries the other registry on failure; never touches your global npm config; Enter=latest, L=list historical versions to install (v2.1.1) |
+| Install & Repair | Asks for the source: **official npmjs.org by default**, npmmirror offered as opt-in; always retries the other registry on failure; never touches your global npm config; Enter=latest, L=list historical versions to install |
 | Status Monitor | Auto-refreshes service status (3-state)/port/uptime every 3s; red alert on disconnect; 1=back / 2=open WebUI |
 | Backup & Restore | One-click backup of the data directory to `backup\` (supports **multiple workspaces**: auto-detected, then add paths one by one, empty Enter to finish; stored separately under `_workspace\name\`, restorable one by one); auto-skips `node_modules` and its own backup folders; supports list restore, cross-PC import, and opening the backup folder; **manual backups (no suffix) are kept forever**, auto/protection backups (`-auto` / `-pre-*`) beyond `keep_backups` (default 10, min 3) are oldest-first cleaned; **restore/import are refused while dsh is running** (same guard as wipe) |
 | Uninstall | Data kept by default; wiping needs two-step confirmation (today's date + `yes`) with **auto-backup first**; wiping is blocked while dsh web is running (avoid file locks) |
 | Update Check | On launch, silently queries the GitHub Releases API; only prompts when a newer version exists (with a link); offline/API failure is silent; disable with `check_update=off`; **dsh update detection** shown by `check` (`check_dsh_update=off`) |
-| Update dsh | Menu 8: detect new version → pick version (Enter=latest / L=list) → ⚠️ destructive-warning **double confirm** → auto backup first (`-pre-update` + old version) → npm install → remembers local history (max 10, `*` marked); refused while dsh runs; on failure restore from backup or roll back by version (v2.1.1) |
+| Update dsh | Menu 8: detect new version → pick version (Enter=latest / L=list) → ⚠️ destructive-warning **double confirm** → auto backup first (`-pre-update` + old version) → npm install → remembers local history (max 10, `*` marked); refused while dsh runs; on failure restore from backup or roll back by version |
 | Log Rotation | `logs\launcher.log` archived to `launcher.log.1` once it exceeds 1 MB (one history file kept) — no more silent log loss |
 | Data Location | Auto-locates the dsh data directory (prefers `~/.dsh`, falls back to `%APPDATA%` etc.) |
 | Entry | Pick and remember `127.0.0.1` / `localhost`: if the entry opens abnormally (often stale browser cache), switch with one key |
@@ -95,7 +95,7 @@ This tool does **not replace** the official way; it serves those who prefer not 
 Double-click `DeepSeek Harness Toolkit.exe`, or use the command line:
 
 ```
-DeepSeek Harness Toolkit.exe install|start|uninstall|check|about|help
+DeepSeek Harness Toolkit.exe install|start|uninstall|update|check|about|help
 ```
 
 Launching without arguments opens the interactive menu: when dsh is already installed the first run auto-starts the Web UI after a 5-second countdown (interruptible), and later launches auto-start too; when dsh is **not** installed the menu waits for your choice (press 1 to install) — nothing is auto-installed. With the service already running, it goes straight to the status page.
@@ -141,7 +141,7 @@ No test framework or third-party dependency is required.
   ```
   Exit code 0 = all green. Path round-trips (incl. UNC / non-ASCII), workspace blacklist (19 reject + 3 allow), dsh-data markers, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection.
 
-- **Integration tests** — 22-case stubbed end-to-end matrix (variants A/C, real 3080 probing; retention policy, restore/import blocked while running, bilingual asserts):
+- **Integration tests** — 25-case stubbed end-to-end matrix (variants A/C, real 3080 probing; retention policy, restore/import blocked while running, bilingual asserts):
   ```
   pwsh -NoProfile -File tests\integration.ps1
   ```
