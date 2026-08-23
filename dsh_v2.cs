@@ -1459,16 +1459,26 @@ public static class Program
         catch { LogErr("RunCapture: 执行异常，返回空 " + exe); return ""; }
     }
 
-    /// <summary>前台执行可见子进程；npm/winget 等长操作设置 10 分钟超时，超时强杀并返回 -2（明确失败），启动失败返回 -1。</summary>
+    /// <summary>前台执行可见子进程；npm/winget 等长操作设置 10 分钟超时，超时强杀并返回 -2（明确失败），启动失败返回 -1。
+    /// 双流后台实时排空并转发到主控制台：既保持过程可见，又防止管道缓冲写满导致子进程挂起（经典死锁）。
+    /// 改法对齐 RunCapture 的异步排空范式（.NET 4.x 无 async/await，用 ThreadPool + ReadLine 循环）。</summary>
     static int RunVisible(string file, string args)
     {
         try
         {
             file = ResolveExe(file);
-            var psi = new ProcessStartInfo(file, args) { UseShellExecute = false };
+            var psi = new ProcessStartInfo(file, args)
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
             MergeNodePath(psi);
             using (var p = Process.Start(psi))
             {
+                // 双流各自持续排空并转发，避免缓冲满 → 子进程 write 阻塞 → 与 WaitForExit 互等死锁
+                DrainAndForward(p.StandardOutput, Console.Out);
+                DrainAndForward(p.StandardError, Console.Error);
                 if (!p.WaitForExit(10 * 60 * 1000))   // v2.1.2：10 分钟超时（原无限等待，npm/winget 挂起会卡死）
                 {
                     try { p.Kill(); } catch { }
@@ -1480,6 +1490,27 @@ public static class Program
             }
         }
         catch { LogErr("进程启动失败: " + file + " " + args); return -1; }   // 启动失败（如参数错误/被拦截）返回 -1，由调用方友好提示
+    }
+
+    /// <summary>后台线程逐行读取子进程输出流并转发到主控制台（转发保持 npm/winget 进度可见；排空防止管道死锁）。</summary>
+    static void DrainAndForward(System.IO.StreamReader src, System.IO.TextWriter dst)
+    {
+        try
+        {
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    string line;
+                    while ((line = src.ReadLine()) != null)
+                    {
+                        try { if (dst != null) dst.WriteLine(line); } catch { }
+                    }
+                }
+                catch { }
+            });
+        }
+        catch { }
     }
 
     static string RunDshVersion()
