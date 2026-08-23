@@ -1713,15 +1713,20 @@ public static class Program
         CL(ConsoleColor.White, T("  请再次确认：输入 update 执行更新（其他键取消）：", "  Confirm again: type update to proceed (anything else cancels): "));
         string a2 = ReadLineTrim().Trim();
         if (a2 != "update") { Info(T("已取消，未做任何更改。", "Cancelled; nothing changed.")); Pause(); return; }
-        // pre-update 备份（失败即中止，沿用 v2.1 安全逻辑）
-        string preBk = DoBackup(DataRoot(), null, BackupKind.PreUpdate);
-        if (preBk == null)
+        // pre-update 备份（失败即中止，沿用 v2.1 安全逻辑；数据目录尚未生成时跳过备份——与 wipe 的 L606 判断同构）
+        string preBk = null;
+        if (Directory.Exists(DataRoot()))
         {
-            Error(T("更新前自动备份失败，已中止更新（请先手动备份或检查磁盘空间）。", "Pre-update backup failed; update aborted (back up manually or check disk space first)."));
-            Pause(); return;
+            preBk = DoBackup(DataRoot(), null, BackupKind.PreUpdate);
+            if (preBk == null)
+            {
+                Error(T("更新前自动备份失败，已中止更新（请先手动备份或检查磁盘空间）。", "Pre-update backup failed; update aborted (back up manually or check disk space first)."));
+                Pause(); return;
+            }
+            try { File.WriteAllText(Path.Combine(preBk, "version.txt"), cur, new UTF8Encoding(false)); } catch { }   // 记录旧版本号供回滚
+            Info(T("已自动备份：" + preBk, "Auto backup: " + preBk));
         }
-        try { File.WriteAllText(Path.Combine(preBk, "version.txt"), cur, new UTF8Encoding(false)); } catch { }   // 记录旧版本号供回滚
-        Info(T("已自动备份：" + preBk, "Auto backup: " + preBk));
+        else Info(T("无数据目录，跳过更新前备份。", "No data directory; skipping pre-update backup."));
         // 执行安装
         string[] regs = new string[] { NPM_OFFICIAL, NPM_MIRROR };
         int code = NpmInstallDsh(target, regs);
@@ -1794,7 +1799,7 @@ public static class Program
     {
         Banner();
         Console.WriteLine(T("用法：", "Usage:"));
-        Console.WriteLine("  DeepSeek Harness Toolkit v2.1.0 install | start | uninstall | check | about | help");
+        Console.WriteLine("  DeepSeek Harness Toolkit v" + CurrentVersion() + " install | start | uninstall | update | check | about | help");
         Console.WriteLine(T("  不带参数启动交互菜单（dsh 已安装时 5 秒自动启动；未安装时按 1 选择安装）。",
                             "  Without arguments: interactive menu (auto-start in 5s when dsh is installed; press 1 to install when not)."));
     }
@@ -1872,6 +1877,7 @@ public static class Program
         public static string DshVersions() { return Program.cfgDshVersions; }
         public static void RecordVer(string v) { Program.RecordDshVersion(v); }
         public static void ResetVersions() { Program.cfgDshVersions = ""; }
+        public static string DoBackup(string src) { return Program.DoBackup(src); }
     }
 #endif
 }

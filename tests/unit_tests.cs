@@ -192,6 +192,8 @@ public static class UnitTests
         string[] hv = Program.Test.DshVersions().Split(',');
         Check(hv.Length == 10 && hv[0] == "1.11.0", "history truncated to 10, newest first");
         Program.Test.ResetVersions();
+        // P1 修复契约：备份源不存在 -> null（UpdateDsh 据此跳过 pre-update 备份而非中止）
+        Check(Program.Test.DoBackup(Path.Combine(Path.GetTempPath(), "dsht-no-such-" + Guid.NewGuid().ToString("N"))) == null, "DoBackup missing source -> null");
 
         Console.WriteLine("");
         Console.WriteLine("== " + (total - fails) + "/" + total + " passed, " + fails + " failed ==");
