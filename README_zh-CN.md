@@ -173,3 +173,5 @@ logs/               运行错误日志目录（已被 .gitignore 排除，切勿
 - v1 脚本协助 : SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 - v2 重构封装 : DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）
 - GitHub    : @sakanamaru  https://github.com/sakanamaru
+
+如果这个工具帮到了你，欢迎在仓库右上角点个 ⭐——就是对维护最大的鼓励。

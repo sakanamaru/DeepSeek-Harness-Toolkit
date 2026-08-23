@@ -161,3 +161,5 @@ This project is open source under the MIT License. You are free to use, modify a
 - v1 script assistance: SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 - v2 rewrite & packaging: DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）
 - GitHub: @sakanamaru  https://github.com/sakanamaru
+
+If this tool helped you, a ⭐ on the repo's top right would mean a lot — it keeps this project going.
