@@ -63,7 +63,9 @@ public static class Program
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
         try { Console.Title = "DeepSeek Harness Toolkit V2.1.2"; } catch { }
         StateDir = ResolveStateDir();
-        EnsureRootMarker();   // 完整安装 → 静默补标记（新包自带标记，此行主要兼容旧版本目录）
+        // 注意：根目录标记 .dsh_launcher_root 只随发布包分发，本程序永不自行补建——
+        // 若启动时"看起来像完整安装"就自动写标记，攻击者可诱导用户将 exe 与任意同名文件
+        // 放一处后自动补建标记，削弱"单独复制 exe 永远不能 wipe"的安全边界。
         LoadConfig();
         if (args.Length > 0)
         {
@@ -295,7 +297,9 @@ public static class Program
     // ---------------- 安装 ----------------
 
     /// <summary>npm 全局安装/更新 dsh 指定版本（version 空=最新）；多源依次尝试，返回 0=成功，-1=全部失败。
-    /// 版本号会拼进 cmd 命令行，故入口做严格白名单复核（防注入，纵深防御）。</summary>
+    /// 版本号会拼进 cmd 命令行（.NET 4.x ProcessStartInfo 无 ArgumentList，只能字符串拼接），
+    /// 故入口做双层防线：① 版本整串白名单复核（IsValidNpmVersion，防注入）② 包名整体加引号、注册表仅取代码内常量。
+    /// registry 参数绝不出自用户输入/网络数据（仅 NPM_OFFICIAL / NPM_MIRROR 常量），避免任何注入面。</summary>
     static int NpmInstallDsh(string version, string[] registries)
     {
         if (!string.IsNullOrEmpty(version) && !IsValidNpmVersion(version))
@@ -303,7 +307,7 @@ public static class Program
             Error(T("版本号不合法，已拒绝安装：" + version, "Invalid version string; install refused: " + version));
             return -1;
         }
-        string pkg = "@deepseek-ai/dsh" + (string.IsNullOrEmpty(version) ? "" : "@" + version);
+        string pkg = "\"@deepseek-ai/dsh" + (string.IsNullOrEmpty(version) ? "" : "@" + version) + "\"";
         for (int i = 0; i < registries.Length; i++)
         {
             Info(string.Format(T("第 {0}/{1} 次尝试，源：{2}", "Attempt {0}/{1}, registry: {2}"), i + 1, registries.Length, registries[i]));
@@ -530,30 +534,6 @@ public static class Program
         catch { return false; }
     }
 
-    /// <summary>标记文件随安装包分发；此处仅在"目录看起来是完整安装（含配套文件）"时静默补建，兼容旧版本目录。
-    /// 单独复制的 exe（无配套文件）永远不会自建标记，从而永久被删除类操作拒绝。</summary>
-    static void EnsureRootMarker()
-    {
-        try
-        {
-            string p = Path.Combine(StateDir, ROOT_MARKER);
-            if (File.Exists(p)) return;
-            if (!LooksLikeFullInstall(StateDir)) return;
-            File.WriteAllText(p, "DeepSeek Harness Toolkit V2.1.2" + Environment.NewLine);
-            File.SetAttributes(p, FileAttributes.Hidden);
-        }
-        catch (Exception ex) { LogErr("创建根目录标记失败: " + ex.Message); }
-    }
-
-    /// <summary>目录是否包含足够多的配套文件，可视为完整安装（标记随包分发 + 兼容旧目录的迁移判断）。</summary>
-    static bool LooksLikeFullInstall(string dir)
-    {
-        int n = 0;
-        foreach (string f in new string[] { "dsh_v2.cs", "build_exe.cmd", "hashes.txt", "icon.ico", "README.md" })
-            try { if (File.Exists(Path.Combine(dir, f))) n++; } catch { }
-        return n >= 2;
-    }
-
     // ---------------- 卸载 ----------------
 
     static void Uninstall()
@@ -714,6 +694,43 @@ public static class Program
         return false;
     }
 
+    /// <summary>备份目录格式校验：目录名须为本工具生成的 "dsh-data-&lt;时间戳&gt;[后缀]" 形式，
+    /// 且内容含 dsh 数据特征或工作区子目录（_workspace）。仅目录存在不算数。</summary>
+    static bool IsValidBackupDir(string dir)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return false;
+            string name = Path.GetFileName(dir.TrimEnd('\\'));
+            if (!name.StartsWith("dsh-data-", StringComparison.OrdinalIgnoreCase)) return false;
+            if (LooksLikeDshData(dir)) return true;
+            string ws = Path.Combine(dir, "_workspace");
+            if (Directory.Exists(ws)) return true;
+            return false;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>备份目录定位：本身是有效备份包（dsh-data-* + 数据特征/工作区）则返回；
+    /// 若所选目录下恰好只含一个 dsh-data-* 子目录（用户可能选了备份的父目录），自动下探定位；
+    /// 其余一律返回 null（不是备份包）。防把任意文件夹当备份恢复/导入。</summary>
+    static string ResolveBackupDir(string dir)
+    {
+        if (IsValidBackupDir(dir)) return dir;
+        try
+        {
+            var subs = new List<string>();
+            foreach (string d in Directory.GetDirectories(dir))
+            {
+                string n = Path.GetFileName(d.TrimEnd('\\'));
+                if (n.StartsWith("dsh-data-", StringComparison.OrdinalIgnoreCase)) subs.Add(d);
+            }
+            if (subs.Count == 1 && IsValidBackupDir(subs[0])) return subs[0];
+        }
+        catch { }
+        return null;
+    }
+
     /// <summary>清除数据的两步确认：第 1 步输入当天日期（yyyyMMdd），第 2 步输入 yes。</summary>
     static bool TwoStepConfirm()
     {
@@ -838,6 +855,15 @@ public static class Program
         if (sel.Length > 0 && !int.TryParse(sel, out idx)) { Warn(T("输入无效。", "Invalid input.")); return; }
         if (idx < 1 || idx > dirs.Length) idx = 1;
         string bk = dirs[idx - 1];
+        // 恢复前校验备份格式：目录名必须 dsh-data-* 且含数据特征/工作区（防误把任意目录当备份恢复）
+        if (!IsValidBackupDir(bk))
+        {
+            Warn(T("所选目录不是有效的备份包（应为 dsh-data-时间戳 格式且含数据）：" + Path.GetFileName(bk) +
+                   "\n  已取消恢复，请检查备份目录。", "Not a valid backup package (expected dsh-data-TIMESTAMP with data): " +
+                   Path.GetFileName(bk) + "\n  Restore cancelled; check the backup folder."));
+            Pause();
+            return;
+        }
         string dst = DataRoot();
         Console.Write(T("  恢复将覆盖当前数据（建议先关闭 dsh web）。确认？输入 y 继续：",
                         "  Restore overwrites current data (close dsh web first). Type y to continue: "));
@@ -1177,13 +1203,22 @@ public static class Program
         Console.Write(T("  备份目录路径：", "  Backup directory path: "));
         string path = ReadLineTrim();
         if (path.Length == 0 || !Directory.Exists(path)) { Warn(T("目录不存在。", "Directory not found.")); Pause(); return; }
+        // 备份格式校验：必须是 dsh-data-* 备份包（或所选目录下恰好一个）；防把任意文件夹当备份导入
+        string bkPath = ResolveBackupDir(path);
+        if (bkPath == null)
+        {
+            Warn(T("所选目录不是有效的备份包（目录名须为 dsh-data-时间戳，且内容含 dsh 数据或工作区）。\n  请选择备份文件夹本身（或仅含一个备份子目录的父目录）。",
+                   "Not a valid backup package (directory name must be dsh-data-TIMESTAMP and contain dsh data or workspaces).\n  Pick the backup folder itself (or a parent containing exactly one)."));
+            Pause();
+            return;
+        }
+        path = bkPath;
         bool hasWs = Directory.Exists(Path.Combine(path, "_workspace"));
-        bool hasData = Directory.GetFiles(path).Length > 0 || Directory.GetDirectories(path).Length > (hasWs ? 1 : 0);
+        bool hasData = LooksLikeDshData(path);
         Console.WriteLine();
         C(ConsoleColor.Gray, T("  导入内容：", "  Import contents:"));
         C(ConsoleColor.Gray, "    - " + T("dsh 数据", "dsh data") + " : "); CL(ConsoleColor.White, hasData ? T("有", "yes") : T("无", "no"));
         C(ConsoleColor.Gray, "    - " + T("工作区", "workspace") + " : "); CL(ConsoleColor.White, hasWs ? T("有", "yes") : T("无", "no"));
-        if (!hasData && !hasWs) { Warn(T("该目录不是有效的备份。", "Not a valid backup directory.")); Pause(); return; }
         Console.Write(T("  确认导入？输入 y 继续：", "  Confirm import? Type y: "));
         string importAsk = ReadLineTrim();
         if (importAsk != "y" && importAsk != "Y") { Warn(T("已取消。", "Cancelled.")); return; }
@@ -1550,7 +1585,9 @@ public static class Program
         return d >= 0 ? v.Substring(0, d) : v;
     }
 
-    /// <summary>版本号比较："a 低于 b" 返回负数，"相等" 0，"a 高于 b" 正数。比较前剥掉 pre-release 后缀（rc 与同核心正式版视为相等）。</summary>
+    /// <summary>版本号比较（semver 语义）：核心段数字比较；核心段相同且一个带 pre-release 后缀（-rc/-beta）
+    /// 一个不带时，**正式版高于 rc**（2.1.2 > 2.1.2-rc），修复"rc 与正式版视为相等"导致更新检测漏报。
+    /// "a 低于 b" 返回负数，"相等" 0，"a 高于 b" 正数。</summary>
     static int CompareVersions(string a, string b)
     {
         string[] pa = CoreVersion(a).Split('.');
@@ -1562,6 +1599,9 @@ public static class Program
             int.TryParse(i < pb.Length ? pb[i] : "0", out y);
             if (x != y) return x < y ? -1 : 1;
         }
+        bool aPre = a.IndexOf('-') >= 0;
+        bool bPre = b.IndexOf('-') >= 0;
+        if (aPre != bPre) return aPre ? -1 : 1;   // 同核心：正式版（无后缀）高于 rc/beta
         return 0;
     }
 
@@ -1947,7 +1987,8 @@ public static class Program
         public static string DoBackup(string src) { return Program.DoBackup(src); }
         public static string DoBackupKind(string src, BackupKind k) { return Program.DoBackup(src, null, k); }
         public static bool RootMarker(string dir) { return Program.RootMarkerValid(dir); }
-        public static bool FullInstall(string dir) { return Program.LooksLikeFullInstall(dir); }
+        public static bool ValidBackup(string dir) { return Program.IsValidBackupDir(dir); }
+        public static string ResolveBackup(string dir) { return Program.ResolveBackupDir(dir); }
     }
 #endif
 }
