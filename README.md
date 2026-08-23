@@ -58,15 +58,12 @@ A third-party, **unofficial** launcher / ops tool for the [DeepSeek Harness](htt
 
 ## What's New in v2.1.2
 
-- **Protection backups are now strict** — a Pre-wipe / Pre-restore / Pre-import / Pre-update backup that fails to copy ANY file (locked/corrupt) now aborts the whole dangerous operation, instead of continuing with an incomplete safety net; manual/auto backups stay best-effort (skip + log)
-- **dsh latest-version sanity check** — the version returned by `npm view` is validated with the clean-version filter (rejects pre-release/garbage); an invalid value is treated as "offline"
-- **10-minute timeout for long operations** — `npm install/uninstall` and `winget` are force-terminated after 10 minutes with a clear failure message instead of hanging forever
-
-## What's New in v2.1.1
-
-- **dsh update management** — Menu 8 "Update dsh": npm latest-version detection + historical version list (pre-release filtered) + auto-backup before update (`-pre-update` + old version recorded) + ⚠️ destructive-warning **double confirm**; refused while dsh is running; local version history remembered (max 10, `*` marked in the list); `check` shows the latest dsh version
+- **dsh update management** — Menu 8 "Update dsh": npm latest-version detection + historical version list (pre-release/rc supported) + auto-backup before update (`-pre-update` + old version recorded) + ⚠️ destructive-warning **double confirm**; refused while dsh is running; local version history remembered (max 10, `*` marked in the list); `check` shows the latest dsh version
 - **Install with version choice** — Enter=latest, or L to pick from the historical version list
 - New config `check_dsh_update=off` disables dsh update detection
+- **Protection backups are now strict** — a Pre-wipe / Pre-restore / Pre-import / Pre-update backup that fails to copy ANY file (locked/corrupt) now aborts the whole dangerous operation, instead of continuing with an incomplete safety net; manual/auto backups stay best-effort (skip + log)
+- **dsh latest-version sanity check** — the version returned by `npm view` is validated against a clean core (pre-release like `0.1.1-rc.2` accepted, garbage rejected); invalid → treated as "offline"
+- **10-minute timeout for long operations** — `npm install/uninstall` and `winget` are force-terminated after 10 minutes with a clear failure message instead of hanging forever
 
 ## Relation to the Official Deployment
 
