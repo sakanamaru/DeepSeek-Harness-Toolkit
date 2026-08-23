@@ -1175,12 +1175,26 @@ public static class Program
         string t = ReadLineTrim().Trim().Trim('"');
         if (t == "0") { Info(T("已跳过该工作区。", "Workspace skipped.")); return; }
         string target = null;
-        if (t.Length > 0) { try { target = Path.GetFullPath(t); } catch { target = null; } }
+        bool custom = t.Length > 0;
+        if (custom) { try { target = Path.GetFullPath(t); } catch { target = null; } }
         if (target == null) target = def;
         if (target == null || !Directory.Exists(target))
         {
             Warn(T("目标目录无效，已跳过该工作区。", "Invalid target, skipped."));
             return;
+        }
+        // 自定义恢复目标确认：可能覆盖已有数据或指向错误位置，恢复前要求确认
+        if (custom && (def == null || !string.Equals(target, def, StringComparison.OrdinalIgnoreCase)))
+        {
+            bool hasContent = Directory.GetFileSystemEntries(target).Length > 0;
+            string ask = hasContent
+                ? T("  警告：目标目录非空（将合并/覆盖其中文件）：" + target + "\n  确认恢复？输入 y 继续：",
+                    "  Warning: target directory is not empty (files will be merged/overwritten): " + target + "\n  Continue restore? Type y: ")
+                : T("  恢复目标：" + target + "。确认？输入 y 继续：",
+                    "  Restore target: " + target + ". Continue? Type y: ");
+            Console.Write(ask);
+            string confirm = ReadLineTrim();
+            if (confirm != "y" && confirm != "Y") { Warn(T("已取消。", "Cancelled.")); return; }
         }
         if (isNewFormat)
         {
