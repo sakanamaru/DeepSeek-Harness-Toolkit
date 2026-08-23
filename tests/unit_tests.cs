@@ -186,7 +186,7 @@ public static class UnitTests
         // v2.1.2 回归修复：pre-release（rc）版本支持——dsh 正式发布均为 rc
         Check(Program.Test.SanitizeLatest("0.1.1-rc.2") == "0.1.1-rc.2" && Program.Test.SanitizeLatest("v2.1.0") == "2.1.0", "sanitize accepts rc / v-prefix");
         Check(Program.Test.SanitizeLatest("garbage") == null && Program.Test.SanitizeLatest("latest") == null && Program.Test.SanitizeLatest("") == null && Program.Test.SanitizeLatest(null) == null, "sanitize rejects garbage");
-        Check(Program.Test.CmpVer("0.1.1", "0.1.1-rc.2") == 0 && Program.Test.CmpVer("0.1.1-rc.2", "0.2.0") < 0 && Program.Test.CmpVer("2.1.0-beta.1", "2.1.0") == 0, "CompareVersions strips pre-release suffix");
+        Check(Program.Test.CmpVer("0.1.1", "0.1.1") == 0 && Program.Test.CmpVer("0.1.1-rc.2", "0.1.1") < 0 && Program.Test.CmpVer("0.1.1-rc.2", "0.2.0") < 0 && Program.Test.CmpVer("2.1.0-beta.1", "2.1.0") < 0 && Program.Test.CmpVer("2.1.0-rc.1", "2.1.0-rc.2") == 0, "CompareVersions: same core -> release > rc; different core -> numeric");
         // v2.1.2 安全加固：严格整串白名单——拒绝任何命令注入字符（空格/&/;/|/>/</引号/反引号等），含预发布段
         Check(Program.Test.SanitizeLatest("1.2.3&calc") == null && Program.Test.SanitizeLatest("1.2.3; calc.exe") == null && Program.Test.SanitizeLatest("1.2.3|cmd") == null && Program.Test.SanitizeLatest("1.2.3>nul") == null && Program.Test.SanitizeLatest("1.2.3<in") == null && Program.Test.SanitizeLatest("1.2.3-rc.2 & echo pwned") == null && Program.Test.SanitizeLatest("1.2.3-rc.2\" & whoami") == null, "sanitize rejects injection characters");
         Check(Program.Test.SanitizeLatest("1.2.3-rc.2-beta.3") == null && Program.Test.SanitizeLatest("1.2.3-") == null, "sanitize rejects double dash / trailing dash");
@@ -236,6 +236,34 @@ public static class UnitTests
         File.WriteAllText(Path.Combine(mdir, ".dsh_launcher_root"), "deepseek harness toolkit V9.9.9\n", new UTF8Encoding(false));
         Check(Program.Test.RootMarker(mdir), "version-agnostic marker -> valid");
         try { Directory.Delete(mdir, true); } catch { }
+
+        Console.WriteLine("[13] backup dir validation (pre-review)");
+        string bdir = Path.Combine(Path.GetTempPath(), "dsht-bkval-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(bdir);
+        // 名字不对 -> 无效
+        string bad1 = Path.Combine(bdir, "backup-folder"); Directory.CreateDirectory(bad1);
+        File.WriteAllText(Path.Combine(bad1, "settings.yaml"), "x");
+        Check(!Program.Test.ValidBackup(bad1), "name without dsh-data- prefix -> invalid");
+        // 名字对但内容空 -> 无效
+        string empty = Path.Combine(bdir, "dsh-data-20260101-000001"); Directory.CreateDirectory(empty);
+        Check(!Program.Test.ValidBackup(empty), "dsh-data-* but empty -> invalid");
+        // 名字对 + 数据特征 -> 有效
+        File.WriteAllText(Path.Combine(empty, "settings.yaml"), "x");
+        Check(Program.Test.ValidBackup(empty), "dsh-data-* + settings.yaml -> valid");
+        // 名字对 + 只有 _workspace -> 有效（纯工作区备份）
+        string wsOnly = Path.Combine(bdir, "dsh-data-20260101-000002"); Directory.CreateDirectory(wsOnly);
+        Directory.CreateDirectory(Path.Combine(wsOnly, "_workspace", "proj"));
+        Check(Program.Test.ValidBackup(wsOnly), "dsh-data-* + _workspace only -> valid");
+        // 目录不存在 -> 无效
+        Check(!Program.Test.ValidBackup(Path.Combine(bdir, "dsh-data-nope")), "missing dir -> invalid");
+        // ResolveBackupDir：直接给备份目录 -> 原样返回；给仅含一个备份的父目录 -> 下探定位
+        Check(Program.Test.ResolveBackup(empty) == empty, "resolve: backup dir itself -> same");
+        string parent = Path.Combine(bdir, "parent"); Directory.CreateDirectory(parent);
+        Check(Program.Test.ResolveBackup(parent) == null, "resolve: empty parent -> null");
+        Directory.CreateDirectory(Path.Combine(parent, "dsh-data-20260101-000003"));
+        File.WriteAllText(Path.Combine(parent, "dsh-data-20260101-000003", "credentials.yaml"), "x");
+        Check(Program.Test.ResolveBackup(parent) != null && Path.GetFileName(Program.Test.ResolveBackup(parent)).StartsWith("dsh-data-"), "resolve: parent with one dsh-data-* -> descends");
+        try { Directory.Delete(bdir, true); } catch { }
 
         Console.WriteLine("");
         Console.WriteLine("== " + (total - fails) + "/" + total + " passed, " + fails + " failed ==");
