@@ -188,7 +188,7 @@ if ($portLive) {
     $results.Add('22 import-block(needs 3080)         SKIP')
 }
 
-# 25 更新运行中拒绝（v2.1.1：UpdateDsh 守卫，变体 C 真实端口，CLI update）
+# 25 更新运行中拒绝（UpdateDsh 守卫，变体 C 真实端口，CLI update）
 if ($portLive) {
     $d25 = Join-Path $T 'updC'; NewDir $d25; Copy-Item $tC (Join-Path $d25 't.exe')
     [IO.File]::WriteAllText((Join-Path $d25 'launcher.config'), ('lang=zh' + [Environment]::NewLine + 'check_update=off' + [Environment]::NewLine))
