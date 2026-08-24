@@ -265,6 +265,23 @@ public static class UnitTests
         Check(Program.Test.ResolveBackup(parent) != null && Path.GetFileName(Program.Test.ResolveBackup(parent)).StartsWith("dsh-data-"), "resolve: parent with one dsh-data-* -> descends");
         try { Directory.Delete(bdir, true); } catch { }
 
+        // ---- 桌面快捷方式 ----
+        Console.WriteLine("[Z] desktop shortcut");
+        string sd = Path.Combine(Path.GetTempPath(), "dsh_ut_shortcut_" + Guid.NewGuid().ToString("N"));
+        try { Directory.Delete(sd, true); } catch { }
+        // DSH_TEST_DESKTOP 隔离生效
+        Check(Program.Test.Desktop(sd) == sd, "env DSH_TEST_DESKTOP overrides desktop");
+        // 创建快捷方式（临时目录，不碰真实桌面）
+        string err = Program.Test.Shortcut(sd);
+        Check(err == null, "shortcut created (err=" + (err ?? "(null)") + ")");
+        Check(File.Exists(Path.Combine(sd, "DeepSeek Harness Toolkit.lnk")), "shortcut file exists");
+        // 不存在目录也自动创建
+        string sd2 = Path.Combine(Path.GetTempPath(), "dsh_ut_shortcut_missing_" + Guid.NewGuid().ToString("N"));
+        string err2 = Program.Test.Shortcut(sd2);
+        Check(err2 == null && File.Exists(Path.Combine(sd2, "DeepSeek Harness Toolkit.lnk")), "shortcut auto-creates missing dir");
+        try { Directory.Delete(sd, true); } catch { }
+        try { Directory.Delete(sd2, true); } catch { }
+
         Console.WriteLine("");
         Console.WriteLine("== " + (total - fails) + "/" + total + " passed, " + fails + " failed ==");
         Environment.Exit(fails == 0 ? 0 : 1);
