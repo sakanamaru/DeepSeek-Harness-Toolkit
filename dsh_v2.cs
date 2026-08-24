@@ -224,7 +224,6 @@ public static class Program
             Console.WriteLine();
             CL(ConsoleColor.White, "  1) " + T("安装 / 修复 dsh", "Install / Repair dsh"));
             CL(ConsoleColor.White, "  2) " + T("启动 Web 界面", "Start Web UI"));
-            CL(ConsoleColor.White, "  I) " + T("生成桌面快捷方式", "Create desktop shortcut"));
             CL(ConsoleColor.White, "  3) " + T("关于 / 署名", "About / Credits"));
             CL(ConsoleColor.White, "  4) " + T("语言 / Language", "Language"));
             CL(ConsoleColor.White, "  5) " + T("备份 / 恢复", "Backup / Restore"));
@@ -247,8 +246,6 @@ public static class Program
                 case "6": Uninstall(); break;
                 case "7": EntryMenu(); break;
                 case "8": UpdateDsh(); break;
-                case "i":
-                case "I": ShortcutInteractive(); break;
                 case "0":
                 case "q":
                     CL(ConsoleColor.Gray, T("  再见~", "  Bye~"));
@@ -494,8 +491,13 @@ public static class Program
             Console.WriteLine();
             Console.WriteLine();
             C(ConsoleColor.White, "  1) " + T("返回菜单", "Back to menu"));
-            Console.Write("      ");
+            Console.WriteLine();
             C(ConsoleColor.White, "  2) " + T("打开 WebUI", "Open Web UI"));
+            if (!ShortcutExists())
+            {
+                Console.WriteLine();
+                C(ConsoleColor.White, "  I) " + T("创建桌面快捷方式", "Create desktop shortcut"));
+            }
             Console.WriteLine();
             Console.WriteLine();
             bool redir = true;
@@ -504,6 +506,13 @@ public static class Program
             string k = WaitKeyChar(3000);
             if (k == "1") return;            // 返回菜单
             if (k == "2") OpenBrowser();     // 快捷打开 WebUI，留在监控页
+            if ((k == "i" || k == "I") && !ShortcutExists())
+            {
+                string serr = CreateDesktopShortcut(DesktopDir());
+                Console.WriteLine();
+                if (serr == null) Success(T("桌面快捷方式已创建：DeepSeek Harness Toolkit.lnk", "Desktop shortcut created: DeepSeek Harness Toolkit.lnk"));
+                else Error(T("桌面快捷方式创建失败：" + serr, "Desktop shortcut creation failed: " + serr));
+            }
             // 其他按键忽略，继续自动刷新
         }
     }
@@ -1741,15 +1750,10 @@ public static class Program
         Environment.Exit(1);
     }
 
-    /// <summary>交互式创建桌面快捷方式（菜单 I / 安装后询问共用）。</summary>
-    static void ShortcutInteractive()
+    /// <summary>桌面快捷方式是否已存在（监控页条件显示 I 选项）。</summary>
+    static bool ShortcutExists()
     {
-        Console.WriteLine();
-        Info(T("正在创建桌面快捷方式（指向本程序）...", "Creating desktop shortcut (points to this tool)..."));
-        string err = CreateDesktopShortcut(DesktopDir());
-        if (err == null) Success(T("桌面快捷方式已创建：DeepSeek Harness Toolkit.lnk", "Desktop shortcut created: DeepSeek Harness Toolkit.lnk"));
-        else Error(T("桌面快捷方式创建失败：" + err, "Desktop shortcut creation failed: " + err));
-        Pause();
+        return File.Exists(Path.Combine(DesktopDir(), "DeepSeek Harness Toolkit.lnk"));
     }
 
     // ---------------- 体检 / 关于 / 帮助 ----------------
@@ -2112,6 +2116,7 @@ public static class Program
         public static string ResolveBackup(string dir) { return Program.ResolveBackupDir(dir); }
         public static string Shortcut(string desktopDir) { return Program.CreateDesktopShortcut(desktopDir); }
         public static string Desktop(string dir) { string old = Environment.GetEnvironmentVariable("DSH_TEST_DESKTOP"); try { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", dir); return Program.DesktopDir(); } finally { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", old); } }
+        public static bool ShortcutExists(string dir) { string old = Environment.GetEnvironmentVariable("DSH_TEST_DESKTOP"); try { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", dir); return Program.ShortcutExists(); } finally { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", old); } }
     }
 #endif
 }

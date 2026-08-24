@@ -138,6 +138,28 @@ if ($portLive) {
     $results.Add('19 uninstall-block(needs 3080)      SKIP')
 }
 
+# 27/28 监控页 I 选项条件显示（变体 C 真实端口；DSH_TEST_DESKTOP 隔离，不碰真实桌面）
+if ($portLive) {
+    # 27：快捷方式不存在 -> 显示 I 行
+    $desk27 = Join-Path $T 'desk27'; NewDir $desk27
+    $env:DSH_TEST_DESKTOP = $desk27
+    $o27 = ("2`n0`n" | & $tC 2>&1 | Out-String)
+    Remove-Item Env:DSH_TEST_DESKTOP -ErrorAction SilentlyContinue
+    TC '27 monitor shows I when no shortcut' (($o27.Contains('I)')) -and ($o27.Contains('打开 WebUI') -or $o27.Contains('Open Web UI')))
+    # 28：快捷方式已存在 -> 隐藏 I 行
+    $desk28 = Join-Path $T 'desk28'; NewDir $desk28
+    $ws = New-Object -ComObject WScript.Shell
+    $sc = $ws.CreateShortcut((Join-Path $desk28 'DeepSeek Harness Toolkit.lnk'))
+    $sc.TargetPath = "$env:WINDIR\System32\notepad.exe"
+    $sc.Save()
+    $env:DSH_TEST_DESKTOP = $desk28
+    $o28 = ("2`n0`n" | & $tC 2>&1 | Out-String)
+    Remove-Item Env:DSH_TEST_DESKTOP -ErrorAction SilentlyContinue
+    TC '28 monitor hides I when shortcut exists' (($o28.Contains('打开 WebUI') -or $o28.Contains('Open Web UI')) -and (-not $o28.Contains('I)')))
+} else {
+    $results.Add('27/28 monitor-I(needs 3080)        SKIP')
+}
+
 # 15-18 备份/恢复/导入/嵌套
 $d = Join-Path $T 'bk'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe'); Seed-DT
 $wsdir = Join-Path $T 'ws_data'; NewDir $wsdir; [IO.File]::WriteAllText((Join-Path $wsdir 'report.txt'), 'ws placeholder')
