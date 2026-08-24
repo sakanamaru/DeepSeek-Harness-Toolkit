@@ -271,10 +271,14 @@ public static class UnitTests
         try { Directory.Delete(sd, true); } catch { }
         // DSH_TEST_DESKTOP 隔离生效
         Check(Program.Test.Desktop(sd) == sd, "env DSH_TEST_DESKTOP overrides desktop");
+        // 创建前不存在 -> 监控页应显示 I
+        Check(!Program.Test.ShortcutExists(sd), "shortcut not exists -> show I option");
         // 创建快捷方式（临时目录，不碰真实桌面）
         string err = Program.Test.Shortcut(sd);
         Check(err == null, "shortcut created (err=" + (err ?? "(null)") + ")");
         Check(File.Exists(Path.Combine(sd, "DeepSeek Harness Toolkit.lnk")), "shortcut file exists");
+        // 创建后已存在 -> 监控页应隐藏 I
+        Check(Program.Test.ShortcutExists(sd), "shortcut exists -> hide I option");
         // 不存在目录也自动创建
         string sd2 = Path.Combine(Path.GetTempPath(), "dsh_ut_shortcut_missing_" + Guid.NewGuid().ToString("N"));
         string err2 = Program.Test.Shortcut(sd2);
