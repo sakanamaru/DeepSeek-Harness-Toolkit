@@ -1,5 +1,5 @@
 // ============================================================================
-//  DeepSeek Harness Toolkit V2.1.3  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
+//  DeepSeek Harness Toolkit V2.1.4  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
 // ----------------------------------------------------------------------------
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 //  v2 重构封装：DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）
@@ -21,12 +21,12 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 
-[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.1.3")]
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.1.4")]
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
-[assembly: AssemblyVersion("2.1.3.0")]
-[assembly: AssemblyFileVersion("2.1.3.0")]
+[assembly: AssemblyVersion("2.1.4.0")]
+[assembly: AssemblyFileVersion("2.1.4.0")]
 
 public static class Program
 {
@@ -61,7 +61,7 @@ public static class Program
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Toolkit V2.1.3"; } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.1.4"; } catch { }
         StateDir = ResolveStateDir();
         // 注意：根目录标记 .dsh_launcher_root 只随发布包分发，本程序永不自行补建——
         // 若启动时"看起来像完整安装"就自动写标记，攻击者可诱导用户将 exe 与任意同名文件
@@ -77,6 +77,7 @@ public static class Program
                 case "check":     case "c": Check();   return;
                 case "update":    case "up": UpdateDsh(); return;
                 case "about":     case "a": About();   return;
+                case "shortcut":  case "sc": ShortcutCli(); return; // 创建桌面快捷方式（脚本/安装后调用）
                 case "help":      case "h": Help();    return;
                 case "selftest": Selftest(args); return;
                 default:
@@ -176,7 +177,7 @@ public static class Program
     static void Banner()
     {
         CL(ConsoleColor.Cyan,   "==============================================");
-        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.1.3");
+        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.1.4");
         CL(ConsoleColor.Cyan,   "==============================================");
         C(ConsoleColor.Gray,    "  v1 脚本协助 : "); CL(ConsoleColor.White, "SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
         C(ConsoleColor.Gray,    "  v2 重构封装 : "); CL(ConsoleColor.White, "DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
@@ -229,6 +230,7 @@ public static class Program
             CL(ConsoleColor.White, "  6) " + T("卸载 dsh", "Uninstall dsh"));
             CL(ConsoleColor.White, "  7) " + T("访问入口 / Entry", "Entry Address"));
             CL(ConsoleColor.White, "  8) " + T("更新 dsh", "Update dsh"));
+            CL(ConsoleColor.White, "  I) " + T("生成桌面快捷方式", "Create desktop shortcut"));
             CL(ConsoleColor.White, "  0) " + T("退出", "Exit"));
             Console.WriteLine();
 
@@ -245,6 +247,8 @@ public static class Program
                 case "6": Uninstall(); break;
                 case "7": EntryMenu(); break;
                 case "8": UpdateDsh(); break;
+                case "i":
+                case "I": ShortcutInteractive(); break;
                 case "0":
                 case "q":
                     CL(ConsoleColor.Gray, T("  再见~", "  Bye~"));
@@ -357,6 +361,15 @@ public static class Program
                   "dsh version: " + (string.IsNullOrWhiteSpace(nv) ? "? (verify in a new terminal)" : nv)));
         Console.WriteLine();
         Info(T("接下来：选择【2 启动 Web 界面】即可打开浏览器。", "Next: choose【Start Web UI】to open the browser."));
+        Console.WriteLine();
+        CL(ConsoleColor.White, T("  是否创建桌面快捷方式？(Y/N，默认 N) ", "  Create a desktop shortcut? (Y/N, default N) "));
+        string sn = ReadLineTrim();
+        if (sn == "y" || sn == "Y")
+        {
+            string serr = CreateDesktopShortcut(DesktopDir());
+            if (serr == null) Success(T("桌面快捷方式已创建：DeepSeek Harness Toolkit.lnk", "Desktop shortcut created: DeepSeek Harness Toolkit.lnk"));
+            else Error(T("桌面快捷方式创建失败：" + serr, "Desktop shortcut creation failed: " + serr));
+        }
         Pause();
     }
 
@@ -1676,6 +1689,69 @@ public static class Program
         return s.Trim();
     }
 
+    // ---------------- 桌面快捷方式 ----------------
+
+    /// <summary>创建桌面快捷方式指向本程序 exe；返回 null=成功，否则=原因。</summary>
+    static string CreateDesktopShortcut(string desktopDir)
+    {
+        try
+        {
+            string exe = Assembly.GetExecutingAssembly().Location;   // 本体 exe 绝对路径
+            if (string.IsNullOrEmpty(exe)) return "无法定位本体 exe 路径";
+            if (!Directory.Exists(desktopDir))
+            {
+                try { Directory.CreateDirectory(desktopDir); } catch { }
+                if (!Directory.Exists(desktopDir)) return "桌面目录不可用：" + desktopDir;
+            }
+            string lnk = Path.Combine(desktopDir, "DeepSeek Harness Toolkit.lnk");
+            // COM WScript.Shell 创建 .lnk（.NET 4.x 无内置 .lnk 写入 API；WScript.Shell 为 Windows 自带组件）
+            Type wsType = Type.GetTypeFromProgID("WScript.Shell");
+            if (wsType == null) return "WScript.Shell 组件不可用";
+            object shell = Activator.CreateInstance(wsType);
+            object sc = wsType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, new object[] { lnk });
+            Type scType = sc.GetType();
+            scType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, sc, new object[] { exe });
+            scType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, sc, new object[] { Path.GetDirectoryName(exe) });
+            scType.InvokeMember("Description", BindingFlags.SetProperty, null, sc, new object[] { "DeepSeek Harness Toolkit" });
+            scType.InvokeMember("Save", BindingFlags.InvokeMethod, null, sc, null);
+            return File.Exists(lnk) ? null : "快捷方式文件未生成";
+        }
+        catch (Exception ex) { LogErr("CreateDesktopShortcut: " + ex.Message); return ex.Message; }
+    }
+
+    /// <summary>当前用户桌面目录（SpecialFolder.DesktopDirectory，重定向到 OneDrive 桌面也生效）。
+    /// 测试隔离：设 DSH_TEST_DESKTOP 环境变量时改用该目录（仅测试用，不设置则无影响）。</summary>
+    static string DesktopDir()
+    {
+        try
+        {
+            string test = Environment.GetEnvironmentVariable("DSH_TEST_DESKTOP");
+            if (!string.IsNullOrWhiteSpace(test)) return test;
+            return Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        }
+        catch { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Desktop"); }
+    }
+
+    /// <summary>非交互创建桌面快捷方式（CLI shortcut 用）：成功输出 SHORTCUT_OK，失败 SHORTCUT_FAIL 原因。</summary>
+    static void ShortcutCli()
+    {
+        string err = CreateDesktopShortcut(DesktopDir());
+        if (err == null) { Console.WriteLine("SHORTCUT_OK " + Path.Combine(DesktopDir(), "DeepSeek Harness Toolkit.lnk")); return; }
+        Console.WriteLine("SHORTCUT_FAIL " + err);
+        Environment.Exit(1);
+    }
+
+    /// <summary>交互式创建桌面快捷方式（菜单 I / 安装后询问共用）。</summary>
+    static void ShortcutInteractive()
+    {
+        Console.WriteLine();
+        Info(T("正在创建桌面快捷方式（指向本程序）...", "Creating desktop shortcut (points to this tool)..."));
+        string err = CreateDesktopShortcut(DesktopDir());
+        if (err == null) Success(T("桌面快捷方式已创建：DeepSeek Harness Toolkit.lnk", "Desktop shortcut created: DeepSeek Harness Toolkit.lnk"));
+        else Error(T("桌面快捷方式创建失败：" + err, "Desktop shortcut creation failed: " + err));
+        Pause();
+    }
+
     // ---------------- 体检 / 关于 / 帮助 ----------------
 
     // ---------------- dsh 更新管理 ----------------
@@ -1950,7 +2026,7 @@ public static class Program
     {
         Banner();
         Console.WriteLine(T("用法：", "Usage:"));
-        Console.WriteLine("  DeepSeek Harness Toolkit v" + CurrentVersion() + " install | start | uninstall | update | check | about | help");
+        Console.WriteLine("  DeepSeek Harness Toolkit v" + CurrentVersion() + " install | start | uninstall | update | check | about | shortcut | help");
         Console.WriteLine(T("  不带参数启动交互菜单（dsh 已安装时 5 秒自动启动；未安装时按 1 选择安装）。",
                             "  Without arguments: interactive menu (auto-start in 5s when dsh is installed; press 1 to install when not)."));
     }
@@ -2034,6 +2110,8 @@ public static class Program
         public static bool RootMarker(string dir) { return Program.RootMarkerValid(dir); }
         public static bool ValidBackup(string dir) { return Program.IsValidBackupDir(dir); }
         public static string ResolveBackup(string dir) { return Program.ResolveBackupDir(dir); }
+        public static string Shortcut(string desktopDir) { return Program.CreateDesktopShortcut(desktopDir); }
+        public static string Desktop(string dir) { string old = Environment.GetEnvironmentVariable("DSH_TEST_DESKTOP"); try { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", dir); return Program.DesktopDir(); } finally { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", old); } }
     }
 #endif
 }
