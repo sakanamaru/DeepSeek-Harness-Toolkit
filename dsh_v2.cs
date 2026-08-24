@@ -224,13 +224,13 @@ public static class Program
             Console.WriteLine();
             CL(ConsoleColor.White, "  1) " + T("安装 / 修复 dsh", "Install / Repair dsh"));
             CL(ConsoleColor.White, "  2) " + T("启动 Web 界面", "Start Web UI"));
+            CL(ConsoleColor.White, "  I) " + T("生成桌面快捷方式", "Create desktop shortcut"));
             CL(ConsoleColor.White, "  3) " + T("关于 / 署名", "About / Credits"));
             CL(ConsoleColor.White, "  4) " + T("语言 / Language", "Language"));
             CL(ConsoleColor.White, "  5) " + T("备份 / 恢复", "Backup / Restore"));
             CL(ConsoleColor.White, "  6) " + T("卸载 dsh", "Uninstall dsh"));
             CL(ConsoleColor.White, "  7) " + T("访问入口 / Entry", "Entry Address"));
             CL(ConsoleColor.White, "  8) " + T("更新 dsh", "Update dsh"));
-            CL(ConsoleColor.White, "  I) " + T("生成桌面快捷方式", "Create desktop shortcut"));
             CL(ConsoleColor.White, "  0) " + T("退出", "Exit"));
             Console.WriteLine();
 
