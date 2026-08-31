@@ -163,7 +163,8 @@ if ($portLive) {
 # 15-18 备份/恢复/导入/嵌套
 $d = Join-Path $T 'bk'; NewDir $d; Copy-Item $tA (Join-Path $d 't.exe'); Seed-DT
 $wsdir = Join-Path $T 'ws_data'; NewDir $wsdir; [IO.File]::WriteAllText((Join-Path $wsdir 'report.txt'), 'ws placeholder')
-$o = ("5`n1`n$wsdir`n`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
+# M-7：$T 位于 UserProfile 子树，命中工作区黑名单 → 需输入 yes 显式确认后仍可备份（顺带覆盖 M-7 二次确认路径）
+$o = ("5`n1`n$wsdir`nyes`n`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
 $bkdir = Join-Path $d 'backup'
 $B = Get-ChildItem -LiteralPath $bkdir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'dsh-data-*' } | Select-Object -First 1
 $ok15 = $false
@@ -180,7 +181,8 @@ $bk2 = @(Get-ChildItem -LiteralPath $bkdir -Directory -ErrorAction SilentlyConti
 TC '17 import e2e' (($o.Contains('导入前自动备份当前数据') -or $o.Contains('Auto-backing up current data before import')) -and ($o.Contains('恢复完成') -or $o.Contains('Restore done')) -and ($bk2 -ge 1))
 $wsdir2 = Join-Path $T 'ws_nested'; NewDir $wsdir2; NewDir (Join-Path $wsdir2 'dsh-data-20250101-000000')
 [IO.File]::WriteAllText((Join-Path $wsdir2 'dsh-data-20250101-000000\x.txt'), 'fake')
-$o = ("5`n1`n$wsdir2`n`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
+# M-7：同样位于 UserProfile 子树，需 yes 确认后才真正进入备份，验证 CopyTree 跳过嵌套 dsh-data-*
+$o = ("5`n1`n$wsdir2`nyes`n`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
 $dummy = @(Get-ChildItem -LiteralPath $bkdir -Recurse -Filter 'x.txt' -ErrorAction SilentlyContinue).Count
 TC '18 nested backup skipped' ((($o -join ' ').Contains('跳过') -or ($o -join ' ').Contains('skipping') -or ($o -join ' ').Contains('skipped')) -and ($dummy -eq 0))
 

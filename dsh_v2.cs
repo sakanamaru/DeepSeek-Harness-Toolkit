@@ -609,9 +609,11 @@ public static class Program
         }
 
         string dir = DataRoot();
-        // 防误删验证（严格）：必须存在**有效**的根目录标记 .dsh_launcher_root（随包分发/自动补建，内容含产品名）；
-        // 仅"看起来像完整安装"（≥2 个配套文件）或伪造的空 marker 不再放行——杜绝诱导清除
-        bool rootOk = RootMarkerValid(StateDir);
+        // 防误删验证（严格）：必须存在**有效**的根目录标记 .dsh_launcher_root（随包分发，内容含产品名）；
+        // 仅"看起来像完整安装"（≥2 个配套文件）或伪造的空 marker 不再放行——杜绝诱导清除。
+        // M-6：marker 校验固定锚定 exe 目录（BaseDirectory），而非可能漂移到 %APPDATA% 的 StateDir——
+        // 避免"完整包放只读位置时 wipe 被永久拒绝"以及"攻击者写 APPDATA 即解锁任意位置 exe"两个方向的问题。
+        bool rootOk = RootMarkerValid(AppDomain.CurrentDomain.BaseDirectory);
         if (!rootOk)
         {
             Error(T("未检测到完整安装（缺少有效标记文件 " + ROOT_MARKER + "）。\n  请从解压后的完整目录运行本程序；切勿将 exe 单独复制后执行清除。已拒绝删除。",
@@ -834,6 +836,15 @@ public static class Program
             string full = null;
             try { full = Path.GetFullPath(p); } catch { full = null; }
             if (full == null) { Warn(T("路径无效，请重新输入。", "Invalid path, try again.")); continue; }
+            // M-7：手动输入同样过工作区黑名单（盘根/用户主目录/系统目录等整盘复制风险），命中需显式二次确认
+            if (!LooksLikeWorkspace(full))
+            {
+                Warn(T("该路径位于系统/用户目录（盘根、用户主目录、Windows、Program Files 等），整目录备份可能包含大量无关甚至敏感文件。",
+                        "This path is under a system/user directory (drive root, user profile, Windows, Program Files, ...); backing it up whole may include unrelated or sensitive files."));
+                CL(ConsoleColor.White, T("  仍要包含该目录吗？输入 yes 确认（其他键跳过）：", "  Include it anyway? Type yes to confirm (anything else skips): "));
+                string c2 = ReadLineTrim().Trim();
+                if (c2 != "yes") { Warn(T("已跳过该目录。", "Directory skipped.")); continue; }
+            }
             if (!Directory.Exists(full)) { Warn(T("目录不存在：" + p + "（直接回车可结束）。", "Not found: " + p + " (Enter to finish).")); continue; }
             bool dup = false, nested = false;
             foreach (string e in wsList)
@@ -1154,13 +1165,13 @@ public static class Program
         bool hasWs = Directory.Exists(Path.Combine(path, "_workspace"));
         try
         {
-            Directory.CreateDirectory(dst);
+            Directory.CreateDirectory(P(dst));   // M-5：恢复侧同样走 \\?\ 长路径前缀
             Info(T("正在恢复数据...", "Restoring data..."));
-            foreach (string d in Directory.GetDirectories(path))
+            foreach (string d in Directory.GetDirectories(P(path)))
                 if (Path.GetFileName(d) != "_workspace")
                     CopyTree(d, Path.Combine(dst, Path.GetFileName(d)));
-            foreach (string f in Directory.GetFiles(path))
-                File.Copy(f, Path.Combine(dst, Path.GetFileName(f)), true);
+            foreach (string f in Directory.GetFiles(P(path)))
+                File.Copy(P(f), P(Path.Combine(dst, Path.GetFileName(f))), true);   // M-5：恢复侧同样走 \\?\ 长路径前缀
             if (hasWs) RestoreWorkspaces(Path.Combine(path, "_workspace"));
             Success(T("恢复完成。请重启 dsh web。", "Restore done. Restart dsh web."));
         }
@@ -1224,7 +1235,7 @@ public static class Program
                 CopyTree(d, Path.Combine(target, Path.GetFileName(d)));
             foreach (string f in Directory.GetFiles(srcDir))
                 if (Path.GetFileName(f) != ".dshws")
-                    File.Copy(f, Path.Combine(target, Path.GetFileName(f)), true);
+                    File.Copy(P(f), P(Path.Combine(target, Path.GetFileName(f))), true);   // M-5：恢复侧同样走 \\?\ 长路径前缀
         }
         else CopyTree(srcDir, target);
         Success(T("已恢复工作区到 " + target, "Workspace restored to " + target));
@@ -1467,7 +1478,7 @@ public static class Program
                 var tErr = p.StandardError.ReadToEndAsync();
                 if (!p.WaitForExit(15000))
                 {
-                    try { p.Kill(); } catch { }
+                    KillProcessTree(p.Id);   // 进程树终止：连带杀派生 npm/node 子进程，杜绝孤儿进程
                     p.WaitForExit();
                     LogErr("命令执行超时（15 秒），已强制结束: " + exe + " " + args);
                     return "";
@@ -1503,7 +1514,7 @@ public static class Program
                 DrainAndForward(p.StandardError, Console.Error);
                 if (!p.WaitForExit(10 * 60 * 1000))   // v2.1.2：10 分钟超时（原无限等待，npm/winget 挂起会卡死）
                 {
-                    try { p.Kill(); } catch { }
+                    KillProcessTree(p.Id);   // 进程树终止：连带杀派生 npm/node 子进程，杜绝孤儿进程
                     p.WaitForExit();
                     LogErr("长时间操作超时（10 分钟），已强制结束: " + file + " " + args);
                     return -2;   // 超时终止
@@ -1533,6 +1544,37 @@ public static class Program
             });
         }
         catch { }
+    }
+
+    /// <summary>进程树终止：taskkill /T /F 连带杀派生子进程（npm.cmd→node.exe 等），失败时回退 p.Kill()。
+    /// 解决仅 kill 直接进程（cmd.exe）导致 npm/node 孤儿进程继续运行的问题（与重试产生文件锁竞态）。</summary>
+    static void KillProcessTree(int pid)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("taskkill.exe", "/PID " + pid + " /T /F")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using (var k = Process.Start(psi))
+            {
+                if (k != null)
+                {
+                    var o = k.StandardOutput.ReadToEndAsync();
+                    var e = k.StandardError.ReadToEndAsync();
+                    if (!k.WaitForExit(5000)) { try { k.Kill(); } catch { } }
+                    else { string r = o.Result.Trim(); LogErr("taskkill 结果: " + (string.IsNullOrWhiteSpace(r) ? "(empty)" : r)); }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogErr("taskkill 失败，回退直接 Kill: " + ex.Message);
+            try { var p = Process.GetProcessById(pid); p.Kill(); } catch { }
+        }
     }
 
     static string RunDshVersion()
@@ -1652,8 +1694,9 @@ public static class Program
         return d >= 0 ? v.Substring(0, d) : v;
     }
 
-    /// <summary>版本号比较（semver 语义）：核心段数字比较；核心段相同且一个带 pre-release 后缀（-rc/-beta）
-    /// 一个不带时，**正式版高于 rc**（2.1.2 > 2.1.2-rc），修复"rc 与正式版视为相等"导致更新检测漏报。
+    /// <summary>版本号比较（semver 语义）：核心段数字比较；核心段相同再比较 pre-release 后缀——
+    /// ① 正式版（无后缀）高于 rc/beta（2.1.2 > 2.1.2-rc）；② 同带后缀按 `.` 分段逐段比较，数字段按数值序、
+    /// 字母段按字典序（rc.1 &lt; rc.2 &lt; rc.10），缺段视为更低。
     /// "a 低于 b" 返回负数，"相等" 0，"a 高于 b" 正数。</summary>
     static int CompareVersions(string a, string b)
     {
@@ -1666,9 +1709,42 @@ public static class Program
             int.TryParse(i < pb.Length ? pb[i] : "0", out y);
             if (x != y) return x < y ? -1 : 1;
         }
-        bool aPre = a.IndexOf('-') >= 0;
-        bool bPre = b.IndexOf('-') >= 0;
-        if (aPre != bPre) return aPre ? -1 : 1;   // 同核心：正式版（无后缀）高于 rc/beta
+        return ComparePreRelease(a, b);
+    }
+
+    /// <summary>比较 pre-release 后缀（仅当核心段已相等时调用）：无后缀（正式版）> 有后缀；
+    /// 同带后缀按 `.` 分段逐段比（数字段数值序、字母/混合段字典序，ASCII 序下数字段天然低于字母段），缺段更低。</summary>
+    static int ComparePreRelease(string a, string b)
+    {
+        int da = a.IndexOf('-');
+        int db = b.IndexOf('-');
+        string pa = da >= 0 ? a.Substring(da + 1) : "";
+        string pb = db >= 0 ? b.Substring(db + 1) : "";
+        if (pa.Length == 0 && pb.Length == 0) return 0;
+        if (pa.Length == 0) return 1;    // 正式版（无后缀）高于预发布
+        if (pb.Length == 0) return -1;
+        string[] sa = pa.Split('.');
+        string[] sb = pb.Split('.');
+        for (int i = 0; i < Math.Max(sa.Length, sb.Length); i++)
+        {
+            string x = i < sa.Length ? sa[i] : null;
+            string y = i < sb.Length ? sb[i] : null;
+            if (x == null && y == null) return 0;
+            if (x == null) return -1;    // 较短后缀更低：rc < rc.1
+            if (y == null) return 1;
+            int nx, ny;
+            bool xn = int.TryParse(x, out nx);
+            bool yn = int.TryParse(y, out ny);
+            if (xn && yn)
+            {
+                if (nx != ny) return nx < ny ? -1 : 1;
+            }
+            else
+            {
+                int c = string.CompareOrdinal(x, y);
+                if (c != 0) return c < 0 ? -1 : 1;
+            }
+        }
         return 0;
     }
 
@@ -1891,7 +1967,7 @@ public static class Program
     static void UpdateDsh()
     {
         Banner();
-        if (ProbeService() == ServiceState.Ready)
+        if (ProbeService() != ServiceState.Down)   // 守卫与备份/恢复/导入一致：启动中（Listening）也拒绝，避免半启动状态文件占用竞态
         {
             Error(T("dsh Web 服务正在运行，请先停止再更新（菜单 2 启动界面中可停止）。", "dsh web is running. Stop it first (from the Start UI screen)."));
             Pause(); return;
@@ -1963,19 +2039,53 @@ public static class Program
         int code = NpmInstallDsh(target, regs);
         if (code == 0)
         {
-            Success(T("更新成功！正在验证...", "Updated! Verifying..."));
             string nv = RunDshVersion();
-            string disp = string.IsNullOrWhiteSpace(nv) ? target : nv;
-            if (disp.Length > 0) RecordDshVersion(disp);
-            Success(T("dsh 版本：" + (string.IsNullOrWhiteSpace(nv) ? T("？（请新开终端验证）", "? (verify in a new terminal)") : nv),
-                      "dsh version: " + (string.IsNullOrWhiteSpace(nv) ? "? (verify in a new terminal)" : nv)));
+            // M-2：安装退出码 0 不算完，必须验证实际版本 == 目标版本（nv 为空或不等都判失败并走回滚）
+            string nvClean = SanitizeLatestVersion(nv);   // 去掉 v 前缀/脏字符，非法返回 null
+            bool ok = !string.IsNullOrWhiteSpace(nvClean) && CompareVersions(nvClean, target) == 0;
+            if (ok)
+            {
+                Success(T("更新成功！已安装 v" + nvClean, "Updated! Now on v" + nvClean));
+                RecordDshVersion(nvClean);
+                Info(T("数据已备份于 " + (preBk ?? T("（本次无数据目录，未备份）", "(no data dir this run, not backed up)")), "Data backed up at " + (preBk ?? "(no data dir this run, not backed up)")));
+            }
+            else
+            {
+                string reason = string.IsNullOrWhiteSpace(nv)
+                    ? T("安装返回成功但无法读取新版本号", "install returned success but the new version could not be read")
+                    : T("安装返回成功但版本不符（期望 v" + target + "，实际 " + (nvClean ?? nv) + "）", "install returned success but version mismatch (expected v" + target + ", got " + (nvClean ?? nv) + ")");
+                Error(T("更新验证失败：" + reason, "Update verification failed: " + reason));
+                RollbackUpdate(cur, preBk);
+            }
         }
         else
         {
-            Error(T("更新失败。数据已备份于 " + preBk + "；可用命令回滚：npm install -g @deepseek-ai/dsh@" + cur,
-                    "Update failed. Data backed up at " + preBk + "; roll back with: npm install -g @deepseek-ai/dsh@" + cur));
+            Error(T("更新失败（退出码 " + code + "）。", "Update failed (exit code " + code + ")."));
+            RollbackUpdate(cur, preBk);
         }
         Pause();
+    }
+
+    /// <summary>更新失败后自动回滚到旧版本 cur 并验证；回滚失败给出明确手动指引 + 备份位置（M-1）。</summary>
+    static void RollbackUpdate(string cur, string preBk)
+    {
+        Info(T("正在自动回滚到 v" + cur + " ...", "Auto-rolling back to v" + cur + " ..."));
+        string[] regs = new string[] { NPM_OFFICIAL, NPM_MIRROR };
+        int rc = NpmInstallDsh(cur, regs);
+        string rv = rc == 0 ? RunDshVersion() : null;
+        string rvClean = SanitizeLatestVersion(rv);
+        bool rolledBack = rc == 0 && !string.IsNullOrWhiteSpace(rvClean) && CompareVersions(rvClean, cur) == 0;
+        if (rolledBack)
+        {
+            Success(T("已回滚到 v" + cur, "Rolled back to v" + cur));
+        }
+        else
+        {
+            Error(T("自动回滚失败。请手动执行：npm install -g @deepseek-ai/dsh@" + cur,
+                    "Auto-rollback failed. Manually run: npm install -g @deepseek-ai/dsh@" + cur));
+        }
+        if (!string.IsNullOrWhiteSpace(preBk))
+            Info(T("数据已备份于：" + preBk, "Data backed up at: " + preBk));
     }
 
     static void Check()
