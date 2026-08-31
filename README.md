@@ -105,7 +105,7 @@ No test framework or third-party dependency is required.
   ```
   Touches only the stubbed data dir `~/.dsh_test` — never your real `~/.dsh`. When port 3080 is closed, "running"-related cases are SKIPped, not failed. Exit code 0 = all green.
 
-- **CI** — GitHub Actions runs both suites automatically on **`v*` tag push and manual dispatch** (`workflow_dispatch`), and rebuilds release assets + `hashes.txt` from the tag.
+- **CI** — GitHub Actions runs both test suites automatically on **every push to `main`, every pull request, and `v*` tag push**; release assets + `hashes.txt` are rebuilt only on `v*` tag push or manual dispatch (`workflow_dispatch`).
 
 ## Directory Layout
 
