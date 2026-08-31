@@ -1,5 +1,5 @@
 // ============================================================================
-//  DeepSeek Harness Toolkit V2.3.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
+//  DeepSeek Harness Toolkit V2.4.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
 // ----------------------------------------------------------------------------
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 //  v2 重构封装：DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）
@@ -21,12 +21,12 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 
-[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.3.0")]
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.4.0")]
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
-[assembly: AssemblyVersion("2.3.0.0")]
-[assembly: AssemblyFileVersion("2.3.0.0")]
+[assembly: AssemblyVersion("2.4.0.0")]
+[assembly: AssemblyFileVersion("2.4.0.0")]
 
 public static class Program
 {
@@ -61,7 +61,7 @@ public static class Program
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Toolkit V2.3.0"; } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.4.0"; } catch { }
         StateDir = ResolveStateDir();
         // 注意：根目录标记 .dsh_launcher_root 只随发布包分发，本程序永不自行补建——
         // 若启动时"看起来像完整安装"就自动写标记，攻击者可诱导用户将 exe 与任意同名文件
@@ -72,12 +72,19 @@ public static class Program
             switch (args[0].TrimStart('-', '/').ToLowerInvariant())
             {
                 case "install":   case "i": Install(); return;
-                case "start":     case "s": Start();   return;
+                case "start":     case "s":
+                    if (args.Length > 1 && (args[1] == "--bg" || args[1] == "-bg")) StartBg();   // GUI 后台启动：启动后立即返回，不进监控页
+                    else Start();
+                    return;
+                case "stop": StopCli(); return;   // 非交互停止 dsh web（GUI 用）
                 case "uninstall": case "u": Uninstall(); return;
                 case "check":     case "c": Check();   return;
                 case "update":    case "up": UpdateDsh(); return;
                 case "about":     case "a": About();   return;
                 case "shortcut":  case "sc": ShortcutCli(); return; // 创建桌面快捷方式（脚本/安装后调用）
+                case "backup":    case "b": NIBackup();  return;   // 非交互备份（GUI/脚本用）
+                case "restore":   case "r": NIRestore(); return;   // 非交互恢复最新备份（GUI/脚本用）
+                case "status": StatusCli(); return;   // 服务三态（GUI 状态灯用）
                 case "help":      case "h": Help();    return;
                 case "selftest": Selftest(args); return;
                 default:
@@ -177,7 +184,7 @@ public static class Program
     static void Banner()
     {
         CL(ConsoleColor.Cyan,   "==============================================");
-        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.3.0");
+        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.4.0");
         CL(ConsoleColor.Cyan,   "==============================================");
         C(ConsoleColor.Gray,    "  v1 脚本协助 : "); CL(ConsoleColor.White, "SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
         C(ConsoleColor.Gray,    "  v2 重构封装 : "); CL(ConsoleColor.White, "DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
@@ -452,6 +459,67 @@ public static class Program
         try { Process.Start(url); }
         catch (Exception ex) { Warn(T("打开失败：" + ex.Message + "（可手动访问 " + url + "）",
                                       "Failed to open: " + ex.Message + " (visit " + url + " manually).")); }
+    }
+
+    /// <summary>后台启动 dsh web（GUI/脚本用）：启动后立即返回，不进监控页、不打开浏览器。
+    /// 输出 START_OK / START_FAIL &lt;原因&gt;；已在运行时同样 START_OK（幂等）。不 Pause、不读输入。</summary>
+    static void StartBg()
+    {
+        string dsh = LocateDsh();
+        if (dsh == null) { Console.WriteLine("START_FAIL " + T("未找到 dsh", "dsh not found")); return; }
+        if (ProbeService() != ServiceState.Down) { Console.WriteLine("START_OK"); return; }   // 已在运行（含启动中）→ 幂等成功
+        try
+        {
+            var psi = new ProcessStartInfo("cmd.exe", "/k \"" + dsh + "\" web")
+            {
+                UseShellExecute = true,
+                WorkingDirectory = WorkspaceRoot() ?? AppDomain.CurrentDomain.BaseDirectory
+            };
+            Process.Start(psi);
+            Console.WriteLine("START_OK");
+        }
+        catch (Exception ex) { Console.WriteLine("START_FAIL " + ex.Message); }
+    }
+
+    /// <summary>从 netstat 输出解析监听指定端口的进程 PID；找不到返回 0。纯解析，便于单测。</summary>
+    static int ParsePortPid(string netstatOutput, int port)
+    {
+        if (string.IsNullOrWhiteSpace(netstatOutput)) return 0;
+        string suffix = ":" + port;
+        foreach (string raw in netstatOutput.Split('\n'))
+        {
+            string t = raw.Trim();
+            if (t.Length == 0 || t.IndexOf("LISTENING", StringComparison.OrdinalIgnoreCase) < 0) continue;
+            string[] parts = t.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            // 格式: TCP  127.0.0.1:3080  0.0.0.0:0  LISTENING  1234   （本地地址为第 2 列，PID 末列）
+            if (parts.Length < 5) continue;
+            if (!parts[1].EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) continue;
+            int pid;
+            if (int.TryParse(parts[parts.Length - 1], out pid) && pid > 0) return pid;
+        }
+        return 0;
+    }
+
+    /// <summary>监听指定端口的进程 PID（netstat -ano -p tcp），找不到/出错返回 0。</summary>
+    static int FindPortPid(int port)
+    {
+        return ParsePortPid(RunCapture("cmd.exe", "/c netstat -ano -p tcp"), port);
+    }
+
+    /// <summary>非交互停止 dsh web：找监听 3080 的进程树并终止，验证端口释放。
+    /// 输出 STOP_OK / STOP_FAIL &lt;原因&gt;；已停止时同样 STOP_OK（幂等）。不 Pause、不读输入。</summary>
+    static void StopCli()
+    {
+        if (ProbeService() == ServiceState.Down) { Console.WriteLine("STOP_OK"); return; }   // 已停止 → 幂等成功
+        int pid = FindPortPid(WEB_PORT);
+        if (pid <= 0) { Console.WriteLine("STOP_FAIL " + T("未找到 dsh 进程", "dsh process not found")); return; }
+        KillProcessTree(pid);   // 进程树终止：连带杀派生的 node 子进程
+        for (int i = 0; i < 20; i++)
+        {
+            Thread.Sleep(250);
+            if (ProbeService() == ServiceState.Down) { Console.WriteLine("STOP_OK"); return; }
+        }
+        Console.WriteLine("STOP_FAIL " + T("端口未释放", "port still in use"));
     }
 
     /// <summary>启动后的实时运行状态监控页：每 3 秒刷新，按任意键返回菜单。</summary>
@@ -1866,7 +1934,50 @@ public static class Program
         return File.Exists(Path.Combine(DesktopDir(), "DeepSeek Harness Toolkit.lnk"));
     }
 
-    // ---------------- 体检 / 关于 / 帮助 ----------------
+    // ---------------- 非交互 CLI（GUI 集成地基：单行机器可读标记，不 Pause、不读输入） ----------------
+
+    /// <summary>非交互备份数据目录：输出 BACKUP_OK &lt;路径&gt; / BACKUP_FAIL &lt;原因&gt;。不附加工交互工作区。</summary>
+    static void NIBackup()
+    {
+        string src = DataRoot();
+        if (!Directory.Exists(src)) { Console.WriteLine("BACKUP_FAIL " + T("数据目录不存在：" + src, "data dir not found: " + src)); return; }
+        string bk = DoBackup(src, null, BackupKind.Manual);
+        if (bk != null) Console.WriteLine("BACKUP_OK " + bk);
+        else Console.WriteLine("BACKUP_FAIL " + T("备份失败（见 launcher.log）", "backup failed (see launcher.log)"));
+    }
+
+    /// <summary>非交互恢复最新有效备份：输出 RESTORE_OK &lt;路径&gt; / RESTORE_FAIL &lt;原因&gt;。
+    /// 沿用交互版安全顺序：运行中拒绝 + 恢复前自动备份 + 目标仅默认工作区（不询问）。</summary>
+    static void NIRestore()
+    {
+        string root = BackupsRoot();
+        if (!Directory.Exists(root)) { Console.WriteLine("RESTORE_FAIL " + T("没有备份", "no backups")); return; }
+        string[] dirs = Directory.GetDirectories(root, "dsh-data-*");
+        Array.Sort(dirs);
+        Array.Reverse(dirs);
+        string bk = null;
+        foreach (string d in dirs) { if (IsValidBackupDir(d)) { bk = d; break; } }   // 最新有效备份
+        if (bk == null) { Console.WriteLine("RESTORE_FAIL " + T("无有效备份", "no valid backup")); return; }
+        if (ProbeService() != ServiceState.Down) { Console.WriteLine("RESTORE_FAIL " + T("dsh 正在运行，无法恢复", "dsh is running; cannot restore")); return; }
+        string dst = DataRoot();
+        if (Directory.Exists(dst))
+        {
+            string preBk = DoBackup(dst, null, BackupKind.PreRestore);
+            if (preBk == null) { Console.WriteLine("RESTORE_FAIL " + T("恢复前自动备份失败", "pre-restore backup failed")); return; }
+        }
+        inputEof = true;   // 非交互：工作区恢复走默认目标，任何 ReadLineTrim 立即返回 ""（不阻塞 stdin）
+        RestoreFromSource(bk);
+        Console.WriteLine("RESTORE_OK " + bk);
+    }
+
+    /// <summary>非交互服务三态：输出 STATUS_UP / STATUS_STARTING / STATUS_DOWN。</summary>
+    static void StatusCli()
+    {
+        ServiceState st = ProbeService();
+        if (st == ServiceState.Ready) Console.WriteLine("STATUS_UP");
+        else if (st == ServiceState.Listening) Console.WriteLine("STATUS_STARTING");
+        else Console.WriteLine("STATUS_DOWN");
+    }
 
     // ---------------- dsh 更新管理 ----------------
 
@@ -2180,7 +2291,7 @@ public static class Program
     {
         Banner();
         Console.WriteLine(T("用法：", "Usage:"));
-        Console.WriteLine("  DeepSeek Harness Toolkit v" + CurrentVersion() + " install | start | uninstall | update | check | about | shortcut | help");
+        Console.WriteLine("  DeepSeek Harness Toolkit v" + CurrentVersion() + " install | start [--bg] | stop | uninstall | update | check | backup | restore | status | about | shortcut | help");
         Console.WriteLine(T("  不带参数启动交互菜单（dsh 已安装时 5 秒自动启动；未安装时按 1 选择安装）。",
                             "  Without arguments: interactive menu (auto-start in 5s when dsh is installed; press 1 to install when not)."));
     }
@@ -2267,6 +2378,7 @@ public static class Program
         public static string Shortcut(string desktopDir) { return Program.CreateDesktopShortcut(desktopDir); }
         public static string Desktop(string dir) { string old = Environment.GetEnvironmentVariable("DSH_TEST_DESKTOP"); try { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", dir); return Program.DesktopDir(); } finally { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", old); } }
         public static bool ShortcutExists(string dir) { string old = Environment.GetEnvironmentVariable("DSH_TEST_DESKTOP"); try { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", dir); return Program.ShortcutExists(); } finally { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", old); } }
+        public static int ParsePort(string netstat, int port) { return Program.ParsePortPid(netstat, port); }
     }
 #endif
 }

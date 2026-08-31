@@ -286,6 +286,16 @@ public static class UnitTests
         try { Directory.Delete(sd, true); } catch { }
         try { Directory.Delete(sd2, true); } catch { }
 
+        // ---- netstat 端口 PID 解析（非交互 stop 依赖） ----
+        Console.WriteLine("[NIRESTORE] netstat ParsePortPid");
+        Check(Program.Test.ParsePort("  TCP    127.0.0.1:3080    0.0.0.0:0    LISTENING    1234\r\n", 3080) == 1234, "parse 127.0.0.1:3080 LISTENING pid");
+        Check(Program.Test.ParsePort("  TCP    0.0.0.0:3080      0.0.0.0:0    LISTENING    999\r\n", 3080) == 999, "parse 0.0.0.0:3080");
+        Check(Program.Test.ParsePort("  TCP    [::]:3080          [::]:0       LISTENING    7\r\n", 3080) == 7, "parse IPv6 [::]:3080");
+        Check(Program.Test.ParsePort("  TCP    127.0.0.1:3080    x  ESTABLISHED  55\r\n", 3080) == 0, "ESTABLISHED ignored");
+        Check(Program.Test.ParsePort("  TCP    127.0.0.1:30801   x  LISTENING  66\r\n", 3080) == 0, "port 30801 != 3080 (suffix boundary)");
+        Check(Program.Test.ParsePort("", 3080) == 0, "empty -> 0");
+        Check(Program.Test.ParsePort("  TCP    127.0.0.1:3090    0.0.0.0:0  LISTENING  77\r\n", 3080) == 0, "different port -> 0");
+
         Console.WriteLine("");
         Console.WriteLine("== " + (total - fails) + "/" + total + " passed, " + fails + " failed ==");
         Environment.Exit(fails == 0 ? 0 : 1);
