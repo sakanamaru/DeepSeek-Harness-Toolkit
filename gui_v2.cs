@@ -1,8 +1,9 @@
 // ============================================================================
-//  DeepSeek Harness Toolkit GUI  ——  GUI 辅助面板（P1 骨架）
+//  DeepSeek Harness Toolkit GUI  ——  GUI 辅助面板（P2：进程层 + 状态轮询）
 //  ----------------------------------------------------------------------------
-//  架构：本体不变，GUI 通过非交互 CLI 协同（backup/restore/status/start --bg/stop）。
-//  本文件 = 无边框窗口 + 深/浅主题 + 中英双语 + 三页切换 + 状态灯 + 单实例锁。
+//  架构：本体不变，GUI 通过非交互 CLI 协同（backup/restore/status/start --bg/stop/shortcut，
+//        install/update/uninstall 弹可见窗口交互）。
+//  本文件 = 无边框窗口 + 深/浅主题 + 中英双语 + 三页切换 + 状态灯 + 完整进程层。
 //  约束：C#5 / .NET 4.x / 零第三方依赖（仅 WinForms + GDI+）。
 //  发布：单独 Toolkit GUI.exe（与核心 DeepSeek Harness Toolkit.exe 同目录运行）。
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
@@ -134,7 +135,29 @@ static class L10N
 
         Add("ph.notyet", "「{0}」将在下一步（P2）接入。", "\"{0}\" will be wired up in the next step (P2).");
         Add("ph.refreshing", "正在检测服务状态…", "Detecting service status...");
+
+        // P2 进程层文案
+        Add("op.running", "执行「{0}」…", "Running \"{0}\"...");
+        Add("op.ok", "完成", "OK");
+        Add("op.fail", "失败", "Failed");
+        Add("op.timeout", "超时", "Timed out");
+        Add("op.busy", "上一操作仍在进行，请稍候…", "Previous operation still running, please wait...");
+        Add("op.coremissing", "未找到核心程序（DeepSeek Harness Toolkit.exe，请与 GUI 同目录）",
+            "Core exe not found (DeepSeek Harness Toolkit.exe, place it next to the GUI)");
+        Add("op.launchfailed", "启动失败：", "Launch failed: ");
+        Add("dsh.notinstalled", "未安装", "not installed");
+        Add("dsh.verreadfail", "读取失败", "read failed");
     }
+}
+
+// ---------------- 进程调用结果 ----------------
+
+class CoreRunResult
+{
+    public int ExitCode = -1;
+    public string FirstLine = "";   // 单行标记（BACKUP_OK / STATUS_UP / START_OK ...）
+    public string All = "";         // 完整 stdout(+stderr)（日志用）
+    public bool TimedOut = false;
 }
 
 // ---------------- 状态灯（自绘） ----------------
@@ -203,6 +226,9 @@ public class App : Form
     Label lblStatusText, lblWebAddr, lblDshVer;
     TableLayoutPanel actionGrid;
 
+    // 操作按钮字典（key → Button，用于禁用态管理）
+    Dictionary<string, Button> actBtns = new Dictionary<string, Button>();
+
     // 日志页
     TextBox txtLog;
     Button btnClearLog;
@@ -219,6 +245,15 @@ public class App : Form
     // 状态刷新防重入
     int refreshing = 0;
 
+    // 操作忙碌（任一操作进行中禁用所有操作按钮，防重入）
+    int busy = 0;
+
+    // 3 秒状态轮询
+    System.Windows.Forms.Timer pollTimer;
+
+    // 当前 dsh 版本（轮询顺带读取）
+    string dshVer = "";
+
     public App()
     {
         Text = L10N._("app.title");
@@ -234,6 +269,12 @@ public class App : Form
         ApplyLang();
         ShowPage(0);
         RefreshStatus();
+
+        // 3 秒状态轮询（定时器，不阻塞 UI）
+        pollTimer = new System.Windows.Forms.Timer();
+        pollTimer.Interval = 3000;
+        pollTimer.Tick += delegate(object s, EventArgs e) { RefreshStatus(); };
+        pollTimer.Start();
     }
 
     void Build()
@@ -401,7 +442,7 @@ public class App : Form
         lblDshVer.Tag = "dshver";
         card.Controls.Add(lblDshVer);
 
-        // 操作按钮区（4 列 x 2 行 + 刷新）
+        // 操作按钮区（8 操作按钮 2 列×4 行 + 刷新跨 2 列）
         actionGrid = new TableLayoutPanel();
         actionGrid.ColumnCount = 2;
         actionGrid.RowCount = 5;
@@ -411,21 +452,20 @@ public class App : Form
         for (int r = 0; r < 5; r++) actionGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 56f));
         p.Controls.Add(actionGrid);
 
-        AddActionButton(0, 0, "act.install");
-        AddActionButton(1, 0, "act.start");
-        AddActionButton(0, 1, "act.stop");
-        AddActionButton(1, 1, "act.backup");
-        AddActionButton(0, 2, "act.restore");
-        AddActionButton(1, 2, "act.update");
-        AddActionButton(0, 3, "act.uninstall");
-        AddActionButton(1, 3, "act.shortcut");
-        AddActionButton(0, 4, "act.refresh");
-        AddActionButton(1, 4, "act.refresh");  // 占位，刷新用跨列单按钮更合适，待 P2 整理
+        AddActionButton(0, 0, "act.install", 1);
+        AddActionButton(1, 0, "act.start", 1);
+        AddActionButton(0, 1, "act.stop", 1);
+        AddActionButton(1, 1, "act.backup", 1);
+        AddActionButton(0, 2, "act.restore", 1);
+        AddActionButton(1, 2, "act.update", 1);
+        AddActionButton(0, 3, "act.uninstall", 1);
+        AddActionButton(1, 3, "act.shortcut", 1);
+        AddActionButton(0, 4, "act.refresh", 2);   // 刷新跨 2 列
 
         return p;
     }
 
-    void AddActionButton(int col, int row, string key)
+    void AddActionButton(int col, int row, string key, int colSpan)
     {
         Button b = new Button();
         b.FlatStyle = FlatStyle.Flat;
@@ -434,13 +474,156 @@ public class App : Form
         b.Tag = key;
         b.Click += delegate(object s, EventArgs e) { OnAction(key); };
         actionGrid.Controls.Add(b, col, row);
+        if (colSpan > 1) actionGrid.SetColumnSpan(b, colSpan);
+        actBtns[key] = b;
     }
 
     void OnAction(string key)
     {
-        if (key == "act.refresh") { RefreshStatus(); return; }
-        if (key == "act.shortcut") { RefreshStatus(); return; }   // P2 接 shortcut CLI
-        LogLine(string.Format(L10N._("ph.notyet"), L10N._(key)));
+        if (Interlocked.CompareExchange(ref busy, 1, 0) != 0) { LogLine(L10N._("op.busy")); return; }
+        try
+        {
+            if (key == "act.refresh") { RefreshStatus(); return; }
+            if (key == "act.install") { LaunchInteractive("install", key); return; }
+            if (key == "act.update") { LaunchInteractive("update", key); return; }
+            if (key == "act.uninstall") { LaunchInteractive("uninstall", key); return; }
+            // 其余非交互：后台捕获单行标记（busy 延迟到 OnCaptureDone 清零）
+            string args = "";
+            if (key == "act.start") args = "start --bg";
+            else if (key == "act.stop") args = "stop";
+            else if (key == "act.backup") args = "backup";
+            else if (key == "act.restore") args = "restore";
+            else if (key == "act.shortcut") args = "shortcut";
+            else { Interlocked.Exchange(ref busy, 0); return; }
+            UpdateActionButtons();   // 立即禁用所有操作按钮
+            LaunchCapture(args, key);
+            return;   // busy 保持，由 OnCaptureDone 清零
+        }
+        catch { Interlocked.Exchange(ref busy, 0); }
+        Interlocked.Exchange(ref busy, 0);   // 交互命令/刷新等同步路径到达此处
+        UpdateActionButtons();
+    }
+
+    // ---- 进程层：可见窗口（交互命令 install/update/uninstall） ----
+    // 铁律①：Process.Start(UseShellExecute=true) 立即返回，绝不在 UI 线程 WaitForExit。
+    void LaunchInteractive(string args, string key)
+    {
+        string core = CoreExePath();
+        if (core == null) { LogLine(L10N._("op.coremissing")); return; }
+        LogLine(string.Format(L10N._("op.running"), L10N._(key)));
+        try
+        {
+            var psi = new ProcessStartInfo(core, args)
+            {
+                UseShellExecute = true,               // 弹独立控制台窗口，用户直接在窗口内交互
+                WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
+            };
+            Process.Start(psi);
+            LogLine(L10N._(key) + " → " + L10N._("op.ok"));
+            // 交互命令结束后服务状态可能变化，稍后触发一次状态刷新
+            ThreadPool.QueueUserWorkItem(delegate(object _)
+            {
+                Thread.Sleep(1500);
+                BeginInvoke((Action)delegate { RefreshStatus(); });
+            });
+        }
+        catch (Exception ex) { LogLine(L10N._("op.launchfailed") + ex.Message); }
+    }
+
+    // ---- 进程层：后台捕获（非交互命令） ----
+    // 铁律②：先 WaitForExit(timeout) 再读输出。
+    // 铁律③：stdout/stderr 各用独立后台线程排空，避免管道缓冲满死锁。
+    void LaunchCapture(string args, string key)
+    {
+        string core = CoreExePath();
+        if (core == null) { LogLine(L10N._("op.coremissing")); return; }
+        LogLine(string.Format(L10N._("op.running"), L10N._(key)));
+        int capTimeout = 30000;
+        ThreadPool.QueueUserWorkItem(delegate(object _)
+        {
+            CoreRunResult r = RunCoreCapture(core, args, capTimeout);
+            BeginInvoke((Action)delegate
+            {
+                OnCaptureDone(key, r);
+                RefreshStatus();   // 操作后刷新状态灯 + dsh 版本
+            });
+        });
+    }
+
+    void OnCaptureDone(string key, CoreRunResult r)
+    {
+        if (r.TimedOut) { LogLine(L10N._(key) + " → " + L10N._("op.timeout")); Interlocked.Exchange(ref busy, 0); UpdateActionButtons(); return; }
+        string line = (r.FirstLine ?? "").Trim();
+        bool ok = false;
+        if (key == "act.start") ok = line.StartsWith("START_OK");
+        else if (key == "act.stop") ok = line.StartsWith("STOP_OK");
+        else if (key == "act.backup") ok = line.StartsWith("BACKUP_OK");
+        else if (key == "act.restore") ok = line.StartsWith("RESTORE_OK");
+        else if (key == "act.shortcut") ok = line.StartsWith("SHORTCUT_OK");
+        if (ok) LogLine(L10N._(key) + " → " + L10N._("op.ok") + "  (" + line + ")");
+        else
+        {
+            string reason = string.IsNullOrEmpty(line) ? (string.IsNullOrEmpty(r.All) ? "" : r.All) : line;
+            LogLine(L10N._(key) + " → " + L10N._("op.fail") + (string.IsNullOrEmpty(reason) ? "" : "  (" + reason + ")"));
+        }
+        Interlocked.Exchange(ref busy, 0);
+        UpdateActionButtons();
+    }
+
+    string CoreExePath()
+    {
+        string core = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DeepSeek Harness Toolkit.exe");
+        return File.Exists(core) ? core : null;
+    }
+
+    // 在后台线程调用；返回单行标记 + 完整输出。
+    CoreRunResult RunCoreCapture(string core, string args, int timeoutMs)
+    {
+        var res = new CoreRunResult();
+        try
+        {
+            var psi = new ProcessStartInfo(core, args)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
+            };
+            using (Process p = Process.Start(psi))
+            {
+                if (p == null) { res.All = L10N._("op.fail"); return res; }
+                // 独立后台线程排空 stdout / stderr（铁律③）
+                string stdoutAll = "";
+                string stderrAll = "";
+                Thread tOut = new Thread(delegate() { try { stdoutAll = p.StandardOutput.ReadToEnd(); } catch { } });
+                Thread tErr = new Thread(delegate() { try { stderrAll = p.StandardError.ReadToEnd(); } catch { } });
+                tOut.IsBackground = true; tErr.IsBackground = true;
+                tOut.Start(); tErr.Start();
+                // 铁律②：先等退出（超时则杀），不 ReadToEnd 同步阻塞
+                if (!p.WaitForExit(timeoutMs))
+                {
+                    try { p.Kill(); } catch { }
+                    res.TimedOut = true;
+                    res.All = L10N._("op.timeout");
+                    return res;
+                }
+                tOut.Join(2000); tErr.Join(2000);
+                res.ExitCode = p.ExitCode;
+                res.All = stdoutAll;
+                if (!string.IsNullOrWhiteSpace(stderrAll)) res.All += (res.All.Length > 0 ? "\n" : "") + stderrAll;
+                // 取第一行非空作为标记
+                if (!string.IsNullOrEmpty(stdoutAll))
+                {
+                    string[] lines = stdoutAll.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (lines.Length > 0) res.FirstLine = lines[0];
+                }
+                return res;
+            }
+        }
+        catch (Exception ex) { res.All = ex.Message; return res; }
     }
 
     // ---- 日志页 ----
@@ -583,6 +766,8 @@ public class App : Form
         txtLog.ForeColor = t.Fg;
         StyleButton(btnClearLog, t);
 
+        UpdateActionButtons();   // 禁用态着色后重新应用
+
         ResumeLayout();
         Invalidate(true);
     }
@@ -637,7 +822,7 @@ public class App : Form
     void StyleButton(Button b, Theme t)
     {
         b.BackColor = t.PanelAlt;
-        b.ForeColor = t.Fg;
+        b.ForeColor = b.Enabled ? t.Fg : t.FgDim;
         b.FlatAppearance.MouseOverBackColor = t.Hover;
         b.FlatAppearance.MouseDownBackColor = t.Panel;
         b.FlatAppearance.BorderColor = t.Border;
@@ -671,7 +856,7 @@ public class App : Form
                 if (tag == "status.title") c.Text = L10N._("home.status.title");
                 else if (tag == "status.text") { c.Text = StatusText(currentKind); }
                 else if (tag == "webaddr") c.Text = L10N._("home.address") + ": http://127.0.0.1:3080";
-                else if (tag == "dshver") { /* 保留 dsh 版本，只改前缀 */ }
+                else if (tag == "dshver") { SetDshVersion(dshVer); }
             }
         }
         RefreshActionButtons();
@@ -716,18 +901,20 @@ public class App : Form
     void RefreshStatus()
     {
         if (Interlocked.CompareExchange(ref refreshing, 1, 0) != 0) return;   // 防重入
-        SetStatus(SKind.Unknown);
+        string core = CoreExePath();
+        if (core == null) { Interlocked.Exchange(ref refreshing, 0); SetStatus(SKind.Unknown); return; }
         ThreadPool.QueueUserWorkItem(delegate(object _)
         {
             try
             {
-                string outLine = RunCoreCapture("status");
-                string k = (outLine ?? "").Trim();
+                CoreRunResult r = RunCoreCapture(core, "status", 10000);
+                string k = (r.FirstLine ?? "").Trim();
                 SKind st = SKind.Unknown;
                 if (k == "STATUS_UP") st = SKind.Up;
                 else if (k == "STATUS_STARTING") st = SKind.Starting;
                 else if (k == "STATUS_DOWN") st = SKind.Down;
-                BeginInvoke((Action)delegate { SetStatus(st); });
+                string ver = ReadDshVersion();   // 轮询顺带读 dsh 版本
+                BeginInvoke((Action)delegate { SetStatus(st); SetDshVersion(ver); });
             }
             catch { BeginInvoke((Action)delegate { SetStatus(SKind.Unknown); }); }
             finally { Interlocked.Exchange(ref refreshing, 0); }
@@ -739,33 +926,48 @@ public class App : Form
         currentKind = k;
         if (led != null) led.Set(k);
         if (lblStatusText != null) { lblStatusText.Text = StatusText(k); ApplyStatusColor(); }
+        UpdateActionButtons();
     }
 
-    // ---- 极简进程调用（P1 仅 status；P2 完整进程层） ----
-    string RunCoreCapture(string args)
+    // ---- dsh 版本读取（后台线程调用） ----
+    string ReadDshVersion()
     {
         try
         {
-            string core = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DeepSeek Harness Toolkit.exe");
-            if (!File.Exists(core)) return "";
-            var psi = new ProcessStartInfo(core, args)
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = false,   // 不重定向 stderr，避免双流死锁（v1 审查 #8）
-                StandardOutputEncoding = Encoding.UTF8,
-                WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
-            };
-            using (Process p = Process.Start(psi))
-            {
-                if (p == null) return "";
-                string line = p.StandardOutput.ReadLine();
-                if (!p.WaitForExit(15000)) { try { p.Kill(); } catch { } return ""; }
-                return line == null ? "" : line;
-            }
+            CoreRunResult r = RunCoreCapture("cmd.exe", "/c dsh --version 2>nul", 8000);
+            string v = (r.FirstLine ?? "").Trim();
+            if (v.Length == 0) return "";   // 未安装/读取失败
+            if (v.IndexOfAny(new char[] { '&', '|', ';', '>', '<', '^', '%' }) >= 0) return "";   // 净化，防日志注入
+            return v.Length > 30 ? v.Substring(0, 30) : v;
         }
         catch { return ""; }
+    }
+
+    void SetDshVersion(string v)
+    {
+        dshVer = v;
+        if (lblDshVer == null) return;
+        string dv = v;
+        if (string.IsNullOrEmpty(dv))
+            dv = L10N._("dsh.verreadfail");
+        lblDshVer.Text = L10N._("home.version") + ": " + dv;
+    }
+
+    // ---- 按钮禁用态：操作进行中全禁用；按服务状态部分禁用 ----
+    void UpdateActionButtons()
+    {
+        if (actionGrid == null) return;
+        foreach (KeyValuePair<string, Button> kv in actBtns)
+        {
+            string key = kv.Key;
+            Button b = kv.Value;
+            bool enabled = true;
+            if (Interlocked.CompareExchange(ref busy, 0, 0) != 0) enabled = false;      // 操作中
+            else if (key == "act.start") enabled = (currentKind != SKind.Up);           // 已运行则禁用启动
+            else if (key == "act.stop") enabled = (currentKind == SKind.Up);            // 未运行则禁用停止
+            else if (key == "act.restore") enabled = (currentKind != SKind.Up);         // 运行中禁恢复（核心会拒绝）
+            b.Enabled = enabled;
+        }
     }
 
     // ---- 日志 ----
