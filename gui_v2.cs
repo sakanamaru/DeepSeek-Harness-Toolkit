@@ -15,6 +15,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -184,14 +185,16 @@ class Led : Control
     {
         base.OnPaint(e);
         Graphics g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        // 先填充父卡片背景色（不依赖透明，常规 Panel 父控件上也能正确绘制）
+        // 先填充父卡片背景色（像素对齐，避免四周过渡痕迹）
+        g.SmoothingMode = SmoothingMode.None;
         using (SolidBrush bgB = new SolidBrush(bg == Color.Transparent ? th.PanelAlt : bg))
             g.FillRectangle(bgB, 0, 0, Width, Height);
         Color c = th.LedIdle;
         if (kind == SKind.Up) c = th.LedOk;
         else if (kind == SKind.Starting) c = th.LedWarn;
         else if (kind == SKind.Down) c = th.LedBad;
+        // 圆点抗锯齿
+        g.SmoothingMode = SmoothingMode.AntiAlias;
         using (SolidBrush b = new SolidBrush(c))
         {
             int r = Math.Min(Width, Height) - 6;
@@ -240,9 +243,9 @@ class RButton : Button
     protected override void OnPaint(PaintEventArgs e)
     {
         Graphics g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
 
-        // 先铺满父背景色（消除圆角四角的黑白边）
+        // 先铺满父背景色（消除圆角四角的黑白边）；像素对齐，避免外圈过渡
+        g.SmoothingMode = SmoothingMode.None;
         if (Surround != Color.Transparent)
         {
             using (SolidBrush sb = new SolidBrush(Surround))
@@ -256,9 +259,7 @@ class RButton : Button
         else if (Checked) bg = th.Accent;
 
         int rad = 8;
-        using (GraphicsPath path = RoundRect(0, 0, Width - 1, Height - 1, rad))
-        using (SolidBrush bb = new SolidBrush(bg))
-            g.FillPath(bb, path);
+        FillRoundRect(g, new Rectangle(0, 0, Width, Height), rad, bg);
 
         if (AccentBar && Checked)
         {
@@ -304,6 +305,38 @@ class RButton : Button
         p.CloseFigure();
         return p;
     }
+
+    // 高质量圆角填充：直边用 FillRectangle + SmoothingMode.None（像素对齐，无亚像素过渡），
+    // 四角弧用 FillPie + AntiAlias（仅圆弧抗锯齿）。
+    // 关键：GDI+ 在 AntiAlias 下连 FillRectangle 的边界也会被混合成 1px 过渡色，
+    // 导致按钮/卡片直边出现贯穿的浅色痕迹。故直边必须关闭抗锯齿。
+    public static void FillRoundRect(Graphics g, Rectangle rect, int r, Color c)
+    {
+        int x = rect.X, y = rect.Y, w = rect.Width, h = rect.Height;
+        if (r < 2 || r * 2 >= w || r * 2 >= h)
+        {
+            g.SmoothingMode = SmoothingMode.None;
+            using (SolidBrush b = new SolidBrush(c)) g.FillRectangle(b, rect);
+            return;
+        }
+        int d = r * 2;
+        // 直边：关闭抗锯齿，像素对齐
+        g.SmoothingMode = SmoothingMode.None;
+        using (SolidBrush b = new SolidBrush(c))
+        {
+            g.FillRectangle(b, x + r, y, w - d, h);       // 中央竖条
+            g.FillRectangle(b, x, y + r, w, h - d);       // 上下横条
+        }
+        // 圆角弧：开启抗锯齿
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using (SolidBrush b = new SolidBrush(c))
+        {
+            g.FillPie(b, x, y, d, d, 180, 90);               // 左上
+            g.FillPie(b, x + w - d, y, d, d, 270, 90);       // 右上
+            g.FillPie(b, x + w - d, y + h - d, d, d, 0, 90); // 右下
+            g.FillPie(b, x, y + h - d, d, d, 90, 90);        // 左下
+        }
+    }
 }
 
 // ---------------- 图标绘制（标题栏 ╳ / ─ / 月牙） ----------------
@@ -333,14 +366,22 @@ static class Glyphs
         }
     }
 
-    // 月牙（主题切换；fg=月牙色 bg=按钮当前背景）
+    // 月牙（主题切换）：外圆减偏移内圆（Region 差集），消除"球挡球"叠加痕迹
     public static void Moon(Graphics g, Rectangle r, Color fg, Color bg)
     {
         int cx = r.X + r.Width / 2, cy = r.Y + r.Height / 2, dd = 12;
-        using (SolidBrush b = new SolidBrush(fg))
-            g.FillEllipse(b, cx - dd / 2, cy - dd / 2, dd, dd);
-        using (SolidBrush b = new SolidBrush(bg))
-            g.FillEllipse(b, cx - dd / 2 + dd / 3, cy - dd / 2 - 1, dd, dd);
+        using (GraphicsPath outer = new GraphicsPath())
+        using (GraphicsPath inner = new GraphicsPath())
+        {
+            outer.AddEllipse(cx - dd / 2, cy - dd / 2, dd, dd);
+            inner.AddEllipse(cx - dd / 2 + dd / 3 - 1, cy - dd / 2 - 2, dd, dd);
+            using (Region moon = new Region(outer))
+            {
+                moon.Exclude(inner);
+                using (SolidBrush b = new SolidBrush(fg))
+                    g.FillRegion(b, moon);
+            }
+        }
     }
 
     // 太阳（浅色主题下提示切深色）
@@ -391,18 +432,14 @@ class RPanel : Panel
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);
         Graphics g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        // 先铺满父背景色（消除圆角四角黑白边）
+        g.SmoothingMode = SmoothingMode.None;
         if (surround != Color.Transparent)
         {
             using (SolidBrush sb = new SolidBrush(surround))
                 g.FillRectangle(sb, 0, 0, Width, Height);
         }
-        using (GraphicsPath path = RButton.RoundRect(0, 0, Width - 1, Height - 1, radius))
-        using (SolidBrush b = new SolidBrush(th.PanelAlt))
-            g.FillPath(b, path);
+        RButton.FillRoundRect(g, new Rectangle(0, 0, Width, Height), radius, th.PanelAlt);
     }
 }
 
@@ -425,6 +462,7 @@ class RLabel : Label
     protected override void OnPaint(PaintEventArgs e)
     {
         Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.None;
         if (Surround != Color.Transparent)
         {
             using (SolidBrush sb = new SolidBrush(Surround))
@@ -526,7 +564,6 @@ public class App : Form
         ApplyTheme();
         ApplyLang();
         ShowPage(0);
-        ApplyWindowRegion();
         RefreshStatus();
 
         // 3 秒状态轮询（定时器，不阻塞 UI）
@@ -536,7 +573,33 @@ public class App : Form
         pollTimer.Start();
     }
 
-    // 窗口圆角（QQ NT / 网易云风格）
+    // 窗口圆角：Win11 用 DWM 系统圆角（抗锯齿），Win10 降级 Region
+    // DWM 圆角属性
+    const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    const int DWMWCP_ROUND = 2;
+    bool dwmRounded = false;
+
+    [DllImport("dwmapi.dll")]
+    static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+
+    void ApplyWindowRound()
+    {
+        try
+        {
+            int pref = DWMWCP_ROUND;
+            if (DwmSetWindowAttribute(Handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, 4) == 0)
+            {
+                dwmRounded = true;
+                Region = null;   // 交给系统抗锯齿圆角
+                return;
+            }
+        }
+        catch { }
+        // 降级：Region 圆角（硬边界，无抗锯齿）
+        dwmRounded = false;
+        ApplyWindowRegion();
+    }
+
     void ApplyWindowRegion()
     {
         if (WindowState != FormWindowState.Normal) { Region = null; return; }
@@ -545,10 +608,16 @@ public class App : Form
             Region = new Region(path);
     }
 
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        ApplyWindowRound();
+    }
+
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        ApplyWindowRegion();
+        if (!dwmRounded) ApplyWindowRegion();
     }
 
     void Build()
@@ -671,10 +740,11 @@ public class App : Form
     }
 
     // 标题栏按钮绝对定位（随标题栏宽度重算，避免 Anchor=Right 构建期漂移）
+    // 从右到左依次：关闭、最小化、语言、主题（符合常规窗口按钮顺序习惯）
     void RelayoutTitleButtons()
     {
         if (btnTheme == null || titleBar == null) return;
-        RButton[] bs = new RButton[] { btnTheme, btnLang, btnMin, btnClose };
+        RButton[] bs = new RButton[] { btnClose, btnMin, btnLang, btnTheme };
         for (int i = 0; i < bs.Length; i++)
         {
             bs[i].Location = new Point(titleBar.ClientSize.Width - 12 - 42 * (i + 1) - 4 * i, 8);
@@ -698,13 +768,14 @@ public class App : Form
         RPanel card = new RPanel();
         card.Location = new Point(24, 20);
         card.Size = new Size(620, 150);
-        card.Padding = new Padding(22);
         p.Controls.Add(card);
 
+        // 注意：Panel.Padding 对绝对定位(Location)的子控件不生效，故用显式内边距坐标，
+        // 避免子控件矩形背景盖住卡片左上圆角弧（radius 12，故内边距 ≥ 22）。
         Label lblStatusTitle = new RLabel();
         lblStatusTitle.AutoSize = true;
         lblStatusTitle.Font = new Font("Microsoft YaHei UI", 9f, FontStyle.Regular);
-        lblStatusTitle.Location = new Point(0, 0);
+        lblStatusTitle.Location = new Point(22, 16);
         lblStatusTitle.Text = L10N._("home.status.title");
         lblStatusTitle.Tag = "status.title";
         lblStatusTitle.ForeColor = Th.FgDim;
@@ -712,20 +783,20 @@ public class App : Form
         lblStatusTitleDim = lblStatusTitle;
 
         led = new Led();
-        led.Location = new Point(0, 30);
+        led.Location = new Point(22, 42);
         card.Controls.Add(led);
 
         lblStatusText = new RLabel();
         lblStatusText.AutoSize = true;
         lblStatusText.Font = new Font("Microsoft YaHei UI", 22f, FontStyle.Bold);
-        lblStatusText.Location = new Point(26, 22);
+        lblStatusText.Location = new Point(48, 34);
         lblStatusText.Text = L10N._("home.status.unknown");
         lblStatusText.Tag = "status.text";
         card.Controls.Add(lblStatusText);
 
         lblWebAddr = new RLabel();
         lblWebAddr.AutoSize = true;
-        lblWebAddr.Location = new Point(0, 78);
+        lblWebAddr.Location = new Point(22, 92);
         lblWebAddr.Text = L10N._("home.address") + ": http://127.0.0.1:3080";
         lblWebAddr.Tag = "webaddr";
         lblWebAddr.ForeColor = Th.FgDim;
@@ -733,7 +804,7 @@ public class App : Form
 
         lblDshVer = new RLabel();
         lblDshVer.AutoSize = true;
-        lblDshVer.Location = new Point(0, 104);
+        lblDshVer.Location = new Point(22, 118);
         lblDshVer.Text = L10N._("home.version") + ": —";
         lblDshVer.Tag = "dshver";
         lblDshVer.ForeColor = Th.FgDim;
