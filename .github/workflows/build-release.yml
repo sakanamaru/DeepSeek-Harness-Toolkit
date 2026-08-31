@@ -33,6 +33,15 @@ jobs:
           .\unittests.exe
           if ($LASTEXITCODE -ne 0) { throw "unit tests failed" }
 
+      - name: Compile GUI skeleton (Toolkit GUI.exe) — regression guard only
+        shell: pwsh
+        run: |
+          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico /win32manifest:app.manifest /out:gui_check.exe gui_v2.cs /warn:4
+          if ($LASTEXITCODE -ne 0) { throw "GUI compile failed" }
+          Remove-Item gui_check.exe -ErrorAction SilentlyContinue
+          Write-Output "GUI skeleton compiles clean (/warn:4)"
+
       - name: Run integration tests (stubbed matrix, no real ~/.dsh touched)
         shell: pwsh
         run: |

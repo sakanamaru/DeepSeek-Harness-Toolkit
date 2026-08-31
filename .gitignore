@@ -6,3 +6,7 @@ logs/
 # 临时文件
 *.tmp
 *.log
+
+# GUI 测试/调试产物（不提交）
+gui_test/
+Toolkit GUI.exe
