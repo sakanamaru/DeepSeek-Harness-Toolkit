@@ -213,6 +213,7 @@ class RButton : Button
     public bool AccentBar;                      // 导航左侧 3px 强调竖条
     public Action<Graphics, Rectangle> Icon;    // 标题栏图标绘制（╳ / ─ / 月牙）
     public Color HoverTint = Color.Empty;       // hover 强调背景（关闭按钮=红）；空则用 th.Hover
+    public Color Surround = Color.Transparent;  // 父容器背景色（铺满四角，消除黑白边）
     Theme th = Theme.Dark;
 
     public RButton()
@@ -224,7 +225,11 @@ class RButton : Button
         Cursor = Cursors.Hand;
     }
 
-    public void SetTheme(Theme t) { th = t; Invalidate(); }
+    public void SetTheme(Theme t) { SetTheme(t, Color.Transparent); }
+    public void SetTheme(Theme t, Color surround) { th = t; Surround = surround; Invalidate(); }
+
+    // 抑制默认背景绘制（避免默认 BackColor 在圆角四角露白/黑边）
+    protected override void OnPaintBackground(PaintEventArgs e) { }
 
     protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
     protected override void OnMouseLeave(EventArgs e) { hover = false; pressed = false; Invalidate(); base.OnMouseLeave(e); }
@@ -236,6 +241,13 @@ class RButton : Button
     {
         Graphics g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
+
+        // 先铺满父背景色（消除圆角四角的黑白边）
+        if (Surround != Color.Transparent)
+        {
+            using (SolidBrush sb = new SolidBrush(Surround))
+                g.FillRectangle(sb, 0, 0, Width, Height);
+        }
 
         Color bg = th.PanelAlt;
         if (!Enabled) bg = th.Panel;
@@ -352,6 +364,7 @@ class RPanel : Panel
 {
     int radius = 12;
     Theme th = Theme.Dark;
+    Color surround = Color.Transparent;
 
     public RPanel()
     {
@@ -359,18 +372,27 @@ class RPanel : Panel
                  ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
     }
 
-    public void SetTheme(Theme t)
+    public void SetTheme(Theme t) { SetTheme(t, Color.Transparent); }
+    public void SetTheme(Theme t, Color s)
     {
         th = t;
-        BackColor = Color.Transparent;   // 背景交给 OnPaint 画圆角
+        surround = s;
         Invalidate();
     }
+
+    protected override void OnPaintBackground(PaintEventArgs e) { }
 
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
         Graphics g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
+        // 先铺满父背景色（消除圆角四角黑白边）
+        if (surround != Color.Transparent)
+        {
+            using (SolidBrush sb = new SolidBrush(surround))
+                g.FillRectangle(sb, 0, 0, Width, Height);
+        }
         using (GraphicsPath path = RButton.RoundRect(0, 0, Width - 1, Height - 1, radius))
         using (SolidBrush b = new SolidBrush(th.PanelAlt))
             g.FillPath(b, path);
@@ -964,15 +986,15 @@ public class App : Form
         content.BackColor = t.Bg;
 
         foreach (RButton b in navBtns)
-            b.SetTheme(t);
+            b.SetTheme(t, t.Panel);   // 导航项父 = nav（Panel 色）
 
-        btnTheme.SetTheme(t);
-        btnLang.SetTheme(t);
-        btnMin.SetTheme(t);
-        btnClose.SetTheme(t);
+        btnTheme.SetTheme(t, t.Panel);
+        btnLang.SetTheme(t, t.Panel);
+        btnMin.SetTheme(t, t.Panel);
+        btnClose.SetTheme(t, t.Panel);
         btnLang.ForeColor = t.FgDim;   // 语言文字按钮
 
-        foreach (Panel pg in pages) { pg.BackColor = t.Bg; ThemeRecurse(pg, t); }
+        foreach (Panel pg in pages) { pg.BackColor = t.Bg; ThemeRecurse(pg, t, t.Bg); }
 
         lblDisclaimer.BackColor = t.Panel;
         lblDisclaimer.ForeColor = t.FgDim;
@@ -988,7 +1010,7 @@ public class App : Form
         // 日志页
         txtLog.BackColor = t.Panel;
         txtLog.ForeColor = t.Fg;
-        btnClearLog.SetTheme(t);
+        btnClearLog.SetTheme(t, t.Bg);   // 清空按钮父 = 日志页 top（Bg 色）
 
         UpdateActionButtons();   // 禁用态着色后重新应用
 
@@ -996,29 +1018,29 @@ public class App : Form
         Invalidate(true);
     }
 
-    // 递归着色容器里的已知控件类型（含卡片内 Label 等）
-    void ThemeRecurse(Control parent, Theme t)
+    // 递归着色容器里的已知控件类型；surround = 当前容器的背景色（传给圆角子控件铺四角）
+    void ThemeRecurse(Control parent, Theme t, Color surround)
     {
         foreach (Control c in parent.Controls)
         {
             if (c is RPanel)
             {
-                (c as RPanel).SetTheme(t);
-                ThemeRecurse(c, t);
+                (c as RPanel).SetTheme(t, surround);
+                // RPanel 内部背景 = PanelAlt，故其子控件 surround 传 PanelAlt
+                ThemeRecurse(c, t, t.PanelAlt);
                 continue;
             }
             if (c is RButton)
             {
-                (c as RButton).SetTheme(t);
+                (c as RButton).SetTheme(t, surround);
                 continue;
             }
             if (c is Panel)
             {
                 if (c.BackColor != Color.Transparent && c == parent) continue;
                 Panel pn = c as Panel;
-                if (pn.Padding.Horizontal > 0) pn.BackColor = t.PanelAlt;
-                else pn.BackColor = t.Bg;
-                ThemeRecurse(pn, t);
+                if (pn.Padding.Horizontal > 0) { pn.BackColor = t.PanelAlt; ThemeRecurse(pn, t, t.PanelAlt); }
+                else { pn.BackColor = t.Bg; ThemeRecurse(pn, t, t.Bg); }
                 continue;
             }
             if (c is Label)
@@ -1028,14 +1050,15 @@ public class App : Form
             if (c is TableLayoutPanel)
             {
                 c.BackColor = t.Bg;
-                ThemeRecurse(c, t);
+                ThemeRecurse(c, t, t.Bg);
+                continue;
             }
             if (c is TextBox)
             {
                 c.BackColor = t.Panel;
                 c.ForeColor = t.Fg;
             }
-            ThemeRecurse(c, t);
+            ThemeRecurse(c, t, surround);
         }
     }
 
