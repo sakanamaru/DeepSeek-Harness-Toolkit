@@ -63,8 +63,8 @@ Write-Output ("环境: 3080=" + $(if ($portLive) { '运行中' } else { '未运�
 
 # 1-5 基础 / CLI
 & $tA selftest *> $null;   TC '1 selftest' ($LASTEXITCODE -eq 0)
-$o = (& $tA help 2>&1 | Out-String);    TC '2 help' ($o.Contains('install | start | uninstall | update'))
-$o = (& $tA about 2>&1 | Out-String);   TC '3 about' (($o.Contains('DeepSeek Harness Toolkit V2.3.0')) -and ($o.Contains('sakanamaru')))
+$o = (& $tA help 2>&1 | Out-String);    TC '2 help' ($o.Contains('install') -and $o.Contains('start') -and $o.Contains('uninstall') -and $o.Contains('update') -and $o.Contains('backup') -and $o.Contains('restore') -and $o.Contains('status') -and $o.Contains('stop'))
+$o = (& $tA about 2>&1 | Out-String);   TC '3 about' (($o.Contains('DeepSeek Harness Toolkit V2.4.0')) -and ($o.Contains('sakanamaru')))
 $o = (& $tA check 2>&1 | Out-String);   TC '4 check CLI' ($o.Contains('dsh'))
 $sw = [Diagnostics.Stopwatch]::StartNew(); $o = ("0`n" | & $tA 2>&1 | Out-String); $sw.Stop()
 TC '5 menu exit 0' ($sw.ElapsedMilliseconds -lt 2000) ($sw.ElapsedMilliseconds.ToString() + 'ms')
@@ -235,6 +235,33 @@ $o26 = (& (Join-Path $d26 't.exe') shortcut 2>&1 | Out-String)
 Remove-Item Env:DSH_TEST_DESKTOP -ErrorAction SilentlyContinue
 $lnk26 = Test-Path (Join-Path $desk26 'DeepSeek Harness Toolkit.lnk')
 TC '26 shortcut CLI' (($o26.Contains('SHORTCUT_OK')) -and $lnk26)
+
+# 29-31 非交互 CLI（GUI 地基）：status / stop / backup / restore（变体 A 端口打桩 Down，不碰真实 3080）
+$d29 = Join-Path $T 'nicli'; NewDir $d29; Copy-Item $tA (Join-Path $d29 't.exe')
+[IO.File]::WriteAllText((Join-Path $d29 'launcher.config'), ('lang=zh' + [Environment]::NewLine + 'check_update=off' + [Environment]::NewLine))
+# 29 status -> STATUS_DOWN（变体 A 打桩）
+$o29 = (& (Join-Path $d29 't.exe') status 2>&1 | Out-String)
+TC '29 status CLI (down)' ($o29.Contains('STATUS_DOWN'))
+# 30 stop -> STOP_OK（已停止幂等；变体 A 打桩 Down，绝不触碰真实 3080/harness）
+$o30 = (& (Join-Path $d29 't.exe') stop 2>&1 | Out-String)
+TC '30 stop CLI (idempotent down)' ($o30.Contains('STOP_OK'))
+# 31 backup/restore 非交互（.dsh_test 打桩数据）
+Seed-DT
+$o31a = (& (Join-Path $d29 't.exe') backup 2>&1 | Out-String)
+$bk31 = @(Get-ChildItem -LiteralPath (Join-Path $d29 'backup') -Directory -ErrorAction SilentlyContinue).Count
+$o31b = (& (Join-Path $d29 't.exe') restore 2>&1 | Out-String)
+TC '31 backup+restore CLI' (($o31a.Contains('BACKUP_OK')) -and ($bk31 -ge 1) -and ($o31b.Contains('RESTORE_OK')) -and (Test-Path (Join-Path $dt 'settings.yaml')))
+
+# 32 start --bg / status up（变体 C 真实端口：3080 运行时 START_OK 幂等，不真启动；未开则 SKIP）
+if ($portLive) {
+    $d32 = Join-Path $T 'bgC'; NewDir $d32; Copy-Item $tC (Join-Path $d32 't.exe')
+    [IO.File]::WriteAllText((Join-Path $d32 'launcher.config'), ('lang=zh' + [Environment]::NewLine + 'check_update=off' + [Environment]::NewLine))
+    $o32a = (& (Join-Path $d32 't.exe') status 2>&1 | Out-String)
+    $o32b = (& (Join-Path $d32 't.exe') start --bg 2>&1 | Out-String)
+    TC '32 status up + start --bg idempotent' (($o32a.Contains('STATUS_UP')) -and ($o32b.Contains('START_OK')))
+} else {
+    $results.Add('32 status/start-bg(needs 3080)    SKIP')
+}
 
 Write-Output ""; Write-Output "=== integration results ==="
 $results | ForEach-Object { Write-Output $_ }
