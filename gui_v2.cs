@@ -203,6 +203,180 @@ class Led : Control
     }
 }
 
+// ---------------- 圆角按钮（自绘，供标题栏图标 / 导航 / 操作按钮复用） ----------------
+
+class RButton : Button
+{
+    bool hover;
+    bool pressed;
+    public bool Checked;                        // 导航当前页高亮
+    public bool AccentBar;                      // 导航左侧 3px 强调竖条
+    public Action<Graphics, Rectangle> Icon;    // 标题栏图标绘制（╳ / ─ / 月牙）
+    public Color HoverTint = Color.Empty;       // hover 强调背景（关闭按钮=红）；空则用 th.Hover
+    Theme th = Theme.Dark;
+
+    public RButton()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        FlatStyle = FlatStyle.Flat;
+        FlatAppearance.BorderSize = 0;
+        Cursor = Cursors.Hand;
+    }
+
+    public void SetTheme(Theme t) { th = t; Invalidate(); }
+
+    protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
+    protected override void OnMouseLeave(EventArgs e) { hover = false; pressed = false; Invalidate(); base.OnMouseLeave(e); }
+    protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) { pressed = true; Invalidate(); } base.OnMouseDown(e); }
+    protected override void OnMouseUp(MouseEventArgs e) { pressed = false; Invalidate(); base.OnMouseUp(e); }
+    protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+
+        Color bg = th.PanelAlt;
+        if (!Enabled) bg = th.Panel;
+        else if (pressed) bg = th.Hover;
+        else if (hover) bg = HoverTint.IsEmpty ? th.Hover : HoverTint;
+        else if (Checked) bg = th.Accent;
+
+        int rad = 8;
+        using (GraphicsPath path = RoundRect(0, 0, Width - 1, Height - 1, rad))
+        using (SolidBrush bb = new SolidBrush(bg))
+            g.FillPath(bb, path);
+
+        if (AccentBar && Checked)
+        {
+            using (SolidBrush ab = new SolidBrush(th.Accent))
+                g.FillRectangle(ab, 0, 10, 3, Height - 20);
+        }
+
+        if (Icon != null)
+        {
+            Icon(g, ClientRectangle);
+        }
+        else if (!string.IsNullOrEmpty(Text))
+        {
+            Color fg = th.Fg;
+            if (!Enabled) fg = th.FgDim;
+            else if (Checked) fg = th.AccentFg;
+            Rectangle rc = new Rectangle(Padding.Left, Padding.Top, Width - Padding.Horizontal, Height - Padding.Vertical);
+            TextFormatFlags flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
+            if (TextAlign == ContentAlignment.MiddleLeft) flags |= TextFormatFlags.Left;
+            else if (TextAlign == ContentAlignment.MiddleRight) flags |= TextFormatFlags.Right;
+            else flags |= TextFormatFlags.HorizontalCenter;
+            TextRenderer.DrawText(g, Text, Font, rc, fg, flags);
+        }
+    }
+
+    public static GraphicsPath RoundRect(int x, int y, int w, int h, int r)
+    {
+        var p = new GraphicsPath();
+        int d = r * 2;
+        if (w < d) d = w; if (h < d) d = h;
+        if (d < 2) { p.AddRectangle(new Rectangle(x, y, w, h)); return p; }
+        p.AddArc(x, y, d, d, 180, 90);
+        p.AddArc(x + w - d, y, d, d, 270, 90);
+        p.AddArc(x + w - d, y + h - d, d, d, 0, 90);
+        p.AddArc(x, y + h - d, d, d, 90, 90);
+        p.CloseFigure();
+        return p;
+    }
+}
+
+// ---------------- 图标绘制（标题栏 ╳ / ─ / 月牙） ----------------
+
+static class Glyphs
+{
+    // 关闭 ╳
+    public static void Close(Graphics g, Rectangle r)
+    {
+        int cx = r.X + r.Width / 2, cy = r.Y + r.Height / 2, d = 5;
+        using (Pen p = new Pen(Color.LightGray, 1.7f))
+        {
+            p.StartCap = LineCap.Round; p.EndCap = LineCap.Round;
+            g.DrawLine(p, cx - d, cy - d, cx + d, cy + d);
+            g.DrawLine(p, cx - d, cy + d, cx + d, cy - d);
+        }
+    }
+
+    // 最小化 ─
+    public static void Min(Graphics g, Rectangle r)
+    {
+        int cx = r.X + r.Width / 2, cy = r.Y + r.Height / 2;
+        using (Pen p = new Pen(Color.LightGray, 1.7f))
+        {
+            p.StartCap = LineCap.Round; p.EndCap = LineCap.Round;
+            g.DrawLine(p, cx - 5, cy, cx + 5, cy);
+        }
+    }
+
+    // 月牙（主题切换；fg=月牙色 bg=按钮当前背景）
+    public static void Moon(Graphics g, Rectangle r, Color fg, Color bg)
+    {
+        int cx = r.X + r.Width / 2, cy = r.Y + r.Height / 2, dd = 12;
+        using (SolidBrush b = new SolidBrush(fg))
+            g.FillEllipse(b, cx - dd / 2, cy - dd / 2, dd, dd);
+        using (SolidBrush b = new SolidBrush(bg))
+            g.FillEllipse(b, cx - dd / 2 + dd / 3, cy - dd / 2 - 1, dd, dd);
+    }
+
+    // 太阳（浅色主题下提示切深色）
+    public static void Sun(Graphics g, Rectangle r, Color fg)
+    {
+        int cx = r.X + r.Width / 2, cy = r.Y + r.Height / 2, rr = 5;
+        using (SolidBrush b = new SolidBrush(fg))
+            g.FillEllipse(b, cx - rr, cy - rr, rr * 2, rr * 2);
+        using (Pen p = new Pen(fg, 1.4f))
+        {
+            p.StartCap = LineCap.Round; p.EndCap = LineCap.Round;
+            for (int i = 0; i < 8; i++)
+            {
+                double a = i * Math.PI / 4;
+                int x1 = cx + (int)(Math.Cos(a) * (rr + 3));
+                int y1 = cy + (int)(Math.Sin(a) * (rr + 3));
+                int x2 = cx + (int)(Math.Cos(a) * (rr + 6));
+                int y2 = cy + (int)(Math.Sin(a) * (rr + 6));
+                g.DrawLine(p, x1, y1, x2, y2);
+            }
+        }
+    }
+}
+
+// ---------------- 圆角面板（状态卡 / 信息卡背景） ----------------
+
+class RPanel : Panel
+{
+    int radius = 12;
+    Theme th = Theme.Dark;
+
+    public RPanel()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+    }
+
+    public void SetTheme(Theme t)
+    {
+        th = t;
+        BackColor = Color.Transparent;   // 背景交给 OnPaint 画圆角
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using (GraphicsPath path = RButton.RoundRect(0, 0, Width - 1, Height - 1, radius))
+        using (SolidBrush b = new SolidBrush(th.PanelAlt))
+            g.FillPath(b, path);
+    }
+}
+
 // ---------------- 主窗体 ----------------
 
 public class App : Form
@@ -212,18 +386,18 @@ public class App : Form
 
     // 标题栏
     Panel titleBar;
-    Button btnMin, btnClose, btnTheme, btnLang;
+    RButton btnMin, btnClose, btnTheme, btnLang;
     Label lblTitle;
 
     // 导航
     Panel nav;
-    Button[] navBtns;
+    RButton[] navBtns;
     Panel content;
     Panel[] pages;   // 0=home 1=log 2=about
 
     // 首页
     Led led;
-    Label lblStatusText, lblWebAddr, lblDshVer;
+    Label lblStatusText, lblWebAddr, lblDshVer, lblStatusTitleDim;
     TableLayoutPanel actionGrid;
 
     // 操作按钮字典（key → Button，用于禁用态管理）
@@ -231,7 +405,7 @@ public class App : Form
 
     // 日志页
     TextBox txtLog;
-    Button btnClearLog;
+    RButton btnClearLog;
 
     // 关于页
     PictureBox picLogo;
@@ -254,6 +428,9 @@ public class App : Form
     // 当前 dsh 版本（轮询顺带读取）
     string dshVer = "";
 
+    // 当前页索引（导航高亮）
+    int curPage = 0;
+
     public App()
     {
         Text = L10N._("app.title");
@@ -268,6 +445,7 @@ public class App : Form
         ApplyTheme();
         ApplyLang();
         ShowPage(0);
+        ApplyWindowRegion();
         RefreshStatus();
 
         // 3 秒状态轮询（定时器，不阻塞 UI）
@@ -275,6 +453,21 @@ public class App : Form
         pollTimer.Interval = 3000;
         pollTimer.Tick += delegate(object s, EventArgs e) { RefreshStatus(); };
         pollTimer.Start();
+    }
+
+    // 窗口圆角（QQ NT / 网易云风格）
+    void ApplyWindowRegion()
+    {
+        if (WindowState != FormWindowState.Normal) { Region = null; return; }
+        int r = 14;
+        using (GraphicsPath path = RButton.RoundRect(0, 0, Width, Height, r))
+            Region = new Region(path);
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        ApplyWindowRegion();
     }
 
     void Build()
@@ -308,10 +501,10 @@ public class App : Form
         lblTitle.Location = new Point(16, 12);
         titleBar.Controls.Add(lblTitle);
 
-        btnTheme = MakeTitleBtn("🌓", 0);
-        btnLang = MakeTitleBtn("🌐", 1);
-        btnMin = MakeTitleBtn("－", 2);
-        btnClose = MakeTitleBtn("✕", 3);
+        btnTheme = MakeTitleBtn(0);
+        btnLang = MakeTitleBtn(1);
+        btnMin = MakeTitleBtn(2);
+        btnClose = MakeTitleBtn(3);
 
         // ---- 主体（Fill 最先 Add → 逆序 dock 时最后布局，填满剩余空间，不被边缘控件覆盖）----
         Panel body = new Panel();
@@ -330,6 +523,7 @@ public class App : Form
 
         // 标题栏（Top 后 Add → 逆序 dock 时先布局，占顶部）
         Controls.Add(titleBar);
+        titleBar.Resize += delegate(object s, EventArgs e) { RelayoutTitleButtons(); };
 
         pages = new Panel[3];
         pages[0] = BuildHome();
@@ -342,27 +536,28 @@ public class App : Form
             content.Controls.Add(p);
         }
 
-        // 导航按钮（绝对定位，避免 Dock.Top 逆序）
+        // 导航按钮（RButton 圆角 + 当前页高亮指示条，绝对定位避免 Dock.Top 逆序）
         string[] navKeys = new string[] { "nav.home", "nav.log", "nav.about" };
-        navBtns = new Button[3];
+        navBtns = new RButton[3];
         for (int i = 0; i < 3; i++)
         {
             int idx = i;
-            Button b = new Button();
-            b.FlatStyle = FlatStyle.Flat;
-            b.FlatAppearance.BorderSize = 0;
-            b.Location = new Point(0, 8 + i * 48);
-            b.Size = new Size(176, 48);
+            RButton b = new RButton();
+            b.Location = new Point(10, 14 + i * 52);
+            b.Size = new Size(156, 42);
             b.TextAlign = ContentAlignment.MiddleLeft;
-            b.Padding = new Padding(20, 0, 0, 0);
+            b.Padding = new Padding(18, 0, 0, 0);
+            b.AccentBar = true;
+            b.Text = L10N._(navKeys[i]);
             b.Click += delegate(object s, EventArgs e) { ShowPage(idx); };
             navBtns[i] = b;
             nav.Controls.Add(b);
         }
         nav.Resize += delegate
         {
+            int w = Math.Max(0, nav.ClientSize.Width - 20);
             for (int i = 0; i < navBtns.Length; i++)
-                navBtns[i].Width = Math.Max(0, nav.ClientSize.Width);
+                navBtns[i].Width = w;
         };
 
         // ---- 底部 disclaimer ----
@@ -373,19 +568,36 @@ public class App : Form
         Controls.Add(lblDisclaimer);
     }
 
-    Button MakeTitleBtn(string glyph, int orderFromRight)
+    RButton MakeTitleBtn(int orderFromRight)
     {
-        Button b = new Button();
-        b.FlatStyle = FlatStyle.Flat;
-        b.FlatAppearance.BorderSize = 0;
-        b.Size = new Size(44, 34);
-        b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        b.Text = glyph;
-        b.Font = new Font("Segoe UI Symbol", 11f);
-        b.Location = new Point(Width - 14 - 44 * (orderFromRight + 1) - 6 * orderFromRight, 6);
+        RButton b = new RButton();
+        b.Size = new Size(42, 32);
+        // 绝对定位：X 由 RelayoutTitleButtons 统一重算（Anchor=Right 在构建期会漂移出窗口）
+        b.Tag = orderFromRight;
         b.Click += delegate(object s, EventArgs e) { TitleAct(orderFromRight); };
+        int id = orderFromRight;
+        if (id == 0) b.Icon = delegate(Graphics g, Rectangle r)   // 主题切换：月牙↔太阳
+        {
+            if (dark) Glyphs.Moon(g, r, Th.FgDim, Th.Panel);
+            else Glyphs.Sun(g, r, Th.FgDim);
+        };
+        else if (id == 1) { b.Icon = null; b.Font = new Font("Microsoft YaHei UI", 9f, FontStyle.Bold); b.Text = L10N.IsZh ? "EN" : "中"; }  // 语言切换
+        else if (id == 2) b.Icon = delegate(Graphics g, Rectangle r) { Glyphs.Min(g, r); };                        // 最小化
+        else b.Icon = delegate(Graphics g, Rectangle r) { Glyphs.Close(g, r); };                                   // 关闭
+        if (id == 3) b.HoverTint = Color.FromArgb(0xE8, 0x11, 0x23);   // 关闭按钮 hover 红色（QQ NT 风格）
         titleBar.Controls.Add(b);
         return b;
+    }
+
+    // 标题栏按钮绝对定位（随标题栏宽度重算，避免 Anchor=Right 构建期漂移）
+    void RelayoutTitleButtons()
+    {
+        if (btnTheme == null || titleBar == null) return;
+        RButton[] bs = new RButton[] { btnTheme, btnLang, btnMin, btnClose };
+        for (int i = 0; i < bs.Length; i++)
+        {
+            bs[i].Location = new Point(titleBar.ClientSize.Width - 12 - 42 * (i + 1) - 4 * i, 8);
+        }
     }
 
     void TitleAct(int id)
@@ -401,29 +613,31 @@ public class App : Form
     {
         Panel p = new Panel();
 
-        // 状态卡片
-        Panel card = new Panel();
+        // 状态卡片（圆角 RPanel）
+        RPanel card = new RPanel();
         card.Location = new Point(24, 20);
-        card.Size = new Size(520, 150);
-        card.Padding = new Padding(20);
+        card.Size = new Size(620, 150);
+        card.Padding = new Padding(22);
         p.Controls.Add(card);
 
         Label lblStatusTitle = new Label();
         lblStatusTitle.AutoSize = true;
-        lblStatusTitle.Font = new Font("Microsoft YaHei UI", 10f, FontStyle.Bold);
+        lblStatusTitle.Font = new Font("Microsoft YaHei UI", 9f, FontStyle.Regular);
         lblStatusTitle.Location = new Point(0, 0);
         lblStatusTitle.Text = L10N._("home.status.title");
         lblStatusTitle.Tag = "status.title";
+        lblStatusTitle.ForeColor = Th.FgDim;
         card.Controls.Add(lblStatusTitle);
+        lblStatusTitleDim = lblStatusTitle;
 
         led = new Led();
-        led.Location = new Point(0, 34);
+        led.Location = new Point(0, 30);
         card.Controls.Add(led);
 
         lblStatusText = new Label();
         lblStatusText.AutoSize = true;
-        lblStatusText.Font = new Font("Microsoft YaHei UI", 14f, FontStyle.Bold);
-        lblStatusText.Location = new Point(30, 26);
+        lblStatusText.Font = new Font("Microsoft YaHei UI", 22f, FontStyle.Bold);
+        lblStatusText.Location = new Point(26, 22);
         lblStatusText.Text = L10N._("home.status.unknown");
         lblStatusText.Tag = "status.text";
         card.Controls.Add(lblStatusText);
@@ -433,23 +647,25 @@ public class App : Form
         lblWebAddr.Location = new Point(0, 78);
         lblWebAddr.Text = L10N._("home.address") + ": http://127.0.0.1:3080";
         lblWebAddr.Tag = "webaddr";
+        lblWebAddr.ForeColor = Th.FgDim;
         card.Controls.Add(lblWebAddr);
 
         lblDshVer = new Label();
         lblDshVer.AutoSize = true;
-        lblDshVer.Location = new Point(0, 106);
+        lblDshVer.Location = new Point(0, 104);
         lblDshVer.Text = L10N._("home.version") + ": —";
         lblDshVer.Tag = "dshver";
+        lblDshVer.ForeColor = Th.FgDim;
         card.Controls.Add(lblDshVer);
 
         // 操作按钮区（8 操作按钮 2 列×4 行 + 刷新跨 2 列）
         actionGrid = new TableLayoutPanel();
         actionGrid.ColumnCount = 2;
         actionGrid.RowCount = 5;
-        actionGrid.Location = new Point(24, 190);
-        actionGrid.Size = new Size(520, 310);
+        actionGrid.Location = new Point(24, 192);
+        actionGrid.Size = new Size(620, 300);
         for (int c = 0; c < 2; c++) actionGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
-        for (int r = 0; r < 5; r++) actionGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 56f));
+        for (int r = 0; r < 5; r++) actionGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 54f));
         p.Controls.Add(actionGrid);
 
         AddActionButton(0, 0, "act.install", 1);
@@ -467,11 +683,11 @@ public class App : Form
 
     void AddActionButton(int col, int row, string key, int colSpan)
     {
-        Button b = new Button();
-        b.FlatStyle = FlatStyle.Flat;
+        RButton b = new RButton();
         b.Dock = DockStyle.Fill;
-        b.Margin = new Padding(6);
+        b.Margin = new Padding(8);
         b.Tag = key;
+        b.Text = L10N._(key);
         b.Click += delegate(object s, EventArgs e) { OnAction(key); };
         actionGrid.Controls.Add(b, col, row);
         if (colSpan > 1) actionGrid.SetColumnSpan(b, colSpan);
@@ -643,14 +859,16 @@ public class App : Form
         t.Tag = "log.title";
         top.Controls.Add(t);
 
-        btnClearLog = new Button();
-        btnClearLog.FlatStyle = FlatStyle.Flat;
-        btnClearLog.FlatAppearance.BorderSize = 1;
-        btnClearLog.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnClearLog = new RButton();
         btnClearLog.Size = new Size(72, 28);
         btnClearLog.Location = new Point(0, 8);
+        btnClearLog.Text = L10N._("log.clear");
         btnClearLog.Click += delegate(object s, EventArgs e) { ClearLog(); };
         top.Controls.Add(btnClearLog);
+        top.Resize += delegate(object s, EventArgs e)
+        {
+            btnClearLog.Location = new Point(top.ClientSize.Width - 72 - 20, 8);
+        };
 
         txtLog = new TextBox();
         txtLog.Multiline = true;
@@ -723,9 +941,14 @@ public class App : Form
     // ---- 页面切换 ----
     void ShowPage(int idx)
     {
+        curPage = idx;
         for (int i = 0; i < pages.Length; i++)
             pages[i].Visible = (i == idx);
-        if (pages[idx] == pages[1]) RefreshLogColors();
+        for (int i = 0; i < navBtns.Length; i++)
+        {
+            navBtns[i].Checked = (i == idx);
+            navBtns[i].Refresh();
+        }
     }
 
     // ---- 主题 ----
@@ -740,18 +963,14 @@ public class App : Form
         nav.BackColor = t.Panel;
         content.BackColor = t.Bg;
 
-        foreach (Button b in navBtns)
-        {
-            b.ForeColor = t.FgDim;
-            b.BackColor = t.Panel;
-            b.FlatAppearance.MouseOverBackColor = t.Hover;
-            b.FlatAppearance.MouseDownBackColor = t.PanelAlt;
-        }
+        foreach (RButton b in navBtns)
+            b.SetTheme(t);
 
-        StyleTitleButton(btnTheme, t);
-        StyleTitleButton(btnLang, t);
-        StyleTitleButton(btnMin, t);
-        StyleTitleButton(btnClose, t);
+        btnTheme.SetTheme(t);
+        btnLang.SetTheme(t);
+        btnMin.SetTheme(t);
+        btnClose.SetTheme(t);
+        btnLang.ForeColor = t.FgDim;   // 语言文字按钮
 
         foreach (Panel pg in pages) { pg.BackColor = t.Bg; ThemeRecurse(pg, t); }
 
@@ -761,10 +980,15 @@ public class App : Form
         led.SetTheme(t, t.PanelAlt);
         ApplyStatusColor();
 
+        // 状态卡次标签恢复 Dim 色（ThemeRecurse 会统一成 Fg）
+        if (lblWebAddr != null) lblWebAddr.ForeColor = t.FgDim;
+        if (lblDshVer != null) lblDshVer.ForeColor = t.FgDim;
+        if (lblStatusTitleDim != null) lblStatusTitleDim.ForeColor = t.FgDim;
+
         // 日志页
         txtLog.BackColor = t.Panel;
         txtLog.ForeColor = t.Fg;
-        StyleButton(btnClearLog, t);
+        btnClearLog.SetTheme(t);
 
         UpdateActionButtons();   // 禁用态着色后重新应用
 
@@ -777,25 +1001,29 @@ public class App : Form
     {
         foreach (Control c in parent.Controls)
         {
+            if (c is RPanel)
+            {
+                (c as RPanel).SetTheme(t);
+                ThemeRecurse(c, t);
+                continue;
+            }
+            if (c is RButton)
+            {
+                (c as RButton).SetTheme(t);
+                continue;
+            }
             if (c is Panel)
             {
-                // 卡片类面板（有背景色且非透明）统一着色
                 if (c.BackColor != Color.Transparent && c == parent) continue;
                 Panel pn = c as Panel;
-                bool isCard = pn.Padding.Horizontal > 0 || (pn.Controls.Count > 0 && pn.BackColor != Color.Transparent);
                 if (pn.Padding.Horizontal > 0) pn.BackColor = t.PanelAlt;
+                else pn.BackColor = t.Bg;
                 ThemeRecurse(pn, t);
                 continue;
             }
             if (c is Label)
             {
                 c.ForeColor = t.Fg;
-                // 状态标题等次标题用 Dim
-            }
-            if (c is Button)
-            {
-                Button b = c as Button;
-                StyleButton(b, t);
             }
             if (c is TableLayoutPanel)
             {
@@ -809,23 +1037,6 @@ public class App : Form
             }
             ThemeRecurse(c, t);
         }
-    }
-
-    void StyleTitleButton(Button b, Theme t)
-    {
-        b.BackColor = t.Panel;
-        b.ForeColor = t.FgDim;
-        b.FlatAppearance.MouseOverBackColor = t.Hover;
-        b.FlatAppearance.MouseDownBackColor = t.PanelAlt;
-    }
-
-    void StyleButton(Button b, Theme t)
-    {
-        b.BackColor = t.PanelAlt;
-        b.ForeColor = b.Enabled ? t.Fg : t.FgDim;
-        b.FlatAppearance.MouseOverBackColor = t.Hover;
-        b.FlatAppearance.MouseDownBackColor = t.Panel;
-        b.FlatAppearance.BorderColor = t.Border;
     }
 
     void ApplyStatusColor()
