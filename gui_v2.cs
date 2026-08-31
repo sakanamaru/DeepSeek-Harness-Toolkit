@@ -276,11 +276,18 @@ class RButton : Button
             if (!Enabled) fg = th.FgDim;
             else if (Checked) fg = th.AccentFg;
             Rectangle rc = new Rectangle(Padding.Left, Padding.Top, Width - Padding.Horizontal, Height - Padding.Vertical);
-            TextFormatFlags flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
-            if (TextAlign == ContentAlignment.MiddleLeft) flags |= TextFormatFlags.Left;
-            else if (TextAlign == ContentAlignment.MiddleRight) flags |= TextFormatFlags.Right;
-            else flags |= TextFormatFlags.HorizontalCenter;
-            TextRenderer.DrawText(g, Text, Font, rc, fg, flags);
+            // 灰阶抗锯齿（AntiAliasGridFit）避免 ClearType 在深色背景产生红/蓝彩边
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            using (StringFormat sf = new StringFormat())
+            {
+                sf.Trimming = StringTrimming.EllipsisCharacter;
+                sf.FormatFlags = StringFormatFlags.NoWrap;
+                if (TextAlign == ContentAlignment.MiddleLeft) { sf.Alignment = StringAlignment.Near; sf.LineAlignment = StringAlignment.Center; }
+                else if (TextAlign == ContentAlignment.MiddleRight) { sf.Alignment = StringAlignment.Far; sf.LineAlignment = StringAlignment.Center; }
+                else { sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center; }
+                using (SolidBrush tb = new SolidBrush(fg))
+                    g.DrawString(Text, Font, tb, rc, sf);
+            }
         }
     }
 
@@ -396,6 +403,58 @@ class RPanel : Panel
         using (GraphicsPath path = RButton.RoundRect(0, 0, Width - 1, Height - 1, radius))
         using (SolidBrush b = new SolidBrush(th.PanelAlt))
             g.FillPath(b, path);
+    }
+}
+
+// ---------------- 自绘 Label（灰阶抗锯齿，避免 ClearType 深色背景彩边） ----------------
+
+class RLabel : Label
+{
+    public Color Surround = Color.Transparent;
+
+    public RLabel()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
+                 ControlStyles.SupportsTransparentBackColor, true);
+        BackColor = Color.Transparent;
+    }
+
+    protected override void OnPaintBackground(PaintEventArgs e) { }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        if (Surround != Color.Transparent)
+        {
+            using (SolidBrush sb = new SolidBrush(Surround))
+                g.FillRectangle(sb, 0, 0, Width, Height);
+        }
+        if (!string.IsNullOrEmpty(Text))
+        {
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            using (SolidBrush tb = new SolidBrush(ForeColor))
+            using (StringFormat sf = MakeFormat())
+                g.DrawString(Text, Font, tb, new RectangleF(0, 0, Width, Height), sf);
+        }
+    }
+
+    StringFormat MakeFormat()
+    {
+        var sf = new StringFormat();
+        switch (TextAlign)
+        {
+            case ContentAlignment.TopLeft: sf.Alignment = StringAlignment.Near; sf.LineAlignment = StringAlignment.Near; break;
+            case ContentAlignment.TopCenter: sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Near; break;
+            case ContentAlignment.TopRight: sf.Alignment = StringAlignment.Far; sf.LineAlignment = StringAlignment.Near; break;
+            case ContentAlignment.MiddleLeft: sf.Alignment = StringAlignment.Near; sf.LineAlignment = StringAlignment.Center; break;
+            case ContentAlignment.MiddleRight: sf.Alignment = StringAlignment.Far; sf.LineAlignment = StringAlignment.Center; break;
+            case ContentAlignment.BottomLeft: sf.Alignment = StringAlignment.Near; sf.LineAlignment = StringAlignment.Far; break;
+            case ContentAlignment.BottomCenter: sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Far; break;
+            case ContentAlignment.BottomRight: sf.Alignment = StringAlignment.Far; sf.LineAlignment = StringAlignment.Far; break;
+            default: sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center; break;
+        }
+        return sf;
     }
 }
 
@@ -517,7 +576,7 @@ public class App : Form
         };
         titleBar.MouseUp += delegate(object s, MouseEventArgs e) { titleBar.Capture = false; };
 
-        lblTitle = new Label();
+        lblTitle = new RLabel();
         lblTitle.AutoSize = true;
         lblTitle.Font = new Font("Microsoft YaHei UI", 11f, FontStyle.Bold);
         lblTitle.Location = new Point(16, 12);
@@ -583,7 +642,7 @@ public class App : Form
         };
 
         // ---- 底部 disclaimer ----
-        lblDisclaimer = new Label();
+        lblDisclaimer = new RLabel();
         lblDisclaimer.Dock = DockStyle.Bottom;
         lblDisclaimer.Height = 30;
         lblDisclaimer.TextAlign = ContentAlignment.MiddleCenter;
@@ -642,7 +701,7 @@ public class App : Form
         card.Padding = new Padding(22);
         p.Controls.Add(card);
 
-        Label lblStatusTitle = new Label();
+        Label lblStatusTitle = new RLabel();
         lblStatusTitle.AutoSize = true;
         lblStatusTitle.Font = new Font("Microsoft YaHei UI", 9f, FontStyle.Regular);
         lblStatusTitle.Location = new Point(0, 0);
@@ -656,7 +715,7 @@ public class App : Form
         led.Location = new Point(0, 30);
         card.Controls.Add(led);
 
-        lblStatusText = new Label();
+        lblStatusText = new RLabel();
         lblStatusText.AutoSize = true;
         lblStatusText.Font = new Font("Microsoft YaHei UI", 22f, FontStyle.Bold);
         lblStatusText.Location = new Point(26, 22);
@@ -664,7 +723,7 @@ public class App : Form
         lblStatusText.Tag = "status.text";
         card.Controls.Add(lblStatusText);
 
-        lblWebAddr = new Label();
+        lblWebAddr = new RLabel();
         lblWebAddr.AutoSize = true;
         lblWebAddr.Location = new Point(0, 78);
         lblWebAddr.Text = L10N._("home.address") + ": http://127.0.0.1:3080";
@@ -672,7 +731,7 @@ public class App : Form
         lblWebAddr.ForeColor = Th.FgDim;
         card.Controls.Add(lblWebAddr);
 
-        lblDshVer = new Label();
+        lblDshVer = new RLabel();
         lblDshVer.AutoSize = true;
         lblDshVer.Location = new Point(0, 104);
         lblDshVer.Text = L10N._("home.version") + ": —";
@@ -873,7 +932,7 @@ public class App : Form
         top.Height = 44;
         p.Controls.Add(top);
 
-        Label t = new Label();
+        Label t = new RLabel();
         t.AutoSize = true;
         t.Location = new Point(20, 12);
         t.Font = new Font("Microsoft YaHei UI", 10f, FontStyle.Bold);
@@ -915,27 +974,27 @@ public class App : Form
         p.Controls.Add(picLogo);
         LoadLogo();
 
-        Label name = new Label();
+        Label name = new RLabel();
         name.AutoSize = true;
         name.Font = new Font("Microsoft YaHei UI", 16f, FontStyle.Bold);
         name.Location = new Point(140, 40);
         name.Text = "DeepSeek Harness Toolkit";
         p.Controls.Add(name);
 
-        Label ver = new Label();
+        Label ver = new RLabel();
         ver.AutoSize = true;
         ver.Location = new Point(142, 82);
         ver.Text = "GUI " + AssemblyVersion();
         p.Controls.Add(ver);
 
-        Label copy = new Label();
+        Label copy = new RLabel();
         copy.AutoSize = true;
         copy.Location = new Point(142, 108);
         copy.Text = L10N._("about.copy");
         copy.Tag = "about.copy";
         p.Controls.Add(copy);
 
-        Label cred = new Label();
+        Label cred = new RLabel();
         cred.AutoSize = true;
         cred.Location = new Point(0, 160);
         cred.Text = "v1 脚本协助 : SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）\nv2 重构封装 : DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）";
@@ -981,6 +1040,7 @@ public class App : Form
 
         BackColor = t.Bg;
         titleBar.BackColor = t.Panel;
+        if (lblTitle is RLabel) { (lblTitle as RLabel).Surround = t.Panel; }
         lblTitle.ForeColor = t.Fg;
         nav.BackColor = t.Panel;
         content.BackColor = t.Bg;
@@ -996,7 +1056,7 @@ public class App : Form
 
         foreach (Panel pg in pages) { pg.BackColor = t.Bg; ThemeRecurse(pg, t, t.Bg); }
 
-        lblDisclaimer.BackColor = t.Panel;
+        if (lblDisclaimer is RLabel) { (lblDisclaimer as RLabel).Surround = t.Panel; }
         lblDisclaimer.ForeColor = t.FgDim;
 
         led.SetTheme(t, t.PanelAlt);
@@ -1043,9 +1103,16 @@ public class App : Form
                 else { pn.BackColor = t.Bg; ThemeRecurse(pn, t, t.Bg); }
                 continue;
             }
+            if (c is RLabel)
+            {
+                (c as RLabel).Surround = surround;
+                c.ForeColor = t.Fg;
+                continue;
+            }
             if (c is Label)
             {
                 c.ForeColor = t.Fg;
+                c.BackColor = surround;   // 文字背景必须与容器一致，消除文字周围杂边/白块
             }
             if (c is TableLayoutPanel)
             {
