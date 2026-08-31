@@ -117,7 +117,7 @@ dsh **未安装**时菜单等待你选择（按 1 安装），不会自动安装
   ```
   只触碰打桩数据目录 `~/.dsh_test`，**绝不接触真实 `~/.dsh`**；3080 未开启时"运行中"相关用例标记 SKIP 而非 FAIL。退出码 0=全过。
 
-- **CI**：GitHub Actions 在**打 `v*` 标签推送或手动触发**（`workflow_dispatch`）时自动运行两套测试，并按标签重建发布资产与 `hashes.txt`。
+- **CI**：GitHub Actions 在**每次推送到 `main`、每个 PR、以及打 `v*` 标签**时自动运行两套测试；发布资产与 `hashes.txt` 仅在 `v*` 标签推送或手动触发（`workflow_dispatch`）时重建。
 
 ## 目录结构
 

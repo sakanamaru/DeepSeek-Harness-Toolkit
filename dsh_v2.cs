@@ -1,5 +1,5 @@
 // ============================================================================
-//  DeepSeek Harness Toolkit V2.1.4  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
+//  DeepSeek Harness Toolkit V2.3.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
 // ----------------------------------------------------------------------------
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 //  v2 重构封装：DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）
@@ -21,12 +21,12 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 
-[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.1.4")]
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.3.0")]
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
-[assembly: AssemblyVersion("2.1.4.0")]
-[assembly: AssemblyFileVersion("2.1.4.0")]
+[assembly: AssemblyVersion("2.3.0.0")]
+[assembly: AssemblyFileVersion("2.3.0.0")]
 
 public static class Program
 {
@@ -61,7 +61,7 @@ public static class Program
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Toolkit V2.1.4"; } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.3.0"; } catch { }
         StateDir = ResolveStateDir();
         // 注意：根目录标记 .dsh_launcher_root 只随发布包分发，本程序永不自行补建——
         // 若启动时"看起来像完整安装"就自动写标记，攻击者可诱导用户将 exe 与任意同名文件
@@ -177,7 +177,7 @@ public static class Program
     static void Banner()
     {
         CL(ConsoleColor.Cyan,   "==============================================");
-        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.1.4");
+        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.3.0");
         CL(ConsoleColor.Cyan,   "==============================================");
         C(ConsoleColor.Gray,    "  v1 脚本协助 : "); CL(ConsoleColor.White, "SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
         C(ConsoleColor.Gray,    "  v2 重构封装 : "); CL(ConsoleColor.White, "DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
@@ -629,6 +629,16 @@ public static class Program
             Pause();
             return;
         }
+        // L-6：备份目录/状态目录若落在删除目标子树内，pre-wipe 备份会随删除一起被删（安全网失效）→ 显式拒绝
+        string bRoot = BackupsRoot();
+        string stDir = StateDir;
+        if (IsSubPath(dir, bRoot) || IsSubPath(dir, stDir))
+        {
+            Error(T("拒绝清除：备份目录或状态目录位于删除目标之内（" + dir + "），清除会连带删除安全备份。请先迁移备份目录。",
+                    "Refused to wipe: the backup/state dir lies inside the target (" + dir + "), so wiping would also delete the safety backup. Move the backup dir first."));
+            Pause();
+            return;
+        }
         // 清除数据前自动备份到备份目录
         if (Directory.Exists(dir))
         {
@@ -1040,12 +1050,14 @@ public static class Program
     {
         src = TrimTrailingSep(src); dst = TrimTrailingSep(dst);
         Directory.CreateDirectory(P(dst));
+        int skippedNested = 0;   // L-7：统计被跳过的 dsh-data-* 嵌套备份包，最后统一 Warn 提示（避免静默丢用户数据）
         foreach (string d in Directory.GetDirectories(P(src)))
         {
             string name = Path.GetFileName(TrimP(d));
-            if (name == "node_modules") continue;        // 依赖可重装，备份时跳过
-            if (name == "backup") continue;              // 防止备份目录把自身备份递归复制进去
-            if (name.StartsWith("dsh-data-")) continue;  // 嵌套的备份包不再复制（防递归与超长路径）
+            if (name.Equals("node_modules", StringComparison.OrdinalIgnoreCase)) continue;   // 依赖可重装，备份时跳过
+            if (name.Equals("backup", StringComparison.OrdinalIgnoreCase)) continue;         // 防止备份目录把自身备份递归复制进去
+            if (name.StartsWith("dsh-data-", StringComparison.OrdinalIgnoreCase))            // L-7：大小写不敏感（用户同名业务目录也一并跳过并提示，不静默）
+            { skippedNested++; continue; }
             try { CopyTree(TrimP(d), Path.Combine(dst, name), skipLocked); }
             catch (Exception ex)
             {
@@ -1053,6 +1065,9 @@ public static class Program
                 LogErr("跳过无法复制的子目录: " + TrimP(d) + " : " + ex.Message);
             }
         }
+        if (skippedNested > 0)
+            Warn(T("已跳过 " + skippedNested + " 个嵌套备份目录（dsh-data-*），不复制进本次备份。",
+                    "Skipped " + skippedNested + " nested backup folder(s) (dsh-data-*), not copied into this backup."));
         foreach (string f in Directory.GetFiles(P(src)))
         {
             string fs = TrimP(f), fd = Path.Combine(dst, Path.GetFileName(f));
@@ -1081,6 +1096,15 @@ public static class Program
         if (p.StartsWith(@"\\?\UNC")) return @"\\" + p.Substring(8);
         if (p.StartsWith(@"\\?\")) return p.Substring(4);
         return p;
+    }
+
+    /// <summary>判断 child 是否位于 parent 子树内（含相等）；大小写不敏感。用于 wipe 前校验备份/状态目录不被误删。</summary>
+    static bool IsSubPath(string parent, string child)
+    {
+        if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(child)) return false;
+        string a = TrimTrailingSep(parent).ToLowerInvariant();
+        string b = TrimTrailingSep(child).ToLowerInvariant();
+        return b == a || b.StartsWith(a + "\\");
     }
 
     /// <summary>去掉结尾分隔符，但保留盘根语义（D:\ 不会变成 D:，UNC 共享根不会丢失尾部斜杠）。</summary>
@@ -1596,8 +1620,16 @@ public static class Program
         string where = RunCapture("cmd.exe", "/c where dsh 2>nul");
         if (!string.IsNullOrWhiteSpace(where))
         {
-            string first = where.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)[0];
-            if (File.Exists(first)) return first;
+            // L-1：where 结果逐行净化——拒绝含 %（cmd 变量展开面）或控制符的候选，防 PATH 中恶意同名 dsh.cmd 改写命令结构
+            string[] lines = where.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string cand in lines)
+            {
+                string c = cand.Trim();
+                if (c.Length == 0) continue;
+                if (c.IndexOf('%') >= 0) continue;                       // %VAR% 会被 cmd /c 展开
+                if (c.IndexOfAny(new char[] { '&', '|', ';', '>', '<', '^' }) >= 0) continue;   // 命令结构字符
+                if (File.Exists(c)) return c;
+            }
         }
         return null;
     }
@@ -1760,6 +1792,8 @@ public static class Program
         string body = HttpGet("https://api.github.com/repos/sakanamaru/DeepSeek-Harness-Toolkit/releases/latest", 4000);
         if (body == null) return null;
         string tag = ParseLatestTag(body);
+        if (tag == null) return null;
+        tag = SanitizeLatestVersion(tag);   // L-8：tag 展示/比较前过严格白名单，拒绝控制字符污染控制台
         if (tag == null) return null;
         return CompareVersions(CurrentVersion(), tag) < 0 ? tag : null;
     }
@@ -1942,7 +1976,13 @@ public static class Program
     /// <summary>记录本机装过的 dsh 版本（去重、最新在前、最多 10 个）。</summary>
     static void RecordDshVersion(string ver)
     {
-        ver = ver.Trim().TrimStart('v');
+        ver = ver.Trim().TrimStart('v', 'V');
+        // L-8：过滤逗号/控制符——逗号会污染历史列表的逗号分隔解析，控制符会污染 config 与后续展示
+        ver = ver.Replace(",", "");
+        var sb = new StringBuilder();
+        foreach (char c in ver)
+            if (c >= ' ' && c != '\x7f') sb.Append(c);   // 仅保留可打印非控制字符
+        ver = sb.ToString();
         if (ver.Length == 0) return;
         var list = new List<string>();
         if (cfgDshVersions.Length > 0)

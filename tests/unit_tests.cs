@@ -157,9 +157,9 @@ public static class UnitTests
         Check(Program.Test.ParseTag("{ \"tag_name\": \"v2.1.0\" }") == "2.1.0", "parse tag with v prefix");
         Check(Program.Test.ParseTag("{ \"something\": 1 }") == null, "no tag_name -> null");
         Check(Program.Test.ParseTag("not json") == null, "garbage -> null");
-        Program.Test.SetHttpGet(delegate(string u, int ms) { return "{ \"tag_name\": \"v2.2.0\" }"; });
+        Program.Test.SetHttpGet(delegate(string u, int ms) { return "{ \"tag_name\": \"v9.9.9\" }"; });
         string cur2 = Program.Test.CurVer();
-        Check(Program.Test.Latest() == "2.2.0", "newer release detected (" + cur2 + " -> 2.2.0)");
+        Check(Program.Test.Latest() == "9.9.9", "newer release detected (" + cur2 + " -> 9.9.9)");
         Program.Test.SetHttpGet(delegate(string u, int ms) { return "{ \"tag_name\": \"v" + cur2 + "\" }"; });
         Check(Program.Test.Latest() == null, "same version -> no update");
         Program.Test.SetHttpGet(delegate(string u, int ms) { return null; });
