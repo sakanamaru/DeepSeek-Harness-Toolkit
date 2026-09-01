@@ -857,6 +857,9 @@ public class App : Form
     void OnAction(string key)
     {
         if (Interlocked.CompareExchange(ref busy, 1, 0) != 0) { LogLine(L10N._("op.busy")); return; }
+        // keepBusy=true 仅用于非交互后台命令：busy 保持到 OnCaptureDone 清零；
+        // 其余路径（刷新/交互/未知/异常）一律在 finally 立即清零。
+        bool keepBusy = false;
         try
         {
             if (key == "act.refresh") { RefreshStatus(); return; }
@@ -870,14 +873,24 @@ public class App : Form
             else if (key == "act.backup") args = "backup";
             else if (key == "act.restore") args = "restore";
             else if (key == "act.shortcut") args = "shortcut";
-            else { Interlocked.Exchange(ref busy, 0); return; }
-            UpdateActionButtons();   // 立即禁用所有操作按钮
-            LaunchCapture(args, key);
-            return;   // busy 保持，由 OnCaptureDone 清零
+            else return;   // 未知 key：finally 清零
+            keepBusy = true;
+            if (CoreExePath() == null) { LogLine(L10N._("op.coremissing")); keepBusy = false; }
+            else
+            {
+                UpdateActionButtons();   // 立即禁用所有操作按钮
+                LaunchCapture(args, key);
+            }
         }
-        catch { Interlocked.Exchange(ref busy, 0); }
-        Interlocked.Exchange(ref busy, 0);   // 交互命令/刷新等同步路径到达此处
-        UpdateActionButtons();
+        catch { }
+        finally
+        {
+            if (!keepBusy)
+            {
+                Interlocked.Exchange(ref busy, 0);
+                UpdateActionButtons();
+            }
+        }
     }
 
     // ---- 进程层：可见窗口（交互命令 install/update/uninstall） ----
