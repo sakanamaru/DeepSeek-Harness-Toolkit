@@ -1,5 +1,5 @@
 // ============================================================================
-//  DeepSeek Harness Toolkit GUI  ——  GUI 辅助面板（P2：进程层 + 状态轮询）
+//  DeepSeek Harness Toolkit GUI  ——  GUI 辅助面板（P3：收尾 + 资源打包）
 //  ----------------------------------------------------------------------------
 //  架构：本体不变，GUI 通过非交互 CLI 协同（backup/restore/status/start --bg/stop/shortcut，
 //        install/update/uninstall 弹可见窗口交互）。
@@ -15,10 +15,18 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit GUI")]
+[assembly: AssemblyDescription("DeepSeek Harness(dsh) 非官方图形辅助面板。v1: SOGR-Momono Dango；v2: DeepSeek DSH；GitHub @sakanamaru")]
+[assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
+[assembly: AssemblyProduct("DeepSeek Harness Toolkit GUI")]
+[assembly: AssemblyVersion("2.4.0.0")]
+[assembly: AssemblyFileVersion("2.4.0.0")]
 
 // ---------------- 主题 ----------------
 
@@ -1044,6 +1052,9 @@ public class App : Form
         picLogo.Location = new Point(0, 20);
         p.Controls.Add(picLogo);
         LoadLogo();
+        // 关于页 logo 圆角（Region 裁剪，与整体圆角设计一致）
+        using (GraphicsPath logoPath = RButton.RoundRect(0, 0, 120, 120, 18))
+            picLogo.Region = new Region(logoPath);
 
         Label name = new RLabel();
         name.AutoSize = true;
@@ -1350,6 +1361,9 @@ public class App : Form
             if (txtLog == null) return;
             if (txtLog.Text == L10N._("log.empty")) txtLog.Clear();
             txtLog.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  " + s + Environment.NewLine);
+            // 自动滚到最新一行
+            txtLog.SelectionStart = txtLog.TextLength;
+            txtLog.ScrollToCaret();
         };
         if (txtLog != null && txtLog.InvokeRequired) txtLog.BeginInvoke(act);
         else act();
