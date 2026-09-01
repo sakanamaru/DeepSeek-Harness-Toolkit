@@ -1539,6 +1539,22 @@ public class App : Form
 
     void LoadLogo()
     {
+        if (picLogo == null) return;
+        // 优先内嵌资源（编译时 /resource:logo.png，单文件分发无需外部 logo.png），缺失则退读同目录文件
+        try
+        {
+            foreach (string n in typeof(App).Assembly.GetManifestResourceNames())
+            {
+                if (n.EndsWith("logo.png", StringComparison.OrdinalIgnoreCase))
+                {
+                    using (Stream s = typeof(App).Assembly.GetManifestResourceStream(n))
+                    {
+                        if (s != null) { picLogo.Image = Image.FromStream(s); return; }
+                    }
+                }
+            }
+        }
+        catch { }
         try
         {
             string lp = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logo.png");
