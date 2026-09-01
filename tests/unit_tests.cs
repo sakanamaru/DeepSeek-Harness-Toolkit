@@ -329,6 +329,20 @@ public static class UnitTests
             try { Directory.Delete(rpOutBk, true); } catch { }
         }
 
+        // ---- stop 前进程归属校验（防误杀占 3080 的其他程序） ----
+        Console.WriteLine("[STOP] IsDshCommandLine");
+        Check(Program.Test.IsDshCmd(@"C:\Users\me\AppData\Roaming\npm\node_modules\@deepseek-ai\dsh\dist\cli.js web"), "global npm dsh chain passes");
+        Check(Program.Test.IsDshCmd(@"""C:\Program Files\nodejs\node.exe""  C:\Users\me\AppData\Roaming\npm\dsh.cmd web"), "dsh.cmd chain passes");
+        Check(Program.Test.IsDshCmd(@"node  D:\somewhere\dsh-web\server.js"), "local dsh dir passes");
+        Check(Program.Test.IsDshCmd("DSH web"), "uppercase DSH passes");
+        Check(!Program.Test.IsDshCmd(@"node server.js"), "plain node server rejected");
+        Check(!Program.Test.IsDshCmd(@"python -m http.server 3080"), "python http server rejected");
+        Check(!Program.Test.IsDshCmd(@"C:\dev\myapp\server.exe --port 3080"), "unrelated exe rejected");
+        Check(!Program.Test.IsDshCmd(""), "empty rejected");
+        Check(!Program.Test.IsDshCmd(null), "null rejected");
+        Check(!Program.Test.IsDshCmd("   "), "whitespace rejected");
+        Check(!Program.Test.IsDshCmd("nothing here"), "no keyword rejected");
+
         Console.WriteLine("");
         Console.WriteLine("== " + (total - fails) + "/" + total + " passed, " + fails + " failed ==");
         Environment.Exit(fails == 0 ? 0 : 1);
