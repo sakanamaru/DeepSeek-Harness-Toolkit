@@ -348,17 +348,13 @@ class RButton : Button
             return;
         }
         int d = r * 2;
-        // 直边：关闭抗锯齿，像素对齐
+        // 直边 + 圆角弧全部关闭抗锯齿：AA 会在小半径弧线边缘产生 1px 混合色"线"（如 31,34,44）。
+        // r=8 的短弧 1px 台阶在浅色主题下比过渡线更干净。
         g.SmoothingMode = SmoothingMode.None;
         using (SolidBrush b = new SolidBrush(c))
         {
             g.FillRectangle(b, x + r, y, w - d, h);       // 中央竖条
             g.FillRectangle(b, x, y + r, w, h - d);       // 上下横条
-        }
-        // 圆角弧：开启抗锯齿
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        using (SolidBrush b = new SolidBrush(c))
-        {
             g.FillPie(b, x, y, d, d, 180, 90);               // 左上
             g.FillPie(b, x + w - d, y, d, d, 270, 90);       // 右上
             g.FillPie(b, x + w - d, y + h - d, d, d, 0, 90); // 右下
@@ -800,7 +796,7 @@ class RestorePicker : Form
 
 public class App : Form
 {
-    bool dark = true;
+    bool dark = false;   // 默认浅色主题（白色模式），右上角月牙/太阳可切换
     Theme Th { get { return dark ? Theme.Dark : Theme.Light; } }
 
     // 标题栏
@@ -1491,7 +1487,7 @@ public class App : Form
         picLogo.Size = new Size(120, 120);
         picLogo.SizeMode = PictureBoxSizeMode.Zoom;
         picLogo.BackColor = Color.Transparent;
-        picLogo.Location = new Point(0, 20);
+        picLogo.Location = new Point((PageWidth() - 120) / 2, 20);
         p.Controls.Add(picLogo);
         LoadLogo();
         // 关于页 logo 圆角（Region 裁剪，与整体圆角设计一致）
@@ -1501,30 +1497,44 @@ public class App : Form
         Label name = new RLabel();
         name.AutoSize = true;
         name.Font = new Font("Microsoft YaHei UI", 16f, FontStyle.Bold);
-        name.Location = new Point(140, 40);
         name.Text = "DeepSeek Harness Toolkit";
+        name.Location = new Point(CenterX(name), 160);
         p.Controls.Add(name);
 
         Label ver = new RLabel();
         ver.AutoSize = true;
-        ver.Location = new Point(142, 82);
         ver.Text = "GUI " + AssemblyVersion();
+        ver.Location = new Point(CenterX(ver), 194);
         p.Controls.Add(ver);
 
         Label copy = new RLabel();
         copy.AutoSize = true;
-        copy.Location = new Point(142, 108);
         copy.Text = L10N._("about.copy");
         copy.Tag = "about.copy";
+        copy.Location = new Point(CenterX(copy), 220);
         p.Controls.Add(copy);
 
         Label cred = new RLabel();
-        cred.AutoSize = true;
-        cred.Location = new Point(0, 160);
+        cred.SetBounds(0, 250, 620, 44);
+        cred.TextAlign = ContentAlignment.TopCenter;   // 两行各自水平居中
         cred.Text = "v1 脚本协助 : SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）\nv2 重构封装 : DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）";
         p.Controls.Add(cred);
 
         return p;
+    }
+
+    // 关于页内容区宽（content Frame 宽度）
+    int PageWidth() { return 620; }
+
+    // 文字水平居中 X（按控件当前 Font/Text 测量）
+    int CenterX(Label lbl)
+    {
+        try
+        {
+            Size s = TextRenderer.MeasureText(lbl.Text ?? "", lbl.Font);
+            return (PageWidth() - s.Width) / 2;
+        }
+        catch { return 0; }
     }
 
     void LoadLogo()
