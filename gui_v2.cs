@@ -172,6 +172,9 @@ static class L10N
             "Restore the selected backup?\nCurrent dsh data will be auto-backed up before being overwritten.");
         Add("rp.confirm.ok", "确定恢复", "Restore");
         Add("rp.confirm.cancel", "再想想", "Cancel");
+        Add("rp.running", "dsh 正在运行，需先停止服务后才能恢复。",
+            "dsh is running. Stop the service first to restore.");
+        Add("start.openweb", "已在运行 → 打开 Web 界面…", "Already running — opening the Web UI...");
     }
 }
 
@@ -634,16 +637,18 @@ class RestorePicker : Form
 {
     Theme th;
     string[] items;
+    bool running;
     string picked;
     ListBox list;
     RLabel lblDetail;
     Point dragStart;
     RButton btnRestore;
 
-    public RestorePicker(string[] backupPaths, Theme theme)
+    public RestorePicker(string[] backupPaths, bool serviceRunning, Theme theme)
     {
         th = theme;
         items = backupPaths;
+        running = serviceRunning;
         picked = null;
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.CenterParent;
@@ -728,19 +733,28 @@ class RestorePicker : Form
         lblDetail.SetBounds(20, 300, 480, 20);
         Controls.Add(lblDetail);
 
-        // 警告
+        // 警告：运行中 = 红字提示需先停止服务；未运行 = 橙色覆盖警告
         RLabel warn = new RLabel();
         warn.Surround = th.Bg;
-        warn.ForeColor = th.LedWarn;
-        warn.Text = L10N._("rp.warn");
+        if (running)
+        {
+            warn.ForeColor = th.LedBad;
+            warn.Text = L10N._("rp.running");
+        }
+        else
+        {
+            warn.ForeColor = th.LedWarn;
+            warn.Text = L10N._("rp.warn");
+        }
         warn.SetBounds(20, 326, 480, 22);
         Controls.Add(warn);
 
-        // 按钮
+        // 按钮：运行中「恢复此备份」置灰（红字已说明原因），未运行正常
         btnRestore = new RButton();
         btnRestore.SetTheme(th, th.Bg);
         btnRestore.Text = L10N._("rp.restore");
         btnRestore.SetBounds(282, 360, 110, 32);
+        btnRestore.Enabled = !running;
         btnRestore.Click += delegate(object s, EventArgs e)
         {
             if (list.SelectedIndex < 0 || list.SelectedIndex >= items.Length) return;
@@ -1146,6 +1160,8 @@ public class App : Form
             if (key == "act.uninstall") { LaunchInteractive("uninstall", key); return; }
             // 恢复备份：先拉备份列表 → 弹选择框 → 确认后推 CLI restore --path（busy 全程保持）
             if (key == "act.restore") { keepBusy = true; FetchRestoreList(); return; }
+            // 运行中点「启动 Web」= 直接打开 Web 界面（不阻止点击，给真实反馈）
+            if (key == "act.start" && currentKind == SKind.Up) { OpenWebUI(); return; }
             // 其余非交互：后台捕获单行标记（busy 延迟到 OnCaptureDone 清零）
             string args = "";
             if (key == "act.start") args = "start --bg";
@@ -1288,7 +1304,7 @@ public class App : Form
                     else
                     {
                         string picked = null;
-                        using (RestorePicker dlg = new RestorePicker(paths.ToArray(), Th))
+                        using (RestorePicker dlg = new RestorePicker(paths.ToArray(), currentKind == SKind.Up, Th))
                         {
                             if (dlg.ShowDialog(this) == DialogResult.OK) picked = dlg.Picked;
                         }
@@ -1762,21 +1778,27 @@ public class App : Form
         lblDshVer.Text = L10N._("home.version") + ": " + dv;
     }
 
-    // ---- 按钮禁用态：操作进行中全禁用；按服务状态部分禁用 ----
+    // ---- 按钮禁用态：操作进行中全禁用（入口按钮不再按服务状态置灰——
+    // 运行中点启动=打开网页、恢复弹窗内给出红字原因，永远给用户真实反馈） ----
     void UpdateActionButtons()
     {
         if (actionGrid == null) return;
+        bool busyNow = Interlocked.CompareExchange(ref busy, 0, 0) != 0;
         foreach (KeyValuePair<string, Button> kv in actBtns)
         {
-            string key = kv.Key;
-            Button b = kv.Value;
-            bool enabled = true;
-            if (Interlocked.CompareExchange(ref busy, 0, 0) != 0) enabled = false;      // 操作中
-            else if (key == "act.start") enabled = (currentKind != SKind.Up);           // 已运行则禁用启动
-            else if (key == "act.stop") enabled = (currentKind == SKind.Up);            // 未运行则禁用停止
-            else if (key == "act.restore") enabled = (currentKind != SKind.Up);         // 运行中禁恢复（核心会拒绝）
-            b.Enabled = enabled;
+            kv.Value.Enabled = !busyNow;
         }
+    }
+
+    // 运行中直接打开 Web 界面（UseShellExecute，立即返回）
+    void OpenWebUI()
+    {
+        try
+        {
+            LogLine(L10N._("start.openweb"));
+            Process.Start(new ProcessStartInfo("http://127.0.0.1:3080/") { UseShellExecute = true });
+        }
+        catch (Exception ex) { LogLine(L10N._("act.start") + " → " + L10N._("op.fail") + "  (" + ex.Message + ")"); }
     }
 
     // ---- 日志 ----
