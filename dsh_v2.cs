@@ -512,12 +512,18 @@ public static class Program
     }
 
     /// <summary>非交互停止 dsh web：找监听 3080 的进程树并终止，验证端口释放。
-    /// 输出 STOP_OK / STOP_FAIL &lt;原因&gt;；已停止时同样 STOP_OK（幂等）。不 Pause、不读输入。</summary>
+    /// 输出 STOP_OK / STOP_FAIL &lt;原因&gt;；已停止时同样 STOP_OK（幂等）。不 Pause、不读输入。
+    /// 安全：终止前校验监听进程确为 dsh（命令行含 dsh），其他程序占用 3080 时拒绝停止，避免误杀。</summary>
     static void StopCli()
     {
         if (ProbeService() == ServiceState.Down) { Console.WriteLine("STOP_OK"); return; }   // 已停止 → 幂等成功
         int pid = FindPortPid(WEB_PORT);
-        if (pid <= 0) { Console.WriteLine("STOP_FAIL " + T("未找到 dsh 进程", "dsh process not found")); return; }
+        if (pid <= 0) { Console.WriteLine("STOP_FAIL " + T("未找到监听 3080 的进程", "no process listening on 3080")); return; }
+        if (!IsOurDshProcess(pid))
+        {
+            Console.WriteLine("STOP_FAIL " + T("3080 被其他程序占用（未确认是 dsh），已拒绝停止以避免误杀", "port 3080 is held by another program (not confirmed as dsh); stop refused to avoid killing it"));
+            return;
+        }
         KillProcessTree(pid);   // 进程树终止：连带杀派生的 node 子进程
         for (int i = 0; i < 20; i++)
         {
@@ -525,6 +531,30 @@ public static class Program
             if (ProbeService() == ServiceState.Down) { Console.WriteLine("STOP_OK"); return; }
         }
         Console.WriteLine("STOP_FAIL " + T("端口未释放", "port still in use"));
+    }
+
+    /// <summary>停止前进程归属校验：监听 3080 的进程必须确认为 dsh 才允许终止。
+    /// 判定依据：进程命令行含 "dsh"（dsh.cmd / npm / node 启动链命令行必含 dsh 字样，如 @deepseek-ai\dsh）；
+    /// 命令行读取失败时保守拒绝——宁可不杀，不可误杀他人程序。</summary>
+    static bool IsOurDshProcess(int pid)
+    {
+        if (pid <= 0) return false;
+        try { return IsDshCommandLine(GetProcessCommandLine(pid)); }
+        catch { return false; }
+    }
+
+    /// <summary>纯函数（可单测）：命令行是否属于 dsh 进程。空/未知 → false。</summary>
+    static bool IsDshCommandLine(string cmdline)
+    {
+        if (string.IsNullOrWhiteSpace(cmdline)) return false;
+        return cmdline.IndexOf("dsh", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    /// <summary>读进程命令行（powershell Get-CimInstance，15 秒超时）；失败返回 ""。</summary>
+    static string GetProcessCommandLine(int pid)
+    {
+        string query = "Get-CimInstance Win32_Process -Filter 'ProcessId=" + pid + "' | Select-Object -ExpandProperty CommandLine";
+        return RunCapture("powershell.exe", "-NoProfile -NonInteractive -Command \"" + query + "\"");
     }
 
     /// <summary>启动后的实时运行状态监控页：每 3 秒刷新，按任意键返回菜单。</summary>
@@ -2434,6 +2464,7 @@ public static class Program
         public static bool ShortcutExists(string dir) { string old = Environment.GetEnvironmentVariable("DSH_TEST_DESKTOP"); try { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", dir); return Program.ShortcutExists(); } finally { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", old); } }
         public static int ParsePort(string netstat, int port) { return Program.ParsePortPid(netstat, port); }
         public static string NIValidateRestorePath(string pathArg, string backupsRoot) { return Program.NIValidateRestorePath(pathArg, backupsRoot); }
+        public static bool IsDshCmd(string cmdline) { return Program.IsDshCommandLine(cmdline); }
     }
 #endif
 }
