@@ -48,6 +48,20 @@ Install, start, monitor and uninstall the dsh Web UI, with data backup / restore
 | Log Rotation | `logs\launcher.log` archived to `launcher.log.1` once it exceeds 1 MB (one history file kept) — no silent log loss |
 | Multi-language | Follow system / Simplified Chinese / English, persisted |
 
+## 🖥️ GUI panel (Alpha)
+
+Since v2.4.0 a **graphical panel** `Toolkit GUI.exe` ships as an Alpha preview:
+
+- **Three pages**: Home (status LED + dsh version + Web address + action buttons) · Log (operation history) · About
+- Dark/light theme + Chinese/English, borderless rounded window, logo embedded (single-file distribution)
+- **Actions**: Install / Start Web / Stop Service / Backup Now / **Restore Backup (picker dialog to choose a backup folder + confirmation)** / Check for Updates / Uninstall / Desktop Shortcut / Refresh Status
+- Restore details: newest backup first and preselected; while the service is running the "restore" button is disabled with a red explanation — stop the service first (current data is auto-backed up before restoring)
+- Starting Web while the service is already running simply opens the browser
+
+Usage: put `Toolkit GUI.exe` next to the core `DeepSeek Harness Toolkit.exe` and double-click the GUI.
+
+> Alpha: UI/UX may still change; the underlying CLI is exactly the core (install/update/uninstall still open a real console window for interaction).
+
 ## Quick start
 
 1. **Unzip** the release into its own folder (e.g. `D:\tools\`) — backups and config live next to the exe; putting it on the Desktop makes a mess.
