@@ -83,7 +83,12 @@ public static class Program
                 case "about":     case "a": About();   return;
                 case "shortcut":  case "sc": ShortcutCli(); return; // 创建桌面快捷方式（脚本/安装后调用）
                 case "backup":    case "b": NIBackup();  return;   // 非交互备份（GUI/脚本用）
-                case "restore":   case "r": NIRestore(); return;   // 非交互恢复最新备份（GUI/脚本用）
+                case "backup-list": case "bl": NiListBackups(); return;   // 非交互列出有效备份目录（GUI 选择框用）
+                case "restore":   case "r":
+                    if (args.Length > 1 && (args[1] == "--path" || args[1] == "-path"))
+                        NIRestorePath(args.Length > 2 ? args[2] : "");
+                    else NIRestore();
+                    return;   // 非交互恢复（GUI/脚本用；--path 恢复指定备份）
                 case "status": StatusCli(); return;   // 服务三态（GUI 状态灯用）
                 case "help":      case "h": Help();    return;
                 case "selftest": Selftest(args); return;
@@ -1958,6 +1963,38 @@ public static class Program
         string bk = null;
         foreach (string d in dirs) { if (IsValidBackupDir(d)) { bk = d; break; } }   // 最新有效备份
         if (bk == null) { Console.WriteLine("RESTORE_FAIL " + T("无有效备份", "no valid backup")); return; }
+        NIRestoreCore(bk);
+    }
+
+    /// <summary>非交互恢复指定备份（GUI 选择框推路径）：restore --path &lt;dir&gt;。
+    /// 校验：非空净化引号、必须在备份根之内、必须为有效备份目录；安全流程与恢复最新完全一致。</summary>
+    static void NIRestorePath(string pathArg)
+    {
+        string reason = NIValidateRestorePath(pathArg, BackupsRoot());
+        if (reason != null)
+        {
+            if (reason == "no-path") Console.WriteLine("RESTORE_FAIL " + T("未指定备份目录", "no backup specified"));
+            else if (reason == "outside") Console.WriteLine("RESTORE_FAIL " + T("备份目录不在备份根内", "backup dir is outside the backups root"));
+            else Console.WriteLine("RESTORE_FAIL " + T("无效备份目录", "invalid backup directory"));
+            return;
+        }
+        string bk = (pathArg ?? "").Trim().Trim('"');
+        NIRestoreCore(bk);
+    }
+
+    /// <summary>restore --path 路径校验（纯逻辑，供单测）；返回 null=通过，否则失败原因键（no-path/outside/invalid）。</summary>
+    static string NIValidateRestorePath(string pathArg, string backupsRoot)
+    {
+        string bk = (pathArg ?? "").Trim().Trim('"');
+        if (bk.Length == 0) return "no-path";
+        if (!IsSubPath(backupsRoot, bk)) return "outside";
+        if (!IsValidBackupDir(bk)) return "invalid";
+        return null;
+    }
+
+    /// <summary>统一恢复执行：bk 已确认是备份根内的有效备份目录。运行中拒绝 + 恢复前自动备份 + 恢复。</summary>
+    static void NIRestoreCore(string bk)
+    {
         if (ProbeService() != ServiceState.Down) { Console.WriteLine("RESTORE_FAIL " + T("dsh 正在运行，无法恢复", "dsh is running; cannot restore")); return; }
         string dst = DataRoot();
         if (Directory.Exists(dst))
@@ -1968,6 +2005,23 @@ public static class Program
         inputEof = true;   // 非交互：工作区恢复走默认目标，任何 ReadLineTrim 立即返回 ""（不阻塞 stdin）
         RestoreFromSource(bk);
         Console.WriteLine("RESTORE_OK " + bk);
+    }
+
+    /// <summary>非交互列出全部有效备份目录（最新在前）：首行 BACKUP_LIST_OK &lt;n&gt;，其后每行一个绝对路径。
+    /// 无备份/全部无效时输出 BACKUP_LIST_OK 0（GUI 选择框据此判空）。</summary>
+    static void NiListBackups()
+    {
+        string root = BackupsRoot();
+        if (!Directory.Exists(root)) { Console.WriteLine("BACKUP_LIST_OK 0"); return; }
+        string[] dirs;
+        try { dirs = Directory.GetDirectories(root, "dsh-data-*"); }
+        catch { Console.WriteLine("BACKUP_LIST_OK 0"); return; }
+        Array.Sort(dirs);       // 时间戳升序
+        Array.Reverse(dirs);    // 最新在前（GUI 默认选第一项）
+        List<string> valid = new List<string>();
+        foreach (string d in dirs) { if (IsValidBackupDir(d)) valid.Add(d); }
+        Console.WriteLine("BACKUP_LIST_OK " + valid.Count);
+        foreach (string d in valid) Console.WriteLine(d);
     }
 
     /// <summary>非交互服务三态：输出 STATUS_UP / STATUS_STARTING / STATUS_DOWN。</summary>
@@ -2379,6 +2433,7 @@ public static class Program
         public static string Desktop(string dir) { string old = Environment.GetEnvironmentVariable("DSH_TEST_DESKTOP"); try { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", dir); return Program.DesktopDir(); } finally { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", old); } }
         public static bool ShortcutExists(string dir) { string old = Environment.GetEnvironmentVariable("DSH_TEST_DESKTOP"); try { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", dir); return Program.ShortcutExists(); } finally { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", old); } }
         public static int ParsePort(string netstat, int port) { return Program.ParsePortPid(netstat, port); }
+        public static string NIValidateRestorePath(string pathArg, string backupsRoot) { return Program.NIValidateRestorePath(pathArg, backupsRoot); }
     }
 #endif
 }

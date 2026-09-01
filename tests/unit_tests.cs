@@ -296,6 +296,39 @@ public static class UnitTests
         Check(Program.Test.ParsePort("", 3080) == 0, "empty -> 0");
         Check(Program.Test.ParsePort("  TCP    127.0.0.1:3090    0.0.0.0:0  LISTENING  77\r\n", 3080) == 0, "different port -> 0");
 
+        // ---- restore --path 路径校验（GUI 选择框推路径的安全闸） ----
+        Console.WriteLine("[NIRESTORE] restore --path validation");
+        string rpRoot = Path.Combine(Path.GetTempPath(), "dsh_ut_rp_" + Guid.NewGuid().ToString("N"));
+        string rpBk = Path.Combine(rpRoot, "backup", "dsh-data-20260901-120000000");
+        string rpOutBk = Path.Combine(Path.GetTempPath(), "dsh_ut_rp_out_" + Guid.NewGuid().ToString("N"));
+        string rpBadName = Path.Combine(rpRoot, "backup", "not-a-backup");
+        string rpEmptyBk = Path.Combine(rpRoot, "backup", "dsh-data-20260901-120000001");
+        try
+        {
+            Directory.CreateDirectory(rpBk);
+            File.WriteAllText(Path.Combine(rpBk, "settings.yaml"), "ws: test");
+            Directory.CreateDirectory(rpOutBk);
+            Directory.CreateDirectory(rpBadName);
+            Directory.CreateDirectory(rpEmptyBk);
+            string bkRoot = Path.Combine(rpRoot, "backup");
+            Check(Program.Test.NIValidateRestorePath(rpBk, bkRoot) == null, "valid in-root backup passes");
+            Check(Program.Test.NIValidateRestorePath("\"" + rpBk + "\"", bkRoot) == null, "quoted path passes");
+            Check(Program.Test.NIValidateRestorePath("  " + rpBk + "  ", bkRoot) == null, "whitespace-padded path passes");
+            Check(Program.Test.NIValidateRestorePath("", bkRoot) == "no-path", "empty rejected as no-path");
+            Check(Program.Test.NIValidateRestorePath("   ", bkRoot) == "no-path", "whitespace-only rejected as no-path");
+            Check(Program.Test.NIValidateRestorePath("\"\"", bkRoot) == "no-path", "empty quotes rejected as no-path");
+            Check(Program.Test.NIValidateRestorePath(rpOutBk, bkRoot) == "outside", "sibling dir outside root rejected");
+            Check(Program.Test.NIValidateRestorePath(@"C:\Windows\System32", bkRoot) == "outside", "system dir outside rejected");
+            Check(Program.Test.NIValidateRestorePath(rpBadName, bkRoot) == "invalid", "non-dsh-data name rejected");
+            Check(Program.Test.NIValidateRestorePath(rpEmptyBk, bkRoot) == "invalid", "empty dsh-data dir (no data signature) rejected");
+            Check(Program.Test.NIValidateRestorePath(Path.Combine(rpRoot, "backup"), bkRoot) == "invalid", "backups root itself rejected");
+        }
+        finally
+        {
+            try { Directory.Delete(rpRoot, true); } catch { }
+            try { Directory.Delete(rpOutBk, true); } catch { }
+        }
+
         Console.WriteLine("");
         Console.WriteLine("== " + (total - fails) + "/" + total + " passed, " + fails + " failed ==");
         Environment.Exit(fails == 0 ? 0 : 1);
