@@ -135,8 +135,9 @@ jobs:
           Upload "DeepSeek Harness Toolkit.exe" $tag $env:GITHUB_REPOSITORY
           Upload "hashes.txt" $tag $env:GITHUB_REPOSITORY
           $assets = gh release view $tag --repo $env:GITHUB_REPOSITORY --json assets --jq '.assets[].name'
-          # 改名迁移安全网：清理与当前命名不一致的旧 exe 资产（GitHub 把空格转点，按服务器端点分名比较）
-          $oldExes = $assets | Where-Object { $_ -like '*.exe' -and $_ -ne 'DeepSeek.Harness.Toolkit.exe' }
+          # 改名迁移安全网：只清理核心 exe 的历史命名残留（DeepSeek.Harness.Toolkit.<版本>.exe 等），
+          # 保留 Toolkit.GUI.exe 等其他合法资产（GUI 面板是与核心并列的独立发布物）
+          $oldExes = $assets | Where-Object { $_ -match '^DeepSeek\.Harness\.Toolkit(\..+)?\.exe$' -and $_ -ne 'DeepSeek.Harness.Toolkit.exe' }
           foreach ($oe in $oldExes) { gh release delete-asset $tag $oe --repo $env:GITHUB_REPOSITORY }
           $zipName = "DeepSeek-Harness-Toolkit_${tag}_upload-package.zip"
           Upload $zipName $tag $env:GITHUB_REPOSITORY
