@@ -156,6 +156,22 @@ static class L10N
         Add("op.launchfailed", "启动失败：", "Launch failed: ");
         Add("dsh.notinstalled", "未安装", "not installed");
         Add("dsh.verreadfail", "读取失败", "read failed");
+
+        // P3 恢复选择对话框
+        Add("rp.title", "恢复备份 — 选择备份文件夹", "Restore Backup — Pick a Backup Folder");
+        Add("rp.warn", "恢复会用所选备份覆盖当前 dsh 数据；恢复前会自动备份当前数据。",
+            "Restoring will overwrite current dsh data with the chosen backup; current data is auto-backed up first.");
+        Add("rp.pick", "双击选择备份文件夹：", "Double-click a backup folder:");
+        Add("rp.restore", "恢复此备份", "Restore This Backup");
+        Add("rp.cancel", "取消", "Cancel");
+        Add("rp.empty", "没有可恢复的备份", "No restorable backups");
+        Add("rp.fetchfail", "读取备份列表失败", "Failed to read backup list");
+        Add("rp.canceled", "已取消恢复", "Restore canceled");
+        Add("rp.confirm.title", "确认恢复", "Confirm Restore");
+        Add("rp.confirm.text", "确定恢复所选备份？\n当前 dsh 数据将被自动备份后覆盖。",
+            "Restore the selected backup?\nCurrent dsh data will be auto-backed up before being overwritten.");
+        Add("rp.confirm.ok", "确定恢复", "Restore");
+        Add("rp.confirm.cancel", "再想想", "Cancel");
     }
 }
 
@@ -164,7 +180,8 @@ static class L10N
 class CoreRunResult
 {
     public int ExitCode = -1;
-    public string FirstLine = "";   // 单行标记（BACKUP_OK / STATUS_UP / START_OK ...）
+    public string FirstLine = "";   // 第一行非空输出（仅供参考）
+    public string MarkLine = "";    // 扫描全输出找到的机器标记行（BACKUP_OK / RESTORE_FAIL / STATUS_UP ...）
     public string All = "";         // 完整 stdout(+stderr)（日志用）
     public bool TimedOut = false;
 }
@@ -501,6 +518,267 @@ class RLabel : Label
             default: sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center; break;
         }
         return sf;
+    }
+}
+
+// ---------------- 窗口圆角公共助手（Win11 DWM 系统圆角，Win10 降级 Region） ----------------
+
+static class WinRound
+{
+    const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    const int DWMWCP_ROUND = 2;
+
+    [DllImport("dwmapi.dll")]
+    static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+    // 调用前须确保窗口 Handle 已创建（OnLoad/OnHandleCreated 内）
+    public static void Apply(Form f, int fallbackRadius)
+    {
+        try
+        {
+            int pref = DWMWCP_ROUND;
+            if (DwmSetWindowAttribute(f.Handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, 4) == 0)
+            {
+                f.Region = null;
+                return;
+            }
+        }
+        catch { }
+        try
+        {
+            using (GraphicsPath p = RButton.RoundRect(0, 0, f.Width, f.Height, fallbackRadius))
+                f.Region = new Region(p);
+        }
+        catch { }
+    }
+}
+
+// ---------------- 恢复备份：确认对话框（自绘，主题一致） ----------------
+
+class RestoreConfirm : Form
+{
+    Point dragStart;
+
+    public RestoreConfirm(string line1, string line2, Theme th)
+    {
+        FormBorderStyle = FormBorderStyle.None;
+        StartPosition = FormStartPosition.CenterParent;
+        ClientSize = new Size(430, 168);
+        ShowInTaskbar = false;
+        Font = new Font("Microsoft YaHei UI", 10f);
+        BackColor = th.Panel;
+        Text = "";
+
+        RLabel lbl = new RLabel();
+        lbl.Surround = th.Panel;
+        lbl.ForeColor = th.Fg;
+        lbl.Font = new Font("Microsoft YaHei UI", 10f);
+        lbl.Text = line1;
+        lbl.SetBounds(24, 28, 382, 26);
+        Controls.Add(lbl);
+
+        RLabel lblName = new RLabel();
+        lblName.Surround = th.Panel;
+        lblName.ForeColor = th.FgDim;
+        lblName.Font = new Font("Microsoft YaHei UI", 9f);
+        lblName.Text = line2;
+        lblName.SetBounds(24, 58, 382, 22);
+        Controls.Add(lblName);
+
+        RButton ok = new RButton();
+        ok.SetTheme(th, th.Panel);
+        ok.Checked = true;   // Accent 高亮 = 主操作
+        ok.Text = L10N._("rp.confirm.ok");
+        ok.SetBounds(230, 108, 86, 32);
+        ok.DialogResult = DialogResult.OK;
+        Controls.Add(ok);
+
+        RButton cancel = new RButton();
+        cancel.SetTheme(th, th.Panel);
+        cancel.Text = L10N._("rp.confirm.cancel");
+        cancel.SetBounds(322, 108, 86, 32);
+        cancel.DialogResult = DialogResult.Cancel;
+        Controls.Add(cancel);
+
+        // 标题栏（拖动）
+        Panel bar = new Panel();
+        bar.Dock = DockStyle.Top;
+        bar.Height = 8;
+        bar.BackColor = th.Panel;
+        bar.MouseDown += delegate(object s, MouseEventArgs e) { dragStart = e.Location; };
+        bar.MouseMove += delegate(object s, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+                Location = new Point(Location.X + e.X - dragStart.X, Location.Y + e.Y - dragStart.Y);
+        };
+        Controls.Add(bar);
+        bar.BringToFront();
+    }
+
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        WinRound.Apply(this, 12);
+    }
+
+    public static bool Ask(IWin32Window owner, string line1, string line2, Theme th)
+    {
+        using (RestoreConfirm f = new RestoreConfirm(line1, line2, th))
+            return f.ShowDialog(owner) == DialogResult.OK;
+    }
+}
+
+// ---------------- 恢复备份：选择对话框（自绘，列出备份文件夹，默认选最新） ----------------
+
+class RestorePicker : Form
+{
+    Theme th;
+    string[] items;
+    string picked;
+    ListBox list;
+    RLabel lblDetail;
+    Point dragStart;
+    RButton btnRestore;
+
+    public RestorePicker(string[] backupPaths, Theme theme)
+    {
+        th = theme;
+        items = backupPaths;
+        picked = null;
+        FormBorderStyle = FormBorderStyle.None;
+        StartPosition = FormStartPosition.CenterParent;
+        ClientSize = new Size(520, 402);
+        ShowInTaskbar = false;
+        Font = new Font("Microsoft YaHei UI", 10f);
+        BackColor = th.Bg;
+
+        // 标题栏（拖动 + 关闭）
+        Panel bar = new Panel();
+        bar.Dock = DockStyle.Top;
+        bar.Height = 42;
+        bar.BackColor = th.Panel;
+        bar.MouseDown += delegate(object s, MouseEventArgs e) { dragStart = e.Location; };
+        bar.MouseMove += delegate(object s, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+                Location = new Point(Location.X + e.X - dragStart.X, Location.Y + e.Y - dragStart.Y);
+        };
+        Controls.Add(bar);
+        bar.BringToFront();
+
+        RLabel title = new RLabel();
+        title.Surround = th.Panel;
+        title.ForeColor = th.Fg;
+        title.Font = new Font("Microsoft YaHei UI", 11f, FontStyle.Bold);
+        title.Text = L10N._("rp.title");
+        title.SetBounds(16, 10, 380, 24);
+        bar.Controls.Add(title);
+
+        RButton close = new RButton();
+        close.SetTheme(th, th.Panel);
+        close.Icon = delegate(Graphics g, Rectangle r) { Glyphs.Close(g, r); };
+        close.HoverTint = Color.FromArgb(0xE8, 0x11, 0x23);
+        close.SetBounds(478, 7, 34, 28);
+        close.Click += delegate(object s, EventArgs e) { picked = null; DialogResult = DialogResult.Cancel; Close(); };
+        bar.Controls.Add(close);
+
+        // 提示
+        RLabel hint = new RLabel();
+        hint.Surround = th.Bg;
+        hint.ForeColor = th.FgDim;
+        hint.Text = L10N._("rp.pick");
+        hint.SetBounds(20, 52, 480, 22);
+        Controls.Add(hint);
+
+        // 列表（自绘，最新在前，默认选第一项）
+        list = new ListBox();
+        list.SetBounds(20, 78, 480, 216);
+        list.BorderStyle = BorderStyle.None;
+        list.DrawMode = DrawMode.OwnerDrawFixed;
+        list.ItemHeight = 34;
+        list.BackColor = th.PanelAlt;
+        foreach (string p in items) list.Items.Add(Path.GetFileName(p));
+        if (list.Items.Count > 0) list.SelectedIndex = 0;
+        list.DrawItem += delegate(object s, DrawItemEventArgs e)
+        {
+            if (e.Index < 0) return;
+            bool sel = (e.State & DrawItemState.Selected) != 0;
+            Color bgc = sel ? th.Accent : th.PanelAlt;
+            using (SolidBrush b = new SolidBrush(bgc)) e.Graphics.FillRectangle(b, e.Bounds);
+            string txt = Convert.ToString(list.Items[e.Index]);
+            if (txt != null)
+            {
+                e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                using (SolidBrush b = new SolidBrush(sel ? th.AccentFg : th.Fg))
+                    e.Graphics.DrawString(txt, Font, b, new RectangleF(e.Bounds.X + 10, e.Bounds.Y, e.Bounds.Width - 20, e.Bounds.Height),
+                        new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center });
+            }
+        };
+        list.SelectedIndexChanged += delegate(object s, EventArgs e)
+        {
+            UpdateDetail();
+        };
+        Controls.Add(list);
+
+        // 详情（所选备份路径）
+        lblDetail = new RLabel();
+        lblDetail.Surround = th.Bg;
+        lblDetail.ForeColor = th.FgDim;
+        lblDetail.Text = "";
+        lblDetail.SetBounds(20, 300, 480, 20);
+        Controls.Add(lblDetail);
+
+        // 警告
+        RLabel warn = new RLabel();
+        warn.Surround = th.Bg;
+        warn.ForeColor = th.LedWarn;
+        warn.Text = L10N._("rp.warn");
+        warn.SetBounds(20, 326, 480, 22);
+        Controls.Add(warn);
+
+        // 按钮
+        btnRestore = new RButton();
+        btnRestore.SetTheme(th, th.Bg);
+        btnRestore.Text = L10N._("rp.restore");
+        btnRestore.SetBounds(282, 360, 110, 32);
+        btnRestore.Click += delegate(object s, EventArgs e)
+        {
+            if (list.SelectedIndex < 0 || list.SelectedIndex >= items.Length) return;
+            string fn = Path.GetFileName(items[list.SelectedIndex]);
+            bool yes = RestoreConfirm.Ask(this, L10N._("rp.confirm.text"), fn, th);
+            if (yes)
+            {
+                picked = items[list.SelectedIndex];
+                DialogResult = DialogResult.OK;
+                Close();
+            }
+        };
+        Controls.Add(btnRestore);
+
+        RButton cancel = new RButton();
+        cancel.SetTheme(th, th.Bg);
+        cancel.Text = L10N._("rp.cancel");
+        cancel.SetBounds(398, 360, 102, 32);
+        cancel.Click += delegate(object s, EventArgs e) { picked = null; DialogResult = DialogResult.Cancel; Close(); };
+        Controls.Add(cancel);
+
+        UpdateDetail();
+    }
+
+    void UpdateDetail()
+    {
+        if (lblDetail == null || list == null) return;
+        if (list.SelectedIndex >= 0 && list.SelectedIndex < items.Length)
+            lblDetail.Text = items[list.SelectedIndex];
+        else lblDetail.Text = "";
+    }
+
+    public string Picked { get { return picked; } }
+
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        WinRound.Apply(this, 12);
     }
 }
 
@@ -866,12 +1144,13 @@ public class App : Form
             if (key == "act.install") { LaunchInteractive("install", key); return; }
             if (key == "act.update") { LaunchInteractive("update", key); return; }
             if (key == "act.uninstall") { LaunchInteractive("uninstall", key); return; }
+            // 恢复备份：先拉备份列表 → 弹选择框 → 确认后推 CLI restore --path（busy 全程保持）
+            if (key == "act.restore") { keepBusy = true; FetchRestoreList(); return; }
             // 其余非交互：后台捕获单行标记（busy 延迟到 OnCaptureDone 清零）
             string args = "";
             if (key == "act.start") args = "start --bg";
             else if (key == "act.stop") args = "stop";
             else if (key == "act.backup") args = "backup";
-            else if (key == "act.restore") args = "restore";
             else if (key == "act.shortcut") args = "shortcut";
             else return;   // 未知 key：finally 清零
             keepBusy = true;
@@ -942,7 +1221,7 @@ public class App : Form
     void OnCaptureDone(string key, CoreRunResult r)
     {
         if (r.TimedOut) { LogLine(L10N._(key) + " → " + L10N._("op.timeout")); Interlocked.Exchange(ref busy, 0); UpdateActionButtons(); return; }
-        string line = (r.FirstLine ?? "").Trim();
+        string line = (r.MarkLine ?? "").Trim();
         bool ok = false;
         if (key == "act.start") ok = line.StartsWith("START_OK");
         else if (key == "act.stop") ok = line.StartsWith("STOP_OK");
@@ -952,11 +1231,144 @@ public class App : Form
         if (ok) LogLine(L10N._(key) + " → " + L10N._("op.ok") + "  (" + line + ")");
         else
         {
-            string reason = string.IsNullOrEmpty(line) ? (string.IsNullOrEmpty(r.All) ? "" : r.All) : line;
+            // 失败原因：优先用标记行内容，否则第一行，否则全部输出
+            string reason = line;
+            if (string.IsNullOrEmpty(reason)) reason = string.IsNullOrEmpty(r.FirstLine) ? "" : r.FirstLine;
+            if (string.IsNullOrEmpty(reason)) reason = string.IsNullOrEmpty(r.All) ? "" : r.All;
             LogLine(L10N._(key) + " → " + L10N._("op.fail") + (string.IsNullOrEmpty(reason) ? "" : "  (" + reason + ")"));
         }
         Interlocked.Exchange(ref busy, 0);
         UpdateActionButtons();
+    }
+
+    // ---- 恢复备份：列表 → 选择框 → 确认 → 推 CLI restore --path ----
+    // busy 在进入本流程前已置 1（keepBusy），直到恢复完成（OnCaptureDone）或取消/失败时手动清零。
+    void FetchRestoreList()
+    {
+        string core = CoreExePath();
+        if (core == null)
+        {
+            LogLine(L10N._("op.coremissing"));
+            Interlocked.Exchange(ref busy, 0);
+            UpdateActionButtons();
+            return;
+        }
+        LogLine(string.Format(L10N._("op.running"), L10N._("act.restore")));
+        ThreadPool.QueueUserWorkItem(delegate(object _)
+        {
+            CoreRunResult r = RunCoreCapture(core, "backup-list", 10000);
+            BeginInvoke((Action)delegate { OnRestoreListReady(r); });
+        });
+    }
+
+    void OnRestoreListReady(CoreRunResult r)
+    {
+        List<string> paths = null;
+        try
+        {
+            bool keepBusyForRestore = false;
+            if (r.TimedOut)
+            {
+                LogLine(L10N._("act.restore") + " → " + L10N._("op.timeout"));
+            }
+            else
+            {
+                string mark = (r.MarkLine ?? "").Trim();
+                if (!mark.StartsWith("BACKUP_LIST_OK"))
+                {
+                    LogLine(L10N._("act.restore") + " → " + L10N._("op.fail") + "  (" + L10N._("rp.fetchfail") + ")");
+                }
+                else
+                {
+                    paths = ParseBackupList(r.All);
+                    if (paths.Count == 0)
+                    {
+                        LogLine(L10N._("act.restore") + " → " + L10N._("rp.empty"));
+                    }
+                    else
+                    {
+                        string picked = null;
+                        using (RestorePicker dlg = new RestorePicker(paths.ToArray(), Th))
+                        {
+                            if (dlg.ShowDialog(this) == DialogResult.OK) picked = dlg.Picked;
+                        }
+                        if (picked != null)
+                        {
+                            LogLine(string.Format(L10N._("op.running"), L10N._("act.restore")));
+                            keepBusyForRestore = LaunchRestorePath(picked);
+                        }
+                        else LogLine(L10N._("act.restore") + " → " + L10N._("rp.canceled"));
+                    }
+                }
+            }
+            // busy 释放：仅当未成功发起恢复时才在本函数清（恢复路径由 OnCaptureDone 清）
+            if (!keepBusyForRestore) { Interlocked.Exchange(ref busy, 0); UpdateActionButtons(); }
+        }
+        catch (Exception ex)
+        {
+            LogLine(L10N._("act.restore") + " → " + L10N._("op.fail") + "  (" + ex.Message + ")");
+            Interlocked.Exchange(ref busy, 0);
+            UpdateActionButtons();
+        }
+    }
+
+    // 解析 backup-list 输出：BACKUP_LIST_OK 标记后的绝对路径行（dsh-data-*）
+    static List<string> ParseBackupList(string all)
+    {
+        List<string> list = new List<string>();
+        if (string.IsNullOrEmpty(all)) return list;
+        string[] lines = all.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        bool markSeen = false;
+        foreach (string ln in lines)
+        {
+            string t = ln.Trim();
+            if (t.StartsWith("BACKUP_LIST_OK")) { markSeen = true; continue; }
+            if (markSeen && t.Length > 0 && t.IndexOf("dsh-data-", StringComparison.OrdinalIgnoreCase) >= 0 && Path.IsPathRooted(t))
+                list.Add(t);
+        }
+        return list;
+    }
+
+    // 恢复所选备份（用户已在选择框 + 确认框双重确认）；返回 true=已发起（busy 交给 OnCaptureDone 释放）
+    bool LaunchRestorePath(string path)
+    {
+        string core = CoreExePath();
+        if (core == null)
+        {
+            LogLine(L10N._("op.coremissing"));
+            return false;   // 未发起 → OnRestoreListReady 释放 busy
+        }
+        string arg = "restore --path \"" + path + "\"";
+        ThreadPool.QueueUserWorkItem(delegate(object _)
+        {
+            CoreRunResult r = RunCoreCapture(core, arg, 120000);   // 恢复大目录可能较久
+            BeginInvoke((Action)delegate
+            {
+                OnCaptureDone("act.restore", r);
+                RefreshStatus();
+            });
+        });
+        return true;
+    }
+
+    // 从完整输出中扫描机器标记行（核心可能在标记前后打印进度文案，如「正在恢复数据...」）。
+    static string FindMarker(string all)
+    {
+        if (string.IsNullOrEmpty(all)) return "";
+        string[] lines = all.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (string ln in lines)
+        {
+            string t = ln.Trim();
+            if (t.StartsWith("BACKUP_OK") || t.StartsWith("BACKUP_FAIL") ||
+                t.StartsWith("BACKUP_LIST_OK") ||
+                t.StartsWith("RESTORE_OK") || t.StartsWith("RESTORE_FAIL") ||
+                t.StartsWith("STATUS_UP") || t.StartsWith("STATUS_STARTING") || t.StartsWith("STATUS_DOWN") ||
+                t.StartsWith("START_OK") || t.StartsWith("START_FAIL") ||
+                t.StartsWith("STOP_OK") || t.StartsWith("STOP_FAIL") ||
+                t.StartsWith("SHORTCUT_OK") || t.StartsWith("SHORTCUT_FAIL"))
+                return t;
+        }
+        return "";
     }
 
     string CoreExePath()
@@ -1003,12 +1415,13 @@ public class App : Form
                 res.ExitCode = p.ExitCode;
                 res.All = stdoutAll;
                 if (!string.IsNullOrWhiteSpace(stderrAll)) res.All += (res.All.Length > 0 ? "\n" : "") + stderrAll;
-                // 取第一行非空作为标记
                 if (!string.IsNullOrEmpty(stdoutAll))
                 {
                     string[] lines = stdoutAll.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                     if (lines.Length > 0) res.FirstLine = lines[0];
                 }
+                // 真正用于判定的标记行：核心可能先打进度文案再打标记
+                res.MarkLine = FindMarker(res.All);
                 return res;
             }
         }
@@ -1304,7 +1717,7 @@ public class App : Form
             try
             {
                 CoreRunResult r = RunCoreCapture(core, "status", 10000);
-                string k = (r.FirstLine ?? "").Trim();
+                string k = (r.MarkLine ?? "").Trim();
                 SKind st = SKind.Unknown;
                 if (k == "STATUS_UP") st = SKind.Up;
                 else if (k == "STATUS_STARTING") st = SKind.Starting;
