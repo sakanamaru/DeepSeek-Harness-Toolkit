@@ -1,4 +1,4 @@
-﻿# DeepSeek Harness Toolkit - 集成测试（端到端打桩矩阵）
+# DeepSeek Harness Toolkit - 集成测试（端到端打桩矩阵）
 # 用法:  pwsh -NoProfile -File tests\integration.ps1 [-RepoRoot <仓库根>]   （默认取脚本上级目录）
 # 退出码: 0=全过（SKIP 不计失败）, 1=有失败, 2=环境/锚点错误
 # 说明: ① 只碰打桩数据目录 ~/.dsh_test，绝不接触真实 ~/.dsh；
@@ -64,7 +64,8 @@ Write-Output ("环境: 3080=" + $(if ($portLive) { '运行中' } else { '未运�
 # 1-5 基础 / CLI
 & $tA selftest *> $null;   TC '1 selftest' ($LASTEXITCODE -eq 0)
 $o = (& $tA help 2>&1 | Out-String);    TC '2 help' ($o.Contains('install') -and $o.Contains('start') -and $o.Contains('uninstall') -and $o.Contains('update') -and $o.Contains('backup') -and $o.Contains('restore') -and $o.Contains('status') -and $o.Contains('stop'))
-$o = (& $tA about 2>&1 | Out-String);   TC '3 about' (($o.Contains('DeepSeek Harness Toolkit V2.4.0')) -and ($o.Contains('sakanamaru')))
+$ver = [regex]::Match([IO.File]::ReadAllText($src, [Text.UTF8Encoding]::new($false)), 'DeepSeek Harness Toolkit V\d+\.\d+\.\d+').Value
+$o = (& $tA about 2>&1 | Out-String);   TC '3 about' (($o.Contains($ver)) -and ($o.Contains('sakanamaru')))
 $o = (& $tA check 2>&1 | Out-String);   TC '4 check CLI' ($o.Contains('dsh'))
 $sw = [Diagnostics.Stopwatch]::StartNew(); $o = ("0`n" | & $tA 2>&1 | Out-String); $sw.Stop()
 TC '5 menu exit 0' ($sw.ElapsedMilliseconds -lt 2000) ($sw.ElapsedMilliseconds.ToString() + 'ms')
