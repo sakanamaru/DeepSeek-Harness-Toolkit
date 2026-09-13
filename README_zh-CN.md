@@ -89,7 +89,7 @@ dsh web
 
 ## 快速开始（三步）
 
-1. **解压**上传包到独立文件夹（如 `D:\工具\`）——程序的备份与配置写在 exe 所在目录，放在桌面上会让桌面变乱
+1. **解压**上传包到独立文件夹（如 `D:\工具\`）——程序的备份与配置写在 exe 所在目录，放在桌面上会让桌面变乱（GUI 和 CLI 都会检测桌面/下载目录直跑并提醒：GUI 弹确认框、CLI 打印黄字警告）
 2. **双击 exe**：dsh 未安装 → 菜单等待你选择，按 **1** 安装（默认官方源，镜像可选，一般 1–3 分钟），安装成功后再双击即可
 3. 安装完成后在菜单中选择 **2 启动 Web 界面**，浏览器自动打开
 
@@ -175,13 +175,13 @@ logs/               运行错误日志目录（已被 .gitignore 排除，切勿
 ## 安全提示
 
 - 完整安全策略见 `SECURITY.md`（漏洞请通过 GitHub Security Advisories 私密上报）
-- **下载后先核验再运行（约 10 秒）**：
+- **下载后先核验再运行（约 20 秒）**：
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -OutDir D:\verify
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.4.1 -OutDir D:\verify
   ```
 
-  `verify.ps1`（发布包内）自动完成：下载指定 release 的核心/GUI → 对照 CI 生成的 `hashes.txt` 做 SHA-256 核验 → 若本机有 GPG 则验 `hashes.txt.asc` 签名 → 打印溯源链接。只读，不安装任何东西。
+  `verify.ps1`（发布包内）自动完成：下载指定 release 的全部产物（三个版本 + `hashes.txt`）→ 对照 CI 生成的 `hashes.txt` 做 SHA-256 核验 → 若本机有 GPG 则验 `hashes.txt.asc` 签名 → 打印溯源链接。只读，不安装任何东西。带 `-Tag` 时走固定下载链接、完全不调 GitHub API（不怕匿名限速）；不带 `-Tag` 时通过 API 解析最新 release（网络受限可选传 `-Token`）。
 - **GPG 签名**：`hashes.txt` 由维护者私钥签名（`hashes.txt.asc`），公钥 `keys/sakanamaru-gpg.asc`，指纹：
   `A2F67D170B5BE4845612642C240979232B4E4CE4`
 - 卸载「清除全部数据」会删除 dsh 数据目录（`~/.dsh`，含会话与 API 凭据），程序会在清除前自动备份到 `backup\` 目录

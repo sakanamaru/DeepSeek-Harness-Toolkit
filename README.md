@@ -80,7 +80,7 @@ Since v2.4.1 a **graphical panel** ships in three forms — pick what fits:
 
 ## Quick start
 
-1. **Unzip** the release into its own folder (e.g. `D:\tools\`) — backups and config live next to the exe; putting it on the Desktop makes a mess.
+1. **Unzip** the release into its own folder (e.g. `D:\tools\`) — backups and config live next to the exe; putting it on the Desktop makes a mess. (Both the GUI and the CLI detect launches from Desktop/Downloads and warn you: the GUI asks for confirmation before continuing, the CLI prints a notice.)
 2. **Double-click the exe.** dsh not installed → the menu waits for you; press **1** to install (official registry by default, npmmirror as an option, ~1–3 min). Run it again afterwards.
 3. Choose **2 Start Web UI** and the browser opens automatically.
 
@@ -162,15 +162,19 @@ logs/                Error log dir (gitignored — never commit)
 ## Security Notes
 
 - Full policy: see `SECURITY.md` (private reporting via GitHub Security Advisories).
-- **Verify before you run (≈10 seconds)**:
+- **Verify before you run (≈20 seconds)**:
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -OutDir D:\verify
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.4.1 -OutDir D:\verify
   ```
 
-  `verify.ps1` (shipped in the package) downloads the release core/GUI, checks SHA-256
-  against the CI-generated `hashes.txt`, verifies the GPG signature (`hashes.txt.asc`)
-  when GPG is available, and prints the provenance links. Read-only — installs nothing.
+  `verify.ps1` (shipped in the package) downloads the release artifacts (all three
+  variants + `hashes.txt`), checks SHA-256 against the CI-generated `hashes.txt`,
+  verifies the GPG signature (`hashes.txt.asc`) when GPG is available, and prints the
+  provenance links. Read-only — installs nothing. With `-Tag` it uses fixed release
+  download URLs and never calls the GitHub API (immune to anonymous rate limits);
+  without `-Tag` it resolves the newest release via the API (optional `-Token` for
+  rate-limited networks).
 - **GPG signature**: `hashes.txt` is signed with the maintainer's key (`hashes.txt.asc`);
   public key `keys/sakanamaru-gpg.asc`, fingerprint
   `A2F67D170B5BE4845612642C240979232B4E4CE4`.

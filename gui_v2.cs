@@ -1417,11 +1417,14 @@ public class App : Form
 
     /// <summary>单文件集成版：把内嵌的核心 exe（/resource:"DeepSeek Harness Toolkit.exe,DSHCore.exe"）
     /// 解出到 GUI 同目录。只尝试一次；失败静默（后续操作会提示未找到核心）。
+    /// 先写 .tmp 再原子改名——避免磁盘满/中断留下半截 exe 被误判为有效核心。
     /// 附加版（未内嵌）此方法无资源可解，行为与旧版完全一致。</summary>
     void TryExtractCore()
     {
         if (coreExtractTried) return;
         coreExtractTried = true;
+        string dest = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DeepSeek Harness Toolkit.exe");
+        string tmp = dest + ".tmp";
         try
         {
             foreach (string n in typeof(App).Assembly.GetManifestResourceNames())
@@ -1430,19 +1433,47 @@ public class App : Form
                 using (Stream s = typeof(App).Assembly.GetManifestResourceStream(n))
                 {
                     if (s == null) return;
-                    string dest = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DeepSeek Harness Toolkit.exe");
-                    using (FileStream fs = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.Read))
+                    using (FileStream fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
                     {
                         byte[] buf = new byte[65536];
                         int r;
                         while ((r = s.Read(buf, 0, buf.Length)) > 0) fs.Write(buf, 0, r);
                     }
                 }
+                if (File.Exists(dest)) File.Delete(dest);
+                File.Move(tmp, dest);
                 LogLine("✓ " + L10N._("op.coreextracted"));
                 break;
             }
         }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+        }
+    }
+
+    /// <summary>真实"下载"目录：优先注册表 User Shell Folders（支持重定向，如 E:\Downloads），
+    /// 失败回退 %USERPROFILE%\Downloads。</summary>
+    static string RealDownloadsDir()
+    {
+        try
+        {
+            using (Microsoft.Win32.RegistryKey k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"))
+            {
+                if (k != null)
+                {
+                    object v = k.GetValue("{374DE290-123F-4565-9164-39C4925E467B}");
+                    if (v is string)
+                    {
+                        string p = Environment.ExpandEnvironmentVariables((string)v);
+                        if (!string.IsNullOrEmpty(p)) return p;
+                    }
+                }
+            }
+        }
         catch { }
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
     }
 
     // 在后台线程调用；返回单行标记 + 完整输出。
@@ -1817,7 +1848,7 @@ public class App : Form
             string exeDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
             string[] bad = new string[] {
                 Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads")
+                RealDownloadsDir()
             };
             foreach (string b in bad)
             {

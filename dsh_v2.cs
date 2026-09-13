@@ -131,7 +131,7 @@ public static class Program
             string exeDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
             string[] bad = new string[] {
                 Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads")
+                RealDownloadsDir()
             };
             foreach (string b in bad)
             {
@@ -145,6 +145,30 @@ public static class Program
             }
         }
         catch { }
+    }
+
+    // 真实"下载"目录：优先注册表 User Shell Folders（支持重定向，如 E:\Downloads），
+    // 失败回退 %USERPROFILE%\Downloads。
+    static string RealDownloadsDir()
+    {
+        try
+        {
+            using (Microsoft.Win32.RegistryKey k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"))
+            {
+                if (k != null)
+                {
+                    object v = k.GetValue("{374DE290-123F-4565-9164-39C4925E467B}");
+                    if (v is string)
+                    {
+                        string p = Environment.ExpandEnvironmentVariables((string)v);
+                        if (!string.IsNullOrEmpty(p)) return p;
+                    }
+                }
+            }
+        }
+        catch { }
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
     }
 
     // ---------------- 语言 ----------------
