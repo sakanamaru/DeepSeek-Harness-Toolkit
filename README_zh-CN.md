@@ -159,6 +159,15 @@ logs/               运行错误日志目录（已被 .gitignore 排除，切勿
 ## 安全提示
 
 - 完整安全策略见 `SECURITY.md`（漏洞请通过 GitHub Security Advisories 私密上报）
+- **下载后先核验再运行（约 10 秒）**：
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -OutDir D:\verify
+  ```
+
+  `verify.ps1`（发布包内）自动完成：下载指定 release 的核心/GUI → 对照 CI 生成的 `hashes.txt` 做 SHA-256 核验 → 若本机有 GPG 则验 `hashes.txt.asc` 签名 → 打印溯源链接。只读，不安装任何东西。
+- **GPG 签名**：`hashes.txt` 由维护者私钥签名（`hashes.txt.asc`），公钥 `keys/sakanamaru-gpg.asc`，指纹：
+  `A2F67D170B5BE4845612642C240979232B4E4CE4`
 - 卸载「清除全部数据」会删除 dsh 数据目录（`~/.dsh`，含会话与 API 凭据），程序会在清除前自动备份到 `backup\` 目录
 - **删除操作三重防误删**：
   1. **dsh Web 服务运行中直接阻止卸载**（避免文件占用）

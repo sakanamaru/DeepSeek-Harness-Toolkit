@@ -66,7 +66,7 @@ jobs:
       - name: Regenerate hashes.txt from CI build
         shell: pwsh
         run: |
-          $files = @('DeepSeek Harness Toolkit.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','.dsh_launcher_root')
+          $files = @('DeepSeek Harness Toolkit.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.dsh_launcher_root')
           # L-2：版本号从 AssemblyVersion 动态派生（取 major.minor.build 三段），避免每次 bump 手改 hashes 头（旧版本号残留）
           $verMatch = (Select-String -Path dsh_v2.cs -Pattern 'AssemblyVersion\("(\d+)\.(\d+)\.(\d+)\.\d+"' | Select-Object -First 1).Matches[0]
           $verLine = ($verMatch.Groups[1].Value + '.' + $verMatch.Groups[2].Value + '.' + $verMatch.Groups[3].Value)
@@ -102,14 +102,14 @@ jobs:
             Write-Output "hashes.txt unchanged; nothing to commit"
           }
 
-      - name: Pack upload zip (12 files)
+      - name: Pack upload zip (13 files)
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           if ($tag -in @('main','master','')) { $tag = "${{ inputs.release_tag }}" }
           if ($tag -eq '') { $tag = 'dev' }
           $zipName = "DeepSeek-Harness-Toolkit_${tag}_upload-package.zip"
-          $items = @('DeepSeek Harness Toolkit.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','.gitignore','hashes.txt','.dsh_launcher_root')
+          $items = @('DeepSeek Harness Toolkit.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.gitignore','hashes.txt','.dsh_launcher_root')
           Compress-Archive -Path $items -DestinationPath $zipName -CompressionLevel Optimal
           Write-Output ("zip: " + [math]::Round((Get-Item $zipName).Length/1KB,1) + " KB")
 
