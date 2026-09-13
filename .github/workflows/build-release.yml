@@ -96,10 +96,11 @@ jobs:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          export GNUPGHOME="$RUNNER_TEMP/gnupg"
-          mkdir -p "$GNUPGHOME"
-          chmod 700 "$GNUPGHOME"
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --import >/dev/null 2>&1
+          # runner is a fresh machine per job: default ~/.gnupg is fine.
+          # (Do NOT point GNUPGHOME at $RUNNER_TEMP in bash — the Windows
+          #  path form (D:\a\_temp) mangles backslash escapes.)
+          gpg --version | head -1
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
           gpg --batch --yes --detach-sign --armor hashes.txt
           # self-check before shipping: the imported key includes the public part
           gpg --batch --verify hashes.txt.asc hashes.txt
