@@ -35,6 +35,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+# PS 5.1 解码子进程（bash/gpg）UTF-8 输出可能挂起 — 统一编码到 UTF-8
+try {
+  $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+  [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+} catch { }
 
 $Owner = "sakanamaru"
 $Repo  = "DeepSeek-Harness-Toolkit"
