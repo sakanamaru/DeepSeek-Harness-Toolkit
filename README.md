@@ -48,19 +48,35 @@ Install, start, monitor and uninstall the dsh Web UI, with data backup / restore
 | Log Rotation | `logs\launcher.log` archived to `launcher.log.1` once it exceeds 1 MB (one history file kept) — no silent log loss |
 | Multi-language | Follow system / Simplified Chinese / English, persisted |
 
-## 🖥️ GUI panel (Alpha)
+## 🖥️ GUI panel (three variants)
 
-Since v2.4.0 a **graphical panel** `Toolkit GUI.exe` ships as an Alpha preview:
+Since v2.4.0 a **graphical panel** ships in three forms — pick what fits:
 
-- **Three pages**: Home (status LED + dsh version + Web address + action buttons) · Log (operation history) · About
-- Dark/light theme + Chinese/English, borderless rounded window, logo embedded (single-file distribution)
-- **Actions**: Install / Start Web / Stop Service / Backup Now / **Restore Backup (picker dialog to choose a backup folder + confirmation)** / Check for Updates / Uninstall / Desktop Shortcut / Refresh Status
-- Restore details: newest backup first and preselected; while the service is running the "restore" button is disabled with a red explanation — stop the service first (current data is auto-backed up before restoring)
-- Starting Web while the service is already running simply opens the browser
+| Variant | File(s) | Unzip / run | For |
+|---|---|---|---|
+| **A. CLI core** | `DeepSeek Harness Toolkit.exe` | unzip fully, double-click | terminal users, scripts/automation |
+| **B. GUI attached** | `Toolkit GUI.exe` + core **next to it** | **must unzip fully** — the GUI depends on the sibling core exe; a stray copy shows "Core exe (CLI) not found" | GUI users deploying with the core |
+| **C. GUI standalone** | `Toolkit GUI Standalone.exe` | **single file, fully independent** — embeds the core and extracts it next to itself on first launch | "one exe handles everything" users |
 
-Usage: put `Toolkit GUI.exe` next to the core `DeepSeek Harness Toolkit.exe` and double-click the GUI.
+**Shared features**: three pages (Home status LED + dsh version + Web address + action buttons · Log · About), dark/light theme, Chinese/English, borderless rounded window, embedded logo; actions Install / Start Web / Stop Service / Backup Now / **Restore Backup (picker dialog + confirmation)** / Check for Updates / Uninstall / Desktop Shortcut / Refresh Status. Starting Web while already running just opens the browser; current data is auto-backed up before any restore.
 
-> Alpha: UI/UX may still change; the underlying CLI is exactly the core (install/update/uninstall still open a real console window for interaction).
+**Recommended usage**:
+
+- **Everyday ops → C (standalone)**: backup/restore/start/stop all inside the GUI, one file is all you need
+- **Scripts / automation / remote help → A (CLI core)**: programmatic (`status / start --bg / stop / backup / restore --path ...`)
+- The **full zip** contains all three exes + docs; unzip and pick one. B and C can coexist (same core exe name, no conflict)
+
+**Must unzip fully**:
+
+- **Variant B**: GUI and core must live in the same folder; a lone GUI refuses operations with an explanation in the log
+- Uninstall "Wipe all data" relies on the `.dsh_launcher_root` marker shipped in the package (**anti-mistake design; the program never creates it**): if you copy variant C to a fresh folder, that folder lacks the marker and wiping is safely refused — operate from the full package folder when you need to wipe
+
+**Runs standalone**:
+
+- **Variant C**: single exe, full functionality (embedded core extracted on first launch)
+- **Variant A**: single exe covers start/stop/backup/restore; install/wipe still work best from the full package (`.dsh_launcher_root` marker)
+
+> The underlying CLI is exactly the core (install/update/uninstall still open a real console window for interaction).
 
 ## Quick start
 
