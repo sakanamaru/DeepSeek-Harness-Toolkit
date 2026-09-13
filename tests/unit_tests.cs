@@ -147,6 +147,19 @@ public static class UnitTests
         Check(Program.Test.JudgeState(true, false) == Program.ServiceState.Listening, "port open, http not ready -> Listening");
         Check(Program.Test.JudgeState(true, true) == Program.ServiceState.Ready, "port + http ready -> Ready");
 
+        // ---- v2.4.2: 就绪判定的监听进程兜底（dsh 0.1.5+ 未授权请求统一 401） ----
+        Console.WriteLine("[8b] service state judge (listener fallback)");
+        Check(Program.Test.JudgeState3(false, false, () => true) == Program.ServiceState.Down, "v2.4.2 port closed -> Down even if listener claims dsh");
+        Check(Program.Test.JudgeState3(false, true, () => true) == Program.ServiceState.Down, "v2.4.2 port closed (+http) -> Down");
+        Check(Program.Test.JudgeState3(true, false, () => false) == Program.ServiceState.Listening, "v2.4.2 port open, no http, not dsh -> Listening");
+        Check(Program.Test.JudgeState3(true, false, () => true) == Program.ServiceState.Ready, "v2.4.2 port open + listener is dsh -> Ready (401 case)");
+        Check(Program.Test.JudgeState3(true, true, () => false) == Program.ServiceState.Ready, "v2.4.2 port + http ready -> Ready (listener irrelevant)");
+        Check(Program.Test.JudgeState3(true, false, null) == Program.ServiceState.Listening, "v2.4.2 null listener delegate -> Listening");
+        Check(Program.Test.JudgeState3(true, false, () => { throw new Exception("probe blew up"); }) == Program.ServiceState.Listening, "v2.4.2 listener probe throws -> Listening (never Ready)");
+        bool listenerCalled = false;
+        Program.Test.JudgeState3(true, true, () => { listenerCalled = true; return true; });
+        Check(!listenerCalled, "v2.4.2 listener check skipped when http already ready (lazy)");
+
         // ---- v2.1 A: 版本比较 / 更新解析 / 更新探测（注入假网络） ----
         Console.WriteLine("[9] update check");
         Check(Program.Test.CmpVer("2.0.0", "2.1.0") < 0, "2.0.0 < 2.1.0");

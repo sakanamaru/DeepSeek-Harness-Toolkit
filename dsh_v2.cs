@@ -1,5 +1,5 @@
 // ============================================================================
-//  DeepSeek Harness Toolkit V2.4.1  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
+//  DeepSeek Harness Toolkit V2.4.2  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
 // ----------------------------------------------------------------------------
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 //  v2 重构封装：DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）
@@ -21,12 +21,12 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 
-[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.4.1")]
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.4.2")]
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
-[assembly: AssemblyVersion("2.4.1.0")]
-[assembly: AssemblyFileVersion("2.4.1.0")]
+[assembly: AssemblyVersion("2.4.2.0")]
+[assembly: AssemblyFileVersion("2.4.2.0")]
 
 public static class Program
 {
@@ -61,7 +61,7 @@ public static class Program
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Toolkit V2.4.1"; } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.4.2"; } catch { }
         StateDir = ResolveStateDir();
         // 注意：根目录标记 .dsh_launcher_root 只随发布包分发，本程序永不自行补建——
         // 若启动时"看起来像完整安装"就自动写标记，攻击者可诱导用户将 exe 与任意同名文件
@@ -239,7 +239,7 @@ public static class Program
     static void Banner()
     {
         CL(ConsoleColor.Cyan,   "==============================================");
-        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.4.1");
+        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.4.2");
         CL(ConsoleColor.Cyan,   "==============================================");
         C(ConsoleColor.Gray,    "  v1 脚本协助 : "); CL(ConsoleColor.White, "SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
         C(ConsoleColor.Gray,    "  v2 重构封装 : "); CL(ConsoleColor.White, "DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
@@ -1812,6 +1812,18 @@ public static class Program
         return httpOk ? ServiceState.Ready : ServiceState.Listening;
     }
 
+    /// <summary>纯判定（v2.4.2）：端口开 +（HTTP 2xx/3xx 或 监听进程确为 dsh）→ Ready。
+    /// 监听身份用委托惰性求值——HTTP 已就绪时不再多花一次 netstat/WMI。</summary>
+    static ServiceState JudgeState3(bool portOpen, bool httpOk, Func<bool> listenerIsDsh)
+    {
+        if (!portOpen) return ServiceState.Down;
+        if (httpOk) return ServiceState.Ready;
+        bool byProc = false;
+        try { byProc = listenerIsDsh != null && listenerIsDsh(); }
+        catch { byProc = false; }
+        return byProc ? ServiceState.Ready : ServiceState.Listening;
+    }
+
     /// <summary>HTTP GET 探测：2xx/3xx 视为服务就绪（dsh 主页 200/302 均算）。</summary>
     static bool HttpReady(string url, int ms)
     {
@@ -1830,10 +1842,62 @@ public static class Program
         catch { return false; }
     }
 
-    /// <summary>服务三态探测入口：先端口（快速/可打桩），再 HTTP 验证身份（确认是 dsh 而非其他程序）。</summary>
+    /// <summary>HTTP 是否有应答（任意状态码，含 401/403/404）——服务活着但要求鉴权时用。</summary>
+    static bool HttpResponds(string url, int ms)
+    {
+        try
+        {
+            var req = (HttpWebRequest)WebRequest.Create(url);
+            req.Method = "GET";
+            req.Timeout = ms;
+            req.AllowAutoRedirect = true;
+            using (var resp = (HttpWebResponse)req.GetResponse()) { return true; }
+        }
+        catch (WebException ex) { return ex.Response is HttpWebResponse; }   // 401/403… 服务器确实在应答
+        catch { return false; }
+    }
+
+    // 监听进程身份判定缓存（同一进程内 10 秒内复用）：状态页每 3 秒刷新一次，
+    // 不做缓存就会每轮都拉起 netstat + WMI。
+    static bool listenerIsDshCached = false;
+    static DateTime listenerIsDshAt = DateTime.MinValue;
+
+    /// <summary>监听 3080 的进程是否确为 dsh（v2.4.2 新增兜底判定）。
+    /// 背景：dsh 0.1.5+ 对未授权请求统一返回 401（本机浏览器靠会话 cookie 才能 200），
+    /// 于是 HttpReady 永久为假、服务永远显示"启动中"。这里改用监听进程身份兜底，
+    /// 依据与 stop 防护同源（命令行含 dsh）。命令行读不到（权限/超时）时退回
+    /// "node 进程 + HTTP 有应答"，仍强于"仅端口开"。
+    /// 注意：止于显示与启动判定；真正会杀进程的 stop 仍走严格的 IsOurDshProcess。</summary>
+    static bool ListenerIsDsh()
+    {
+        if (listenerIsDshAt != DateTime.MinValue && (DateTime.Now - listenerIsDshAt).TotalSeconds < 10)
+            return listenerIsDshCached;
+        bool ok = false;
+        try
+        {
+            int pid = FindPortPid(WEB_PORT);
+            if (pid > 0)
+            {
+                ok = IsDshCommandLine(GetProcessCommandLine(pid));
+                if (!ok)
+                {
+                    string pname = "";
+                    try { pname = Process.GetProcessById(pid).ProcessName ?? ""; } catch { }
+                    if (pname.IndexOf("node", StringComparison.OrdinalIgnoreCase) >= 0)
+                        ok = HttpResponds(WebUrl(), 800);
+                }
+            }
+        }
+        catch { ok = false; }
+        listenerIsDshCached = ok;
+        listenerIsDshAt = DateTime.Now;
+        return ok;
+    }
+
+    /// <summary>服务三态探测入口：先端口（快速/可打桩），再 HTTP，最后监听进程身份兜底。</summary>
     static ServiceState ProbeService()
     {
-        return JudgeState(IsPortOpen(WEB_PORT, 800), HttpReady(WebUrl(), 800));   // HTTP 探测 800ms 上限：正常 <100ms，挂起时快速降级
+        return JudgeState3(IsPortOpen(WEB_PORT, 800), HttpReady(WebUrl(), 800), ListenerIsDsh);
     }
 
     // ---------------- 自动检查更新（v2.1: 启动静默查询 GitHub Releases，发现新版本才提示） ----------------
@@ -2493,6 +2557,7 @@ public static class Program
         public static bool IsAutoName(string n) { return Program.IsAutoBackupName(n); }
         public static List<string> Retention() { return Program.EnforceBackupRetention(); }
         public static ServiceState JudgeState(bool port, bool http) { return Program.JudgeState(port, http); }
+        public static ServiceState JudgeState3(bool port, bool http, Func<bool> listener) { return Program.JudgeState3(port, http, listener); }
         public static int CmpVer(string a, string b) { return Program.CompareVersions(a, b); }
         public static string ParseTag(string body) { return Program.ParseLatestTag(body); }
         public static string Latest() { return Program.LatestVersion(); }
