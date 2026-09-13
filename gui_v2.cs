@@ -118,6 +118,9 @@ static class L10N
         Add("home.status.starting", "启动中", "STARTING");
         Add("home.status.down", "已停止", "STOPPED");
         Add("home.status.unknown", "未检测", "UNKNOWN");
+        Add("home.status.nocore", "未找到核心程序（CLI）", "Core exe (CLI) not found");
+        Add("home.status.nocore.tip", "请将核心 exe 与本 GUI 放在同一文件夹，或改用单文件集成版",
+            "place the core exe next to this GUI, or use the standalone build");
         Add("home.address", "Web 地址", "Web Address");
         Add("home.version", "dsh 版本", "dsh Version");
 
@@ -153,6 +156,9 @@ static class L10N
         Add("op.busy", "上一操作仍在进行，请稍候…", "Previous operation still running, please wait...");
         Add("op.coremissing", "未找到核心程序（DeepSeek Harness Toolkit.exe，请与 GUI 同目录）",
             "Core exe not found (DeepSeek Harness Toolkit.exe, place it next to the GUI)");
+        Add("op.coreextracted", "已自动解出内嵌核心 exe（单文件集成版）",
+            "Embedded core exe extracted automatically (standalone build)");
+        Add("about.standalone", "（单文件集成版）", "(standalone build)");
         Add("op.launchfailed", "启动失败：", "Launch failed: ");
         Add("dsh.notinstalled", "未安装", "not installed");
         Add("dsh.verreadfail", "读取失败", "read failed");
@@ -1386,7 +1392,53 @@ public class App : Form
     string CoreExePath()
     {
         string core = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DeepSeek Harness Toolkit.exe");
+        if (File.Exists(core)) return core;
+        TryExtractCore();   // 单文件集成版：核心缺失时从内嵌资源解出（附加版无资源则静默）
         return File.Exists(core) ? core : null;
+    }
+
+    bool coreExtractTried = false;
+
+    /// <summary>是否单文件集成版（编译时内嵌了核心资源 DSHCore.exe）。</summary>
+    static bool HasEmbeddedCore()
+    {
+        try
+        {
+            foreach (string n in typeof(App).Assembly.GetManifestResourceNames())
+                if (n.EndsWith("DSHCore.exe", StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        catch { }
+        return false;
+    }
+
+    /// <summary>单文件集成版：把内嵌的核心 exe（/resource:"DeepSeek Harness Toolkit.exe,DSHCore.exe"）
+    /// 解出到 GUI 同目录。只尝试一次；失败静默（后续操作会提示未找到核心）。
+    /// 附加版（未内嵌）此方法无资源可解，行为与旧版完全一致。</summary>
+    void TryExtractCore()
+    {
+        if (coreExtractTried) return;
+        coreExtractTried = true;
+        try
+        {
+            foreach (string n in typeof(App).Assembly.GetManifestResourceNames())
+            {
+                if (!n.EndsWith("DSHCore.exe", StringComparison.OrdinalIgnoreCase)) continue;
+                using (Stream s = typeof(App).Assembly.GetManifestResourceStream(n))
+                {
+                    if (s == null) return;
+                    string dest = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DeepSeek Harness Toolkit.exe");
+                    using (FileStream fs = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.Read))
+                    {
+                        byte[] buf = new byte[65536];
+                        int r;
+                        while ((r = s.Read(buf, 0, buf.Length)) > 0) fs.Write(buf, 0, r);
+                    }
+                }
+                LogLine("✓ " + L10N._("op.coreextracted"));
+                break;
+            }
+        }
+        catch { }
     }
 
     // 在后台线程调用；返回单行标记 + 完整输出。
@@ -1503,7 +1555,7 @@ public class App : Form
 
         Label ver = new RLabel();
         ver.AutoSize = true;
-        ver.Text = "GUI " + AssemblyVersion();
+        ver.Text = "GUI " + AssemblyVersion() + (HasEmbeddedCore() ? " " + L10N._("about.standalone") : "");
         ver.Location = new Point(CenterX(ver), 194);
         p.Controls.Add(ver);
 
@@ -1746,14 +1798,27 @@ public class App : Form
         if (k == SKind.Up) return L10N._("home.status.up");
         if (k == SKind.Starting) return L10N._("home.status.starting");
         if (k == SKind.Down) return L10N._("home.status.down");
+        if (CoreExePath() == null) return L10N._("home.status.nocore");
         return L10N._("home.status.unknown");
     }
+
+    bool coreWarnLogged = false;
 
     void RefreshStatus()
     {
         if (Interlocked.CompareExchange(ref refreshing, 1, 0) != 0) return;   // 防重入
         string core = CoreExePath();
-        if (core == null) { Interlocked.Exchange(ref refreshing, 0); SetStatus(SKind.Unknown); return; }
+        if (core == null)
+        {
+            Interlocked.Exchange(ref refreshing, 0);
+            if (!coreWarnLogged)
+            {
+                coreWarnLogged = true;   // 只提示一次，避免每 3 秒刷屏
+                if (!HasEmbeddedCore()) LogLine(L10N._("op.coremissing") + " — " + L10N._("home.status.nocore.tip"));
+            }
+            SetStatus(SKind.Unknown);
+            return;
+        }
         ThreadPool.QueueUserWorkItem(delegate(object _)
         {
             try

@@ -112,9 +112,10 @@ foreach ($ln in $hashLines) {
 $map = @{
   "DeepSeek.Harness.Toolkit.exe" = "DeepSeek Harness Toolkit.exe"
   "Toolkit.GUI.exe"               = "Toolkit GUI.exe"
+  "Toolkit.GUI.Standalone.exe"    = "Toolkit GUI Standalone.exe"
 }
 $pass = 0; $fail = 0
-foreach ($k in @("DeepSeek.Harness.Toolkit.exe", "Toolkit.GUI.exe")) {
+foreach ($k in @("DeepSeek.Harness.Toolkit.exe", "Toolkit.GUI.exe", "Toolkit.GUI.Standalone.exe")) {
   if (-not $saved.ContainsKey($k)) { Write-Host ("SKIP  " + $k + " (not in release assets)") -ForegroundColor DarkGray; continue }
   $entryName = $map[$k]
   if (-not $hashMap.ContainsKey($entryName)) { Write-Host ("FAIL  " + $k + " : no entry in hashes.txt") -ForegroundColor Red; $fail++; continue }

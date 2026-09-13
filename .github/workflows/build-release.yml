@@ -33,14 +33,18 @@ jobs:
           .\unittests.exe
           if ($LASTEXITCODE -ne 0) { throw "unit tests failed" }
 
-      - name: Compile GUI skeleton (Toolkit GUI.exe) — regression guard only
+      - name: Compile GUI variants (attached + standalone) — regression guard only
         shell: pwsh
         run: |
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          & $csc /nologo /optimize+ /target:exe /win32icon:icon.ico /out:core_check.exe dsh_v2.cs /warn:4
+          if ($LASTEXITCODE -ne 0) { throw "core compile failed (guard)" }
           & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico /win32manifest:app.manifest /resource:logo.png /out:gui_check.exe gui_v2.cs /warn:4
-          if ($LASTEXITCODE -ne 0) { throw "GUI compile failed" }
-          Remove-Item gui_check.exe -ErrorAction SilentlyContinue
-          Write-Output "GUI skeleton compiles clean (/warn:4, embedded logo)"
+          if ($LASTEXITCODE -ne 0) { throw "GUI (attached) compile failed" }
+          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico /win32manifest:app.manifest /resource:logo.png /resource:core_check.exe,DSHCore.exe /out:gui_standalone_check.exe gui_v2.cs /warn:4
+          if ($LASTEXITCODE -ne 0) { throw "GUI (standalone) compile failed" }
+          Remove-Item core_check.exe, gui_check.exe, gui_standalone_check.exe -ErrorAction SilentlyContinue
+          Write-Output "GUI variants compile clean (/warn:4, embedded logo + core)"
 
       - name: Run integration tests (stubbed matrix, no real ~/.dsh touched)
         shell: pwsh
@@ -71,10 +75,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "GUI build failed" }
           Get-Item "Toolkit GUI.exe" | Select-Object Name,Length
 
+      - name: Compile Toolkit GUI Standalone.exe (embeds core exe)
+        shell: pwsh
+        run: |
+          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico /win32manifest:app.manifest /resource:logo.png "/resource:DeepSeek Harness Toolkit.exe,DSHCore.exe" "/out:Toolkit GUI Standalone.exe" gui_v2.cs /warn:4
+          if ($LASTEXITCODE -ne 0) { throw "GUI standalone build failed" }
+          Get-Item "Toolkit GUI Standalone.exe" | Select-Object Name,Length
+
       - name: Regenerate hashes.txt from CI build
         shell: pwsh
         run: |
-          $files = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.dsh_launcher_root')
+          $files = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.dsh_launcher_root')
           # L-2：版本号从 AssemblyVersion 动态派生（取 major.minor.build 三段），避免每次 bump 手改 hashes 头（旧版本号残留）
           $verMatch = (Select-String -Path dsh_v2.cs -Pattern 'AssemblyVersion\("(\d+)\.(\d+)\.(\d+)\.\d+"' | Select-Object -First 1).Matches[0]
           $verLine = ($verMatch.Groups[1].Value + '.' + $verMatch.Groups[2].Value + '.' + $verMatch.Groups[3].Value)
@@ -129,14 +141,14 @@ jobs:
             Write-Output "hashes.txt unchanged; nothing to commit"
           }
 
-      - name: Pack upload zip (15 files)
+      - name: Pack upload zip (16 files)
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           if ($tag -in @('main','master','')) { $tag = "${{ inputs.release_tag }}" }
           if ($tag -eq '') { $tag = 'dev' }
           $zipName = "DeepSeek-Harness-Toolkit_${tag}_upload-package.zip"
-          $items = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.gitignore','hashes.txt','hashes.txt.asc','.dsh_launcher_root')
+          $items = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.gitignore','hashes.txt','hashes.txt.asc','.dsh_launcher_root')
           Compress-Archive -Path $items -DestinationPath $zipName -CompressionLevel Optimal
           Write-Output ("zip: " + [math]::Round((Get-Item $zipName).Length/1KB,1) + " KB")
 
@@ -161,6 +173,7 @@ jobs:
           }
           Upload "DeepSeek Harness Toolkit.exe" $tag $env:GITHUB_REPOSITORY
           Upload "Toolkit GUI.exe" $tag $env:GITHUB_REPOSITORY
+          Upload "Toolkit GUI Standalone.exe" $tag $env:GITHUB_REPOSITORY
           Upload "hashes.txt" $tag $env:GITHUB_REPOSITORY
           Upload "hashes.txt.asc" $tag $env:GITHUB_REPOSITORY
           $assets = gh release view $tag --repo $env:GITHUB_REPOSITORY --json assets --jq '.assets[].name'
