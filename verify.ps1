@@ -57,12 +57,14 @@ function Invoke-GpgCheck([string]$sigFile, [string]$dataFile) {
   if (Test-Path $bash) {
     $sigU = $sigFile -replace '\\', '/' -replace '^([A-Za-z]):', '/$1'
     $datU = $dataFile -replace '\\', '/' -replace '^([A-Za-z]):', '/$1'
-    & $bash -lc ("gpg --verify '" + $sigU + "' '" + $datU + "' 2>&1")
+    $null = & $bash -lc "gpg --verify '$sigU' '$datU' 2>&1"
+
     return $LASTEXITCODE
   }
   $gpg = Get-GpgPath
   if (-not $gpg) { return -1 }
-  & $gpg --verify $sigFile $dataFile 2>&1
+  $null = & $gpg --verify $sigFile $dataFile 2>&1
+
   return $LASTEXITCODE
 }
 
