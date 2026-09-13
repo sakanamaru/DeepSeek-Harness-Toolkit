@@ -15,7 +15,7 @@
   Fingerprint: A2F67D170B5BE4845612642C240979232B4E4CE4
 
 .PARAMETER Tag
-  Release tag (e.g. v2.4.0-gui-alpha). Default: newest release (including prereleases).
+  Release tag (e.g. v2.4.1). Default: newest release (including prereleases).
 
 .PARAMETER OutDir
   Download destination. Default: current directory.
@@ -25,7 +25,7 @@
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File verify.ps1 -OutDir D:\verify
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.4.0-gui-alpha
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.4.1
 #>
 param(
   [string]$Tag = "",
@@ -88,13 +88,25 @@ if ($rel.prerelease) { Write-Host "note    : prerelease (Alpha/Beta)" -Foregroun
 # ---- download hashes.txt + executables ----
 Write-Step "Downloading artifacts to $OutDir"
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
-$wantNames = @("hashes.txt", "DeepSeek.Harness.Toolkit.exe", "Toolkit.GUI.exe", "hashes.txt.asc")
+$wantNames = @("hashes.txt", "DeepSeek.Harness.Toolkit.exe", "Toolkit.GUI.exe", "Toolkit.GUI.Standalone.exe", "hashes.txt.asc")
 $saved = @{}
 foreach ($a in $rel.assets) {
   if ($wantNames -contains $a.name) {
     $dest = Join-Path $OutDir $a.name
     Write-Host ("downloading " + $a.name + " (" + [math]::Round($a.size / 1KB, 1) + " KB)")
-    Invoke-WebRequest -Uri $a.browser_download_url -OutFile $dest -Headers @{ "User-Agent" = "verify.ps1" }
+    # -UseBasicParsing: PS 5.1 在管道环境中 IWR 进度条渲染会把大文件下载拖到挂起
+    # TimeoutSec + 双次重试：避免单次网络差错导致脚本整体卡死
+    $ok = $false
+    foreach ($try in 1..2) {
+      try {
+        Invoke-WebRequest -Uri $a.browser_download_url -OutFile $dest -Headers @{ "User-Agent" = "verify.ps1" } -UseBasicParsing -TimeoutSec 120
+        $ok = $true; break
+      } catch {
+        Write-Host ("  retry " + $try + ": " + $_.Exception.Message) -ForegroundColor Yellow
+        Start-Sleep -Seconds 2
+      }
+    }
+    if (-not $ok) { Write-Host ("FAIL  download " + $a.name) -ForegroundColor Red; exit 1 }
     $saved[$a.name] = $dest
   }
 }
