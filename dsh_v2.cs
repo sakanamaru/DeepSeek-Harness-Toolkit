@@ -1,5 +1,5 @@
 // ============================================================================
-//  DeepSeek Harness Toolkit V2.4.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
+//  DeepSeek Harness Toolkit V2.4.1  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
 // ----------------------------------------------------------------------------
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 //  v2 重构封装：DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）
@@ -21,12 +21,12 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 
-[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.4.0")]
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.4.1")]
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
-[assembly: AssemblyVersion("2.4.0.0")]
-[assembly: AssemblyFileVersion("2.4.0.0")]
+[assembly: AssemblyVersion("2.4.1.0")]
+[assembly: AssemblyFileVersion("2.4.1.0")]
 
 public static class Program
 {
@@ -61,7 +61,7 @@ public static class Program
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Toolkit V2.4.0"; } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.4.1"; } catch { }
         StateDir = ResolveStateDir();
         // 注意：根目录标记 .dsh_launcher_root 只随发布包分发，本程序永不自行补建——
         // 若启动时"看起来像完整安装"就自动写标记，攻击者可诱导用户将 exe 与任意同名文件
@@ -117,9 +117,35 @@ public static class Program
                    "The launcher is already running (incl. v2.0) — switch to the open window (this instance exits)."));
             return;
         }
+        DetectBadDir();   // 桌面/下载目录直跑 → 黄字提醒（不阻塞）
         Menu();
     }
 #endif
+
+    // ---------------- 防误用提醒：桌面/下载目录直接运行 ----------------
+    // 只随交互模式触发（CLI 子命令保持 stdout 纯净，GUI 调用不受影响）
+    static void DetectBadDir()
+    {
+        try
+        {
+            string exeDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
+            string[] bad = new string[] {
+                Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads")
+            };
+            foreach (string b in bad)
+            {
+                if (string.IsNullOrEmpty(b)) continue;
+                if (string.Equals(exeDir, b.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                {
+                    Warn(T("检测到你在桌面/下载目录直接运行本程序：备份与日志会写到该目录，文件容易被误删或丢失。建议移到独立文件夹（如 D:\\Tools\\DSHToolkit）后运行。",
+                           "Running from Desktop/Downloads: backups & logs land there and are easy to lose. Move to a dedicated folder (e.g. D:\\Tools\\DSHToolkit)."));
+                    return;
+                }
+            }
+        }
+        catch { }
+    }
 
     // ---------------- 语言 ----------------
 
@@ -189,7 +215,7 @@ public static class Program
     static void Banner()
     {
         CL(ConsoleColor.Cyan,   "==============================================");
-        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.4.0");
+        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.4.1");
         CL(ConsoleColor.Cyan,   "==============================================");
         C(ConsoleColor.Gray,    "  v1 脚本协助 : "); CL(ConsoleColor.White, "SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
         C(ConsoleColor.Gray,    "  v2 重构封装 : "); CL(ConsoleColor.White, "DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");

@@ -50,7 +50,7 @@ Install, start, monitor and uninstall the dsh Web UI, with data backup / restore
 
 ## 🖥️ GUI panel (three variants)
 
-Since v2.4.0 a **graphical panel** ships in three forms — pick what fits:
+Since v2.4.1 a **graphical panel** ships in three forms — pick what fits:
 
 | Variant | File(s) | Unzip / run | For |
 |---|---|---|---|

@@ -25,8 +25,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 非官方图形辅助面板。v1: SOGR-Momono Dango；v2: DeepSeek DSH；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit GUI")]
-[assembly: AssemblyVersion("2.4.0.0")]
-[assembly: AssemblyFileVersion("2.4.0.0")]
+[assembly: AssemblyVersion("2.4.1.0")]
+[assembly: AssemblyFileVersion("2.4.1.0")]
 
 // ---------------- 主题 ----------------
 
@@ -159,6 +159,9 @@ static class L10N
         Add("op.coreextracted", "已自动解出内嵌核心 exe（单文件集成版）",
             "Embedded core exe extracted automatically (standalone build)");
         Add("about.standalone", "（单文件集成版）", "(standalone build)");
+        Add("badir.title", "不建议在此目录运行", "Not recommended to run here");
+        Add("badir.msg", "你在桌面/下载目录直接运行本程序：备份与日志会写到该目录，文件容易被误删或丢失。\n建议移到独立文件夹（例如 D:\\Tools\\DSHToolkit）后再使用。\n\n仍要继续吗？",
+            "You are running directly from Desktop/Downloads: backups & logs land there and are easy to lose.\nMove to a dedicated folder (e.g. D:\\Tools\\DSHToolkit) instead.\n\nContinue anyway?");
         Add("op.launchfailed", "启动失败：", "Launch failed: ");
         Add("dsh.notinstalled", "未安装", "not installed");
         Add("dsh.verreadfail", "读取失败", "read failed");
@@ -914,6 +917,7 @@ public class App : Form
     {
         base.OnLoad(e);
         ApplyWindowRound();
+        CheckBadDirWarning();   // 防误用：桌面/下载目录直接运行 → 弹窗提醒（可取消继续）
     }
 
     protected override void OnResize(EventArgs e)
@@ -1618,7 +1622,7 @@ public class App : Form
     string AssemblyVersion()
     {
         try { return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Major + "." + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Minor + "." + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Build; }
-        catch { return "2.4.0"; }
+        catch { return "2.4.1"; }
     }
 
     // ---- 页面切换 ----
@@ -1803,6 +1807,33 @@ public class App : Form
     }
 
     bool coreWarnLogged = false;
+
+    // 防误用：exe 被直接拖到桌面/下载目录运行时弹窗提醒。
+    // 不强行阻止（用户自由），但明确告知并建议移到独立文件夹。
+    void CheckBadDirWarning()
+    {
+        try
+        {
+            string exeDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
+            string[] bad = new string[] {
+                Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads")
+            };
+            foreach (string b in bad)
+            {
+                if (string.IsNullOrEmpty(b)) continue;
+                if (string.Equals(exeDir, b.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                {
+                    DialogResult r = MessageBox.Show(this, L10N._("badir.msg"), L10N._("badir.title"),
+                        MessageBoxButtons.OKCancel, MessageBoxIcon.Warning);
+                    if (r != DialogResult.OK) { Close(); return; }
+                    LogLine(L10N._("badir.msg").Replace("\n", " "));
+                    return;
+                }
+            }
+        }
+        catch { }
+    }
 
     void RefreshStatus()
     {
