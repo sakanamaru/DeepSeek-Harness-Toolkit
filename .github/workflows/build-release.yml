@@ -37,10 +37,10 @@ jobs:
         shell: pwsh
         run: |
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico /win32manifest:app.manifest /out:gui_check.exe gui_v2.cs /warn:4
+          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico /win32manifest:app.manifest /resource:logo.png /out:gui_check.exe gui_v2.cs /warn:4
           if ($LASTEXITCODE -ne 0) { throw "GUI compile failed" }
           Remove-Item gui_check.exe -ErrorAction SilentlyContinue
-          Write-Output "GUI skeleton compiles clean (/warn:4)"
+          Write-Output "GUI skeleton compiles clean (/warn:4, embedded logo)"
 
       - name: Run integration tests (stubbed matrix, no real ~/.dsh touched)
         shell: pwsh
@@ -63,10 +63,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "csc build failed" }
           Get-Item "DeepSeek Harness Toolkit.exe" | Select-Object Name,Length
 
+      - name: Compile Toolkit GUI.exe (embedded logo, single file)
+        shell: pwsh
+        run: |
+          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico /win32manifest:app.manifest /resource:logo.png "/out:Toolkit GUI.exe" gui_v2.cs /warn:4
+          if ($LASTEXITCODE -ne 0) { throw "GUI build failed" }
+          Get-Item "Toolkit GUI.exe" | Select-Object Name,Length
+
       - name: Regenerate hashes.txt from CI build
         shell: pwsh
         run: |
-          $files = @('DeepSeek Harness Toolkit.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.dsh_launcher_root')
+          $files = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.dsh_launcher_root')
           # L-2：版本号从 AssemblyVersion 动态派生（取 major.minor.build 三段），避免每次 bump 手改 hashes 头（旧版本号残留）
           $verMatch = (Select-String -Path dsh_v2.cs -Pattern 'AssemblyVersion\("(\d+)\.(\d+)\.(\d+)\.\d+"' | Select-Object -First 1).Matches[0]
           $verLine = ($verMatch.Groups[1].Value + '.' + $verMatch.Groups[2].Value + '.' + $verMatch.Groups[3].Value)
@@ -81,6 +89,24 @@ jobs:
           }
           [System.IO.File]::WriteAllLines((Join-Path $PWD 'hashes.txt'), $lines, (New-Object System.Text.UTF8Encoding($false)))
           Get-Content hashes.txt
+
+      - name: Sign hashes.txt (maintainer GPG key, from secrets)
+        shell: bash
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          mkdir -p "$GNUPGHOME"
+          chmod 700 "$GNUPGHOME"
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import >/dev/null 2>&1
+          gpg --batch --yes --detach-sign --armor hashes.txt
+          # self-check before shipping: the imported key includes the public part
+          gpg --batch --verify hashes.txt.asc hashes.txt
+          ls -l hashes.txt.asc
+          echo "gpg fingerprint:"
+
+          gpg --batch --with-colons --list-keys | awk -F: '/^pub/{next} /^fpr/{print $10}'
 
       - name: Commit regenerated hashes.txt (only when on a branch)
         shell: pwsh
@@ -102,14 +128,14 @@ jobs:
             Write-Output "hashes.txt unchanged; nothing to commit"
           }
 
-      - name: Pack upload zip (13 files)
+      - name: Pack upload zip (15 files)
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           if ($tag -in @('main','master','')) { $tag = "${{ inputs.release_tag }}" }
           if ($tag -eq '') { $tag = 'dev' }
           $zipName = "DeepSeek-Harness-Toolkit_${tag}_upload-package.zip"
-          $items = @('DeepSeek Harness Toolkit.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.gitignore','hashes.txt','.dsh_launcher_root')
+          $items = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.gitignore','hashes.txt','hashes.txt.asc','.dsh_launcher_root')
           Compress-Archive -Path $items -DestinationPath $zipName -CompressionLevel Optimal
           Write-Output ("zip: " + [math]::Round((Get-Item $zipName).Length/1KB,1) + " KB")
 
@@ -133,7 +159,9 @@ jobs:
             throw "upload failed after retries: $file"
           }
           Upload "DeepSeek Harness Toolkit.exe" $tag $env:GITHUB_REPOSITORY
+          Upload "Toolkit GUI.exe" $tag $env:GITHUB_REPOSITORY
           Upload "hashes.txt" $tag $env:GITHUB_REPOSITORY
+          Upload "hashes.txt.asc" $tag $env:GITHUB_REPOSITORY
           $assets = gh release view $tag --repo $env:GITHUB_REPOSITORY --json assets --jq '.assets[].name'
           # 改名迁移安全网：只清理核心 exe 的历史命名残留（DeepSeek.Harness.Toolkit.<版本>.exe 等），
           # 保留 Toolkit.GUI.exe 等其他合法资产（GUI 面板是与核心并列的独立发布物）
