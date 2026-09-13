@@ -29,10 +29,13 @@ Install, start, monitor and uninstall the dsh Web UI, with data backup / restore
 
 **CLI core** (variant A — the original form of this tool; the GUI is built on top of it):
 
-<p align="center">
-  <img src="docs/screenshots/cli-status.png" width="620" alt="CLI live status monitor — 3-state detection"/>
-  <br/><em>Live status monitor: <b>running / starting / stopped</b> (TCP + HTTP verified), Web address, uptime, dsh &amp; Node.js versions — refreshed every 3s.</em>
-</p>
+**CLI core** (variant A — the original form of this tool; the GUI is built on top of it):
+
+| Interactive menu | Live status monitor (3-state detection) |
+|:---:|:---:|
+| <img src="docs/screenshots/cli-menu.png" width="440" alt="CLI interactive menu"/> | <img src="docs/screenshots/cli-status.png" width="440" alt="CLI live status monitor — running / starting / stopped"/> |
+
+<sub>Left: the interactive menu — everything is also scriptable (`install · start --bg · stop · backup · restore · status · about · …`). Right: the live monitor — 3-state detection (TCP + HTTP verified), Web address, uptime, dsh &amp; Node.js versions, refreshed every 3s.</sub>
 
 ## What you can do with it
 

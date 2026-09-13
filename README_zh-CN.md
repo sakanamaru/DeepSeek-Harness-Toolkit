@@ -29,10 +29,11 @@ DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具
 
 **CLI 命令行核心**（A 版本——本工具的本体形态，GUI 构建其上）：
 
-<p align="center">
-  <img src="docs/screenshots/cli-status.png" width="620" alt="CLI 实时状态监控——三态检测"/>
-  <br/><em>实时状态监控：<b>运行中 / 启动中 / 已停止</b>（端口＋HTTP 双重校验），并显示 Web 地址、运行时长、dsh 与 Node.js 版本，每 3 秒刷新。</em>
-</p>
+| 交互菜单 | 实时状态监控（三态检测） |
+|:---:|:---:|
+| <img src="docs/screenshots/cli-menu.png" width="440" alt="CLI 交互菜单"/> | <img src="docs/screenshots/cli-status.png" width="440" alt="CLI 实时状态监控——运行中 / 启动中 / 已停止"/> |
+
+<sub>左：交互菜单——所有操作同时可脚本化（`install · start --bg · stop · backup · restore · status · about · …`）。右：实时监控——三态检测（端口＋HTTP 双重校验）、Web 地址、运行时长、dsh 与 Node.js 版本，每 3 秒刷新。</sub>
 
 ## 能用它做什么
 
