@@ -15,7 +15,7 @@
   Fingerprint: A2F67D170B5BE4845612642C240979232B4E4CE4
 
 .PARAMETER Tag
-  Release tag (e.g. v2.4.1). Default: newest release (including prereleases).
+  Release tag (e.g. v2.4.2). Default: newest release (including prereleases).
 
 .PARAMETER OutDir
   Download destination. Default: current directory.
@@ -28,7 +28,7 @@
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File verify.ps1 -OutDir D:\verify
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.4.1
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.4.2
 #>
 param(
   [string]$Tag = "",

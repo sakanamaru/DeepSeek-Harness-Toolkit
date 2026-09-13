@@ -25,8 +25,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 非官方图形辅助面板。v1: SOGR-Momono Dango；v2: DeepSeek DSH；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit GUI")]
-[assembly: AssemblyVersion("2.4.1.0")]
-[assembly: AssemblyFileVersion("2.4.1.0")]
+[assembly: AssemblyVersion("2.4.2.0")]
+[assembly: AssemblyFileVersion("2.4.2.0")]
 
 // ---------------- 主题 ----------------
 
@@ -829,6 +829,9 @@ public class App : Form
 
     // 日志页
     TextBox txtLog;
+    // 日志控件（日志页）创建前产生的日志行先暂存：首页构建即会触发内嵌核心解出，
+    // 那条日志早于 BuildLog()，此前会被静默丢弃（v2.4.2 修复）。
+    readonly List<string> pendingLog = new List<string>();
     RButton btnClearLog;
 
     // 关于页
@@ -1534,7 +1537,9 @@ public class App : Form
         Panel top = new Panel();
         top.Dock = DockStyle.Top;
         top.Height = 44;
-        p.Controls.Add(top);
+        // 注意：不在此处 Controls.Add(top)。WinForms 的 Dock 布局按"后加入的先排"计算，
+        // 若 top 先加入，后加入的 Fill 日志区会先占满整块区域、首行文字被顶部条盖住，
+        // 表现为"日志页永远空白"（v2.4.2 修复）。改为日志区先加入、top 最后加入。
 
         Label t = new RLabel();
         t.AutoSize = true;
@@ -1562,6 +1567,10 @@ public class App : Form
         txtLog.ScrollBars = ScrollBars.Both;   // v1 审查 #11：横向也滚动
         txtLog.WordWrap = false;
         p.Controls.Add(txtLog);
+        // 补写日志页构建前暂存的行（如"已自动解出内嵌核心"）；没有则显示占位文案
+        if (pendingLog.Count > 0) txtLog.Text = string.Join(Environment.NewLine, pendingLog.ToArray()) + Environment.NewLine;
+        else txtLog.Text = L10N._("log.empty");
+        p.Controls.Add(top);   // 顶部条最后加入：Fill 的日志区才能拿到"剩余空间"（Dock 后加入的先排）
 
         return p;
     }
@@ -1653,7 +1662,7 @@ public class App : Form
     string AssemblyVersion()
     {
         try { return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Major + "." + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Minor + "." + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Build; }
-        catch { return "2.4.1"; }
+        catch { return "2.4.2"; }
     }
 
     // ---- 页面切换 ----
@@ -1957,16 +1966,17 @@ public class App : Form
     // ---- 日志 ----
     void LogLine(string s)
     {
+        string line = DateTime.Now.ToString("HH:mm:ss") + "  " + s;
+        if (txtLog == null) { pendingLog.Add(line); return; }   // 日志页尚未构建 → 暂存，BuildLog 时补写
         Action act = delegate
         {
-            if (txtLog == null) return;
             if (txtLog.Text == L10N._("log.empty")) txtLog.Clear();
-            txtLog.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  " + s + Environment.NewLine);
+            txtLog.AppendText(line + Environment.NewLine);
             // 自动滚到最新一行
             txtLog.SelectionStart = txtLog.TextLength;
             txtLog.ScrollToCaret();
         };
-        if (txtLog != null && txtLog.InvokeRequired) txtLog.BeginInvoke(act);
+        if (txtLog.InvokeRequired) txtLog.BeginInvoke(act);
         else act();
     }
 

@@ -15,6 +15,47 @@ Install, start, monitor and uninstall the dsh Web UI, with data backup / restore
 
 > ⚠️ This project is **unofficial** and is not affiliated with DeepSeek.
 
+## Screenshots
+
+**GUI panel** (variants B / C):
+
+| Home — status & actions (light) | Home (dark) |
+|:---:|:---:|
+| <img src="docs/screenshots/gui-home-light.png" width="440" alt="GUI home, light theme"/> | <img src="docs/screenshots/gui-home-dark.png" width="440" alt="GUI home, dark theme"/> |
+
+| Operation log | About — version & credits |
+|:---:|:---:|
+| <img src="docs/screenshots/gui-log-light.png" width="440" alt="GUI log page"/> | <img src="docs/screenshots/gui-about-light.png" width="440" alt="GUI about page"/> |
+
+**CLI core** (variant A — the original form of this tool; the GUI is built on top of it):
+
+<p align="center">
+  <img src="docs/screenshots/cli-status.png" width="620" alt="CLI live status monitor — 3-state detection"/>
+  <br/><em>Live status monitor: <b>running / starting / stopped</b> (TCP + HTTP verified), Web address, uptime, dsh &amp; Node.js versions — refreshed every 3s.</em>
+</p>
+
+## What you can do with it
+
+### Install DeepSeek Harness on Windows — double-click, no terminal
+
+One exe detects the Node.js/npm environment, installs `@deepseek-ai/dsh` from the **official registry by default** (npmmirror opt-in, auto-retry with the other source on failure), then verifies what got installed. Nothing is installed without your keypress.
+
+### Start, stop and monitor the dsh Web UI
+
+Launch detects the service state — **running / starting / stopped** (TCP + HTTP verified, so a foreign process on :3080 is never mistaken for dsh) — auto-starts dsh with a 5-second countdown, opens your browser, and keeps a live status view (state / port / uptime, refreshed every 3s; red alert on disconnect).
+
+### Back up and restore dsh data — including sessions and credentials
+
+One-click **full backup** of the dsh data directory (`~/.dsh`) into `backup\` next to the exe; list-restore with confirmation, open-backup-folder; manual backups are kept forever, automatic ones follow the retention policy; every dangerous operation (restore / import / wipe / update) **auto-backs up first**.
+
+### Migrate dsh to another PC
+
+Copy the backup folder to the new machine and use **Import** — multi-workspace aware (`_workspace\name\`), compatible with old backup formats, long-path safe (`\\?\`, >260 chars).
+
+### Update or cleanly uninstall dsh
+
+Menu-driven dsh updates (version list incl. rc pre-releases, destructive-action double confirm, pre-update backup; failure prints the backup location + manual rollback command — no silent half-states) and uninstall (data kept by default; wiping requires two-step confirmation and only runs while dsh is stopped).
+
 ## Why this tool
 
 | | Official (npm CLI) | This tool |
@@ -28,29 +69,12 @@ Install, start, monitor and uninstall the dsh Web UI, with data backup / restore
 **Honest limits:**
 
 1. **Unofficial maintenance.** No compatibility promise with future dsh versions. If dsh ever changes its default port / start command / data directory, this tool must be updated (those points have been stable so far).
-2. **Trust boundary.** Distributing a Windows exe carries an inherent trust cost — hence this project is **fully open source (MIT)** and ships `hashes.txt` (SHA-256 fingerprints) so anyone can verify releases.
+2. **Trust boundary.** Distributing a Windows exe carries an inherent trust cost — hence this project is **fully open source (MIT)**, every release is **built by GitHub Actions CI from source**, and ships `hashes.txt` (SHA-256) + a **GPG signature** so anyone can verify releases.
 3. **Positioning.** If you are comfortable with the terminal, the official npm commands are leaner; this tool is for people who do not want to touch one.
-
-## Features
-
-| Feature | Description |
-| --- | --- |
-| Smart Start | Detects service status on launch — **running / starting / stopped** (TCP + HTTP verified, so a foreign service on :3080 is not mistaken for dsh): running → status page; stopped → 5-second countdown auto-start (only when dsh is installed; if not installed, the menu waits for your choice — nothing is auto-installed) |
-| Install & Repair | Asks for the source: **official npmjs.org by default**, npmmirror as opt-in; always retries the other registry on failure; never touches your global npm config; Enter=latest, `L`=list historical versions to install |
-| Status Monitor | Auto-refreshes service status / port / uptime every 3s; red alert on disconnect; 1=back / 2=open WebUI |
-| Update dsh (Menu 8) | New-version detection → version pick (Enter=latest / `L`=list, pre-release/rc supported) → ⚠️ destructive **double confirm** → auto backup first (`-pre-update`) → npm install → local history remembered (max 10, `*` marked); **refused while dsh is running**; on failure there is **no automatic rollback** — the tool prints the backup location and the manual rollback command; recover via the `-pre-update` backup or the historical version list |
-| Update Check | On launch, silently queries GitHub Releases; only prompts when a newer version exists (with a link); offline / API failure is silent; disable with `check_update=off`; dsh update detection shown by `check` (`check_dsh_update=off`) |
-| Backup & Restore | One-click backup of the data directory to `backup\` (**multiple workspaces** supported: auto-detected, then add paths one by one, stored under `_workspace\name\`, restored one by one); auto-skips `node_modules` and its own backup folders; list restore, cross-PC import, open-backup-folder; **manual backups (no suffix) are kept forever**; auto/protection backups (`-auto` / `-pre-*`) beyond `keep_backups` (default 10, min 3) are cleaned oldest-first; **restore/import are refused while dsh is running** (same guard as wipe) |
-| Uninstall | Data kept by default; wiping the data requires two-step confirmation (today's date + `yes`) with **auto-backup first**; wiped only when dsh is stopped |
-| Data Location | Auto-locates the dsh data directory (prefers `~/.dsh`, falls back to `%APPDATA%` etc.) |
-| Long Paths | Built-in long path support (`\\?\`, >260 chars) in backup/restore; nested backup packages (`dsh-data-*`) are auto-skipped |
-| Entry | Pick and remember `127.0.0.1` / `localhost`; if the entry opens abnormally (often stale browser cache), switch with one key |
-| Log Rotation | `logs\launcher.log` archived to `launcher.log.1` once it exceeds 1 MB (one history file kept) — no silent log loss |
-| Multi-language | Follow system / Simplified Chinese / English, persisted |
 
 ## 🖥️ GUI panel (three variants)
 
-Since v2.4.1 a **graphical panel** ships in three forms — pick what fits:
+Since v2.4.1 a **graphical panel** ships in three forms — pick what fits (screenshots above show its Home / Log / About pages):
 
 | Variant | File(s) | Unzip / run | For |
 |---|---|---|---|
@@ -73,16 +97,16 @@ Since v2.4.1 a **graphical panel** ships in three forms — pick what fits:
 
 **Runs standalone**:
 
-- **Variant C**: single exe, full functionality (embedded core extracted on first launch)
+- **Variant C**: single exe, full functionality (embedded core extracted on first launch — via temp file + atomic rename, an interrupted extraction can never leave a broken exe)
 - **Variant A**: single exe covers start/stop/backup/restore; install/wipe still work best from the full package (`.dsh_launcher_root` marker)
 
 > The underlying CLI is exactly the core (install/update/uninstall still open a real console window for interaction).
 
 ## Quick start
 
-1. **Unzip** the release into its own folder (e.g. `D:\tools\`) — backups and config live next to the exe; putting it on the Desktop makes a mess. (Both the GUI and the CLI detect launches from Desktop/Downloads and warn you: the GUI asks for confirmation before continuing, the CLI prints a notice.)
-2. **Double-click the exe.** dsh not installed → the menu waits for you; press **1** to install (official registry by default, npmmirror as an option, ~1–3 min). Run it again afterwards.
-3. Choose **2 Start Web UI** and the browser opens automatically.
+1. **Download** the latest release from the [Releases page](../../releases/latest) — for everyday use grab `Toolkit.GUI.Standalone.exe` (variant C).
+2. **Unzip** into its own folder (e.g. `D:\tools\`) — backups and config live next to the exe; putting it on the Desktop makes a mess. (Both the GUI and the CLI detect launches from Desktop/Downloads and warn you: the GUI asks for confirmation before continuing, the CLI prints a notice.)
+3. **Double-click the exe.** dsh not installed → the menu waits for you; press **1** to install (official registry by default, npmmirror as an option, ~1–3 min). Run it again afterwards — the Web UI opens automatically.
 
 ## Usage
 
@@ -105,6 +129,7 @@ Launching without arguments opens the interactive menu: with dsh installed the f
 | Backup failed | Check `logs\launcher.log` next to the exe for the real reason |
 | Backup failed (PathTooLongException) | Long path support and `dsh-data-*` skipping are built in; if the log still shows path issues, move that folder out of the workspace |
 | Prompted for extra paths | Type each extra workspace path (empty Enter to finish), or preset one under **7 Entry → 3** |
+| GUI says "Core exe (CLI) not found" | Variant B must sit **next to** `DeepSeek Harness Toolkit.exe` — unzip the full package, or use variant C (standalone) instead |
 
 ## Build from Source
 
@@ -114,44 +139,48 @@ Requires the built-in .NET Framework 4.x on Windows (preinstalled on Win10 / Win
 "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit.exe" dsh_v2.cs
 ```
 
-Or double-click `build_exe.cmd` in this directory.
+Or double-click `build_exe.cmd` in this directory. The GUI compiles from the same-rules single file `gui_v2.cs` (one source → both attached and standalone variants; the standalone adds `/resource:<core exe>,DSHCore.exe`).
 
-**Reproducible releases (source == artifact):** each GitHub Release exe is compiled from this source by **GitHub Actions CI**, and `hashes.txt` is regenerated by CI in the same run. The repository stores no binaries.
+**Reproducible releases (source == artifact):** each GitHub Release exe is compiled from this source by **GitHub Actions CI**, and `hashes.txt` is regenerated + **GPG-signed** by CI in the same run. The repository stores no binaries.
 
 ## Development / Testing
 
 No test framework or third-party dependency is required.
 
-- **Unit tests (103)** — same-assembly test proxy (`/define:UNIT`; the test entry point is `tests\unit_tests.cs`, everything else is the production code being tested):
+- **Unit tests (146)** — same-assembly test proxy (`/define:UNIT`; the test entry point is `tests\unit_tests.cs`, everything else is the production code being tested):
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs
   unittests.exe
   ```
-  Exit code 0 = all green. Covers: path round-trips (incl. UNC / non-ASCII), workspace blacklist, dsh-data markers, root marker strictness, backup dir validation, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection.
+  Exit code 0 = all green. Covers: path round-trips (incl. UNC / non-ASCII), workspace blacklist, dsh-data markers, root marker strictness, backup dir validation, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection, netstat PID parsing.
 
-- **Integration tests (25 cases)** — stubbed end-to-end matrix (variants A/C, real 3080 probing; retention policy, restore/import blocked while running, bilingual asserts):
+- **Integration tests (33 cases)** — stubbed end-to-end matrix (variants A/C, real 3080 probing; retention policy, restore/import blocked while running, bilingual asserts):
   ```
   pwsh -NoProfile -File tests\integration.ps1
   ```
   Touches only the stubbed data dir `~/.dsh_test` — never your real `~/.dsh`. When port 3080 is closed, "running"-related cases are SKIPped, not failed. Exit code 0 = all green.
 
-- **CI** — GitHub Actions runs both test suites automatically on **every push to `main`, every pull request, and `v*` tag push**; release assets + `hashes.txt` are rebuilt only on `v*` tag push or manual dispatch (`workflow_dispatch`).
+- **CI** — GitHub Actions runs both test suites **plus a three-variant GUI compile guard** on every push to `main`, every pull request, and every `v*` tag; release assets + `hashes.txt` (+ GPG signature) are rebuilt only on `v*` tag push or manual dispatch (`workflow_dispatch`).
 
 ## Directory Layout
 
 ```
-DeepSeek Harness Toolkit.exe   Main program (with icon)
-dsh_v2.cs            v2 source (C#5, single file, no third-party deps)
-build_exe.cmd        Rebuild script
-icon.ico             Program icon source
-logo.png             Product logo PNG (1536×1536)
-tests/               Unit & integration tests (no third-party deps; not shipped in releases)
-.dsh_launcher_root   Install marker (shipped with the package; deletion guard)
-README.md            Docs (English)
-README_zh-CN.md      Docs (Simplified Chinese)
-hashes.txt           SHA-256 manifest of released files
-backup/              Backup dir (gitignored — never commit)
-logs/                Error log dir (gitignored — never commit)
+dsh_v2.cs            CLI core source (C#5, single file, no third-party deps)
+gui_v2.cs            GUI source (WinForms; one file → attached + standalone variants)
+app.manifest         GUI manifest (DPI awareness / compat)
+build_exe.cmd        Rebuild script (core)
+icon.ico             Program icon
+logo.png             Product logo (1536×1536)
+verify.ps1           One-click release verification (SHA-256 + GPG)
+keys/                Maintainer GPG public key
+SECURITY.md          Security policy, data & network boundaries
+CHANGELOG.md         Release history (bilingual)
+hashes.txt           SHA-256 manifest (regenerated by CI per release)
+tests/               Unit (146) & integration (33) tests — no third-party deps
+docs/screenshots/    README screenshots
+.github/workflows/   CI: tests on push/PR; release build + GPG sign on tag/dispatch
+.dsh_launcher_root   Install marker (shipped in the package; deletion guard)
+backup/  logs/       Runtime dirs (gitignored — never committed)
 ```
 
 ## Error Log
@@ -165,7 +194,7 @@ logs/                Error log dir (gitignored — never commit)
 - **Verify before you run (≈20 seconds)**:
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.4.1 -OutDir D:\verify
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.4.2 -OutDir D:\verify
   ```
 
   `verify.ps1` (shipped in the package) downloads the release artifacts (all three

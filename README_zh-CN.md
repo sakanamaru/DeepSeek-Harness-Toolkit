@@ -15,6 +15,47 @@ DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具
 
 > ⚠️ 本项目为**非官方**工具，与 DeepSeek 官方无关。
 
+## 界面截图
+
+**GUI 图形面板**（B / C 版本）：
+
+| 首页——状态与操作（浅色） | 首页（深色） |
+|:---:|:---:|
+| <img src="docs/screenshots/gui-home-light.png" width="440" alt="GUI 首页（浅色）"/> | <img src="docs/screenshots/gui-home-dark.png" width="440" alt="GUI 首页（深色）"/> |
+
+| 操作日志 | 关于——版本与署名 |
+|:---:|:---:|
+| <img src="docs/screenshots/gui-log-light.png" width="440" alt="GUI 日志页"/> | <img src="docs/screenshots/gui-about-light.png" width="440" alt="GUI 关于页"/> |
+
+**CLI 命令行核心**（A 版本——本工具的本体形态，GUI 构建其上）：
+
+<p align="center">
+  <img src="docs/screenshots/cli-status.png" width="620" alt="CLI 实时状态监控——三态检测"/>
+  <br/><em>实时状态监控：<b>运行中 / 启动中 / 已停止</b>（端口＋HTTP 双重校验），并显示 Web 地址、运行时长、dsh 与 Node.js 版本，每 3 秒刷新。</em>
+</p>
+
+## 能用它做什么
+
+### 在 Windows 上安装 DeepSeek Harness——双击即可，无需终端
+
+单个 exe 自动检测 Node.js/npm 环境，**默认从官方源**安装 `@deepseek-ai/dsh`（国内镜像 npmmirror 可选，失败自动换源重试），装完还会验证安装结果。没有你的按键确认，什么都不会装。
+
+### 启动、停止并监控 dsh Web 界面
+
+打开即检测服务状态——**运行中 / 启动中 / 已停止**（端口＋HTTP 双重校验，其他程序占用 3080 不会误判）——5 秒倒计时自动启动 dsh、打开浏览器，并保持实时状态页（状态/端口/运行时长，每 3 秒刷新，掉线红字提醒）。
+
+### 备份与恢复 dsh 数据——包括会话与凭据
+
+一键**全量备份** dsh 数据目录（`~/.dsh`）到 exe 旁的 `backup\`；列表式恢复带确认、可直接打开备份文件夹；手动备份永久保留，自动备份按保留策略清理；每个危险操作（恢复/导入/清除/更新）前都会**先自动备份**兜底。
+
+### 把 dsh 迁移到另一台电脑
+
+把备份文件夹拷到新电脑，用**导入**即可——支持多工作区（`_workspace\名称\`）、兼容旧格式备份包、内置长路径支持（`\\?\`，>260 字符）。
+
+### 更新或干净地卸载 dsh
+
+菜单式 dsh 更新（版本列表含 rc 预发布、破坏性操作双确认、更新前自动备份；失败会打印备份位置与手动回滚命令——不留静默半状态）与卸载（默认保留数据；清除数据需两步确认且仅在 dsh 停止时执行）。
+
 ## 和官方部署方式的关系
 
 官方推荐的部署方式其实只有两步，并不复杂：
@@ -37,7 +78,7 @@ dsh web
 **需要知道的边界（诚实说明）：**
 
 1. **第三方非官方维护**，不承诺与未来 dsh 版本的兼容性；若 dsh 日后变更默认端口 / 启动命令 / 数据目录，本工具需要跟进更新（目前这些点位保持稳定）
-2. 分发的是 Windows exe，天然存在信任门槛——因此本项目**完全开源（MIT）**，并随发布提供 `hashes.txt`（SHA-256 指纹），任何人可核对发布物是否一致
+2. 分发的是 Windows exe，天然存在信任门槛——因此本项目**完全开源（MIT）**，每个发布物均由 **GitHub Actions CI 从源码构建**，并随发布提供 `hashes.txt`（SHA-256 指纹）与 **GPG 签名**，任何人可核对发布物是否一致
 3. 如果你是终端熟练用户，直接用官方 npm 命令更轻快；这个工具是给「不想碰终端」的人准备的
 
 ## 功能一览
@@ -59,7 +100,7 @@ dsh web
 
 ## 🖥️ GUI 图形面板（三个版本）
 
-自 v2.4.1 起提供图形面板，发布物包含**三种形态**，按需取用：
+自 v2.4.1 起提供图形面板，发布物包含**三种形态**，按需取用（顶部截图即其首页/日志/关于三页）：
 
 | 版本 | 文件 | 解压/运行方式 | 适合谁 |
 |---|---|---|---|
@@ -82,16 +123,16 @@ dsh web
 
 **可以单独运行的**：
 
-- **C 单文件集成版**：单个 exe 全功能（首次启动自动解出内嵌核心）
+- **C 单文件集成版**：单个 exe 全功能（首次启动自动解出内嵌核心——先写临时文件再原子改名，异常中断不会留下损坏的 exe）
 - **A 命令行核心**：单 exe 即可完成日常启动/停止/备份/恢复（安装/清除数据仍建议用完整包，以获得 `.dsh_launcher_root` 标记）
 
 > 底层 CLI 与核心完全一致（install/update/uninstall 由 GUI 触发时仍会弹出真实控制台窗口交互）。
 
 ## 快速开始（三步）
 
-1. **解压**上传包到独立文件夹（如 `D:\工具\`）——程序的备份与配置写在 exe 所在目录，放在桌面上会让桌面变乱（GUI 和 CLI 都会检测桌面/下载目录直跑并提醒：GUI 弹确认框、CLI 打印黄字警告）
-2. **双击 exe**：dsh 未安装 → 菜单等待你选择，按 **1** 安装（默认官方源，镜像可选，一般 1–3 分钟），安装成功后再双击即可
-3. 安装完成后在菜单中选择 **2 启动 Web 界面**，浏览器自动打开
+1. 到 [Releases 页面](../../releases/latest) **下载**最新版——日常使用直接拿 `Toolkit.GUI.Standalone.exe`（C 单文件集成版）
+2. **解压**到独立文件夹（如 `D:\工具\`）——程序的备份与配置写在 exe 所在目录，放在桌面上会让桌面变乱（GUI 和 CLI 都会检测桌面/下载目录直跑并提醒：GUI 弹确认框、CLI 打印黄字警告）
+3. **双击 exe**：dsh 未安装 → 菜单等待你选择，按 **1** 安装（默认官方源，镜像可选，一般 1–3 分钟）；装好后再打开，Web 界面自动弹出
 
 ## 使用
 
@@ -112,6 +153,7 @@ dsh **未安装**时菜单等待你选择（按 1 安装），不会自动安装
 
 | 现象 | 解决 |
 | --- | --- |
+| GUI 提示「未找到核心程序（CLI）」 | B 附加版必须与 `DeepSeek Harness Toolkit.exe` **同目录**——请完整解压发布包，或改用 C 单文件集成版 |
 | `stop` 提示「3080 被其他程序占用，已拒绝停止」 | 监听 3080 的进程不是 dsh（如其他开发服务器）。本工具**不会误杀他人程序**；若确要关闭它，请自行结束该进程 |
 | 打开 Web 界面 403 / 空白 | 菜单选 **7 访问入口**，切换 `127.0.0.1` ↔ `localhost`（浏览器把两者当不同站点，旧缓存会导致异常） |
 | 卸载/清除数据时提示删除失败 | 先关闭 dsh web 服务窗口（文件被占用），再重新执行；仍失败看 `logs\launcher.log` |
@@ -127,44 +169,48 @@ dsh **未安装**时菜单等待你选择（按 1 安装），不会自动安装
 "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit.exe" dsh_v2.cs
 ```
 
-或双击本目录 `build_exe.cmd`。
+或双击本目录 `build_exe.cmd`。GUI 由同规则的单文件 `gui_v2.cs` 编译（一份源码 → 附加版与集成版两种形态；集成版多一个 `/resource:<核心exe>,DSHCore.exe`）。
 
-**可复现发布（源码即产物）**：每个 GitHub Release 的 exe 均由 **GitHub Actions CI** 从本仓库源码自动编译生成，并在同一流水线里重新生成 `hashes.txt`——仓库自身不存放任何二进制文件。
+**可复现发布（源码即产物）**：每个 GitHub Release 的 exe 均由 **GitHub Actions CI** 从本仓库源码自动编译生成，并在同一流水线里重新生成 `hashes.txt` 且完成 **GPG 签名**——仓库自身不存放任何二进制文件。
 
 ## 开发与测试
 
 无需任何测试框架或第三方依赖：
 
-- **单元测试（103 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
+- **单元测试（146 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs
   unittests.exe
   ```
-  退出码 0=全过。覆盖：路径往返（含 UNC / 中文空格）、工作区黑名单、dsh 数据目录标记、根标记严格性、备份目录校验、日志轮转、备份命名 + 保留策略、服务三态判定、版本比较 / 发布解析 / 更新探测。
+  退出码 0=全过。覆盖：路径往返（含 UNC / 中文空格）、工作区黑名单、dsh 数据目录标记、根标记严格性、备份目录校验、日志轮转、备份命名 + 保留策略、服务三态判定、版本比较 / 发布解析 / 更新探测、netstat PID 解析。
 
-- **集成测试（25 个用例）**：打桩端到端矩阵（变体 A/C，真实探测 3080；覆盖保留策略、运行中禁止恢复/导入、双语断言等）：
+- **集成测试（33 个用例）**：打桩端到端矩阵（变体 A/C，真实探测 3080；覆盖保留策略、运行中禁止恢复/导入、双语断言等）：
   ```
   pwsh -NoProfile -File tests\integration.ps1
   ```
   只触碰打桩数据目录 `~/.dsh_test`，**绝不接触真实 `~/.dsh`**；3080 未开启时"运行中"相关用例标记 SKIP 而非 FAIL。退出码 0=全过。
 
-- **CI**：GitHub Actions 在**每次推送到 `main`、每个 PR、以及打 `v*` 标签**时自动运行两套测试；发布资产与 `hashes.txt` 仅在 `v*` 标签推送或手动触发（`workflow_dispatch`）时重建。
+- **CI**：GitHub Actions 在**每次推送到 `main`、每个 PR、以及打 `v*` 标签**时自动运行两套测试**外加三形态 GUI 编译守卫**；发布资产与 `hashes.txt`（含 GPG 签名）仅在 `v*` 标签推送或手动触发（`workflow_dispatch`）时重建。
 
 ## 目录结构
 
 ```
-DeepSeek Harness Toolkit.exe   主程序（带图标）
-dsh_v2.cs           v2 源码（C#5，单文件，无第三方依赖）
-build_exe.cmd       重编译脚本
-icon.ico            程序图标源文件
-logo.png            产品 Logo PNG（1536×1536）
-tests/              单元/集成测试（无第三方依赖；不随发布包分发）
-.dsh_launcher_root  安装标记（随包分发；误删保护）
-README.md           说明文档（英文版）
-README_zh-CN.md     说明文档（简体中文版）
-hashes.txt          发布文件 SHA-256 校验清单
-backup/             数据备份目录（已被 .gitignore 排除，切勿提交）
-logs/               运行错误日志目录（已被 .gitignore 排除，切勿提交）
+dsh_v2.cs            命令行核心源码（C#5，单文件，无第三方依赖）
+gui_v2.cs            GUI 源码（WinForms；一份源码 → 附加版 + 集成版）
+app.manifest         GUI 清单（DPI 感知 / 兼容性）
+build_exe.cmd        重编译脚本（核心）
+icon.ico             程序图标源文件
+logo.png             产品 Logo PNG（1536×1536）
+verify.ps1           发布物一键核验（SHA-256 + GPG）
+keys/                维护者 GPG 公钥
+SECURITY.md          安全策略、数据与网络边界声明
+CHANGELOG.md         更新日志（双语）
+hashes.txt           SHA-256 校验清单（CI 每次发布重新生成）
+tests/               单元（146）/ 集成（33）测试——无第三方依赖
+docs/screenshots/    README 截图
+.github/workflows/   CI：push/PR 跑测试；标签/手动触发构建发布 + GPG 签名
+.dsh_launcher_root   安装标记（随包分发；误删保护）
+backup/  logs/       运行时目录（已被 .gitignore 排除，切勿提交）
 ```
 
 ## 错误日志
@@ -178,7 +224,7 @@ logs/               运行错误日志目录（已被 .gitignore 排除，切勿
 - **下载后先核验再运行（约 20 秒）**：
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.4.1 -OutDir D:\verify
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.4.2 -OutDir D:\verify
   ```
 
   `verify.ps1`（发布包内）自动完成：下载指定 release 的全部产物（三个版本 + `hashes.txt`）→ 对照 CI 生成的 `hashes.txt` 做 SHA-256 核验 → 若本机有 GPG 则验 `hashes.txt.asc` 签名 → 打印溯源链接。只读，不安装任何东西。带 `-Tag` 时走固定下载链接、完全不调 GitHub API（不怕匿名限速）；不带 `-Tag` 时通过 API 解析最新 release（网络受限可选传 `-Token`）。

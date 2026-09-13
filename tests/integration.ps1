@@ -34,7 +34,8 @@ function Build-Variant($variant, $outExe) {
         $pats += @{ o = 'if (ProbeService() == ServiceState.Ready)'; n = 'if (false && ProbeService() == ServiceState.Ready)' }
         $pats += @{ o = 'if (IsPortOpen(WEB_PORT, 600))'; n = 'if (false && IsPortOpen(WEB_PORT, 600))' }
         # v2.1：ProbeService 也要打桩——它内部裸调 IsPortOpen，不打桩会让"运行中拒绝"误触发（16/17 在 3080 开启时被拒）
-        $pats += @{ o = 'return JudgeState(IsPortOpen(WEB_PORT, 800), HttpReady(WebUrl(), 800));'; n = 'return JudgeState(false, false); // TEST stub' }
+        # v2.4.2：ProbeService 改为 JudgeState3(..., ListenerIsDsh)（监听进程身份兜底），锚点同步更新
+        $pats += @{ o = 'return JudgeState3(IsPortOpen(WEB_PORT, 800), HttpReady(WebUrl(), 800), ListenerIsDsh);'; n = 'return JudgeState(false, false); // TEST stub' }
     }
     foreach ($p in $pats) {
         if ([regex]::Matches($text, [regex]::Escape($p.o)).Count -lt 1) { Write-Error ("锚点漂移（请同步 integration.ps1）: " + $p.o.Substring(0, 50)); exit 2 }
