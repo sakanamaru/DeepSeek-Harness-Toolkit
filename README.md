@@ -146,6 +146,18 @@ logs/                Error log dir (gitignored — never commit)
 ## Security Notes
 
 - Full policy: see `SECURITY.md` (private reporting via GitHub Security Advisories).
+- **Verify before you run (≈10 seconds)**:
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -OutDir D:\verify
+  ```
+
+  `verify.ps1` (shipped in the package) downloads the release core/GUI, checks SHA-256
+  against the CI-generated `hashes.txt`, verifies the GPG signature (`hashes.txt.asc`)
+  when GPG is available, and prints the provenance links. Read-only — installs nothing.
+- **GPG signature**: `hashes.txt` is signed with the maintainer's key (`hashes.txt.asc`);
+  public key `keys/sakanamaru-gpg.asc`, fingerprint
+  `A2F67D170B5BE4845612642C240979232B4E4CE4`.
 - Uninstall **"Wipe all data"** deletes the dsh data directory (`~/.dsh`, including sessions and API credentials) — the tool auto-backs it up to `backup\` first.
 - Deletion is guarded **three ways**:
   1. **Blocked while the dsh Web service is running** (avoids file locks).

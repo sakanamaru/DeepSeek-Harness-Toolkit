@@ -195,6 +195,7 @@ public static class Program
         C(ConsoleColor.Gray,    "  v2 重构封装 : "); CL(ConsoleColor.White, "DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
         C(ConsoleColor.Gray,    "  GitHub    : "); CL(ConsoleColor.White, "@sakanamaru  https://" + GITHUB_HANDLE);
         CL(ConsoleColor.DarkGray, "----------------------------------------------");
+        CL(ConsoleColor.DarkYellow, "  " + T("⚠ 非官方工具，由社区独立开发，与 DeepSeek 官方无关。", "⚠ Unofficial community tool, not affiliated with DeepSeek."));
     }
 
     // ---------------- 菜单（5 秒倒计时自动选择） ----------------
