@@ -25,8 +25,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 非官方图形辅助面板。v1: SOGR-Momono Dango；v2: DeepSeek DSH；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit GUI")]
-[assembly: AssemblyVersion("2.4.2.0")]
-[assembly: AssemblyFileVersion("2.4.2.0")]
+[assembly: AssemblyVersion("2.5.0.0")]
+[assembly: AssemblyFileVersion("2.5.0.0")]
 
 // ---------------- 主题 ----------------
 
@@ -111,6 +111,7 @@ static class L10N
         Add("app.title", "DeepSeek Harness Toolkit GUI", "DeepSeek Harness Toolkit GUI");
         Add("nav.home", "首页", "Home");
         Add("nav.log", "日志", "Log");
+        Add("nav.doctor", "体检", "Doctor");
         Add("nav.about", "关于", "About");
 
         Add("home.status.title", "服务状态", "Service Status");
@@ -135,6 +136,14 @@ static class L10N
         Add("act.shortcut", "桌面快捷方式", "Desktop Shortcut");
 
         Add("log.title", "操作日志", "Operation Log");
+
+        Add("doc.title", "体检 / Doctor", "Health Check / Doctor");
+        Add("doc.recheck", "重新体检", "Re-check");
+        Add("doc.export", "导出报告", "Export");
+        Add("doc.running", "体检中，请稍候…", "Checking, please wait…");
+        Add("doc.empty", "（尚无体检结果）", "(no result yet)");
+        Add("doc.exported", "报告已导出: ", "Report exported: ");
+        Add("doc.exportfail", "导出失败: ", "Export failed: ");
         Add("log.clear", "清空", "Clear");
         Add("log.empty", "（暂无日志）", "(no log yet)");
 
@@ -837,6 +846,11 @@ public class App : Form
     // 关于页
     PictureBox picLogo;
 
+    // 体检页（v2.5 doctor）
+    TextBox txtDoctor;
+    RButton btnDocRecheck, btnDocExport;
+    string doctorReportPath = "";
+
     // 底部
     Label lblDisclaimer;
 
@@ -984,10 +998,11 @@ public class App : Form
         Controls.Add(titleBar);
         titleBar.Resize += delegate(object s, EventArgs e) { RelayoutTitleButtons(); };
 
-        pages = new Panel[3];
+        pages = new Panel[4];
         pages[0] = BuildHome();
         pages[1] = BuildLog();
-        pages[2] = BuildAbout();
+        pages[2] = BuildDoctor();
+        pages[3] = BuildAbout();
         foreach (Panel p in pages)
         {
             p.Dock = DockStyle.Fill;
@@ -996,9 +1011,10 @@ public class App : Form
         }
 
         // 导航按钮（RButton 圆角 + 当前页高亮指示条，绝对定位避免 Dock.Top 逆序）
-        string[] navKeys = new string[] { "nav.home", "nav.log", "nav.about" };
-        navBtns = new RButton[3];
-        for (int i = 0; i < 3; i++)
+        // 顺序必须与 pages 索引一一对应：0=home 1=log 2=doctor 3=about（关于固定最底）
+        string[] navKeys = new string[] { "nav.home", "nav.log", "nav.doctor", "nav.about" };
+        navBtns = new RButton[4];
+        for (int i = 0; i < 4; i++)
         {
             int idx = i;
             RButton b = new RButton();
@@ -1575,6 +1591,110 @@ public class App : Form
         return p;
     }
 
+    // ---- 体检页（v2.5 doctor）----
+    Panel BuildDoctor()
+    {
+        Panel p = new Panel();
+        Panel top = new Panel();
+        top.Dock = DockStyle.Top;
+        top.Height = 44;
+
+        Label t = new RLabel();
+        t.AutoSize = true;
+        t.Location = new Point(20, 12);
+        t.Font = new Font("Microsoft YaHei UI", 10f, FontStyle.Bold);
+        t.Text = L10N._("doc.title");
+        t.Tag = "doc.title";
+        top.Controls.Add(t);
+
+        btnDocRecheck = new RButton();
+        btnDocRecheck.Size = new Size(92, 28);
+        // 初始坐标必须为正（构建期 top 宽度可能为 0，负坐标会把按钮甩到窗口外、点击落空）；
+        // Anchor 右对齐 + top.Resize 双保险重排。
+        btnDocRecheck.Location = new Point(552, 8);
+        btnDocRecheck.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnDocRecheck.Text = L10N._("doc.recheck");
+        btnDocRecheck.Click += delegate(object s, EventArgs e) { RunDoctor(); };
+        top.Controls.Add(btnDocRecheck);
+
+        btnDocExport = new RButton();
+        btnDocExport.Size = new Size(92, 28);
+        btnDocExport.Location = new Point(652, 8);
+        btnDocExport.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnDocExport.Text = L10N._("doc.export");
+        btnDocExport.Click += delegate(object s, EventArgs e) { ExportDoctorReport(); };
+        top.Controls.Add(btnDocExport);
+        top.Resize += delegate(object s, EventArgs e)
+        {
+            btnDocRecheck.Location = new Point(top.ClientSize.Width - 92 - 92 - 28, 8);
+            btnDocExport.Location = new Point(top.ClientSize.Width - 92 - 20, 8);
+        };
+
+        txtDoctor = new TextBox();
+        txtDoctor.Multiline = true;
+        txtDoctor.ReadOnly = true;
+        txtDoctor.Dock = DockStyle.Fill;
+        txtDoctor.ScrollBars = ScrollBars.Both;
+        txtDoctor.WordWrap = false;
+        txtDoctor.Text = L10N._("doc.empty");
+        p.Controls.Add(txtDoctor);
+        p.Controls.Add(top);   // top 最后加入（Dock 逆序规则，同日志页）
+
+        return p;
+    }
+
+    // ---- 体检：后台跑 core doctor --report <temp>，结果回显（全程只读）----
+    void RunDoctor()
+    {
+        string core = CoreExePath();
+        if (core == null) { txtDoctor.Text = L10N._("op.coremissing"); return; }
+        btnDocRecheck.Enabled = false;
+        txtDoctor.Text = L10N._("doc.running");
+        LogLine(L10N._("doc.title") + ": " + L10N._("doc.recheck") + "…");
+        string rep = Path.Combine(Path.GetTempPath(), "dsh_doctor_report_" + Process.GetCurrentProcess().Id + ".txt");
+        ThreadPool.QueueUserWorkItem(delegate(object _)
+        {
+            CoreRunResult r = RunCoreCapture(core, "doctor --report \"" + rep + "\"", 60000);
+            BeginInvoke((Action)delegate
+            {
+                doctorReportPath = rep;
+                string txt = r.All;
+                if (string.IsNullOrWhiteSpace(txt)) txt = L10N._("doc.empty");
+                txtDoctor.Text = txt;
+                string first = (r.All ?? "").Trim();
+                int nl = first.IndexOf('\n');
+                if (nl > 0) first = first.Substring(0, nl);
+                LogLine(L10N._("doc.title") + " → " + (first.Length > 0 ? first : L10N._("op.ok")));
+                btnDocRecheck.Enabled = true;
+                RefreshStatus();
+            });
+        });
+    }
+    void ExportDoctorReport()
+    {
+        if (string.IsNullOrEmpty(doctorReportPath) || !File.Exists(doctorReportPath))
+        {
+            LogLine(L10N._("doc.empty"));
+            return;
+        }
+        using (var dlg = new SaveFileDialog())
+        {
+            dlg.Title = L10N._("doc.export");
+            dlg.FileName = "dsh-doctor-report-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt";
+            dlg.Filter = "Text (*.txt)|*.txt";
+            dlg.DefaultExt = "txt";
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                try
+                {
+                    File.Copy(doctorReportPath, dlg.FileName, true);
+                    LogLine(L10N._("doc.exported") + dlg.FileName);
+                }
+                catch (Exception ex) { LogLine(L10N._("doc.exportfail") + ex.Message); }
+            }
+        }
+    }
+
     // ---- 关于页 ----
     Panel BuildAbout()
     {
@@ -1662,7 +1782,7 @@ public class App : Form
     string AssemblyVersion()
     {
         try { return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Major + "." + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Minor + "." + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Build; }
-        catch { return "2.4.2"; }
+        catch { return "2.5.0"; }
     }
 
     // ---- 页面切换 ----
@@ -1790,8 +1910,9 @@ public class App : Form
     void ApplyLang()
     {
         lblTitle.Text = L10N._("app.title");
+        string[] navL10N = new string[] { "nav.home", "nav.log", "nav.doctor", "nav.about" };
         for (int i = 0; i < navBtns.Length; i++)
-            navBtns[i].Text = L10N._(new string[] { "nav.home", "nav.log", "nav.about" }[i]);
+            navBtns[i].Text = L10N._(navL10N[i]);
         lblDisclaimer.Text = L10N._("disclaimer");
 
         // 状态页
@@ -1813,11 +1934,18 @@ public class App : Form
             if (c is Label && c.Tag is string && (string)c.Tag == "log.title") c.Text = L10N._("log.title");
         }
         btnClearLog.Text = L10N._("log.clear");
-        // 关于页
+        // 体检页
         foreach (Control c in pages[2].Controls)
+        {
+            if (c is Label && c.Tag is string && (string)c.Tag == "doc.title") c.Text = L10N._("doc.title");
+        }
+        // 关于页
+        foreach (Control c in pages[3].Controls)
         {
             if (c is Label && c.Tag is string && (string)c.Tag == "about.copy") c.Text = L10N._("about.copy");
         }
+        if (btnDocRecheck != null) btnDocRecheck.Text = L10N._("doc.recheck");
+        if (btnDocExport != null) btnDocExport.Text = L10N._("doc.export");
     }
 
     void RefreshActionButtons()

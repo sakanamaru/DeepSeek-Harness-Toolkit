@@ -101,6 +101,7 @@ dsh web
 | 智能启动 | 打开即检测服务状态（**三态：运行中 / 启动中 / 已停止**，端口＋HTTP 双重校验，其他程序占 3080 不会误判）：已在运行 → 直接进状态页；未运行 → 5 秒倒计时自动启动（仅当 dsh 已安装；未安装时菜单等待你选择，**不会自动安装**） |
 | 安装 / 修复 | 安装时询问源：**默认官方源 npmjs.org**，国内镜像 npmmirror 可选；失败自动换另一源重试，不污染全局 npm 配置；回车=装最新版，`L`=查看历史版本列表可选装 |
 | 状态监控 | 每 3 秒自动刷新服务状态（三态）/端口/运行时长，服务掉线红字提醒；按 1 返回 / 2 打开 WebUI |
+| 体检 / Doctor | 只读六类检查：系统（Windows/Node/npm）、Harness（安装与版本）、服务（端口/监听身份/HTTP/三态）、工作区（路径/权限/大小）、备份（目录/最新/天数）、网络（registry 可达）；结论机器可读（`DOCTOR_OK/WARN/ERROR n`）；GUI 体检页一键跑，`doctor --report` 可导出**脱敏**诊断报告（API Key/Token/Cookie/密码一律打码） |
 | 更新 dsh（菜单 8） | 检测新版本 → 选版本（回车最新 / `L` 历史列表，支持 rc 预发布）→ ⚠️ 破坏性警告**双确认** → 更新前自动备份（`-pre-update`）→ npm 安装 → 记录本机历史版本（最多 10 个，列表带 `*`）；**dsh 运行中拒绝**；更新失败**不会自动回滚**——会提示你备份位置与手动回滚命令，用 `-pre-update` 备份或历史版本列表即可恢复 |
 | 更新检查 | 启动后静默查询 GitHub Releases API，仅当存在新版本时提示（附下载链接）；离线/接口失败静默；`check_update=off` 关闭；**dsh 本体更新检测**：`check` 显示 npm 最新版（`check_dsh_update=off` 关闭） |
 | 备份 / 恢复 | 一键备份数据目录到 `backup\`（可添加**多个工作区**：自动探测，之后逐个输入路径、留空结束，备份包按 `_workspace\名称\` 分包存放并可逐一恢复），自动跳过 node_modules 与自身备份目录；支持列表恢复、跨电脑导入、直接打开备份文件夹；**手动备份（无后缀）永久保留**，自动/保护类备份（`-auto / -pre-*`）超出 `keep_backups`（默认 10、最小 3）按最旧自动清理；**dsh 运行中禁止恢复/导入**（与清除数据同一防线） |
@@ -190,7 +191,7 @@ dsh **未安装**时菜单等待你选择（按 1 安装），不会自动安装
 
 无需任何测试框架或第三方依赖：
 
-- **单元测试（146 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
+- **单元测试（183 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs
   unittests.exe
@@ -219,7 +220,7 @@ keys/                维护者 GPG 公钥
 SECURITY.md          安全策略、数据与网络边界声明
 CHANGELOG.md         更新日志（双语）
 hashes.txt           SHA-256 校验清单（CI 每次发布重新生成）
-tests/               单元（146）/ 集成（33）测试——无第三方依赖
+tests/               单元（183）/ 集成（33）测试——无第三方依赖
 docs/screenshots/    README 截图
 .github/workflows/   CI：push/PR 跑测试；标签/手动触发构建发布 + GPG 签名
 .dsh_launcher_root   安装标记（随包分发；误删保护）

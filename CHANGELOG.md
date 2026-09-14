@@ -6,6 +6,31 @@ All notable changes to **DeepSeek Harness Toolkit** (unofficial). Full release n
 
 ---
 
+## v2.5.0 — 2026-09-14 —（体检 / Doctor + 防篡改加固 / Diagnostics & supply-chain hardening）
+
+### Added / 新增
+
+- **Doctor / health check** — `doctor` CLI command and a GUI **Doctor** page (nav: Home / Log / Doctor / About). Read-only six-category check: System (Windows / Node / npm), Harness (installed & version), Service (port, listener identity, HTTP, 3-state), Workspace (path, permissions, size), Backup (dir, latest, age), Network (registry reachability). Machine-readable verdict line `DOCTOR_OK 0 | DOCTOR_WARN n | DOCTOR_ERROR n`; `doctor --report <file>` exports a full diagnostic report with API keys / tokens / cookies / passwords **redacted**.
+  **体检 / Doctor**：`doctor` 命令 + GUI 体检页。只读六类检查（系统 / Harness / 服务 / 工作区 / 备份 / 网络），机器可读结论行；`--report` 导出**脱敏**诊断报告。
+- **Self-integrity gate** — uninstall (incl. wipe), restore and dsh-update now refuse to run when a `hashes.txt` ships beside the executable and the executable's SHA-256 does not match it (tamper protection); builds without a manifest are not blocked.
+  **自身完整性闸门**：卸载（含清除）/恢复/更新前自检 SHA-256，与随包 manifest 不符即拒绝；无 manifest 不阻断。
+- **Supply-chain hardening** — immutable releases enabled; tag & main rulesets (no delete / no history rewrite, bypass never); CI least-privilege permissions; actions pinned to commit SHAs; build-provenance attestations on tag builds; release flow switched to draft → attach → publish; signed tags (`git tag -s`) from this version on; README/SECURITY official-distribution statements.
+  **供应链加固**：不可变发布、tag/main ruleset、CI 最小权限、Actions 固定 SHA、构建溯源证明、draft→attach→publish 发布流、本版起签名 tag、官方渠道声明。
+
+### Fixed / 修复
+
+- **Service readiness misjudgment** carry-over verified end-to-end (GUI green *running*, CLI monitor, auto-open) — see v2.4.2.
+- Backup/restore now **skip reparse points** (symlink / junction) with an audit log line instead of following them.
+  备份/恢复遇 Symlink/Junction 跳过并记审计日志，不再跟随。
+- `stop` re-verifies the :3080 listener identity immediately before killing (TOCTOU hardening).
+  `stop` 终止前最后一刻复检监听身份（TOCTOU 加固）。
+
+### Tests / 测试
+
+- Unit tests **146 → 183** (doctor summary/sanitize/size + manifest parsing); integration suite unchanged (33 cases).
+
+---
+
 ## v2.4.2 — 2026-09-13
 
 ### Fixed / 修复

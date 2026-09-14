@@ -47,6 +47,27 @@ Controls in force (anti-tampering / anti-poisoning):
 Verify any download before running it — see [Verifiability](#verifiability) and the
 "Official distribution" section of the README.
 
+## Update channel security
+
+The toolkit has **no self-installer and no self-update downloader by design**: version
+checks only *notify*; installing a new toolkit version is always a manual download from the
+official Releases page followed by verification (`verify.ps1`). There is no
+user-configurable update URL anywhere in the program or its config.
+
+Updating **dsh itself** (`update` / menu 8) follows a guarded chain:
+
+1. Source is the official npm registry by default (`registry.npmjs.org`); the China mirror
+   (`registry.npmmirror.com`) is used only when you explicitly pick it per install.
+2. Version strings returned by npm pass a strict whitelist (numeric core + optional
+   prerelease); anything else is rejected (command-injection protection).
+3. A pre-update backup is created automatically and kept per the retention policy.
+4. After install, the resulting version is re-verified; on failure the previous state is
+   rolled back and re-checked.
+5. High-risk operations (uninstall/wipe, restore, update dsh) first pass a **self-integrity
+   gate**: when a `hashes.txt` ships beside the executable and the executable's SHA-256 does
+   not match the manifest entry, the operation is refused with an explanation (tamper
+   protection). Development builds without a manifest are not blocked.
+
 ## Reporting a Vulnerability
 
 If you discover a security issue — especially anything involving:
