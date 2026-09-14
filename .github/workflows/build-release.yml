@@ -164,11 +164,19 @@ jobs:
           $tag = "${{ github.ref_name }}"
           if ($tag -in @('main','master','')) { $tag = "${{ inputs.release_tag }}" }
           if ($tag -eq '') { Write-Output 'no release tag provided; skipping release upload'; exit 0 }
-          # 不可变发布（immutable releases）兼容：资产只在 tag 构建时一次性附加到 DRAFT release；
-          # dispatch/branch 运行不再刷新已发布资产（已发布即冻结）。
+          # 不可变发布（immutable releases）兼容：资产只在 tag 构建时一次性附加；
+          # release 不存在时自动建 DRAFT（notes 发布前定稿）；已发布则拒绝上传（冻结）。
           if ($env:GITHUB_REF_TYPE -ne 'tag') { Write-Output "non-tag run ($env:GITHUB_REF_TYPE): upload skipped (immutable-release flow)"; exit 0 }
-          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
-          if ($LASTEXITCODE -ne 0) { Write-Output "release '$tag' not found; create it as DRAFT first: gh release create $tag --draft --target <commit>"; exit 0 }
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json isDraft --jq .isDraft 2>$null
+          $isDraft = $LASTEXITCODE -eq 0 ? (gh release view $tag --repo $env:GITHUB_REPOSITORY --json isDraft --jq .isDraft) : 'missing'
+          if ($isDraft -eq 'missing') {
+            Write-Output "release '$tag' not found; creating as DRAFT (notes finalized before publish)"
+            gh release create $tag --draft --repo $env:GITHUB_REPOSITORY --title "dsh-toolkit $tag (draft - CI attaching assets)" --notes "Assets are being attached by CI. Release notes will be finalized before publishing."
+            if ($LASTEXITCODE -ne 0) { throw "failed to create draft release $tag" }
+          } elseif ($isDraft -ne 'true') {
+            Write-Output "release '$tag' is already PUBLISHED (immutable); refusing to modify its assets"
+            exit 0
+          }
           function Upload([string]$file, [string]$tag, [string]$repo) {
             for ($i = 1; $i -le 5; $i++) {
               gh release upload $tag $file --repo $repo --clobber
