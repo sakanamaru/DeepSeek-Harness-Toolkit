@@ -10,19 +10,19 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Release tag to attach assets to (e.g. v2.0.0); empty = build only'
+        description: 'Release tag for zip naming / hashes header; assets attach ONLY on tag builds (immutable-release flow); empty = build only'
         required: false
         default: ''
 
-permissions:
-  contents: write
-
+# 最小权限：test 只读；build 才需要写（回推 hashes.txt / 上传 draft release 资产 / 签发 attestation）
 jobs:
   test:
     name: unit + integration tests
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2，固定 commit SHA（供应链：不跟浮动 tag）
 
       - name: Build & run unit tests (same-assembly, /define:UNIT)
         shell: pwsh
@@ -56,8 +56,12 @@ jobs:
     needs: test
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'   # M-8：发布/手动才构建产物；普通 push/PR 仅跑测试
     runs-on: windows-latest
+    permissions:
+      contents: write        # 回推 hashes.txt + 上传 draft release 资产
+      id-token: write        # artifact attestation（OIDC）
+      attestations: write    # 发布 provenance
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2，固定 commit SHA
 
       - name: Build exe from source (csc, .NET Framework 4.x)
         shell: pwsh
@@ -152,7 +156,7 @@ jobs:
           Compress-Archive -Path $items -DestinationPath $zipName -CompressionLevel Optimal
           Write-Output ("zip: " + [math]::Round((Get-Item $zipName).Length/1KB,1) + " KB")
 
-      - name: Attach / refresh release assets
+      - name: Attach release assets (tag builds only; target release must be a DRAFT)
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -160,8 +164,11 @@ jobs:
           $tag = "${{ github.ref_name }}"
           if ($tag -in @('main','master','')) { $tag = "${{ inputs.release_tag }}" }
           if ($tag -eq '') { Write-Output 'no release tag provided; skipping release upload'; exit 0 }
+          # 不可变发布（immutable releases）兼容：资产只在 tag 构建时一次性附加到 DRAFT release；
+          # dispatch/branch 运行不再刷新已发布资产（已发布即冻结）。
+          if ($env:GITHUB_REF_TYPE -ne 'tag') { Write-Output "non-tag run ($env:GITHUB_REF_TYPE): upload skipped (immutable-release flow)"; exit 0 }
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
-          if ($LASTEXITCODE -ne 0) { Write-Output "release '$tag' not found; skipping upload (create it with: gh release create $tag)"; exit 0 }
+          if ($LASTEXITCODE -ne 0) { Write-Output "release '$tag' not found; create it as DRAFT first: gh release create $tag --draft --target <commit>"; exit 0 }
           function Upload([string]$file, [string]$tag, [string]$repo) {
             for ($i = 1; $i -le 5; $i++) {
               gh release upload $tag $file --repo $repo --clobber
@@ -183,4 +190,16 @@ jobs:
           foreach ($oe in $oldExes) { gh release delete-asset $tag $oe --repo $env:GITHUB_REPOSITORY }
           $zipName = "DeepSeek-Harness-Toolkit_${tag}_upload-package.zip"
           Upload $zipName $tag $env:GITHUB_REPOSITORY
-          Write-Output "assets refreshed on release $tag"
+          Write-Output "assets attached to release $tag (publish with: gh release edit $tag --draft=false)"
+
+      - name: Attest build provenance (tag builds only)
+        if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be  # v2.4.0，固定 commit SHA
+        with:
+          subject-path: |
+            DeepSeek Harness Toolkit.exe
+            Toolkit GUI.exe
+            Toolkit GUI Standalone.exe
+            hashes.txt
+            hashes.txt.asc
+            DeepSeek-Harness-Toolkit_*_upload-package.zip
