@@ -15,6 +15,18 @@ Install, start, monitor and uninstall the dsh Web UI, with data backup / restore
 
 > ⚠️ This project is **unofficial** and is not affiliated with DeepSeek.
 
+## Official distribution — read before you download
+
+- **The only official repository** is [sakanamaru/DeepSeek-Harness-Toolkit](https://github.com/sakanamaru/DeepSeek-Harness-Toolkit); **the only official downloads** are the assets on its [Releases page](https://github.com/sakanamaru/DeepSeek-Harness-Toolkit/releases), built by GitHub Actions from the tagged source commit.
+- Anything else — third-party cloud drives, "paid / cracked / modified" editions, re-uploaded installers, other websites or accounts offering this tool — is **not official, not affiliated, and not trusted**. This project is free and open source (MIT); **no one is authorized to sell it**.
+- Every release ships a CI-generated SHA-256 manifest (`hashes.txt`), a maintainer GPG signature (`hashes.txt.asc`), and a GitHub build-provenance attestation. Published releases are **immutable** — their assets can never be silently swapped. Verify before running (≈20 s, read-only):
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -OutDir D:\verify
+  ```
+
+  Full trust model and manual verification steps: [SECURITY.md](SECURITY.md).
+
 ## Screenshots
 
 **GUI panel** (variants B / C):

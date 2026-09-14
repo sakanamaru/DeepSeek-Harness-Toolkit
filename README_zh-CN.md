@@ -15,6 +15,18 @@ DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具
 
 > ⚠️ 本项目为**非官方**工具，与 DeepSeek 官方无关。
 
+## 官方发布渠道——下载前必读
+
+- **唯一官方仓库**：[sakanamaru/DeepSeek-Harness-Toolkit](https://github.com/sakanamaru/DeepSeek-Harness-Toolkit)；**唯一官方下载**是其 [Releases 页面](https://github.com/sakanamaru/DeepSeek-Harness-Toolkit/releases) 的资产，由 GitHub Actions 从打 tag 的源码 commit 构建。
+- 其他任何来源——第三方网盘、"收费版 / 破解版 / 修改版"、二次上传的安装包、其他网站或账号的分发——**均非官方、无关、不可信**。本项目免费开源（MIT），**任何收费售卖均未经授权**。
+- 每个发布都附带 CI 生成的 SHA-256 清单（`hashes.txt`）、维护者 GPG 签名（`hashes.txt.asc`）与 GitHub 构建溯源证明（attestation）。已发布的 release 为**不可变**——资产不可能被偷偷替换。运行前请先核验（约 20 秒，只读）：
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -OutDir D:\verify
+  ```
+
+  完整信任模型与手动核验步骤见 [SECURITY.md](SECURITY.md)。
+
 ## 界面截图
 
 **GUI 图形面板**（B / C 版本）：
