@@ -1,5 +1,5 @@
 // ============================================================================
-//  DeepSeek Harness Toolkit V2.4.2  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
+//  DeepSeek Harness Toolkit V2.5.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
 // ----------------------------------------------------------------------------
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 //  v2 重构封装：DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）
@@ -19,14 +19,15 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 
-[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.4.2")]
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.5.0")]
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
-[assembly: AssemblyVersion("2.4.2.0")]
-[assembly: AssemblyFileVersion("2.4.2.0")]
+[assembly: AssemblyVersion("2.5.0.0")]
+[assembly: AssemblyFileVersion("2.5.0.0")]
 
 public static class Program
 {
@@ -61,7 +62,7 @@ public static class Program
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Toolkit V2.4.2"; } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.5.0"; } catch { }
         StateDir = ResolveStateDir();
         // 注意：根目录标记 .dsh_launcher_root 只随发布包分发，本程序永不自行补建——
         // 若启动时"看起来像完整安装"就自动写标记，攻击者可诱导用户将 exe 与任意同名文件
@@ -92,6 +93,7 @@ public static class Program
                 case "status": StatusCli(); return;   // 服务三态（GUI 状态灯用）
                 case "help":      case "h": Help();    return;
                 case "selftest": Selftest(args); return;
+                case "doctor":    case "d": Doctor(args); return;   // v2.5：体检/诊断（GUI 体检页用）
                 default:
                     Console.WriteLine(T("未知参数：", "Unknown argument: ") + args[0]);
                     Help();
@@ -239,7 +241,7 @@ public static class Program
     static void Banner()
     {
         CL(ConsoleColor.Cyan,   "==============================================");
-        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.4.2");
+        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.5.0");
         CL(ConsoleColor.Cyan,   "==============================================");
         C(ConsoleColor.Gray,    "  v1 脚本协助 : "); CL(ConsoleColor.White, "SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
         C(ConsoleColor.Gray,    "  v2 重构封装 : "); CL(ConsoleColor.White, "DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
@@ -575,6 +577,12 @@ public static class Program
             Console.WriteLine("STOP_FAIL " + T("3080 被其他程序占用（未确认是 dsh），已拒绝停止以避免误杀", "port 3080 is held by another program (not confirmed as dsh); stop refused to avoid killing it"));
             return;
         }
+        // TOCTOU 缓解：终止前最后一刻再次校验监听进程身份（防 pid 复用/竞态窗口误杀）
+        if (!IsOurDshProcess(pid))
+        {
+            Console.WriteLine("STOP_FAIL " + T("复检发现 3080 监听进程已变化（不再确认为 dsh），已拒绝停止", "re-check: listener on 3080 changed (no longer confirmed as dsh); stop refused"));
+            return;
+        }
         KillProcessTree(pid);   // 进程树终止：连带杀派生的 node 子进程
         for (int i = 0; i < 20; i++)
         {
@@ -714,6 +722,7 @@ public static class Program
 
     static void Uninstall()
     {
+        if (!IntegrityGate("卸载（含清除数据）", "uninstall/wipe")) return;
         Banner();
         C(ConsoleColor.Red, T("  即将卸载 dsh（本程序与 npm 全局包会被移除）。\n  默认【保留】数据目录（会话/设置/凭据）。\n", 
                              "  About to uninstall dsh (this program and the npm global package).\n  Data (sessions/settings/credentials) is KEPT by default.\n"));
@@ -1212,6 +1221,7 @@ public static class Program
             if (name.Equals("backup", StringComparison.OrdinalIgnoreCase)) continue;         // 防止备份目录把自身备份递归复制进去
             if (name.StartsWith("dsh-data-", StringComparison.OrdinalIgnoreCase))            // L-7：大小写不敏感（用户同名业务目录也一并跳过并提示，不静默）
             { skippedNested++; continue; }
+            try { if ((File.GetAttributes(P(d)) & FileAttributes.ReparsePoint) != 0) { LogErr("跳过 reparse point（symlink/junction）目录，不进入: " + TrimP(d)); continue; } } catch { }
             try { CopyTree(TrimP(d), Path.Combine(dst, name), skipLocked); }
             catch (Exception ex)
             {
@@ -1227,6 +1237,7 @@ public static class Program
             string fs = TrimP(f), fd = Path.Combine(dst, Path.GetFileName(f));
             try
             {
+                if ((File.GetAttributes(P(fs)) & FileAttributes.ReparsePoint) != 0) { LogErr("跳过 reparse point（symlink/junction）文件: " + TrimP(fs)); continue; }
                 using (var s = new FileStream(P(fs), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
                 using (var t = new FileStream(P(fd), FileMode.Create, FileAccess.Write, FileShare.None))
                     s.CopyTo(t);
@@ -1339,6 +1350,7 @@ public static class Program
     /// <summary>把任一备份目录（本机或从其他电脑复制来的）的数据/工作区恢复到当前位置。</summary>
     static void RestoreFromSource(string path)
     {
+        if (!IntegrityGate("恢复", "restore")) return;
         string dst = DataRoot();
         bool hasWs = Directory.Exists(Path.Combine(path, "_workspace"));
         try
@@ -2316,6 +2328,7 @@ public static class Program
     /// <summary>更新/换版本 dsh（菜单 8）。守卫 → 检测 → 选版本 → 双确认 → pre-update 备份 → 安装 → 记忆。</summary>
     static void UpdateDsh()
     {
+        if (!IntegrityGate("更新 dsh", "update")) return;
         Banner();
         if (ProbeService() != ServiceState.Down)   // 守卫与备份/恢复/导入一致：启动中（Listening）也拒绝，避免半启动状态文件占用竞态
         {
@@ -2495,6 +2508,325 @@ public static class Program
                             "  Without arguments: interactive menu (auto-start in 5s when dsh is installed; press 1 to install when not)."));
     }
 
+    // ---------------- 体检 / 诊断（v2.5：doctor） ----------------
+
+    /// <summary>诊断条目：类别 Cat + 级别 Level（0=OK 1=WARN 2=ERROR）+ 描述。</summary>
+    public class DocItem
+    {
+        public string Cat;
+        public int Level;
+        public string Text;
+        public DocItem(string cat, int level, string text) { Cat = cat; Level = level; Text = text; }
+    }
+
+    /// <summary>脱敏：报告/日志出口统一消毒（API Key / Token / Cookie / Password 等不可进入报告）。
+    /// 规则：URL 查询参数 token=/key=/auth=/session=…；独立密钥键的 key:value / key=value；40+ 位十六进制串。</summary>
+    static string SanitizeForReport(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+        try
+        {
+            s = Regex.Replace(s, @"([?&](?:token|key|api[_-]?key|auth|session|password|passwd|secret|cookie)[=])([^&#\s]+)", "$1[REDACTED]", RegexOptions.IgnoreCase);
+            s = Regex.Replace(s, @"(?i)\b(api[_-]?key|password|passwd|secret|cookie|token|session)\b\s*[=:]\s*[^,\s;]+", "$1=[REDACTED]");
+            s = Regex.Replace(s, @"\b[0-9a-fA-F]{40,}\b", "[REDACTED]");
+        }
+        catch { }
+        return s;
+    }
+
+    /// <summary>目录总大小（字节）。不可读部分跳过，不抛异常。</summary>
+    static long DirSize(string dir)
+    {
+        long total = 0;
+        try
+        {
+            var stack = new Stack<string>();
+            stack.Push(dir);
+            while (stack.Count > 0)
+            {
+                string d = stack.Pop();
+                string[] files;
+                try { files = Directory.GetFiles(d); } catch { files = new string[0]; }
+                foreach (string f in files) { try { total += new FileInfo(f).Length; } catch { } }
+                string[] subs;
+                try { subs = Directory.GetDirectories(d); } catch { subs = new string[0]; }
+                foreach (string sd in subs) stack.Push(sd);
+            }
+        }
+        catch { }
+        return total;
+    }
+
+    /// <summary>人类可读大小。</summary>
+    static string HumanSize(long b)
+    {
+        if (b < 1024) return b + " B";
+        if (b < 1024L * 1024) return (b / 1024.0).ToString("0.0") + " KB";
+        if (b < 1024L * 1024 * 1024) return (b / (1024.0 * 1024)).ToString("0.0") + " MB";
+        return (b / (1024.0 * 1024 * 1024)).ToString("0.00") + " GB";
+    }
+
+    /// <summary>汇总串：DOCTOR_OK 0 / DOCTOR_WARN n / DOCTOR_ERROR n（ERROR 优先）。纯函数，可单测。</summary>
+    static string DoctorSummary(List<DocItem> items)
+    {
+        int err = 0, warn = 0;
+        foreach (DocItem it in items)
+        {
+            if (it.Level == 2) err++;
+            else if (it.Level == 1) warn++;
+        }
+        if (err > 0) return "DOCTOR_ERROR " + err;
+        if (warn > 0) return "DOCTOR_WARN " + warn;
+        return "DOCTOR_OK 0";
+    }
+
+    static string DocLevel(int level) { return level == 2 ? "ERROR" : (level == 1 ? "WARN" : "OK"); }
+
+    /// <summary>配置摘要：launcher.config 的非注释行。</summary>
+    static string ConfigSummary()
+    {
+        try
+        {
+            if (!File.Exists(ConfigPath())) return "(无配置文件)";
+            var kept = new List<string>();
+            foreach (string l in File.ReadAllLines(ConfigPath()))
+            {
+                string t = l.Trim();
+                if (t.Length == 0 || t.StartsWith("#")) continue;
+                kept.Add(t);
+            }
+            return kept.Count == 0 ? "(空配置)" : string.Join(" ; ", kept.ToArray());
+        }
+        catch (Exception ex) { return "读取失败: " + ex.Message; }
+    }
+
+    /// <summary>日志摘要：launcher.log 行数 + 最近 3 行。</summary>
+    static string LogSummary()
+    {
+        string file = Path.Combine(StateDir, "logs", "launcher.log");
+        try
+        {
+            if (!File.Exists(file)) return "(无日志)";
+            string[] lines = File.ReadAllLines(file);
+            string tail = "";
+            for (int i = Math.Max(0, lines.Length - 3); i < lines.Length; i++)
+                tail += (tail.Length == 0 ? "" : " | ") + lines[i];
+            return "共 " + lines.Length + " 行；最近: " + tail;
+        }
+        catch (Exception ex) { return "读取失败: " + ex.Message; }
+    }
+
+    /// <summary>体检主流程：System / Harness / Service / Workspace / Backup / Network 六类检查。
+    /// 输出：首行 DOCTOR_OK|WARN|ERROR n；其后每行 [OK|WARN|ERROR] &lt;类别&gt; &lt;描述&gt;（GUI 按级别着色解析）。
+    /// 可选 --report &lt;file&gt;：写完整诊断报告（含配置/日志摘要，全部脱敏）。全程只读。</summary>
+    static void Doctor(string[] args)
+    {
+        var items = new List<DocItem>();
+        DoctorCollect(items);
+        string summary = DoctorSummary(items);
+        Console.WriteLine(summary);
+        foreach (DocItem it in items)
+            Console.WriteLine("[" + DocLevel(it.Level) + "] " + it.Cat + " " + it.Text);
+        string report = null;
+        for (int i = 1; i < args.Length - 1; i++)
+            if (args[i] == "--report" || args[i] == "-report") report = args[i + 1];
+        if (report != null)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("== DeepSeek Harness Toolkit 诊断报告 ==");
+            sb.AppendLine("生成时间: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine("Toolkit : " + CurrentVersion());
+            sb.AppendLine("系统    : " + Environment.OSVersion.VersionString);
+            sb.AppendLine();
+            string lastCat = "";
+            foreach (DocItem it in items)
+            {
+                if (it.Cat != lastCat) { sb.AppendLine("-- " + it.Cat + " --"); lastCat = it.Cat; }
+                sb.AppendLine("  [" + DocLevel(it.Level) + "] " + SanitizeForReport(it.Text));
+            }
+            sb.AppendLine();
+            sb.AppendLine("-- 配置摘要（脱敏） --");
+            sb.AppendLine("  " + SanitizeForReport(ConfigSummary()));
+            sb.AppendLine("-- 日志摘要（脱敏） --");
+            sb.AppendLine("  " + SanitizeForReport(LogSummary()));
+            sb.AppendLine();
+            sb.AppendLine("结果: " + summary);
+            try { File.WriteAllText(report, sb.ToString(), new UTF8Encoding(true)); Console.WriteLine("DOCTOR_REPORT " + report); }
+            catch (Exception ex) { Console.WriteLine("DOCTOR_WRITE_FAIL " + ex.Message); }
+        }
+    }
+
+    /// <summary>收集六类检查项（独立于输出，便于复用/单测）。全程只读。</summary>
+    static void DoctorCollect(List<DocItem> items)
+    {
+        // ---- System ----
+        items.Add(new DocItem("System", 0, "Windows: " + Environment.OSVersion.VersionString + " (" + (Environment.Is64BitOperatingSystem ? "x64" : "x86") + ")"));
+        string node = RunCapture("node.exe", "--version");
+        if (string.IsNullOrWhiteSpace(node)) items.Add(new DocItem("System", 1, "Node.js 未找到（dsh 依赖 npm 安装）"));
+        else items.Add(new DocItem("System", 0, "Node.js: " + node.Trim()));
+        string npm = RunCapture("cmd.exe", "/c npm --version 2>nul");
+        items.Add(new DocItem("System", string.IsNullOrWhiteSpace(npm) ? 1 : 0, string.IsNullOrWhiteSpace(npm) ? "npm 不可用" : "npm: " + npm.Trim()));
+
+        // ---- Harness ----
+        string dsh = LocateDsh();
+        if (dsh == null) items.Add(new DocItem("Harness", 2, "dsh 未安装（交互菜单按 1 安装）"));
+        else
+        {
+            items.Add(new DocItem("Harness", 0, "dsh 已安装: " + SanitizeForReport(dsh)));
+            string dv = RunDshVersion();
+            if (string.IsNullOrWhiteSpace(dv)) items.Add(new DocItem("Harness", 1, "dsh --version 无输出"));
+            else items.Add(new DocItem("Harness", 0, "dsh 版本: " + SanitizeForReport(dv.Trim().Replace("\r", " ").Replace("\n", " "))));
+        }
+
+        // ---- Service ----
+        bool portOpen = IsPortOpen(WEB_PORT, 800);
+        if (!portOpen)
+        {
+            items.Add(new DocItem("Service", 2, "端口 " + WEB_PORT + " 未监听（服务未运行；菜单按 2 启动）"));
+        }
+        else
+        {
+            int pid = FindPortPid(WEB_PORT);
+            items.Add(new DocItem("Service", 0, "端口 " + WEB_PORT + " 监听中" + (pid > 0 ? "（PID " + pid + "）" : "")));
+            bool isDsh = pid > 0 && ListenerIsDsh();
+            string who = isDsh ? "监听进程确为 dsh" : (pid > 0 ? "监听进程不是 dsh！命令行: " + SanitizeForReport(GetProcessCommandLine(pid)) : "无法确认监听进程身份");
+            items.Add(new DocItem("Service", isDsh ? 0 : 2, who));
+            bool http = HttpResponds(WebUrl(), 800);
+            items.Add(new DocItem("Service", 0, "HTTP: " + (http ? "有应答（dsh 未授权统一 401 属正常门控）" : "无应答")));
+            ServiceState st = ProbeService();
+            items.Add(new DocItem("Service", st == ServiceState.Ready ? 0 : 1, "服务状态: " + (st == ServiceState.Ready ? "运行中" : (st == ServiceState.Listening ? "启动中" : "已停止"))));
+        }
+
+        // ---- Workspace ----
+        string data = DataRoot();
+        if (string.IsNullOrEmpty(data) || !Directory.Exists(data))
+        {
+            items.Add(new DocItem("Workspace", 2, "数据目录不存在: " + data + "（dsh 尚未初始化）"));
+        }
+        else
+        {
+            bool enumerable = false;
+            try { Directory.GetFiles(data); enumerable = true; } catch { }
+            items.Add(new DocItem("Workspace", enumerable ? 0 : 2, "数据目录: " + SanitizeForReport(data) + (enumerable ? "" : "（无读取权限）")));
+            long size = DirSize(data);
+            items.Add(new DocItem("Workspace", size > 1024L * 1024 * 1024 ? 1 : 0, "数据大小: " + HumanSize(size) + (size > 1024L * 1024 * 1024 ? "（较大，备份耗时会增加）" : "")));
+        }
+
+        // ---- Backup ----
+        string bkRoot = BackupsRoot();
+        if (!Directory.Exists(bkRoot))
+        {
+            items.Add(new DocItem("Backup", 1, "备份目录不存在（尚未备份过；建议定期备份）"));
+        }
+        else
+        {
+            items.Add(new DocItem("Backup", 0, "备份目录: " + SanitizeForReport(bkRoot)));
+            string[] dirs;
+            try { dirs = Directory.GetDirectories(bkRoot, "dsh-data-*"); } catch { dirs = new string[0]; }
+            Array.Sort(dirs);   // 时间戳升序（yyyyMMdd-HHmmssfff 字典序=时间序）
+            string latest = null;
+            for (int i = dirs.Length - 1; i >= 0; i--) { if (IsValidBackupDir(dirs[i])) { latest = dirs[i]; break; } }
+            if (latest == null) items.Add(new DocItem("Backup", 1, "无有效备份（全部无效或为空）"));
+            else
+            {
+                items.Add(new DocItem("Backup", 0, "最新备份: " + SanitizeForReport(Path.GetFileName(latest))));
+                try
+                {
+                    string ts = Path.GetFileName(latest).Substring("dsh-data-".Length);
+                    if (ts.Length >= 18) ts = ts.Substring(0, 18);
+                    DateTime lt;
+                    if (DateTime.TryParseExact(ts, "yyyyMMdd-HHmmssfff", CultureInfo.InvariantCulture, DateTimeStyles.None, out lt))
+                    {
+                        int days = (int)(DateTime.Now - lt).TotalDays;
+                        items.Add(new DocItem("Backup", days > 7 ? 1 : 0, "距上次备份: " + days + " 天" + (days > 7 ? "（建议更新备份）" : "")));
+                    }
+                }
+                catch { }
+            }
+        }
+
+        // ---- Network ----
+        string reg = "";
+        string cfgReg = RunCapture("cmd.exe", "/c npm config get registry 2>nul");
+        if (!string.IsNullOrWhiteSpace(cfgReg)) reg = cfgReg.Trim();
+        if (reg.Length == 0) reg = NPM_OFFICIAL;
+        bool reach = HttpResponds(reg, 4000);
+        items.Add(new DocItem("Network", reach ? 0 : 1, "npm registry " + SanitizeForReport(reg) + (reach ? " 可达" : " 不可达（离线或网络受限；不影响本地功能）")));
+    }
+
+    // ---------------- 自身完整性闸门（v2.5 安全批：高风险操作保护） ----------------
+
+    /// <summary>从 manifest 文本（hashes.txt 格式：每行 "&lt;64hex&gt;  &lt;文件名&gt;"）解析指定文件的 SHA-256；
+    /// 返回小写 hash；未找到/格式非法返回 null。纯函数，可单测。</summary>
+    static string ParseManifestHash(string manifest, string fileName)
+    {
+        if (string.IsNullOrEmpty(manifest) || string.IsNullOrEmpty(fileName)) return null;
+        string[] lines = manifest.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (string ln in lines)
+        {
+            string t = ln.Trim();
+            if (t.Length == 0 || t.StartsWith("#")) continue;
+            int sp = t.IndexOf(' ');
+            if (sp <= 0) continue;
+            string hash = t.Substring(0, sp).Trim().ToLowerInvariant();
+            string name = t.Substring(sp + 1).Trim();
+            if (string.Compare(name, fileName, StringComparison.OrdinalIgnoreCase) != 0) continue;
+            if (hash.Length != 64) return null;
+            foreach (char c in hash) { if (!Uri.IsHexDigit(c)) return null; }
+            return hash;
+        }
+        return null;
+    }
+
+    /// <summary>自身 exe 的 SHA-256（小写 hex）；失败返回 null。</summary>
+    static string SelfSha256()
+    {
+        try
+        {
+            string path = Assembly.GetExecutingAssembly().Location;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            using (var fs = File.OpenRead(path))
+            {
+                byte[] h = sha.ComputeHash(fs);
+                var sb = new StringBuilder();
+                foreach (byte b in h) sb.Append(b.ToString("x2"));
+                return sb.ToString();
+            }
+        }
+        catch { return null; }
+    }
+
+    /// <summary>自身完整性：true=与随包 hashes.txt 匹配（官方包）；false=不匹配（疑似被篡改）；
+    /// null=旁无 manifest 或 manifest 不含自身（开发/非官方布局，不阻断）。</summary>
+    static bool? SelfIntegrity()
+    {
+        try
+        {
+            string exe = Assembly.GetExecutingAssembly().Location;
+            if (string.IsNullOrEmpty(exe)) return null;
+            string manifestPath = Path.Combine(Path.GetDirectoryName(exe), "hashes.txt");
+            if (!File.Exists(manifestPath)) return null;
+            string want = ParseManifestHash(File.ReadAllText(manifestPath), Path.GetFileName(exe));
+            if (want == null) return null;
+            string actual = SelfSha256();
+            if (actual == null) return null;
+            return actual == want;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>高风险操作闸门（卸载含清数据 / 恢复 / 更新 dsh）：完整性不匹配即拒绝；无 manifest 时放行。返回是否可继续。</summary>
+    static bool IntegrityGate(string opZh, string opEn)
+    {
+        bool? ok = SelfIntegrity();
+        if (ok != false) return true;
+        Console.WriteLine(T("自身完整性校验失败：当前程序与随包 hashes.txt 不匹配（可能被篡改）。已拒绝执行「" + opZh + "」。请从官方 Releases 重新下载。",
+                            "Self-integrity FAILED: this executable does not match the shipped hashes.txt (possible tampering). '" + opEn + "' refused. Re-download from the official Releases."));
+        LogErr("IntegrityGate refused: " + opEn);
+        return false;
+    }
+
     // ---------------- 自检 ----------------
 
     static void Selftest(string[] args)
@@ -2581,6 +2913,15 @@ public static class Program
         public static int ParsePort(string netstat, int port) { return Program.ParsePortPid(netstat, port); }
         public static string NIValidateRestorePath(string pathArg, string backupsRoot) { return Program.NIValidateRestorePath(pathArg, backupsRoot); }
         public static bool IsDshCmd(string cmdline) { return Program.IsDshCommandLine(cmdline); }
+        // ---- v2.5 doctor 体检 ----
+        public static string Sand(string s) { return Program.SanitizeForReport(s); }
+        public static DocItem DI(string cat, int level, string text) { return new DocItem(cat, level, text); }
+        public static string DocSum(List<DocItem> items) { return Program.DoctorSummary(items); }
+        public static long DirSizeOf(string d) { return Program.DirSize(d); }
+        public static string HumanOf(long b) { return Program.HumanSize(b); }
+        public static string DocLvl(int level) { return Program.DocLevel(level); }
+        public static string ManHash(string manifest, string name) { return Program.ParseManifestHash(manifest, name); }
+        public static bool? SelfInteg() { return Program.SelfIntegrity(); }
     }
 #endif
 }

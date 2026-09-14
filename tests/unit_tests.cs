@@ -356,6 +356,76 @@ public static class UnitTests
         Check(!Program.Test.IsDshCmd("   "), "whitespace rejected");
         Check(!Program.Test.IsDshCmd("nothing here"), "no keyword rejected");
 
+        // ---- v2.5 doctor：脱敏 / 汇总 / 大小 ----
+        Console.WriteLine("[DOCTOR] SanitizeForReport");
+        Check(Program.Test.Sand(@"http://127.0.0.1:3080/?token=abc123&x=1").Contains("token=[REDACTED]"), "url query token redacted");
+        Check(!Program.Test.Sand(@"http://127.0.0.1:3080/?token=abc123&x=1").Contains("abc123"), "token value gone");
+        Check(Program.Test.Sand("&token=xyz&more=1").Contains("token=[REDACTED]"), "amp query token redacted");
+        Check(Program.Test.Sand("api_key=sk-live-9999").Contains("api_key=[REDACTED]"), "api_key redacted");
+        Check(!Program.Test.Sand("api_key=sk-live-9999").Contains("sk-live-9999"), "api_key value gone");
+        Check(Program.Test.Sand("password: hunter2").Contains("password=[REDACTED]"), "password colon redacted");
+        Check(Program.Test.Sand("cookie=abc; lang=zh").Contains("lang=zh"), "cookie value only, lang kept");
+        Check(Program.Test.Sand("A2F67D170B5BE4845612642C240979232B4E4CE4").Contains("[REDACTED]"), "40-hex redacted");
+        Check(Program.Test.Sand("服务运行正常，无敏感信息") == "服务运行正常，无敏感信息", "plain text unchanged");
+        Check(Program.Test.Sand("token=abc") == "token=[REDACTED]", "bare token= value redacted");
+        Check(Program.Test.Sand("") == "", "empty unchanged");
+        Check(Program.Test.Sand(null) == null, "null unchanged");
+
+        Console.WriteLine("[DOCTOR] DoctorSummary");
+        Check(Program.Test.DocSum(new System.Collections.Generic.List<Program.DocItem>()) == "DOCTOR_OK 0", "empty -> OK");
+        var allOk = new System.Collections.Generic.List<Program.DocItem>();
+        allOk.Add(Program.Test.DI("System", 0, "a")); allOk.Add(Program.Test.DI("Service", 0, "b"));
+        Check(Program.Test.DocSum(allOk) == "DOCTOR_OK 0", "all ok -> OK");
+        var oneWarn = new System.Collections.Generic.List<Program.DocItem>();
+        oneWarn.Add(Program.Test.DI("Backup", 1, "no recent"));
+        Check(Program.Test.DocSum(oneWarn) == "DOCTOR_WARN 1", "one warn -> WARN 1");
+        var threeWarn = new System.Collections.Generic.List<Program.DocItem>();
+        threeWarn.Add(Program.Test.DI("A", 1, "x")); threeWarn.Add(Program.Test.DI("B", 1, "y")); threeWarn.Add(Program.Test.DI("C", 1, "z"));
+        Check(Program.Test.DocSum(threeWarn) == "DOCTOR_WARN 3", "three warns -> WARN 3");
+        var errWins = new System.Collections.Generic.List<Program.DocItem>();
+        errWins.Add(Program.Test.DI("A", 1, "w1")); errWins.Add(Program.Test.DI("B", 1, "w2")); errWins.Add(Program.Test.DI("C", 2, "e1"));
+        Check(Program.Test.DocSum(errWins) == "DOCTOR_ERROR 1", "error beats warns -> ERROR 1");
+        var twoErr = new System.Collections.Generic.List<Program.DocItem>();
+        twoErr.Add(Program.Test.DI("A", 2, "e1")); twoErr.Add(Program.Test.DI("B", 2, "e2")); twoErr.Add(Program.Test.DI("C", 1, "w1"));
+        Check(Program.Test.DocSum(twoErr) == "DOCTOR_ERROR 2", "two errors -> ERROR 2");
+        Check(Program.Test.DocLvl(0) == "OK" && Program.Test.DocLvl(1) == "WARN" && Program.Test.DocLvl(2) == "ERROR", "level labels");
+
+        Console.WriteLine("[DOCTOR] DirSize / HumanSize");
+        string tdDoc = Path.Combine(Path.GetTempPath(), "dsh_ut_doctor_" + System.Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(tdDoc);
+            Directory.CreateDirectory(Path.Combine(tdDoc, "sub"));
+            File.WriteAllBytes(Path.Combine(tdDoc, "a.bin"), new byte[100]);
+            File.WriteAllBytes(Path.Combine(tdDoc, "b.bin"), new byte[200]);
+            File.WriteAllBytes(Path.Combine(tdDoc, "sub", "c.bin"), new byte[300]);
+            Check(Program.Test.DirSizeOf(tdDoc) == 600, "dir size sums nested files");
+            Check(Program.Test.DirSizeOf(Path.Combine(tdDoc, "sub")) == 300, "subdir size");
+            Check(Program.Test.HumanOf(0) == "0 B", "human 0 B");
+            Check(Program.Test.HumanOf(2048) == "2.0 KB", "human KB");
+            Check(Program.Test.HumanOf(3L * 1024 * 1024) == "3.0 MB", "human MB");
+            Check(Program.Test.HumanOf(2L * 1024 * 1024 * 1024) == "2.00 GB", "human GB");
+        }
+        finally { try { Directory.Delete(tdDoc, true); } catch { } }
+        Check(Program.Test.DirSizeOf(Path.Combine(Path.GetTempPath(), "dsh_no_such_dir_xyz")) == 0, "missing dir -> 0");
+
+        // ---- v2.5 安全批：自身完整性 manifest 解析 ----
+        Console.WriteLine("[SEC] ParseManifestHash");
+        string man = "# comment\r\n" +
+                     "aaaa1111bbbb2222cccc3333dddd4444eeee5555ffff6666aaaa1111bbbb2222  DeepSeek Harness Toolkit.exe\r\n" +
+                     "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff  Toolkit GUI.exe\r\n";
+        Check(Program.Test.ManHash(man, "DeepSeek Harness Toolkit.exe") == "aaaa1111bbbb2222cccc3333dddd4444eeee5555ffff6666aaaa1111bbbb2222", "manifest hash parsed");
+        Check(Program.Test.ManHash(man, "toolkit gui.exe") == "1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff", "name case-insensitive");
+        Check(Program.Test.ManHash(man, "missing.exe") == null, "missing name -> null");
+        Check(Program.Test.ManHash(man, "") == null, "empty name -> null");
+        Check(Program.Test.ManHash(null, "x.exe") == null, "null manifest -> null");
+        Check(Program.Test.ManHash("# only comment\r\n", "x.exe") == null, "comment-only -> null");
+        Check(Program.Test.ManHash("zzzz1111bbbb2222cccc3333dddd4444eeee5555ffff6666aaaa1111bbbb2222  x.exe", "x.exe") == null, "non-hex -> null");
+        Check(Program.Test.ManHash("abcd  x.exe", "x.exe") == null, "short hash -> null");
+        Check(Program.Test.ManHash("", "x.exe") == null, "empty manifest -> null");
+        Check(Program.Test.ManHash("no-space-line\r\n", "x.exe") == null, "line without separator -> null");
+        Check(Program.Test.SelfInteg() == null, "test env: no hashes.txt beside unittests.exe -> null (no block)");
+
         Console.WriteLine("");
         Console.WriteLine("== " + (total - fails) + "/" + total + " passed, " + fails + " failed ==");
         Environment.Exit(fails == 0 ? 0 : 1);
