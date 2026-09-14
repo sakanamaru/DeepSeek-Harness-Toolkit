@@ -68,6 +68,17 @@ Updating **dsh itself** (`update` / menu 8) follows a guarded chain:
    not match the manifest entry, the operation is refused with an explanation (tamper
    protection). Development builds without a manifest are not blocked.
 
+## Runtime safety controls
+
+- **Stop guard + TOCTOU re-verification** — `stop` only kills a :3080 listener whose command
+  line verifies as dsh, and re-verifies the listener identity immediately before the kill;
+  any pid reuse or listener swap inside the check-then-kill window results in `STOP_FAIL`
+  (refusal), never a foreign-process kill.
+- **Reparse-point handling** — backup and restore never follow symlinks / junctions /
+  reparse points; such entries are skipped and recorded in `logs\launcher.log` (audit).
+- **No silent half-states** — destructive flows (wipe, restore, update) either complete,
+  refuse with a reason, or roll back; see the sections above for each gate.
+
 ## Reporting a Vulnerability
 
 If you discover a security issue — especially anything involving:
