@@ -23,21 +23,19 @@ DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具
 
 **GUI 图形面板**（B / C 版本）：
 
-| 首页——状态与操作（浅色） | 首页（深色） |
-|:---:|:---:|
-| <img src="docs/screenshots/gui-home-light.png" width="440" alt="GUI 首页（浅色）"/> | <img src="docs/screenshots/gui-home-dark.png" width="440" alt="GUI 首页（深色）"/> |
+| 首页——状态与操作（浅色） | 首页（深色） | 备份管理——列表 + 恢复/导出/删除 |
+|:---:|:---:|:---:|
+| <a href="docs/screenshots/gui-home-light.png"><img src="docs/screenshots/gui-home-light.png" width="272" alt="GUI 首页（浅色）"/></a> | <a href="docs/screenshots/gui-home-dark.png"><img src="docs/screenshots/gui-home-dark.png" width="272" alt="GUI 首页（深色）"/></a> | <a href="docs/screenshots/gui-backup-light.png"><img src="docs/screenshots/gui-backup-light.png" width="272" alt="GUI 备份页"/></a> |
 
-| 备份管理——列表 + 恢复/导出/删除 | 更新中心——只读更新全貌 |
-|:---:|:---:|
-| <img src="docs/screenshots/gui-backup-light.png" width="440" alt="GUI 备份页"/> | <img src="docs/screenshots/gui-update-light.png" width="440" alt="GUI 更新页"/> |
+| 更新中心——只读更新全貌 | 设置——四组配置 | 日志中心——级别筛选、搜索、导出 |
+|:---:|:---:|:---:|
+| <a href="docs/screenshots/gui-update-light.png"><img src="docs/screenshots/gui-update-light.png" width="272" alt="GUI 更新页"/></a> | <a href="docs/screenshots/gui-settings-light.png"><img src="docs/screenshots/gui-settings-light.png" width="272" alt="GUI 设置页"/></a> | <a href="docs/screenshots/gui-log-light.png"><img src="docs/screenshots/gui-log-light.png" width="272" alt="GUI 日志页——结构化日志 + 级别筛选"/></a> |
 
-| 设置——四组配置 | 日志中心——级别筛选、搜索、导出 |
-|:---:|:---:|
-| <img src="docs/screenshots/gui-settings-light.png" width="440" alt="GUI 设置页"/> | <img src="docs/screenshots/gui-log-light.png" width="440" alt="GUI 日志页——结构化日志 + 级别筛选"/> |
+| 关于——版本、署名、非官方声明 | | |
+|:---:|:---:|:---:|
+| <a href="docs/screenshots/gui-about-light.png"><img src="docs/screenshots/gui-about-light.png" width="272" alt="GUI 关于页"/></a> | | |
 
-| 关于——版本、署名、非官方声明 |
-|:---:|
-| <img src="docs/screenshots/gui-about-light.png" width="440" alt="GUI 关于页"/> |
+<sub>点击任意截图可查看原图（940×640）。</sub>
 
 **CLI 命令行核心**（A 版本——本工具的本体形态，GUI 构建其上）：
 
