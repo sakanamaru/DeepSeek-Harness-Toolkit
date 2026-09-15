@@ -1,5 +1,5 @@
 // ============================================================================
-//  DeepSeek Harness Toolkit V2.5.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
+//  DeepSeek Harness Toolkit V2.6.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
 // ----------------------------------------------------------------------------
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 //  v2 重构封装：DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）
@@ -22,12 +22,12 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 
-[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.5.0")]
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.6.0")]
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
-[assembly: AssemblyVersion("2.5.0.0")]
-[assembly: AssemblyFileVersion("2.5.0.0")]
+[assembly: AssemblyVersion("2.6.0.0")]
+[assembly: AssemblyFileVersion("2.6.0.0")]
 
 public static class Program
 {
@@ -45,6 +45,7 @@ public static class Program
     static bool cfgCheckUpdate = true;   // 启动时静默检查更新（配置 check_update=off 关闭）
     static bool cfgCheckDshUpdate = true; // 检测 dsh 本体更新开关（配置 check_dsh_update=off 关闭）
     static string cfgDshVersions = "";    // 本机装过的 dsh 历史版本（逗号分隔，最近 10 个）
+    static string cfgChannel = "stable";  // v2.7 更新通道（配置 update_channel=stable|rc）
     const int    AUTO_SECONDS = 5;
 
     static Lang lang = Lang.Auto;
@@ -62,7 +63,7 @@ public static class Program
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Toolkit V2.5.0"; } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.6.0"; } catch { }
         StateDir = ResolveStateDir();
         // 注意：根目录标记 .dsh_launcher_root 只随发布包分发，本程序永不自行补建——
         // 若启动时"看起来像完整安装"就自动写标记，攻击者可诱导用户将 exe 与任意同名文件
@@ -84,8 +85,14 @@ public static class Program
                 case "about":     case "a": About();   return;
                 case "shortcut":  case "sc": ShortcutCli(); return; // 创建桌面快捷方式（脚本/安装后调用）
                 case "backup":    case "b": NIBackup();  return;   // 非交互备份（GUI/脚本用）
-                case "backup-list": case "bl": NiListBackups(); return;   // 非交互列出有效备份目录（GUI 选择框用）
+                case "backup-list": case "bl": NiListBackups(HasFlag(args, "--detail") || HasFlag(args, "-detail")); return;   // 非交互列出有效备份目录（--detail 附类型/大小/时间，GUI 备份管理页用）
+                case "backup-export": case "be": NIBackupExport(args); return;   // v2.6：导出备份副本到指定目录
+                case "backup-delete": case "bd": NIBackupDelete(args); return;   // v2.6：删除指定备份（仅限备份根内 dsh-data-*）
+                case "update-info": case "ui": UpdateInfo(); return;   // v2.7：Update Center 只读数据源
+                case "config-get": case "cg": ConfigGet(); return;   // v2.8：设置页只读数据源
+                case "config-set": case "cs": ConfigSet(args); return;   // v2.8：白名单配置写入
                 case "restore":   case "r":
+                    if (HasFlag(args, "--dry-run") || HasFlag(args, "-dry-run")) { NIRestoreDryRun(FlagValue(args, "--path") ?? FlagValue(args, "-path")); return; }   // v2.6 Dry-Run：只读预演
                     if (args.Length > 1 && (args[1] == "--path" || args[1] == "-path"))
                         NIRestorePath(args.Length > 2 ? args[2] : "");
                     else NIRestore();
@@ -241,7 +248,7 @@ public static class Program
     static void Banner()
     {
         CL(ConsoleColor.Cyan,   "==============================================");
-        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.5.0");
+        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.6.0");
         CL(ConsoleColor.Cyan,   "==============================================");
         C(ConsoleColor.Gray,    "  v1 脚本协助 : "); CL(ConsoleColor.White, "SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
         C(ConsoleColor.Gray,    "  v2 重构封装 : "); CL(ConsoleColor.White, "DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
@@ -759,6 +766,15 @@ public static class Program
                         "  Also WIPE ALL DATA (sessions/settings/API credentials)?\n  Type y to continue, any other key keeps data: "));
         string wipeAsk = ReadLineTrim();
         if (wipeAsk != "y" && wipeAsk != "Y") { Info(T("数据已保留。", "Data kept.")); Pause(); return; }
+
+        // v2.6 Dry-Run：两步确认前先只读预演"将删多少"（不写任何东西；删除前仍会先自动备份）
+        string wipeTarget = DataRoot();
+        if (Directory.Exists(wipeTarget))
+        {
+            long[] wplan = PlanDelete(wipeTarget);
+            Warn(T("  Dry-Run 预演：将删除 " + wplan[0] + " 个文件、" + wplan[1] + " 个目录，共 " + HumanSize(wplan[2]) + "（删除前会先自动备份）。",
+                   "  Dry-Run preview: will DELETE " + wplan[0] + " files in " + wplan[1] + " directories, " + HumanSize(wplan[2]) + " total (an automatic backup is made first)."));
+        }
 
         if (!TwoStepConfirm()) { Warn(T("已取消清除数据。", "Wipe cancelled.")); Pause(); return; }
 
@@ -1592,6 +1608,7 @@ public static class Program
                 if (t.StartsWith("check_update=")) { string v = t.Substring(13).Trim().ToLowerInvariant(); if (v.Length > 0) cfgCheckUpdate = v != "off"; }   // 启动更新检查开关
                 if (t.StartsWith("check_dsh_update=")) { string v = t.Substring(17).Trim().ToLowerInvariant(); if (v.Length > 0) cfgCheckDshUpdate = v != "off"; }   // dsh 本体更新检测开关
                 if (t.StartsWith("dsh_versions=")) { string v = t.Substring(13).Trim(); if (v.Length > 0) cfgDshVersions = v; }   // 本机 dsh 历史版本
+                if (t.StartsWith("update_channel=")) { string v = t.Substring(15).Trim().ToLowerInvariant(); cfgChannel = (v == "rc") ? "rc" : "stable"; }   // v2.7 更新通道
             }
         }
         catch { }
@@ -1602,7 +1619,7 @@ public static class Program
         try
         {
             string v = lang == Lang.Zh ? "zh" : (lang == Lang.En ? "en" : "auto");
-            File.WriteAllText(ConfigPath(), "lang=" + v + Environment.NewLine + "host=" + webHost + Environment.NewLine + "ws=" + (cfgWs ?? "") + Environment.NewLine + "keep_backups=" + cfgKeep + Environment.NewLine + "check_update=" + (cfgCheckUpdate ? "on" : "off") + Environment.NewLine + "check_dsh_update=" + (cfgCheckDshUpdate ? "on" : "off") + Environment.NewLine + "dsh_versions=" + cfgDshVersions + Environment.NewLine, new UTF8Encoding(false));
+            File.WriteAllText(ConfigPath(), "lang=" + v + Environment.NewLine + "host=" + webHost + Environment.NewLine + "ws=" + (cfgWs ?? "") + Environment.NewLine + "keep_backups=" + cfgKeep + Environment.NewLine + "check_update=" + (cfgCheckUpdate ? "on" : "off") + Environment.NewLine + "check_dsh_update=" + (cfgCheckDshUpdate ? "on" : "off") + Environment.NewLine + "dsh_versions=" + cfgDshVersions + Environment.NewLine + "update_channel=" + cfgChannel + Environment.NewLine, new UTF8Encoding(false));
         }
         catch { }
     }
@@ -2166,7 +2183,7 @@ public static class Program
 
     /// <summary>非交互列出全部有效备份目录（最新在前）：首行 BACKUP_LIST_OK &lt;n&gt;，其后每行一个绝对路径。
     /// 无备份/全部无效时输出 BACKUP_LIST_OK 0（GUI 选择框据此判空）。</summary>
-    static void NiListBackups()
+    static void NiListBackups(bool detail)
     {
         string root = BackupsRoot();
         if (!Directory.Exists(root)) { Console.WriteLine("BACKUP_LIST_OK 0"); return; }
@@ -2178,7 +2195,18 @@ public static class Program
         List<string> valid = new List<string>();
         foreach (string d in dirs) { if (IsValidBackupDir(d)) valid.Add(d); }
         Console.WriteLine("BACKUP_LIST_OK " + valid.Count);
-        foreach (string d in valid) Console.WriteLine(d);
+        foreach (string d in valid)
+        {
+            Console.WriteLine(d);
+            if (detail)
+            {
+                string name = Path.GetFileName(d);
+                long bytes = DirSize(d);
+                string mt = "(unknown)";
+                try { mt = Directory.GetLastWriteTime(d).ToString("yyyy-MM-dd HH:mm:ss"); } catch { }
+                Console.WriteLine("BACKUP_ITEM " + name + " " + BackupKindName(name) + " " + bytes + " " + mt);
+            }
+        }
     }
 
     /// <summary>非交互服务三态：输出 STATUS_UP / STATUS_STARTING / STATUS_DOWN。</summary>
@@ -2754,6 +2782,388 @@ public static class Program
         items.Add(new DocItem("Network", reach ? 0 : 1, "npm registry " + SanitizeForReport(reg) + (reach ? " 可达" : " 不可达（离线或网络受限；不影响本地功能）")));
     }
 
+    // ---------------- 备份管理 / Dry-Run（v2.6） ----------------
+
+    /// <summary>备份目录名 → 类型（Manual/Auto/PreRestore/PreImport/PreWipe/PreUpdate）。</summary>
+    static string BackupKindName(string dirName)
+    {
+        if (dirName.EndsWith("-pre-restore")) return "PreRestore";
+        if (dirName.EndsWith("-pre-import")) return "PreImport";
+        if (dirName.EndsWith("-pre-update")) return "PreUpdate";
+        if (dirName.EndsWith("-pre-wipe")) return "PreWipe";
+        if (dirName.EndsWith("-auto")) return "Auto";
+        return "Manual";
+    }
+
+    static bool HasFlag(string[] args, string f) { foreach (string a in args) if (string.Equals(a, f, StringComparison.OrdinalIgnoreCase)) return true; return false; }
+    static string FlagValue(string[] args, string f) { for (int i = 1; i < args.Length - 1; i++) if (string.Equals(args[i], f, StringComparison.OrdinalIgnoreCase)) return args[i + 1]; return null; }
+
+    /// <summary>递归收集 相对路径→大小。copyRules=true 复现 CopyTree 跳过规则（node_modules/backup/dsh-data-*）；
+    /// reparse point 一律跳过且不进入（与备份/恢复执行侧一致）。</summary>
+    static bool IsReparse(string path) { try { return (File.GetAttributes(P(path)) & FileAttributes.ReparsePoint) != 0; } catch { return false; } }
+
+    /// <summary>目录级跳过判定，必须与 CopyTree 内联规则保持一致（依赖可重装/防自嵌套 + reparse point 不进入）；改动需两处同步。</summary>
+    static bool CopySkipDir(string fullPath, string name)
+    {
+        if (name.Equals("node_modules", StringComparison.OrdinalIgnoreCase)) return true;
+        if (name.Equals("backup", StringComparison.OrdinalIgnoreCase)) return true;
+        if (name.StartsWith("dsh-data-", StringComparison.OrdinalIgnoreCase)) return true;
+        return IsReparse(fullPath);
+    }
+
+    static void WalkFiles(string root, string dir, Dictionary<string, long> acc, bool copyRules)
+    {
+        string[] subs;
+        try { subs = Directory.GetDirectories(P(dir)); } catch { subs = new string[0]; }
+        foreach (string d in subs)
+        {
+            if (copyRules) { if (CopySkipDir(TrimP(d), Path.GetFileName(TrimP(d)))) continue; }
+            else { if (IsReparse(d)) continue; }
+            WalkFiles(root, d, acc, copyRules);
+        }
+        string[] files;
+        try { files = Directory.GetFiles(P(dir)); } catch { files = new string[0]; }
+        string rootPrefix = P(root);
+        foreach (string f in files)
+        {
+            try
+            {
+                if (IsReparse(f)) continue;
+                var fi = new FileInfo(P(f));
+                string rel = fi.FullName.Length > rootPrefix.Length ? fi.FullName.Substring(rootPrefix.Length).TrimStart('\\', '/') : fi.Name;
+                acc[rel] = fi.Length;
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>合并式恢复 Dry-Run 计划：返回 [新增, 覆盖, 保留, 待复制字节]。
+    /// 源侧复现 RestoreFromSource / 新格式工作区恢复语义：恢复侧自己逐个顶层目录调 CopyTree，故顶层名字规则不适用
+    /// （顶层各目录内部仍套用跳过规则，排除 skipTopDir）+ 顶层文件（排除 skipTopFile）；
+    /// 目标侧全量统计。合并语义：仅目标端存在的文件不会被删除（计入保留）。</summary>
+    static long[] PlanMerge(string src, string dst, string skipTopDir, string skipTopFile)
+    {
+        return PlanMergeCore(src, dst, skipTopDir, skipTopFile, false);
+    }
+
+    /// <summary>旧格式工作区 Dry-Run：恢复侧是 CopyTree(wsSrc,target) 单次调用，顶层目录同样套用跳过规则。</summary>
+    static long[] PlanMergeLegacy(string src, string dst) { return PlanMergeCore(src, dst, null, null, true); }
+
+    static long[] PlanMergeCore(string src, string dst, string skipTopDir, string skipTopFile, bool topRules)
+    {
+        var srcMap = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (string d in Directory.GetDirectories(P(src)))
+            {
+                string name = Path.GetFileName(TrimP(d));
+                if (skipTopDir != null && name.Equals(skipTopDir, StringComparison.OrdinalIgnoreCase)) continue;
+                if (topRules && CopySkipDir(TrimP(d), name)) continue;
+                WalkFiles(src, d, srcMap, true);
+            }
+            foreach (string f in Directory.GetFiles(P(src)))
+            {
+                string name = Path.GetFileName(TrimP(f));
+                if (skipTopFile != null && name.Equals(skipTopFile, StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+                    if (IsReparse(f)) continue;
+                    srcMap[name] = new FileInfo(P(f)).Length;
+                }
+                catch { }
+            }
+        }
+        catch { }
+        var dstMap = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        if (Directory.Exists(dst)) { try { WalkFiles(dst, dst, dstMap, false); } catch { } }
+        long nw = 0, ow = 0, keep = 0, bytes = 0;
+        foreach (var kv in srcMap) { if (dstMap.ContainsKey(kv.Key)) ow++; else nw++; bytes += kv.Value; }
+        foreach (var kv in dstMap) if (!srcMap.ContainsKey(kv.Key)) keep++;
+        return new long[] { nw, ow, keep, bytes };
+    }
+
+    /// <summary>清除（wipe）Dry-Run 计划：返回 [文件数, 目录数, 字节]。reparse point 计为条目但不进入（删链接不删目标）。</summary>
+    static long[] PlanDelete(string root)
+    {
+        long files = 0, dirs = 0, bytes = 0;
+        var stack = new Stack<string>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            string d = stack.Pop();
+            dirs++;
+            string[] subs;
+            try { subs = Directory.GetDirectories(P(d)); } catch { subs = new string[0]; }
+            foreach (string s in subs)
+            {
+                bool rep = false;
+                try { rep = (File.GetAttributes(P(s)) & FileAttributes.ReparsePoint) != 0; } catch { }
+                if (rep) { dirs++; continue; }
+                stack.Push(s);
+            }
+            string[] fs;
+            try { fs = Directory.GetFiles(P(d)); } catch { fs = new string[0]; }
+            foreach (string f in fs)
+            {
+                files++;
+                try { if ((File.GetAttributes(P(f)) & FileAttributes.ReparsePoint) == 0) bytes += new FileInfo(P(f)).Length; } catch { }
+            }
+        }
+        return new long[] { files, dirs, bytes };
+    }
+
+    /// <summary>restore/import Dry-Run：只读合并计划（不要求服务停止、不写任何东西、不弹交互）。
+    /// 输出 DRYRUN_OK / DRYRUN_SRC / 每个作用域 DRYRUN_SCOPE+NEW/OVERWRITE/KEEP/BYTES / DRYRUN_TOTAL / DRYRUN_NOTE；失败 DRYRUN_FAIL 原因。</summary>
+    static void NIRestoreDryRun(string pathArg)
+    {
+        string bk = null;
+        if (string.IsNullOrWhiteSpace(pathArg))
+        {
+            string root = BackupsRoot();
+            if (Directory.Exists(root))
+            {
+                string[] dirs = Directory.GetDirectories(root, "dsh-data-*");
+                Array.Sort(dirs);
+                Array.Reverse(dirs);
+                foreach (string d in dirs) { if (IsValidBackupDir(d)) { bk = d; break; } }
+            }
+            if (bk == null) { Console.WriteLine("DRYRUN_FAIL " + T("无有效备份", "no valid backup")); return; }
+        }
+        else
+        {
+            string p = pathArg.Trim().Trim('"');
+            if (IsSubPath(BackupsRoot(), p))
+            {
+                if (!IsValidBackupDir(p)) { Console.WriteLine("DRYRUN_FAIL " + T("无效备份目录", "invalid backup directory")); return; }
+                bk = p;
+            }
+            else
+            {
+                string r = ResolveBackupDir(p);
+                if (r == null) { Console.WriteLine("DRYRUN_FAIL " + T("不是有效备份包", "not a valid backup package")); return; }
+                bk = r;
+            }
+        }
+        Console.WriteLine("DRYRUN_OK");
+        Console.WriteLine("DRYRUN_SRC " + bk);
+        long tn = 0, to = 0, tk = 0, tb = 0;
+        string dst = DataRoot();
+        long[] dp = PlanMerge(bk, dst, "_workspace", null);
+        Console.WriteLine("DRYRUN_SCOPE data " + dst);
+        Console.WriteLine("DRYRUN_NEW " + dp[0]);
+        Console.WriteLine("DRYRUN_OVERWRITE " + dp[1]);
+        Console.WriteLine("DRYRUN_KEEP " + dp[2]);
+        Console.WriteLine("DRYRUN_BYTES " + dp[3]);
+        tn += dp[0]; to += dp[1]; tk += dp[2]; tb += dp[3];
+        string wsSrc = Path.Combine(bk, "_workspace");
+        if (Directory.Exists(wsSrc))
+        {
+            string[] subs = Directory.GetDirectories(wsSrc);
+            bool anyNew = false;
+            foreach (string s in subs) if (File.Exists(Path.Combine(s, ".dshws"))) { anyNew = true; break; }
+            if (anyNew)
+            {
+                foreach (string s in subs)
+                {
+                    if (!File.Exists(Path.Combine(s, ".dshws"))) continue;
+                    string name = Path.GetFileName(s);
+                    string target = Path.Combine(WorkspaceRoot() ?? dst, name);
+                    long[] wp = PlanMerge(s, target, null, ".dshws");
+                    Console.WriteLine("DRYRUN_SCOPE workspace " + name + " " + target);
+                    Console.WriteLine("DRYRUN_NEW " + wp[0]);
+                    Console.WriteLine("DRYRUN_OVERWRITE " + wp[1]);
+                    Console.WriteLine("DRYRUN_KEEP " + wp[2]);
+                    Console.WriteLine("DRYRUN_BYTES " + wp[3]);
+                    tn += wp[0]; to += wp[1]; tk += wp[2]; tb += wp[3];
+                }
+            }
+            else
+            {
+                string target = WorkspaceRoot() ?? dst;
+                long[] wp = PlanMergeLegacy(wsSrc, target);
+                Console.WriteLine("DRYRUN_SCOPE workspace-legacy " + target);
+                Console.WriteLine("DRYRUN_NEW " + wp[0]);
+                Console.WriteLine("DRYRUN_OVERWRITE " + wp[1]);
+                Console.WriteLine("DRYRUN_KEEP " + wp[2]);
+                Console.WriteLine("DRYRUN_BYTES " + wp[3]);
+                tn += wp[0]; to += wp[1]; tk += wp[2]; tb += wp[3];
+            }
+        }
+        Console.WriteLine("DRYRUN_TOTAL " + tn + " " + to + " " + tk + " " + tb);
+        Console.WriteLine("DRYRUN_NOTE " + T("合并语义：仅目标端存在的文件不会被删除；交互恢复时每个工作区可自定义目标或跳过。",
+                                             "Merge semantics: destination-only files are NOT deleted; interactive restore allows per-workspace custom target or skip."));
+    }
+
+    /// <summary>export 校验（供单测）：返回 null=通过，否则原因键（no-path/no-to/outside/not-found/bad-target/nested）。</summary>
+    static string NIValidateExport(string srcArg, string toArg, string backupsRoot)
+    {
+        string src = (srcArg ?? "").Trim().Trim('"');
+        string to = (toArg ?? "").Trim().Trim('"');
+        if (src.Length == 0) return "no-path";
+        if (to.Length == 0) return "no-to";
+        if (!IsSubPath(backupsRoot, src)) return "outside";
+        if (!Directory.Exists(src)) return "not-found";
+        string dst;
+        try { dst = Path.GetFullPath(to); } catch { return "bad-target"; }
+        if (string.Equals(dst, src, StringComparison.OrdinalIgnoreCase) || IsSubPath(src, dst)) return "nested";
+        return null;
+    }
+
+    /// <summary>backup-delete 校验（供单测）：返回 null=通过，否则原因键（no-path/outside/not-backup/not-found）。</summary>
+    static string NIValidateBackupDelete(string srcArg, string backupsRoot)
+    {
+        string src = (srcArg ?? "").Trim().Trim('"');
+        if (src.Length == 0) return "no-path";
+        if (!IsSubPath(backupsRoot, src)) return "outside";
+        string name = Path.GetFileName(src.TrimEnd('\\', '/'));
+        if (!name.StartsWith("dsh-data-", StringComparison.OrdinalIgnoreCase)) return "not-backup";
+        if (!Directory.Exists(src)) return "not-found";
+        return null;
+    }
+
+    /// <summary>非交互导出备份：backup-export --path &lt;bk&gt; --to &lt;dir&gt;（复制一份到目标目录，只读源）。</summary>
+    static void NIBackupExport(string[] args)
+    {
+        string reason = NIValidateExport(FlagValue(args, "--path") ?? FlagValue(args, "-path"), FlagValue(args, "--to") ?? FlagValue(args, "-to"), BackupsRoot());
+        if (reason != null) { Console.WriteLine("BKEXPORT_FAIL " + T("导出校验失败: " + reason, "export validation failed: " + reason)); return; }
+        string src = (FlagValue(args, "--path") ?? FlagValue(args, "-path")).Trim().Trim('"');
+        string dst = Path.GetFullPath((FlagValue(args, "--to") ?? FlagValue(args, "-to")).Trim().Trim('"'));
+        string target = Path.Combine(dst, Path.GetFileName(src.TrimEnd('\\', '/')));
+        try
+        {
+            Directory.CreateDirectory(P(dst));
+            CopyTree(src, target, true);
+            Console.WriteLine("BKEXPORT_OK " + target);
+        }
+        catch (Exception ex) { LogErr("备份导出失败: " + ex); Console.WriteLine("BKEXPORT_FAIL " + ex.Message); }
+    }
+
+    /// <summary>非交互删除备份：backup-delete --path &lt;bk&gt;（仅限备份根内 dsh-data-* 目录；写审计日志）。</summary>
+    static void NIBackupDelete(string[] args)
+    {
+        string reason = NIValidateBackupDelete(FlagValue(args, "--path") ?? FlagValue(args, "-path"), BackupsRoot());
+        if (reason != null) { Console.WriteLine("BKDEL_FAIL " + T("删除校验失败: " + reason, "delete validation failed: " + reason)); return; }
+        string src = (FlagValue(args, "--path") ?? FlagValue(args, "-path")).Trim().Trim('"');
+        try
+        {
+            ClearReadOnlyRecursive(src);
+            Directory.Delete(src, true);
+            LogErr("审计: 用户删除备份 " + src);
+            Console.WriteLine("BKDEL_OK " + Path.GetFileName(src.TrimEnd('\\', '/')));
+        }
+        catch (Exception ex) { LogErr("备份删除失败: " + ex); Console.WriteLine("BKDEL_FAIL " + ex.Message); }
+    }
+
+    // ---------------- 配置读写命令（v2.8 Configuration） ----------------
+
+    /// <summary>config-set 校验（供单测）：白名单键 + 值域；返回 null=通过，否则原因键（no-key/unknown-key/bad-value）。</summary>
+    static string NIValidateConfigSet(string key, string value)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return "no-key";
+        string k = key.Trim().ToLowerInvariant();
+        string v = (value ?? "").Trim();
+        if (k == "lang") { if (v == "zh" || v == "en" || v == "auto" || v == "") return null; return "bad-value"; }
+        if (k == "host") { if (v == "127.0.0.1" || v == "localhost") return null; return "bad-value"; }
+        if (k == "ws") { if (v.Length == 0) return null; try { Path.GetFullPath(v); return null; } catch { return "bad-value"; } }
+        if (k == "keep_backups") { int n; if (int.TryParse(v, out n) && n >= 3) return null; return "bad-value"; }
+        if (k == "check_update" || k == "check_dsh_update") { if (v == "on" || v == "off") return null; return "bad-value"; }
+        if (k == "update_channel") { if (v == "stable" || v == "rc") return null; return "bad-value"; }
+        return "unknown-key";
+    }
+
+    /// <summary>config-set &lt;key&gt; &lt;value&gt;：白名单内才写盘（SaveConfig），否则 CONFIGSET_FAIL 原因。</summary>
+    static void ConfigSet(string[] args)
+    {
+        string key = args.Length > 1 ? args[1] : "";
+        string val = args.Length > 2 ? args[2] : "";
+        string reason = NIValidateConfigSet(key, val);
+        if (reason != null) { Console.WriteLine("CONFIGSET_FAIL " + reason); return; }
+        string k = key.Trim().ToLowerInvariant();
+        string v = val.Trim();
+        if (k == "lang") lang = v == "zh" ? Lang.Zh : (v == "en" ? Lang.En : Lang.Auto);
+        else if (k == "host") webHost = v;
+        else if (k == "ws") { try { cfgWs = v.Length > 0 ? Path.GetFullPath(v) : null; } catch { cfgWs = null; } }
+        else if (k == "keep_backups") { int n; int.TryParse(v, out n); cfgKeep = n < 3 ? 3 : n; }
+        else if (k == "check_update") cfgCheckUpdate = v != "off";
+        else if (k == "check_dsh_update") cfgCheckDshUpdate = v != "off";
+        else if (k == "update_channel") cfgChannel = v == "rc" ? "rc" : "stable";
+        SaveConfig();
+        Console.WriteLine("CONFIGSET_OK " + k);
+    }
+
+    /// <summary>config-get：CONFIGGET_OK + 每行 CONFIG &lt;key&gt; &lt;value&gt;（GUI 设置页数据源，只读）。</summary>
+    static void ConfigGet()
+    {
+        Console.WriteLine("CONFIGGET_OK");
+        Console.WriteLine("CONFIG lang " + (lang == Lang.Zh ? "zh" : (lang == Lang.En ? "en" : "auto")));
+        Console.WriteLine("CONFIG host " + webHost);
+        Console.WriteLine("CONFIG ws " + (cfgWs ?? ""));
+        Console.WriteLine("CONFIG keep_backups " + cfgKeep);
+        Console.WriteLine("CONFIG check_update " + (cfgCheckUpdate ? "on" : "off"));
+        Console.WriteLine("CONFIG check_dsh_update " + (cfgCheckDshUpdate ? "on" : "off"));
+        Console.WriteLine("CONFIG update_channel " + cfgChannel);
+        Console.WriteLine("CONFIG dsh_versions " + cfgDshVersions);
+    }
+
+    // ---------------- Update Center 数据源（v2.7） ----------------
+
+    /// <summary>带指定后缀的最新有效备份（名字字典序=时间序）；无则 null。</summary>
+    static string LatestBackupWithSuffix(string suffix)
+    {
+        try
+        {
+            string root = BackupsRoot();
+            if (!Directory.Exists(root)) return null;
+            string[] dirs = Directory.GetDirectories(root, "dsh-data-*" + suffix);
+            Array.Sort(dirs);
+            Array.Reverse(dirs);
+            foreach (string d in dirs) if (IsValidBackupDir(d)) return d;
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>有效备份总数（回滚候选数）。</summary>
+    static int CountValidBackups()
+    {
+        int n = 0;
+        try
+        {
+            string root = BackupsRoot();
+            if (!Directory.Exists(root)) return 0;
+            foreach (string d in Directory.GetDirectories(root, "dsh-data-*")) if (IsValidBackupDir(d)) n++;
+        }
+        catch { }
+        return n;
+    }
+
+    /// <summary>npm versions 列表里最后一个 -rc 版本号（发布序）；无/离线返回 null。</summary>
+    static string GetLatestRcVersion()
+    {
+        string raw = RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh versions 2>nul");
+        string[] all = ParseNpmVersions(raw);
+        string last = null;
+        foreach (string v in all) if (v.IndexOf("-rc", StringComparison.OrdinalIgnoreCase) >= 0) last = v;
+        return last;
+    }
+
+    /// <summary>update-info：Update Center 只读数据源（网络失败降级 unknown，不阻断）。输出 UPDATEINFO_* 机器行。</summary>
+    static void UpdateInfo()
+    {
+        Console.WriteLine("UPDATEINFO_OK");
+        string cur = RunDshVersion();
+        Console.WriteLine("UPDATEINFO_CURRENT " + (string.IsNullOrWhiteSpace(cur) ? "none" : cur.Trim().Replace("\r", " ").Replace("\n", " ")));
+        string stable = GetLatestDshVersion();
+        Console.WriteLine("UPDATEINFO_LATEST_STABLE " + (stable ?? "unknown"));
+        string rc = GetLatestRcVersion();
+        Console.WriteLine("UPDATEINFO_LATEST_RC " + (rc ?? "none"));
+        Console.WriteLine("UPDATEINFO_CHANNEL " + cfgChannel);
+        string pre = LatestBackupWithSuffix("-pre-update");
+        Console.WriteLine("UPDATEINFO_PREBACKUP " + (pre == null ? "none" : Path.GetFileName(pre)));
+        Console.WriteLine("UPDATEINFO_ROLLBACK " + CountValidBackups());
+        Console.WriteLine("UPDATEINFO_NOTES_URL https://github.com/deepseek-ai/dsh/releases");
+    }
+
     // ---------------- 自身完整性闸门（v2.5 安全批：高风险操作保护） ----------------
 
     /// <summary>从 manifest 文本（hashes.txt 格式：每行 "&lt;64hex&gt;  &lt;文件名&gt;"）解析指定文件的 SHA-256；
@@ -2922,6 +3332,15 @@ public static class Program
         public static string DocLvl(int level) { return Program.DocLevel(level); }
         public static string ManHash(string manifest, string name) { return Program.ParseManifestHash(manifest, name); }
         public static bool? SelfInteg() { return Program.SelfIntegrity(); }
+        public static long[] PlanMergeT(string src, string dst, string skipDir, string skipFile) { return Program.PlanMerge(src, dst, skipDir, skipFile); }
+        public static long[] PlanMergeLegacyT(string src, string dst) { return Program.PlanMergeLegacy(src, dst); }
+        public static long[] PlanDeleteT(string root) { return Program.PlanDelete(root); }
+        public static string KindName(string n) { return Program.BackupKindName(n); }
+        public static string ValExport(string src, string to, string root) { return Program.NIValidateExport(src, to, root); }
+        public static string ValBkDel(string src, string root) { return Program.NIValidateBackupDelete(src, root); }
+        public static string LatestBk(string suffix) { return Program.LatestBackupWithSuffix(suffix); }
+        public static int CountBk() { return Program.CountValidBackups(); }
+        public static string ValCfg(string key, string value) { return Program.NIValidateConfigSet(key, value); }
     }
 #endif
 }

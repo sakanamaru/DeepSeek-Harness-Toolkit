@@ -25,8 +25,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 非官方图形辅助面板。v1: SOGR-Momono Dango；v2: DeepSeek DSH；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit GUI")]
-[assembly: AssemblyVersion("2.5.0.0")]
-[assembly: AssemblyFileVersion("2.5.0.0")]
+[assembly: AssemblyVersion("2.6.0.0")]
+[assembly: AssemblyFileVersion("2.6.0.0")]
 
 // ---------------- 主题 ----------------
 
@@ -112,6 +112,59 @@ static class L10N
         Add("nav.home", "首页", "Home");
         Add("nav.log", "日志", "Log");
         Add("nav.doctor", "体检", "Doctor");
+        Add("nav.backup", "备份", "Backups");
+        Add("backup.title", "备份管理", "Backup Manager");
+        Add("backup.now", "立即备份", "Backup Now");
+        Add("backup.refresh", "刷新", "Refresh");
+        Add("backup.restore", "恢复所选", "Restore");
+        Add("backup.export", "导出所选", "Export");
+        Add("backup.delete", "删除所选", "Delete");
+        Add("backup.nosel", "请先选择一条备份。", "Select a backup first.");
+        Add("backup.col.time", "时间", "Time");
+        Add("backup.col.kind", "类型", "Type");
+        Add("backup.col.size", "大小", "Size");
+        Add("backup.col.state", "状态", "State");
+        Add("backup.col.name", "名称", "Name");
+        Add("backup.dryrun.title", "恢复预演（Dry-Run）", "Restore Dry-Run");
+        Add("backup.dryrun.msg", "将对 {4} 执行恢复：\n新增 {0} 个文件、覆盖 {1} 个、保留 {2} 个（仅目标端存在、不会被删除）\n待复制约 {3}。\n\n确认执行？",
+            "Restore onto {4}:\nNEW {0} file(s), OVERWRITE {1}, KEEP {2} (destination-only, NOT deleted)\nabout {3} to copy.\n\nProceed?");
+        Add("backup.del.title", "删除备份", "Delete backup");
+        Add("backup.del.msg", "确认删除备份 {0}？\n此操作不可撤销。", "Delete backup {0}?\nThis cannot be undone.");
+        Add("bk.export", "导出备份", "Export backup");
+        Add("bk.delete", "删除备份", "Delete backup");
+        Add("nav.update", "更新", "Update");
+        Add("update.title", "更新中心", "Update Center");
+        Add("update.current", "当前 dsh 版本", "Current dsh version");
+        Add("update.latest.stable", "最新稳定版", "Latest stable");
+        Add("update.latest.rc", "最新预发布", "Latest rc");
+        Add("update.channel", "更新通道", "Channel");
+        Add("update.prebackup", "最近更新前备份", "Latest pre-update backup");
+        Add("update.rollback", "回滚候选（有效备份数）", "Rollback candidates (valid backups)");
+        Add("update.notes", "dsh 发布说明", "dsh release notes");
+        Add("update.check", "检查更新", "Check");
+        Add("update.go", "更新 dsh…", "Update dsh…");
+        Add("nav.settings", "设置", "Settings");
+        Add("settings.title", "设置", "Settings");
+        Add("settings.g.harness", "Harness", "Harness");
+        Add("settings.g.backup", "备份", "Backup");
+        Add("settings.g.update", "更新", "Update");
+        Add("settings.g.toolkit", "工具箱", "Toolkit");
+        Add("settings.host", "Web 访问入口", "Web host");
+        Add("settings.ws", "工作区路径（空=自动探测）", "Workspace path (empty=auto)");
+        Add("settings.keep", "自动备份保留份数（≥3）", "Auto-backup retention (≥3)");
+        Add("settings.chkupd", "启动时检查工具箱更新", "Check toolkit updates at startup");
+        Add("settings.chkdsh", "检测 dsh 本体更新", "Detect dsh updates");
+        Add("settings.channel", "dsh 更新通道", "dsh update channel");
+        Add("settings.lang", "界面语言", "UI language");
+        Add("settings.save", "保存", "Save");
+        Add("settings.note", "部分设置（语言/入口）立即生效，其余下次启动生效。", "Some settings (language/host) apply immediately; others on next start.");
+        Add("log.all", "全部", "All");
+        Add("log.info", "信息", "Info");
+        Add("log.warn", "警告", "Warn");
+        Add("log.error", "错误", "Error");
+        Add("log.search", "搜索…", "Search…");
+        Add("log.export", "导出", "Export");
+        Add("log.copy", "复制", "Copy");
         Add("nav.about", "关于", "About");
 
         Add("home.status.title", "服务状态", "Service Status");
@@ -840,7 +893,12 @@ public class App : Form
     TextBox txtLog;
     // 日志控件（日志页）创建前产生的日志行先暂存：首页构建即会触发内嵌核心解出，
     // 那条日志早于 BuildLog()，此前会被静默丢弃（v2.4.2 修复）。
-    readonly List<string> pendingLog = new List<string>();
+    readonly List<string[]> pendingLog = new List<string[]>();   // 日志页构建前暂存：[time, level, text]
+    readonly List<string[]> logEntries = new List<string[]>();   // v2.9 Log Center 结构化日志
+    string curLogLevel = "ALL";
+    string logQuery = "";
+    RButton btnLogAll, btnLogInfo, btnLogWarn, btnLogErr, btnLogExport, btnLogCopy;
+    TextBox txtLogSearch;
     RButton btnClearLog;
 
     // 关于页
@@ -850,6 +908,22 @@ public class App : Form
     TextBox txtDoctor;
     RButton btnDocRecheck, btnDocExport;
     string doctorReportPath = "";
+
+    // 备份管理页（v2.6 Backup Manager）
+    ListView lvBackups;
+    RButton btnBkRefresh, btnBkNow, btnBkRestore, btnBkExport, btnBkDelete;
+    readonly List<string[]> bkEntries = new List<string[]>();   // name, kind, bytes, mtime, path
+
+    // 更新中心页（v2.7 Update Center）
+    Label lblUpCur, lblUpStable, lblUpRc, lblUpChannel, lblUpPre, lblUpRoll, lblUpNotes;
+    RButton btnUpCheck, btnUpGo;
+    bool upInfoLoaded = false;
+
+    // 设置页（v2.8 Configuration）
+    ComboBox cmbHost, cmbChkUpd, cmbChkDshUpd, cmbChannel, cmbLang;
+    TextBox txtWs, txtKeep;
+    RButton btnSetSave;
+    readonly Dictionary<string, string> setOrig = new Dictionary<string, string>();
 
     // 底部
     Label lblDisclaimer;
@@ -998,11 +1072,14 @@ public class App : Form
         Controls.Add(titleBar);
         titleBar.Resize += delegate(object s, EventArgs e) { RelayoutTitleButtons(); };
 
-        pages = new Panel[4];
+        pages = new Panel[7];
         pages[0] = BuildHome();
-        pages[1] = BuildLog();
-        pages[2] = BuildDoctor();
-        pages[3] = BuildAbout();
+        pages[1] = BuildBackup();
+        pages[2] = BuildUpdate();
+        pages[3] = BuildSettings();
+        pages[4] = BuildLog();
+        pages[5] = BuildDoctor();
+        pages[6] = BuildAbout();
         foreach (Panel p in pages)
         {
             p.Dock = DockStyle.Fill;
@@ -1012,9 +1089,9 @@ public class App : Form
 
         // 导航按钮（RButton 圆角 + 当前页高亮指示条，绝对定位避免 Dock.Top 逆序）
         // 顺序必须与 pages 索引一一对应：0=home 1=log 2=doctor 3=about（关于固定最底）
-        string[] navKeys = new string[] { "nav.home", "nav.log", "nav.doctor", "nav.about" };
-        navBtns = new RButton[4];
-        for (int i = 0; i < 4; i++)
+        string[] navKeys = new string[] { "nav.home", "nav.backup", "nav.update", "nav.settings", "nav.log", "nav.doctor", "nav.about" };
+        navBtns = new RButton[7];
+        for (int i = 0; i < 7; i++)
         {
             int idx = i;
             RButton b = new RButton();
@@ -1195,7 +1272,7 @@ public class App : Form
             else if (key == "act.shortcut") args = "shortcut";
             else return;   // 未知 key：finally 清零
             keepBusy = true;
-            if (CoreExePath() == null) { LogLine(L10N._("op.coremissing")); keepBusy = false; }
+            if (CoreExePath() == null) { LogWarn(L10N._("op.coremissing")); keepBusy = false; }
             else
             {
                 UpdateActionButtons();   // 立即禁用所有操作按钮
@@ -1218,7 +1295,7 @@ public class App : Form
     void LaunchInteractive(string args, string key)
     {
         string core = CoreExePath();
-        if (core == null) { LogLine(L10N._("op.coremissing")); return; }
+        if (core == null) { LogWarn(L10N._("op.coremissing")); return; }
         LogLine(string.Format(L10N._("op.running"), L10N._(key)));
         try
         {
@@ -1245,7 +1322,7 @@ public class App : Form
     void LaunchCapture(string args, string key)
     {
         string core = CoreExePath();
-        if (core == null) { LogLine(L10N._("op.coremissing")); return; }
+        if (core == null) { LogWarn(L10N._("op.coremissing")); return; }
         LogLine(string.Format(L10N._("op.running"), L10N._(key)));
         int capTimeout = 30000;
         ThreadPool.QueueUserWorkItem(delegate(object _)
@@ -1261,7 +1338,7 @@ public class App : Form
 
     void OnCaptureDone(string key, CoreRunResult r)
     {
-        if (r.TimedOut) { LogLine(L10N._(key) + " → " + L10N._("op.timeout")); Interlocked.Exchange(ref busy, 0); UpdateActionButtons(); return; }
+        if (r.TimedOut) { LogWarn(L10N._(key) + " → " + L10N._("op.timeout")); Interlocked.Exchange(ref busy, 0); UpdateActionButtons(); return; }
         string line = (r.MarkLine ?? "").Trim();
         bool ok = false;
         if (key == "act.start") ok = line.StartsWith("START_OK");
@@ -1269,6 +1346,8 @@ public class App : Form
         else if (key == "act.backup") ok = line.StartsWith("BACKUP_OK");
         else if (key == "act.restore") ok = line.StartsWith("RESTORE_OK");
         else if (key == "act.shortcut") ok = line.StartsWith("SHORTCUT_OK");
+        else if (key == "bk.export") ok = line.StartsWith("BKEXPORT_OK");
+        else if (key == "bk.delete") ok = line.StartsWith("BKDEL_OK");
         if (ok) LogLine(L10N._(key) + " → " + L10N._("op.ok") + "  (" + line + ")");
         else
         {
@@ -1276,10 +1355,11 @@ public class App : Form
             string reason = line;
             if (string.IsNullOrEmpty(reason)) reason = string.IsNullOrEmpty(r.FirstLine) ? "" : r.FirstLine;
             if (string.IsNullOrEmpty(reason)) reason = string.IsNullOrEmpty(r.All) ? "" : r.All;
-            LogLine(L10N._(key) + " → " + L10N._("op.fail") + (string.IsNullOrEmpty(reason) ? "" : "  (" + reason + ")"));
+            LogWarn(L10N._(key) + " → " + L10N._("op.fail") + (string.IsNullOrEmpty(reason) ? "" : "  (" + reason + ")"));
         }
         Interlocked.Exchange(ref busy, 0);
         UpdateActionButtons();
+        if (ok && (key == "bk.delete" || key == "act.backup")) LoadBackupList();   // 备份列表变化后自动刷新管理页
     }
 
     // ---- 恢复备份：列表 → 选择框 → 确认 → 推 CLI restore --path ----
@@ -1289,7 +1369,7 @@ public class App : Form
         string core = CoreExePath();
         if (core == null)
         {
-            LogLine(L10N._("op.coremissing"));
+            LogWarn(L10N._("op.coremissing"));
             Interlocked.Exchange(ref busy, 0);
             UpdateActionButtons();
             return;
@@ -1376,7 +1456,7 @@ public class App : Form
         string core = CoreExePath();
         if (core == null)
         {
-            LogLine(L10N._("op.coremissing"));
+            LogWarn(L10N._("op.coremissing"));
             return false;   // 未发起 → OnRestoreListReady 释放 busy
         }
         string arg = "restore --path \"" + path + "\"";
@@ -1552,7 +1632,7 @@ public class App : Form
         Panel p = new Panel();
         Panel top = new Panel();
         top.Dock = DockStyle.Top;
-        top.Height = 44;
+        top.Height = 78;   // v2.9：两行（标题行 + 筛选行）
         // 注意：不在此处 Controls.Add(top)。WinForms 的 Dock 布局按"后加入的先排"计算，
         // 若 top 先加入，后加入的 Fill 日志区会先占满整块区域、首行文字被顶部条盖住，
         // 表现为"日志页永远空白"（v2.4.2 修复）。改为日志区先加入、top 最后加入。
@@ -1576,6 +1656,31 @@ public class App : Form
             btnClearLog.Location = new Point(top.ClientSize.Width - 72 - 20, 8);
         };
 
+        // v2.9 筛选行：级别切换 + 搜索 + 导出/复制
+        int fx = 20;
+        btnLogAll = AddLogFilterBtn(top, ref fx, "log.all", "ALL");
+        btnLogInfo = AddLogFilterBtn(top, ref fx, "log.info", "INFO");
+        btnLogWarn = AddLogFilterBtn(top, ref fx, "log.warn", "WARN");
+        btnLogErr = AddLogFilterBtn(top, ref fx, "log.error", "ERROR");
+        btnLogAll.Checked = true;
+        txtLogSearch = new TextBox();
+        txtLogSearch.Location = new Point(fx + 8, 48);
+        txtLogSearch.Size = new Size(180, 24);
+        txtLogSearch.TextChanged += delegate(object s, EventArgs e) { logQuery = txtLogSearch.Text.Trim(); RenderLog(); };
+        top.Controls.Add(txtLogSearch);
+        btnLogExport = new RButton();
+        btnLogExport.Size = new Size(64, 24);
+        btnLogExport.Location = new Point(fx + 196, 48);
+        btnLogExport.Text = L10N._("log.export");
+        btnLogExport.Click += delegate(object s, EventArgs e) { ExportLog(); };
+        top.Controls.Add(btnLogExport);
+        btnLogCopy = new RButton();
+        btnLogCopy.Size = new Size(64, 24);
+        btnLogCopy.Location = new Point(fx + 268, 48);
+        btnLogCopy.Text = L10N._("log.copy");
+        btnLogCopy.Click += delegate(object s, EventArgs e) { CopyLog(); };
+        top.Controls.Add(btnLogCopy);
+
         txtLog = new TextBox();
         txtLog.Multiline = true;
         txtLog.ReadOnly = true;
@@ -1583,15 +1688,466 @@ public class App : Form
         txtLog.ScrollBars = ScrollBars.Both;   // v1 审查 #11：横向也滚动
         txtLog.WordWrap = false;
         p.Controls.Add(txtLog);
-        // 补写日志页构建前暂存的行（如"已自动解出内嵌核心"）；没有则显示占位文案
-        if (pendingLog.Count > 0) txtLog.Text = string.Join(Environment.NewLine, pendingLog.ToArray()) + Environment.NewLine;
-        else txtLog.Text = L10N._("log.empty");
+        // 补写日志页构建前暂存的行（如"已自动解出内嵌核心"）
+        foreach (string[] e in pendingLog) logEntries.Add(e);
+        pendingLog.Clear();
+        RenderLog();
         p.Controls.Add(top);   // 顶部条最后加入：Fill 的日志区才能拿到"剩余空间"（Dock 后加入的先排）
 
         return p;
     }
 
     // ---- 体检页（v2.5 doctor）----
+    // ---- 备份管理页（v2.6 Backup Manager）----
+    static string FmtSize(long b)
+    {
+        if (b < 1024) return b + " B";
+        if (b < 1024L * 1024) return (b / 1024.0).ToString("0.0") + " KB";
+        if (b < 1024L * 1024 * 1024) return (b / (1024.0 * 1024)).ToString("0.0") + " MB";
+        return (b / (1024.0 * 1024 * 1024)).ToString("0.00") + " GB";
+    }
+
+    Panel BuildBackup()
+    {
+        Panel p = new Panel();
+        Panel top = new Panel();
+        top.Dock = DockStyle.Top;
+        top.Height = 44;
+
+        Label t = new RLabel();
+        t.AutoSize = true;
+        t.Location = new Point(20, 12);
+        t.Font = new Font("Microsoft YaHei UI", 10f, FontStyle.Bold);
+        t.Text = L10N._("backup.title");
+        t.Tag = "backup.title";
+        top.Controls.Add(t);
+
+        btnBkRefresh = new RButton();
+        btnBkRefresh.Size = new Size(72, 28);
+        btnBkRefresh.Location = new Point(560, 8);
+        btnBkRefresh.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnBkRefresh.Text = L10N._("backup.refresh");
+        btnBkRefresh.Click += delegate(object s, EventArgs e) { LoadBackupList(); };
+        top.Controls.Add(btnBkRefresh);
+
+        btnBkNow = new RButton();
+        btnBkNow.Size = new Size(92, 28);
+        btnBkNow.Location = new Point(460, 8);
+        btnBkNow.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnBkNow.Text = L10N._("backup.now");
+        btnBkNow.Click += delegate(object s, EventArgs e) { OnAction("act.backup"); };
+        top.Controls.Add(btnBkNow);
+        top.Resize += delegate(object s, EventArgs e)
+        {
+            btnBkRefresh.Location = new Point(top.ClientSize.Width - 72 - 20, 8);
+            btnBkNow.Location = new Point(top.ClientSize.Width - 72 - 92 - 28, 8);
+        };
+
+        Panel bottom = new Panel();
+        bottom.Dock = DockStyle.Bottom;
+        bottom.Height = 46;
+        btnBkRestore = new RButton();
+        btnBkRestore.Size = new Size(110, 30);
+        btnBkRestore.Location = new Point(20, 8);
+        btnBkRestore.Text = L10N._("backup.restore");
+        btnBkRestore.Click += delegate(object s, EventArgs e) { BkRestoreSelected(); };
+        bottom.Controls.Add(btnBkRestore);
+        btnBkExport = new RButton();
+        btnBkExport.Size = new Size(110, 30);
+        btnBkExport.Location = new Point(140, 8);
+        btnBkExport.Text = L10N._("backup.export");
+        btnBkExport.Click += delegate(object s, EventArgs e) { BkExportSelected(); };
+        bottom.Controls.Add(btnBkExport);
+        btnBkDelete = new RButton();
+        btnBkDelete.Size = new Size(110, 30);
+        btnBkDelete.Location = new Point(260, 8);
+        btnBkDelete.Text = L10N._("backup.delete");
+        btnBkDelete.Click += delegate(object s, EventArgs e) { BkDeleteSelected(); };
+        bottom.Controls.Add(btnBkDelete);
+
+        lvBackups = new ListView();
+        lvBackups.Dock = DockStyle.Fill;
+        lvBackups.View = View.Details;
+        lvBackups.FullRowSelect = true;
+        lvBackups.HeaderStyle = ColumnHeaderStyle.Nonclickable;
+        lvBackups.Columns.Add(L10N._("backup.col.time"), 150);
+        lvBackups.Columns.Add(L10N._("backup.col.kind"), 90);
+        lvBackups.Columns.Add(L10N._("backup.col.size"), 90);
+        lvBackups.Columns.Add(L10N._("backup.col.state"), 60);
+        lvBackups.Columns.Add(L10N._("backup.col.name"), 280);
+
+        p.Controls.Add(lvBackups);   // Fill 先加
+        p.Controls.Add(bottom);      // Bottom 次之
+        p.Controls.Add(top);         // Top 最后加（Dock 逆序规则，同日志页）
+        return p;
+    }
+
+    void LoadBackupList()
+    {
+        string core = CoreExePath();
+        if (core == null) { LogWarn(L10N._("op.coremissing")); return; }
+        ThreadPool.QueueUserWorkItem(delegate(object _)
+        {
+            CoreRunResult r = RunCoreCapture(core, "backup-list --detail", 15000);
+            BeginInvoke((Action)delegate { OnBackupListReady(r); });
+        });
+    }
+
+    void OnBackupListReady(CoreRunResult r)
+    {
+        lvBackups.Items.Clear();
+        bkEntries.Clear();
+        string[] lines = (r.All ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        string pendingPath = null;
+        foreach (string ln in lines)
+        {
+            if (ln.StartsWith("BACKUP_ITEM "))
+            {
+                string[] parts = ln.Substring("BACKUP_ITEM ".Length).Split(new[] { ' ' }, 4);
+                if (pendingPath != null && parts.Length >= 4)
+                {
+                    bkEntries.Add(new string[] { parts[0], parts[1], parts[2], parts[3], pendingPath });
+                    string size = parts[2];
+                    long bv;
+                    if (long.TryParse(size, out bv)) size = FmtSize(bv);
+                    lvBackups.Items.Add(new ListViewItem(new string[] { parts[3], parts[1], size, "✓", parts[0] }));
+                }
+                pendingPath = null;
+            }
+            else if (ln.StartsWith("BACKUP_LIST_OK")) { pendingPath = null; }
+            else if (pendingPath == null && (ln.IndexOf('\\') >= 0 || ln.IndexOf('/') >= 0)) { pendingPath = ln; }
+        }
+    }
+
+    string[] BkSelected()
+    {
+        if (lvBackups == null || lvBackups.SelectedIndices.Count == 0) return null;
+        int i = lvBackups.SelectedIndices[0];
+        return (i >= 0 && i < bkEntries.Count) ? bkEntries[i] : null;
+    }
+
+    void BkRestoreSelected()
+    {
+        string[] e = BkSelected();
+        if (e == null) { LogLine(L10N._("backup.nosel")); return; }
+        string core = CoreExePath();
+        if (core == null) { LogWarn(L10N._("op.coremissing")); return; }
+        Interlocked.Exchange(ref busy, 1);
+        UpdateActionButtons();
+        string path = e[4];
+        ThreadPool.QueueUserWorkItem(delegate(object _)
+        {
+            CoreRunResult r = RunCoreCapture(core, "restore --path \"" + path + "\" --dry-run", 60000);
+            BeginInvoke((Action)delegate { OnBkDryRunReady(path, r); });
+        });
+    }
+
+    void OnBkDryRunReady(string path, CoreRunResult r)
+    {
+        Interlocked.Exchange(ref busy, 0);
+        UpdateActionButtons();
+        string all = r.All ?? "";
+        if (!all.Contains("DRYRUN_OK")) { LogLine(L10N._("backup.restore") + " → " + L10N._("op.fail") + " (dry-run)"); return; }
+        long tn = 0, to = 0, tk = 0, tb = 0;
+        foreach (string ln in all.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            string[] pp = ln.Split(new[] { ' ' });
+            if (pp.Length >= 5 && pp[0] == "DRYRUN_TOTAL")
+            {
+                long.TryParse(pp[1], out tn);
+                long.TryParse(pp[2], out to);
+                long.TryParse(pp[3], out tk);
+                long.TryParse(pp[4], out tb);
+            }
+        }
+        string msg = string.Format(L10N._("backup.dryrun.msg"), tn, to, tk, FmtSize(tb), Path.GetFileName(path));
+        if (MessageBox.Show(this, msg, L10N._("backup.dryrun.title"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+        Interlocked.Exchange(ref busy, 1);
+        UpdateActionButtons();
+        LaunchCapture("restore --path \"" + path + "\"", "act.restore");
+    }
+
+    void BkExportSelected()
+    {
+        string[] e = BkSelected();
+        if (e == null) { LogLine(L10N._("backup.nosel")); return; }
+        using (var dlg = new FolderBrowserDialog())
+        {
+            dlg.Description = L10N._("backup.export");
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            Interlocked.Exchange(ref busy, 1);
+            UpdateActionButtons();
+            LaunchCapture("backup-export --path \"" + e[4] + "\" --to \"" + dlg.SelectedPath + "\"", "bk.export");
+        }
+    }
+
+    void BkDeleteSelected()
+    {
+        string[] e = BkSelected();
+        if (e == null) { LogLine(L10N._("backup.nosel")); return; }
+        if (MessageBox.Show(this, string.Format(L10N._("backup.del.msg"), e[0]), L10N._("backup.del.title"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+        Interlocked.Exchange(ref busy, 1);
+        UpdateActionButtons();
+        LaunchCapture("backup-delete --path \"" + e[4] + "\"", "bk.delete");
+    }
+
+    // ---- 设置页（v2.8 Configuration）----
+    Panel BuildSettings()
+    {
+        Panel p = new Panel();
+        Panel top = new Panel();
+        top.Dock = DockStyle.Top;
+        top.Height = 44;
+
+        Label t = new RLabel();
+        t.AutoSize = true;
+        t.Location = new Point(20, 12);
+        t.Font = new Font("Microsoft YaHei UI", 10f, FontStyle.Bold);
+        t.Text = L10N._("settings.title");
+        t.Tag = "settings.title";
+        top.Controls.Add(t);
+
+        btnSetSave = new RButton();
+        btnSetSave.Size = new Size(92, 28);
+        btnSetSave.Location = new Point(600, 8);
+        btnSetSave.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnSetSave.Text = L10N._("settings.save");
+        btnSetSave.Click += delegate(object s, EventArgs e) { SaveSettings(); };
+        top.Controls.Add(btnSetSave);
+        top.Resize += delegate(object s, EventArgs e)
+        {
+            btnSetSave.Location = new Point(top.ClientSize.Width - 92 - 20, 8);
+        };
+
+        int y = 56;
+        AddSetGroup(p, ref y, "settings.g.harness");
+        cmbHost = AddSetCombo(p, ref y, "settings.host", new string[] { "127.0.0.1", "localhost" });
+        txtWs = AddSetText(p, ref y, "settings.ws", 360);
+        AddSetGroup(p, ref y, "settings.g.backup");
+        txtKeep = AddSetText(p, ref y, "settings.keep", 80);
+        AddSetGroup(p, ref y, "settings.g.update");
+        cmbChkUpd = AddSetCombo(p, ref y, "settings.chkupd", new string[] { "on", "off" });
+        cmbChkDshUpd = AddSetCombo(p, ref y, "settings.chkdsh", new string[] { "on", "off" });
+        cmbChannel = AddSetCombo(p, ref y, "settings.channel", new string[] { "stable", "rc" });
+        AddSetGroup(p, ref y, "settings.g.toolkit");
+        cmbLang = AddSetCombo(p, ref y, "settings.lang", new string[] { "auto", "zh", "en" });
+
+        Label note = new RLabel();
+        note.AutoSize = true;
+        note.Location = new Point(24, y + 6);
+        note.Text = L10N._("settings.note");
+        note.Tag = "settings.note";
+        p.Controls.Add(note);
+
+        p.Controls.Add(top);   // top 最后加（Dock 逆序规则）
+        return p;
+    }
+
+    void AddSetGroup(Panel parent, ref int y, string tag)
+    {
+        Label l = new RLabel();
+        l.AutoSize = true;
+        l.Location = new Point(24, y);
+        l.Font = new Font("Microsoft YaHei UI", 9.5f, FontStyle.Bold);
+        l.Text = L10N._(tag);
+        l.Tag = tag;
+        parent.Controls.Add(l);
+        y += 26;
+    }
+
+    ComboBox AddSetCombo(Panel parent, ref int y, string tag, string[] items)
+    {
+        Label l = new RLabel();
+        l.AutoSize = true;
+        l.Location = new Point(40, y + 3);
+        l.Text = L10N._(tag);
+        l.Tag = tag;
+        parent.Controls.Add(l);
+        ComboBox c = new ComboBox();
+        c.DropDownStyle = ComboBoxStyle.DropDownList;
+        c.Location = new Point(240, y);
+        c.Size = new Size(160, 24);
+        foreach (string it in items) c.Items.Add(it);
+        parent.Controls.Add(c);
+        y += 30;
+        return c;
+    }
+
+    TextBox AddSetText(Panel parent, ref int y, string tag, int width)
+    {
+        Label l = new RLabel();
+        l.AutoSize = true;
+        l.Location = new Point(40, y + 3);
+        l.Text = L10N._(tag);
+        l.Tag = tag;
+        parent.Controls.Add(l);
+        TextBox tb = new TextBox();
+        tb.Location = new Point(240, y);
+        tb.Size = new Size(width, 24);
+        parent.Controls.Add(tb);
+        y += 30;
+        return tb;
+    }
+
+    void LoadSettings()
+    {
+        string core = CoreExePath();
+        if (core == null) { LogWarn(L10N._("op.coremissing")); return; }
+        ThreadPool.QueueUserWorkItem(delegate(object _)
+        {
+            CoreRunResult r = RunCoreCapture(core, "config-get", 10000);
+            BeginInvoke((Action)delegate { OnSettingsReady(r); });
+        });
+    }
+
+    void OnSettingsReady(CoreRunResult r)
+    {
+        setOrig.Clear();
+        foreach (string ln in (r.All ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!ln.StartsWith("CONFIG ")) continue;
+            string[] pp = ln.Substring(7).Split(new[] { ' ' }, 2);
+            if (pp.Length >= 1) setOrig[pp[0]] = pp.Length >= 2 ? pp[1] : "";
+        }
+        string g;
+        if (cmbHost != null && setOrig.TryGetValue("host", out g)) cmbHost.SelectedItem = g;
+        if (txtWs != null && setOrig.TryGetValue("ws", out g)) txtWs.Text = g;
+        if (txtKeep != null && setOrig.TryGetValue("keep_backups", out g)) txtKeep.Text = g;
+        if (cmbChkUpd != null && setOrig.TryGetValue("check_update", out g)) cmbChkUpd.SelectedItem = g;
+        if (cmbChkDshUpd != null && setOrig.TryGetValue("check_dsh_update", out g)) cmbChkDshUpd.SelectedItem = g;
+        if (cmbChannel != null && setOrig.TryGetValue("update_channel", out g)) cmbChannel.SelectedItem = g;
+        if (cmbLang != null && setOrig.TryGetValue("lang", out g)) cmbLang.SelectedItem = g;
+    }
+
+    void SaveSettings()
+    {
+        var changes = new List<string[]>();
+        string g;
+        if (cmbHost != null && cmbHost.SelectedItem != null && setOrig.TryGetValue("host", out g) && cmbHost.SelectedItem.ToString() != g) changes.Add(new string[] { "host", cmbHost.SelectedItem.ToString() });
+        if (txtWs != null && setOrig.TryGetValue("ws", out g) && txtWs.Text.Trim() != g) changes.Add(new string[] { "ws", txtWs.Text.Trim() });
+        if (txtKeep != null && setOrig.TryGetValue("keep_backups", out g) && txtKeep.Text.Trim() != g) changes.Add(new string[] { "keep_backups", txtKeep.Text.Trim() });
+        if (cmbChkUpd != null && cmbChkUpd.SelectedItem != null && setOrig.TryGetValue("check_update", out g) && cmbChkUpd.SelectedItem.ToString() != g) changes.Add(new string[] { "check_update", cmbChkUpd.SelectedItem.ToString() });
+        if (cmbChkDshUpd != null && cmbChkDshUpd.SelectedItem != null && setOrig.TryGetValue("check_dsh_update", out g) && cmbChkDshUpd.SelectedItem.ToString() != g) changes.Add(new string[] { "check_dsh_update", cmbChkDshUpd.SelectedItem.ToString() });
+        if (cmbChannel != null && cmbChannel.SelectedItem != null && setOrig.TryGetValue("update_channel", out g) && cmbChannel.SelectedItem.ToString() != g) changes.Add(new string[] { "update_channel", cmbChannel.SelectedItem.ToString() });
+        if (cmbLang != null && cmbLang.SelectedItem != null && setOrig.TryGetValue("lang", out g) && cmbLang.SelectedItem.ToString() != g) changes.Add(new string[] { "lang", cmbLang.SelectedItem.ToString() });
+        if (changes.Count == 0) { LogLine(L10N._("settings.title") + " → " + L10N._("op.ok")); return; }
+        Interlocked.Exchange(ref busy, 1);
+        UpdateActionButtons();
+        ThreadPool.QueueUserWorkItem(delegate(object _)
+        {
+            string core = CoreExePath();
+            var results = new List<string>();
+            if (core != null)
+            {
+                foreach (string[] kv in changes)
+                {
+                    CoreRunResult rr = RunCoreCapture(core, "config-set " + kv[0] + " \"" + kv[1] + "\"", 10000);
+                    results.Add(kv[0] + " → " + (((rr.MarkLine ?? "").StartsWith("CONFIGSET_OK")) ? "ok" : "fail"));
+                }
+            }
+            CoreRunResult gr = (core == null) ? new CoreRunResult() : RunCoreCapture(core, "config-get", 10000);
+            BeginInvoke((Action)delegate
+            {
+                Interlocked.Exchange(ref busy, 0);
+                UpdateActionButtons();
+                foreach (string s in results) LogLine(L10N._("settings.title") + ": " + s);
+                OnSettingsReady(gr);
+            });
+        });
+    }
+
+    // ---- 更新中心页（v2.7 Update Center）----
+    Panel BuildUpdate()
+    {
+        Panel p = new Panel();
+        Panel top = new Panel();
+        top.Dock = DockStyle.Top;
+        top.Height = 44;
+
+        Label t = new RLabel();
+        t.AutoSize = true;
+        t.Location = new Point(20, 12);
+        t.Font = new Font("Microsoft YaHei UI", 10f, FontStyle.Bold);
+        t.Text = L10N._("update.title");
+        t.Tag = "update.title";
+        top.Controls.Add(t);
+
+        btnUpGo = new RButton();
+        btnUpGo.Size = new Size(110, 28);
+        btnUpGo.Location = new Point(600, 8);
+        btnUpGo.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnUpGo.Text = L10N._("update.go");
+        btnUpGo.Click += delegate(object s, EventArgs e) { OnAction("act.update"); };   // 交互 CLI：版本列表 + 破坏性双确认（更新必须用户确认）
+        top.Controls.Add(btnUpGo);
+        btnUpCheck = new RButton();
+        btnUpCheck.Size = new Size(92, 28);
+        btnUpCheck.Location = new Point(480, 8);
+        btnUpCheck.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnUpCheck.Text = L10N._("update.check");
+        btnUpCheck.Click += delegate(object s, EventArgs e) { LoadUpdateInfo(); };
+        top.Controls.Add(btnUpCheck);
+        top.Resize += delegate(object s, EventArgs e)
+        {
+            btnUpGo.Location = new Point(top.ClientSize.Width - 110 - 20, 8);
+            btnUpCheck.Location = new Point(top.ClientSize.Width - 110 - 92 - 28, 8);
+        };
+
+        int y = 56;   // 顶栏 44px 之下起排
+        lblUpCur = AddUpRow(p, ref y, "update.current");
+        lblUpStable = AddUpRow(p, ref y, "update.latest.stable");
+        lblUpRc = AddUpRow(p, ref y, "update.latest.rc");
+        lblUpChannel = AddUpRow(p, ref y, "update.channel");
+        lblUpPre = AddUpRow(p, ref y, "update.prebackup");
+        lblUpRoll = AddUpRow(p, ref y, "update.rollback");
+        lblUpNotes = AddUpRow(p, ref y, "update.notes");
+
+        p.Controls.Add(top);   // 行标签为绝对定位普通子控件；top 最后加（Dock 逆序规则）
+        return p;
+    }
+
+    Label AddUpRow(Panel parent, ref int y, string tag)
+    {
+        Label l = new RLabel();
+        l.AutoSize = true;
+        l.Location = new Point(24, y);
+        l.Text = L10N._(tag) + ": —";
+        l.Tag = tag;
+        parent.Controls.Add(l);
+        y += 30;
+        return l;
+    }
+
+    void LoadUpdateInfo()
+    {
+        string core = CoreExePath();
+        if (core == null) { LogWarn(L10N._("op.coremissing")); return; }
+        ThreadPool.QueueUserWorkItem(delegate(object _)
+        {
+            CoreRunResult r = RunCoreCapture(core, "update-info", 30000);
+            BeginInvoke((Action)delegate { OnUpdateInfoReady(r); });
+        });
+    }
+
+    void OnUpdateInfoReady(CoreRunResult r)
+    {
+        var kv = new Dictionary<string, string>();
+        foreach (string ln in (r.All ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!ln.StartsWith("UPDATEINFO_")) continue;
+            int sp = ln.IndexOf(' ');
+            if (sp <= 0) continue;
+            kv[ln.Substring(0, sp)] = ln.Substring(sp + 1);
+        }
+        string g;
+        if (lblUpCur != null) lblUpCur.Text = L10N._("update.current") + ": " + (kv.TryGetValue("UPDATEINFO_CURRENT", out g) ? g : "?");
+        if (lblUpStable != null) lblUpStable.Text = L10N._("update.latest.stable") + ": " + (kv.TryGetValue("UPDATEINFO_LATEST_STABLE", out g) ? g : "?");
+        if (lblUpRc != null) lblUpRc.Text = L10N._("update.latest.rc") + ": " + (kv.TryGetValue("UPDATEINFO_LATEST_RC", out g) ? g : "?");
+        if (lblUpChannel != null) lblUpChannel.Text = L10N._("update.channel") + ": " + (kv.TryGetValue("UPDATEINFO_CHANNEL", out g) ? g : "?");
+        if (lblUpPre != null) lblUpPre.Text = L10N._("update.prebackup") + ": " + (kv.TryGetValue("UPDATEINFO_PREBACKUP", out g) ? g : "?");
+        if (lblUpRoll != null) lblUpRoll.Text = L10N._("update.rollback") + ": " + (kv.TryGetValue("UPDATEINFO_ROLLBACK", out g) ? g : "?");
+        if (lblUpNotes != null) lblUpNotes.Text = L10N._("update.notes") + ": " + (kv.TryGetValue("UPDATEINFO_NOTES_URL", out g) ? g : "?");
+    }
+
     Panel BuildDoctor()
     {
         Panel p = new Panel();
@@ -1782,7 +2338,7 @@ public class App : Form
     string AssemblyVersion()
     {
         try { return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Major + "." + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Minor + "." + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Build; }
-        catch { return "2.5.0"; }
+        catch { return "2.6.0"; }
     }
 
     // ---- 页面切换 ----
@@ -1796,6 +2352,9 @@ public class App : Form
             navBtns[i].Checked = (i == idx);
             navBtns[i].Refresh();
         }
+        if (idx == 1 && lvBackups != null && bkEntries.Count == 0) LoadBackupList();   // 首次进入备份页自动拉列表
+        if (idx == 2 && !upInfoLoaded) { upInfoLoaded = true; LoadUpdateInfo(); }      // 首次进入更新页自动拉数据
+        if (idx == 3 && setOrig.Count == 0) LoadSettings();                            // 首次进入设置页自动拉配置
     }
 
     // ---- 主题 ----
@@ -1910,7 +2469,7 @@ public class App : Form
     void ApplyLang()
     {
         lblTitle.Text = L10N._("app.title");
-        string[] navL10N = new string[] { "nav.home", "nav.log", "nav.doctor", "nav.about" };
+        string[] navL10N = new string[] { "nav.home", "nav.backup", "nav.update", "nav.settings", "nav.log", "nav.doctor", "nav.about" };
         for (int i = 0; i < navBtns.Length; i++)
             navBtns[i].Text = L10N._(navL10N[i]);
         lblDisclaimer.Text = L10N._("disclaimer");
@@ -1929,23 +2488,57 @@ public class App : Form
         }
         RefreshActionButtons();
         // 日志页
-        foreach (Control c in pages[1].Controls)
+        foreach (Control c in pages[4].Controls)
         {
             if (c is Label && c.Tag is string && (string)c.Tag == "log.title") c.Text = L10N._("log.title");
         }
         btnClearLog.Text = L10N._("log.clear");
+        if (btnLogAll != null) btnLogAll.Text = L10N._("log.all");
+        if (btnLogInfo != null) btnLogInfo.Text = L10N._("log.info");
+        if (btnLogWarn != null) btnLogWarn.Text = L10N._("log.warn");
+        if (btnLogErr != null) btnLogErr.Text = L10N._("log.error");
+        if (btnLogExport != null) btnLogExport.Text = L10N._("log.export");
+        if (btnLogCopy != null) btnLogCopy.Text = L10N._("log.copy");
+        // 备份页
+        foreach (Control c in pages[1].Controls)
+        {
+            if (c is Label && c.Tag is string && (string)c.Tag == "backup.title") c.Text = L10N._("backup.title");
+        }
+        if (lvBackups != null && lvBackups.Columns.Count >= 5)
+        {
+            lvBackups.Columns[0].Text = L10N._("backup.col.time");
+            lvBackups.Columns[1].Text = L10N._("backup.col.kind");
+            lvBackups.Columns[2].Text = L10N._("backup.col.size");
+            lvBackups.Columns[3].Text = L10N._("backup.col.state");
+            lvBackups.Columns[4].Text = L10N._("backup.col.name");
+        }
+        if (btnBkNow != null) btnBkNow.Text = L10N._("backup.now");
+        if (btnBkRefresh != null) btnBkRefresh.Text = L10N._("backup.refresh");
+        if (btnBkRestore != null) btnBkRestore.Text = L10N._("backup.restore");
+        if (btnBkExport != null) btnBkExport.Text = L10N._("backup.export");
+        if (btnBkDelete != null) btnBkDelete.Text = L10N._("backup.delete");
+        // 设置页
+        foreach (Control c in pages[3].Controls)
+        {
+            if (c is Label && c.Tag is string)
+            {
+                string tag = (string)c.Tag;
+                if (tag.StartsWith("settings.")) c.Text = L10N._(tag);
+            }
+        }
         // 体检页
-        foreach (Control c in pages[2].Controls)
+        foreach (Control c in pages[5].Controls)
         {
             if (c is Label && c.Tag is string && (string)c.Tag == "doc.title") c.Text = L10N._("doc.title");
         }
         // 关于页
-        foreach (Control c in pages[3].Controls)
+        foreach (Control c in pages[6].Controls)
         {
             if (c is Label && c.Tag is string && (string)c.Tag == "about.copy") c.Text = L10N._("about.copy");
         }
         if (btnDocRecheck != null) btnDocRecheck.Text = L10N._("doc.recheck");
         if (btnDocExport != null) btnDocExport.Text = L10N._("doc.export");
+        if (upInfoLoaded) LoadUpdateInfo();   // 语言切换后以新语言刷新更新中心数值
     }
 
     void RefreshActionButtons()
@@ -2092,26 +2685,98 @@ public class App : Form
     }
 
     // ---- 日志 ----
-    void LogLine(string s)
+    void LogLine(string s) { LogAdd("INFO", s); }
+    void LogWarn(string s) { LogAdd("WARN", s); }
+    void LogErr(string s) { LogAdd("ERROR", s); }
+
+    void LogAdd(string level, string s)
     {
-        string line = DateTime.Now.ToString("HH:mm:ss") + "  " + s;
-        if (txtLog == null) { pendingLog.Add(line); return; }   // 日志页尚未构建 → 暂存，BuildLog 时补写
-        Action act = delegate
-        {
-            if (txtLog.Text == L10N._("log.empty")) txtLog.Clear();
-            txtLog.AppendText(line + Environment.NewLine);
-            // 自动滚到最新一行
-            txtLog.SelectionStart = txtLog.TextLength;
-            txtLog.ScrollToCaret();
-        };
+        string[] e = new string[] { DateTime.Now.ToString("HH:mm:ss"), level, s };
+        if (txtLog == null) { pendingLog.Add(e); return; }   // 日志页尚未构建 → 暂存，BuildLog 时补写
+        logEntries.Add(e);
+        Action act = delegate { RenderLog(); };
         if (txtLog.InvokeRequired) txtLog.BeginInvoke(act);
         else act();
     }
 
+    /// <summary>v2.9 Log Center：按级别筛选 + 搜索重渲染日志区。</summary>
+    void RenderLog()
+    {
+        if (txtLog == null) return;
+        var sb = new System.Text.StringBuilder();
+        int shown = 0;
+        foreach (string[] e in logEntries)
+        {
+            if (curLogLevel != "ALL" && e[1] != curLogLevel) continue;
+            if (logQuery.Length > 0 && e[2].IndexOf(logQuery, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            sb.Append(e[0]).Append("  [").Append(e[1]).Append("] ").AppendLine(e[2]);
+            shown++;
+        }
+        txtLog.Text = shown == 0 ? L10N._("log.empty") : sb.ToString();
+        txtLog.SelectionStart = txtLog.TextLength;
+        txtLog.ScrollToCaret();
+    }
+
+    void SetLogLevel(string lvl)
+    {
+        curLogLevel = lvl;
+        if (btnLogAll != null) btnLogAll.Checked = lvl == "ALL";
+        if (btnLogInfo != null) btnLogInfo.Checked = lvl == "INFO";
+        if (btnLogWarn != null) btnLogWarn.Checked = lvl == "WARN";
+        if (btnLogErr != null) btnLogErr.Checked = lvl == "ERROR";
+        RenderLog();
+    }
+
+    RButton AddLogFilterBtn(Panel parent, ref int x, string tag, string level)
+    {
+        RButton b = new RButton();
+        b.Size = new Size(52, 24);
+        b.Location = new Point(x, 48);
+        b.Text = L10N._(tag);
+        b.Tag = tag;
+        string lv = level;
+        b.Click += delegate(object s, EventArgs e) { SetLogLevel(lv); };
+        if (parent != null) parent.Controls.Add(b);
+        x += 60;
+        return b;
+    }
+
+    void ExportLog()
+    {
+        using (var dlg = new SaveFileDialog())
+        {
+            dlg.Title = L10N._("log.export");
+            dlg.FileName = "dsh-toolkit-log-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt";
+            dlg.Filter = "Text (*.txt)|*.txt";
+            dlg.DefaultExt = "txt";
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            try
+            {
+                var sb = new System.Text.StringBuilder();
+                foreach (string[] e in logEntries) sb.Append(e[0]).Append("  [").Append(e[1]).Append("] ").AppendLine(e[2]);
+                File.WriteAllText(dlg.FileName, sb.ToString(), new UTF8Encoding(true));
+                LogLine(L10N._("log.export") + " → " + dlg.FileName);
+            }
+            catch (Exception ex) { LogWarn(L10N._("log.export") + ": " + ex.Message); }
+        }
+    }
+
+    void CopyLog()
+    {
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (string[] e in logEntries) sb.Append(e[0]).Append("  [").Append(e[1]).Append("] ").AppendLine(e[2]);
+            Clipboard.SetText(sb.ToString());
+            LogLine(L10N._("log.copy") + " → ok");
+        }
+        catch (Exception ex) { LogWarn(L10N._("log.copy") + ": " + ex.Message); }
+    }
+
     void ClearLog()
     {
-        txtLog.Clear();
-        txtLog.Text = L10N._("log.empty");
+        logEntries.Clear();
+        RenderLog();
     }
 
     void RefreshLogColors() { }
