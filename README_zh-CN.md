@@ -21,7 +21,7 @@ DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具
 
 ## 界面截图
 
-**GUI 图形面板**（B / C 版本）：
+七个 GUI 页面（B / C 版本）与它们驱动的 CLI 核心（A 版本——一切皆可脚本化）：
 
 | 首页——状态与操作（浅色） | 首页（深色） | 备份管理——列表 + 恢复/导出/删除 |
 |:---:|:---:|:---:|
@@ -31,19 +31,11 @@ DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具
 |:---:|:---:|:---:|
 | <a href="docs/screenshots/gui-update-light.png"><img src="docs/screenshots/gui-update-light.png" width="272" alt="GUI 更新页"/></a> | <a href="docs/screenshots/gui-settings-light.png"><img src="docs/screenshots/gui-settings-light.png" width="272" alt="GUI 设置页"/></a> | <a href="docs/screenshots/gui-log-light.png"><img src="docs/screenshots/gui-log-light.png" width="272" alt="GUI 日志页——结构化日志 + 级别筛选"/></a> |
 
-| 关于——版本、署名、非官方声明 | | |
+| 关于——版本、署名、非官方声明 | CLI——交互菜单 | CLI——实时状态监控（三态） |
 |:---:|:---:|:---:|
-| <a href="docs/screenshots/gui-about-light.png"><img src="docs/screenshots/gui-about-light.png" width="272" alt="GUI 关于页"/></a> | | |
+| <a href="docs/screenshots/gui-about-light.png"><img src="docs/screenshots/gui-about-light.png" width="272" alt="GUI 关于页"/></a> | <a href="docs/screenshots/cli-menu.png"><img src="docs/screenshots/cli-menu.png" width="272" alt="CLI 交互菜单"/></a> | <a href="docs/screenshots/cli-status.png"><img src="docs/screenshots/cli-status.png" width="272" alt="CLI 实时状态监控——运行中 / 启动中 / 已停止"/></a> |
 
-<sub>点击任意截图可查看原图（940×640）。</sub>
-
-**CLI 命令行核心**（A 版本——本工具的本体形态，GUI 构建其上）：
-
-| 交互菜单 | 实时状态监控（三态检测） |
-|:---:|:---:|
-| <img src="docs/screenshots/cli-menu.png" width="440" alt="CLI 交互菜单"/> | <img src="docs/screenshots/cli-status.png" width="440" alt="CLI 实时状态监控——运行中 / 启动中 / 已停止"/> |
-
-<sub>左：交互菜单——所有操作同时可脚本化（`install · start --bg · stop · backup · restore · status · about · …`）。右：实时监控——三态检测（端口＋HTTP 双重校验）、Web 地址、运行时长、dsh 与 Node.js 版本，每 3 秒刷新。</sub>
+<sub>点击任意截图可查看原图。前七张是 GUI 七页；后两张是 GUI 所驱动的 CLI 核心——交互菜单（所有操作同时可脚本化：`install · start --bg · stop · backup · restore · status · about · …`）与实时监控（三态检测：端口＋HTTP 双重校验、Web 地址、运行时长、dsh 与 Node.js 版本，每 3 秒刷新）。</sub>
 
 ## 能用它做什么
 
