@@ -27,11 +27,17 @@ Only this repository's [Releases page](https://github.com/sakanamaru/DeepSeek-Ha
 |:---:|:---:|
 | <img src="docs/screenshots/gui-home-light.png" width="440" alt="GUI home, light theme"/> | <img src="docs/screenshots/gui-home-dark.png" width="440" alt="GUI home, dark theme"/> |
 
-| Operation log | About — version & credits |
+| Backups — list, restore / export / delete | Update Center — read-only update picture |
 |:---:|:---:|
-| <img src="docs/screenshots/gui-log-light.png" width="440" alt="GUI log page"/> | <img src="docs/screenshots/gui-about-light.png" width="440" alt="GUI about page"/> |
+| <img src="docs/screenshots/gui-backup-light.png" width="440" alt="GUI backups page"/> | <img src="docs/screenshots/gui-update-light.png" width="440" alt="GUI update page"/> |
 
-**CLI core** (variant A — the original form of this tool; the GUI is built on top of it):
+| Settings — four config groups | Log Center — levels, filters, search, export |
+|:---:|:---:|
+| <img src="docs/screenshots/gui-settings-light.png" width="440" alt="GUI settings page"/> | <img src="docs/screenshots/gui-log-light.png" width="440" alt="GUI log page — structured log with level filters"/> |
+
+| About — version, credits, unofficial notice |
+|:---:|
+| <img src="docs/screenshots/gui-about-light.png" width="440" alt="GUI about page"/> |
 
 **CLI core** (variant A — the original form of this tool; the GUI is built on top of it):
 
@@ -59,13 +65,29 @@ One-click **full backup** of the dsh data directory (`~/.dsh`) into `backup\` ne
 
 Copy the backup folder to the new machine and use **Import** — multi-workspace aware (`_workspace\name\`), compatible with old backup formats, long-path safe (`\\?\`, >260 chars).
 
+### Backup Manager — see exactly what you backed up, before you touch anything
+
+The GUI **Backups** page lists every backup as a row (time, kind: Manual / Auto / Pre-update / Pre-restore / Pre-wipe, size, validity) with **Restore / Export / Delete** for the selection and a one-click **Backup Now**; the list refreshes itself after any change. Restoring always runs a **Dry-Run first**: the confirm dialog shows how many files will be added, overwritten, or kept (destination-only files are never deleted) and roughly how much data will be copied — nothing changes until you confirm. The same plan is available headlessly via `restore --path <backup> --dry-run` (machine-readable `DRYRUN_*` lines), and the interactive wipe flow previews its delete counts (files / dirs / total size) before the two-step confirmation.
+
 ### Update or cleanly uninstall dsh
 
 Menu-driven dsh updates (version list incl. rc pre-releases, destructive-action double confirm, pre-update backup; failure prints the backup location + manual rollback command — no silent half-states) and uninstall (data kept by default; wiping requires two-step confirmation and only runs while dsh is stopped).
 
+### Update Center — know before you update
+
+The GUI **Update** page visualizes the whole update picture read-only: current dsh version, latest stable, latest rc, update channel (`update_channel=stable|rc`), the most recent pre-update backup, rollback candidates (valid backup count), and a link to dsh release notes. **Check** refreshes on demand; **actually updating always goes through the interactive flow** (version list + destructive-action double confirmation) — checks may be automatic, updates never are.
+
+### Settings page — change behaviour without editing config files
+
+The GUI **Settings** page edits the toolkit's own configuration (`launcher.config`, still plain `key=value`) in four groups: **Harness** (Web host, workspace path), **Backup** (auto-backup retention, ≥3), **Update** (startup update check, dsh update detection, update channel), **Toolkit** (UI language). **Save submits only the keys you actually changed**, and out-of-range values are refused core-side — a typo cannot quietly corrupt your config. Headless equivalents: `config-get` (read every key) and `config-set <key> <value>` (whitelisted write).
+
 ### Health check — "what exactly is broken?"
 
 `doctor` (CLI) and the GUI **Doctor** page run a read-only six-category check — System (Windows / Node / npm), Harness (installed & version), Service (port, listener identity, HTTP, 3-state), Workspace (path, permissions, size), Backup (dir, latest, age), Network (registry reachability) — and end with a machine-readable verdict (`DOCTOR_OK 0` / `DOCTOR_WARN n` / `DOCTOR_ERROR n`). `doctor --report <file>` exports a full diagnostic report with API keys / tokens / cookies / passwords redacted.
+
+### Log Center — filter, search, export
+
+The GUI **Log** page is a structured operation log: every entry carries a level (`INFO / WARN / ERROR`) and a timestamp, with one-click level filters, a live search box, and **Export / Copy** buttons (export writes a UTF-8 text file). Failures — timeouts, refused operations, missing core — are logged as WARN/ERROR so you can jump straight to what went wrong.
 
 ## Why this tool
 
@@ -85,7 +107,7 @@ Menu-driven dsh updates (version list incl. rc pre-releases, destructive-action 
 
 ## 🖥️ GUI panel (three variants)
 
-Since v2.4.1 a **graphical panel** ships in three forms — pick what fits (screenshots above show its Home / Log / About pages):
+Since v2.4.1 a **graphical panel** ships in three forms — pick what fits (the panel is now **seven pages**: Home · Backups · Update · Settings · Log · Doctor · About; the screenshots above show Home / Log / About):
 
 | Variant | File(s) | Unzip / run | For |
 |---|---|---|---|
@@ -93,7 +115,7 @@ Since v2.4.1 a **graphical panel** ships in three forms — pick what fits (scre
 | **B. GUI attached** | `Toolkit GUI.exe` + core **next to it** | **must unzip fully** — the GUI depends on the sibling core exe; a stray copy shows "Core exe (CLI) not found" | GUI users deploying with the core |
 | **C. GUI standalone** | `Toolkit GUI Standalone.exe` | **single file, fully independent** — embeds the core and extracts it next to itself on first launch | "one exe handles everything" users |
 
-**Shared features**: three pages (Home status LED + dsh version + Web address + action buttons · Log · About), dark/light theme, Chinese/English, borderless rounded window, embedded logo; actions Install / Start Web / Stop Service / Backup Now / **Restore Backup (picker dialog + confirmation)** / Check for Updates / Uninstall / Desktop Shortcut / Refresh Status. Starting Web while already running just opens the browser; current data is auto-backed up before any restore.
+**Shared features**: **seven pages** (Home — status LED + dsh version + Web address + action buttons · Backups — backup list with Restore / Export / Delete + Backup Now · Update — read-only update picture · Settings — four config groups · Log — structured log with level filters, search, export/copy · Doctor — six-category read-only health check · About), dark/light theme, Chinese/English, borderless rounded window, embedded logo; actions Install / Start Web / Stop Service / Backup Now / **Restore Backup (Dry-Run confirm dialog first)** / Check for Updates / Uninstall / Desktop Shortcut / Refresh Status. Starting Web while already running just opens the browser; current data is auto-backed up before any restore.
 
 **Recommended usage**:
 
@@ -158,12 +180,12 @@ Or double-click `build_exe.cmd` in this directory. The GUI compiles from the sam
 
 No test framework or third-party dependency is required.
 
-- **Unit tests (183)** — same-assembly test proxy (`/define:UNIT`; the test entry point is `tests\unit_tests.cs`, everything else is the production code being tested):
+- **Unit tests (225)** — same-assembly test proxy (`/define:UNIT`; the test entry point is `tests\unit_tests.cs`, everything else is the production code being tested):
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs
   unittests.exe
   ```
-  Exit code 0 = all green. Covers: path round-trips (incl. UNC / non-ASCII), workspace blacklist, dsh-data markers, root marker strictness, backup dir validation, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection, netstat PID parsing.
+  Exit code 0 = all green. Covers: path round-trips (incl. UNC / non-ASCII), workspace blacklist, dsh-data markers, root marker strictness, backup dir validation, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection, netstat PID parsing, dry-run merge/delete planning (incl. restore-side skip-rule fidelity), backup kind parsing, export / delete validation, rollback-candidate lookup, configuration whitelist.
 
 - **Integration tests (33 cases)** — stubbed end-to-end matrix (variants A/C, real 3080 probing; retention policy, restore/import blocked while running, bilingual asserts):
   ```
@@ -187,7 +209,7 @@ keys/                Maintainer GPG public key
 SECURITY.md          Security policy, data & network boundaries
 CHANGELOG.md         Release history (bilingual)
 hashes.txt           SHA-256 manifest (regenerated by CI per release)
-tests/               Unit (183) & integration (33) tests — no third-party deps
+tests/               Unit (225) & integration (33) tests — no third-party deps
 docs/screenshots/    README screenshots
 .github/workflows/   CI: tests on push/PR; release build + GPG sign on tag/dispatch
 .dsh_launcher_root   Install marker (shipped in the package; deletion guard)

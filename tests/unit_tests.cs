@@ -426,6 +426,109 @@ public static class UnitTests
         Check(Program.Test.ManHash("no-space-line\r\n", "x.exe") == null, "line without separator -> null");
         Check(Program.Test.SelfInteg() == null, "test env: no hashes.txt beside unittests.exe -> null (no block)");
 
+        // ---- v2.6 Dry-Run 计划 / 备份类型 ----
+        Console.WriteLine("[V26] PlanMerge / PlanDelete / KindName");
+        string pmSrc = Path.Combine(Path.GetTempPath(), "dsh_ut_pm_src_" + Guid.NewGuid().ToString("N"));
+        string pmDst = Path.Combine(Path.GetTempPath(), "dsh_ut_pm_dst_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(pmSrc, "sessions"));
+            Directory.CreateDirectory(Path.Combine(pmSrc, "sessions", "node_modules"));
+            File.WriteAllText(Path.Combine(pmSrc, "sessions", "a.json"), "12345");      // 覆盖（dst 同名）
+            File.WriteAllText(Path.Combine(pmSrc, "sessions", "b.json"), "12");        // 新增
+            File.WriteAllText(Path.Combine(pmSrc, "settings.yaml"), "x");              // 新增顶层文件
+            File.WriteAllText(Path.Combine(pmSrc, "sessions", "node_modules", "skip.me"), "9999"); // 嵌套跳过规则
+            Directory.CreateDirectory(Path.Combine(pmDst, "sessions"));
+            File.WriteAllText(Path.Combine(pmDst, "sessions", "a.json"), "1");         // 被覆盖目标
+            File.WriteAllText(Path.Combine(pmDst, "sessions", "keep.json"), "kk");     // 保留
+            long[] plan = Program.Test.PlanMergeT(pmSrc, pmDst, "_workspace", null);
+            Check(plan[0] == 2, "plan new = 2 (b.json + settings.yaml) got " + plan[0]);
+            Check(plan[1] == 1, "plan overwrite = 1 (a.json) got " + plan[1]);
+            Check(plan[2] == 1, "plan keep = 1 (keep.json) got " + plan[2]);
+            Check(plan[3] == 8, "plan bytes = 8 (nested node_modules skipped) got " + plan[3]);
+            // 顶层 node_modules：恢复侧 RestoreFromSource 逐个顶层目录 CopyTree，该层名字规则不生效 → 必须计入（预测忠实于执行）
+            Directory.CreateDirectory(Path.Combine(pmSrc, "node_modules"));
+            File.WriteAllText(Path.Combine(pmSrc, "node_modules", "top.me"), "1234567");
+            long[] planTop = Program.Test.PlanMergeT(pmSrc, pmDst, "_workspace", null);
+            Check(planTop[0] == 3, "plan counts top-level node_modules (restore fidelity) got " + planTop[0]);
+            Check(planTop[3] == 15, "plan bytes includes top-level node_modules got " + planTop[3]);
+            // 旧格式工作区：恢复侧 CopyTree(wsSrc,target) 单次调用 → 顶层跳过规则生效
+            long[] planLegacy = Program.Test.PlanMergeLegacyT(pmSrc, pmDst);
+            Check(planLegacy[0] == 2, "planLegacy skips top-level node_modules got " + planLegacy[0]);
+            Check(planLegacy[3] == 8, "planLegacy bytes = 8 got " + planLegacy[3]);
+            long[] del = Program.Test.PlanDeleteT(pmDst);
+            Check(del[0] == 2 && del[1] == 2, "planDelete files=2 dirs=2 got " + del[0] + "/" + del[1]);
+            long[] delSrc = Program.Test.PlanDeleteT(pmSrc);
+            Check(delSrc[0] == 5, "planDelete counts node_modules files (wipe deletes all) got " + delSrc[0]);
+        }
+        finally { try { Directory.Delete(pmSrc, true); } catch { } try { Directory.Delete(pmDst, true); } catch { } }
+        Check(Program.Test.KindName("dsh-data-20260914-101010") == "Manual", "kind manual");
+        Check(Program.Test.KindName("dsh-data-20260914-101010-auto") == "Auto", "kind auto");
+        Check(Program.Test.KindName("dsh-data-20260914-101010-pre-update") == "PreUpdate", "kind pre-update");
+        Check(Program.Test.KindName("dsh-data-20260914-101010-pre-restore") == "PreRestore", "kind pre-restore");
+        Check(Program.Test.KindName("dsh-data-20260914-101010-pre-wipe") == "PreWipe", "kind pre-wipe");
+        Check(Program.Test.KindName("dsh-data-20260914-101010-pre-import") == "PreImport", "kind pre-import");
+
+        // ---- v2.6 export / delete 校验 ----
+        Console.WriteLine("[V26] NIValidateExport / NIValidateBackupDelete");
+        string vr = Path.Combine(Path.GetTempPath(), "dsh_ut_vr_" + Guid.NewGuid().ToString("N"));
+        string vbk = Path.Combine(vr, "dsh-data-20260914-120000");
+        string vout = Path.Combine(Path.GetTempPath(), "dsh_ut_vo_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(vbk);
+            Directory.CreateDirectory(vout);
+            Check(Program.Test.ValExport(vbk, vout, vr) == null, "export valid -> null");
+            Check(Program.Test.ValExport("", vout, vr) == "no-path", "export no-path");
+            Check(Program.Test.ValExport(vbk, "", vr) == "no-to", "export no-to");
+            Check(Program.Test.ValExport(vout, vout, vr) == "outside", "export outside root");
+            Check(Program.Test.ValExport(vbk, vbk, vr) == "nested", "export into itself -> nested");
+            Check(Program.Test.ValExport(Path.Combine(vr, "nope"), vout, vr) == "not-found", "export not-found");
+            Check(Program.Test.ValBkDel(vbk, vr) == null, "bkdel valid -> null");
+            Check(Program.Test.ValBkDel("", vr) == "no-path", "bkdel no-path");
+            Check(Program.Test.ValBkDel(vout, vr) == "outside", "bkdel outside");
+            Check(Program.Test.ValBkDel(Path.Combine(vr, "random-dir"), vr) == "not-backup", "bkdel not-backup");
+            Check(Program.Test.ValBkDel(Path.Combine(vr, "dsh-data-20200101-000000"), vr) == "not-found", "bkdel not-found");
+        }
+        finally { try { Directory.Delete(vr, true); } catch { } try { Directory.Delete(vout, true); } catch { } }
+
+        // ---- v2.7 回滚候选 / 通道备份查询 ----
+        Console.WriteLine("[V27] LatestBackupWithSuffix / CountValidBackups");
+        string ur = Path.Combine(Path.GetTempPath(), "dsh_ut_ur_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(ur, "backup"));
+            string b1 = Path.Combine(ur, "backup", "dsh-data-20260901-100000-pre-update");
+            string b2 = Path.Combine(ur, "backup", "dsh-data-20260902-100000");
+            string b3 = Path.Combine(ur, "backup", "dsh-data-20260903-100000-pre-update");
+            string b4 = Path.Combine(ur, "backup", "dsh-data-20260904-100000-auto");
+            Directory.CreateDirectory(b1); Directory.CreateDirectory(b2); Directory.CreateDirectory(b3); Directory.CreateDirectory(b4);
+            File.WriteAllText(Path.Combine(b1, "settings.yaml"), "x");
+            File.WriteAllText(Path.Combine(b2, "settings.yaml"), "x");
+            File.WriteAllText(Path.Combine(b4, "settings.yaml"), "x");   // b3 无标记=无效
+            Program.Test.SetStateDir(ur);
+            Check(Program.Test.CountBk() == 3, "count valid = 3 got " + Program.Test.CountBk());
+            string latestPre = Program.Test.LatestBk("-pre-update");
+            Check(latestPre != null && latestPre.EndsWith("dsh-data-20260901-100000-pre-update"), "latest pre-update skips invalid b3, got " + latestPre);
+            Check(Program.Test.LatestBk("-pre-restore") == null, "latest pre-restore = null");
+        }
+        finally { try { Directory.Delete(ur, true); } catch { } }
+
+        // ---- v2.8 config-set 白名单校验 ----
+        Console.WriteLine("[V28] NIValidateConfigSet");
+        Check(Program.Test.ValCfg("lang", "zh") == null, "lang zh ok");
+        Check(Program.Test.ValCfg("lang", "fr") == "bad-value", "lang fr rejected");
+        Check(Program.Test.ValCfg("host", "localhost") == null, "host localhost ok");
+        Check(Program.Test.ValCfg("host", "0.0.0.0") == "bad-value", "host 0.0.0.0 rejected");
+        Check(Program.Test.ValCfg("keep_backups", "10") == null, "keep_backups 10 ok");
+        Check(Program.Test.ValCfg("keep_backups", "2") == "bad-value", "keep_backups 2 rejected (<3)");
+        Check(Program.Test.ValCfg("keep_backups", "abc") == "bad-value", "keep_backups abc rejected");
+        Check(Program.Test.ValCfg("check_update", "off") == null, "check_update off ok");
+        Check(Program.Test.ValCfg("update_channel", "rc") == null, "channel rc ok");
+        Check(Program.Test.ValCfg("update_channel", "beta") == "bad-value", "channel beta rejected");
+        Check(Program.Test.ValCfg("nope", "x") == "unknown-key", "unknown key rejected");
+        Check(Program.Test.ValCfg("", "x") == "no-key", "empty key rejected");
+
         Console.WriteLine("");
         Console.WriteLine("== " + (total - fails) + "/" + total + " passed, " + fails + " failed ==");
         Environment.Exit(fails == 0 ? 0 : 1);

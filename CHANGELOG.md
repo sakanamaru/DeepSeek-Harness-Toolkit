@@ -6,6 +6,32 @@ All notable changes to **DeepSeek Harness Toolkit** (unofficial). Full release n
 
 ---
 
+## v2.6.0 — 2026-09-15 —（备份管理器 · Dry-Run · 更新中心 · 设置 · 日志中心 / Backup Manager, Dry-Run, Update Center, Settings & Log Center）
+
+### Added / 新增
+
+- **Seven-page GUI** — navigation is now Home / Backups / Update / Settings / Log / Doctor / About (v2.5.0 had four pages).
+  **七页导航**——首页 / 备份 / 更新 / 设置 / 日志 / 体检 / 关于（v2.5.0 为四页）。
+- **Backup Manager (GUI "Backups" page)** — every backup listed as a row (time / kind / size / validity) with Restore / Export / Delete for the selection and one-click Backup Now; list auto-refreshes after changes.
+  **备份管理器（GUI「备份」页）**——每条备份一行（时间/类型/大小/有效性）+ 恢复/导出/删除 + 立即备份；变更后自动刷新。
+- **Dry-Run before destructive operations** — `restore [--path X] --dry-run` prints a machine-readable merge plan (`DRYRUN_NEW/OVERWRITE/KEEP/BYTES/TOTAL`; merge semantics: destination-only files are never deleted); GUI restore shows the plan in a confirm dialog before doing anything; interactive wipe previews delete counts (files / dirs / total size) before the two-step confirmation. The preview shares the execution-side skip rules (node_modules / nested backups / symlink·junction not followed), so the numbers are what actually happens — including the restore-side distinction between a top-level and a nested skipped directory.
+  **破坏性操作前 Dry-Run**——`restore --dry-run` 输出机器可读合并计划（合并语义：仅目标端文件不删）；GUI 恢复先弹预演确认；交互清除在两步确认前预演删除量。预演与执行共用同一套跳过规则（node_modules / 嵌套备份 / symlink·junction 不跟随），**所见即所得**（含恢复侧顶层与嵌套被跳过目录的区别）。
+- **Update Center (GUI "Update" page)** — read-only visualization of the whole update picture: current dsh version, latest stable / latest rc (npm), update channel (`update_channel=stable|rc`), most recent pre-update backup, rollback candidates (valid backup count), dsh release-notes link. Network failures degrade to `unknown`, never block. "Update dsh…" still routes through the interactive flow (version list + destructive-action double confirmation): **checks may be automatic, updates never are**.
+  **更新中心（GUI「更新」页）**——只读可视化：当前版本 / 最新 stable / 最新 rc / 通道 / 更新前备份 / 回滚候选 / 发布说明链接；网络失败降级不阻断；更新仍走交互双确认（检查可自动，更新永不自动）。
+- **Settings page (GUI "Settings")** — four groups (Harness / Backup / Update / Toolkit): web host, workspace path, auto-backup retention (≥3), startup update check, dsh update detection, update channel, UI language. **Save submits only changed keys** (invalid values are refused core-side); the config file stays plain `key=value` (cross-platform friendly).
+  **设置页（GUI「设置」）**——四组控件（Harness / 备份 / 更新 / 工具箱）：Web 主机、工作区路径、自动备份保留份数（≥3）、启动更新检查、dsh 更新检测、更新通道、界面语言；**保存只提交变化项**（非法值核心侧拒绝）；配置保持 `key=value`（跨平台友好）。
+- **Log Center (GUI "Log" page)** — the Log page is now a structured operation log: every entry carries a level (`INFO / WARN / ERROR`) and timestamp; one-click level filters, live search, **Export** (UTF-8 file) / **Copy**; failures (timeouts, refused operations, missing core) are logged as WARN/ERROR.
+  **日志中心（GUI「日志」页）**——结构化操作日志：级别（INFO/WARN/ERROR）+ 时间戳、级别筛选、实时搜索、导出（UTF-8）/复制；失败（超时、被拒绝的操作、核心缺失）记 WARN/ERROR。
+- **New CLI** — `backup-list --detail` (kind / size / mtime per backup as `BACKUP_ITEM` lines), `backup-export --path <bk> --to <dir>` (copy-out), `backup-delete --path <bk>` (restricted to backups root `dsh-data-*`, audit-logged), `restore … --dry-run` (read-only merge preview), `update-info` (`UPDATEINFO_*` read-only data source), `config-get` / `config-set <key> <value>` (whitelisted read/write).
+  **新命令**——`backup-list --detail`、`backup-export`、`backup-delete`（限备份根内、写审计日志）、`restore … --dry-run`、`update-info`、`config-get` / `config-set`（白名单读写）。
+
+### Tests / 测试
+
+- Unit tests **183 → 225** — dry-run merge/delete planning (incl. restore-side skip-rule fidelity for top-level vs nested `node_modules`), backup kind parsing, export & delete validation, rollback-candidate lookup, configuration whitelist. Integration tests unchanged at **33**; CI runs both plus the three-variant GUI compile guard.
+  单元测试 **183 → 225**——Dry-Run 合并/删除计划（含恢复侧顶层 vs 嵌套 `node_modules` 跳过规则一致性）、备份类型解析、导出与删除校验、回滚候选查询、配置白名单。集成测试维持 **33**；CI 另跑两套测试与三形态 GUI 编译守卫。
+
+---
+
 ## v2.5.0 — 2026-09-14 —（体检 / Doctor + 防篡改加固 / Diagnostics & supply-chain hardening）
 
 ### Added / 新增
