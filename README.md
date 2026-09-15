@@ -21,7 +21,7 @@ Only this repository's [Releases page](https://github.com/sakanamaru/DeepSeek-Ha
 
 ## Screenshots
 
-**GUI panel** (variants B / C):
+The seven GUI pages (variants B / C) and the CLI core they drive (variant A — everything is also scriptable):
 
 | Home — status & actions (light) | Home (dark) | Backups — list, restore / export / delete |
 |:---:|:---:|:---:|
@@ -31,19 +31,11 @@ Only this repository's [Releases page](https://github.com/sakanamaru/DeepSeek-Ha
 |:---:|:---:|:---:|
 | <a href="docs/screenshots/gui-update-light.png"><img src="docs/screenshots/gui-update-light.png" width="272" alt="GUI update page"/></a> | <a href="docs/screenshots/gui-settings-light.png"><img src="docs/screenshots/gui-settings-light.png" width="272" alt="GUI settings page"/></a> | <a href="docs/screenshots/gui-log-light.png"><img src="docs/screenshots/gui-log-light.png" width="272" alt="GUI log page — structured log with level filters"/></a> |
 
-| About — version, credits, unofficial notice | | |
+| About — version, credits, unofficial notice | CLI — interactive menu | CLI — live status monitor (3-state) |
 |:---:|:---:|:---:|
-| <a href="docs/screenshots/gui-about-light.png"><img src="docs/screenshots/gui-about-light.png" width="272" alt="GUI about page"/></a> | | |
+| <a href="docs/screenshots/gui-about-light.png"><img src="docs/screenshots/gui-about-light.png" width="272" alt="GUI about page"/></a> | <a href="docs/screenshots/cli-menu.png"><img src="docs/screenshots/cli-menu.png" width="272" alt="CLI interactive menu"/></a> | <a href="docs/screenshots/cli-status.png"><img src="docs/screenshots/cli-status.png" width="272" alt="CLI live status monitor — running / starting / stopped"/></a> |
 
-<sub>Click any screenshot to open the full-size image (940×640).</sub>
-
-**CLI core** (variant A — the original form of this tool; the GUI is built on top of it):
-
-| Interactive menu | Live status monitor (3-state detection) |
-|:---:|:---:|
-| <img src="docs/screenshots/cli-menu.png" width="440" alt="CLI interactive menu"/> | <img src="docs/screenshots/cli-status.png" width="440" alt="CLI live status monitor — running / starting / stopped"/> |
-
-<sub>Left: the interactive menu — everything is also scriptable (`install · start --bg · stop · backup · restore · status · about · …`). Right: the live monitor — 3-state detection (TCP + HTTP verified), Web address, uptime, dsh &amp; Node.js versions, refreshed every 3s.</sub>
+<sub>Click any screenshot to open the full-size image. The seven GUI pages come first; the last two are the CLI core the GUI drives — the interactive menu (everything is also scriptable: `install · start --bg · stop · backup · restore · status · about · …`) and the live monitor (3-state detection via port + HTTP, Web address, uptime, dsh &amp; Node.js versions, refreshed every 3s).</sub>
 
 ## What you can do with it
 
