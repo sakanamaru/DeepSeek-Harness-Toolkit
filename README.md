@@ -23,21 +23,19 @@ Only this repository's [Releases page](https://github.com/sakanamaru/DeepSeek-Ha
 
 **GUI panel** (variants B / C):
 
-| Home — status & actions (light) | Home (dark) |
-|:---:|:---:|
-| <img src="docs/screenshots/gui-home-light.png" width="440" alt="GUI home, light theme"/> | <img src="docs/screenshots/gui-home-dark.png" width="440" alt="GUI home, dark theme"/> |
+| Home — status & actions (light) | Home (dark) | Backups — list, restore / export / delete |
+|:---:|:---:|:---:|
+| <a href="docs/screenshots/gui-home-light.png"><img src="docs/screenshots/gui-home-light.png" width="272" alt="GUI home, light theme"/></a> | <a href="docs/screenshots/gui-home-dark.png"><img src="docs/screenshots/gui-home-dark.png" width="272" alt="GUI home, dark theme"/></a> | <a href="docs/screenshots/gui-backup-light.png"><img src="docs/screenshots/gui-backup-light.png" width="272" alt="GUI backups page"/></a> |
 
-| Backups — list, restore / export / delete | Update Center — read-only update picture |
-|:---:|:---:|
-| <img src="docs/screenshots/gui-backup-light.png" width="440" alt="GUI backups page"/> | <img src="docs/screenshots/gui-update-light.png" width="440" alt="GUI update page"/> |
+| Update Center — read-only update picture | Settings — four config groups | Log Center — levels, filters, search, export |
+|:---:|:---:|:---:|
+| <a href="docs/screenshots/gui-update-light.png"><img src="docs/screenshots/gui-update-light.png" width="272" alt="GUI update page"/></a> | <a href="docs/screenshots/gui-settings-light.png"><img src="docs/screenshots/gui-settings-light.png" width="272" alt="GUI settings page"/></a> | <a href="docs/screenshots/gui-log-light.png"><img src="docs/screenshots/gui-log-light.png" width="272" alt="GUI log page — structured log with level filters"/></a> |
 
-| Settings — four config groups | Log Center — levels, filters, search, export |
-|:---:|:---:|
-| <img src="docs/screenshots/gui-settings-light.png" width="440" alt="GUI settings page"/> | <img src="docs/screenshots/gui-log-light.png" width="440" alt="GUI log page — structured log with level filters"/> |
+| About — version, credits, unofficial notice | | |
+|:---:|:---:|:---:|
+| <a href="docs/screenshots/gui-about-light.png"><img src="docs/screenshots/gui-about-light.png" width="272" alt="GUI about page"/></a> | | |
 
-| About — version, credits, unofficial notice |
-|:---:|
-| <img src="docs/screenshots/gui-about-light.png" width="440" alt="GUI about page"/> |
+<sub>Click any screenshot to open the full-size image (940×640).</sub>
 
 **CLI core** (variant A — the original form of this tool; the GUI is built on top of it):
 
