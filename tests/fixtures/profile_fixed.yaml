@@ -1,0 +1,33 @@
+# dsh profile patch layer — 测试夹具（fixed）
+# 与 profile_broken.yaml 的唯一差别：ACP 条目补上了 maxDepth（profilepatch 的目标形态）。
+# 另外把 mcp 的 command 改成存在的可执行文件，避免顺带检查报 command 警告。
+- insert:
+    # ─ ACP 子 agent ──────────────────────────────────────────────
+    - id: subagent-acp-kimi
+      name: '@deepseek-ai/dsh-subagent-acp'
+      config:
+        providerName: kimi
+        command: kimi
+        args:
+          - 'acp'
+        permission: allow
+        env: {}
+        maxDepth: 'provider-managed'
+
+    # 面向模型的委派工具（已修好：显式交给 provider 管理）
+    - id: tool-subagent-kimi
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: kimi
+        toolName: subagent_kimi
+        backgroundMode: one-shot
+        maxDepth: 'provider-managed'
+
+    # 带嵌套列表的条目：块内出现更深的 `- id:` 不得被当成新条目
+    - id: mcp-kimicu
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        servers:
+          - id: kimicu
+            command: 'C:\Windows\System32\cmd.exe'
+        failOnStartupError: true

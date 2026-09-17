@@ -107,6 +107,9 @@ public static class Program
                 case "help":      case "h": Help();    return;
                 case "selftest": Selftest(args); return;
                 case "doctor":    case "d": Doctor(args); return;   // v2.5：体检/诊断（GUI 体检页用）
+                case "profilecheck":  case "pc": ProfileCheckCli(args); return;      // v2.7：profile 静态预检（只读，不用等它崩）
+                case "bootdiag":      case "bdiag": BootDiagCli(args); return;      // v2.7：启动失败堆栈解析（只读；"bd" 已被 backup-delete 占用）
+                case "profilepatch":  case "pp": ProfilePatchCli(args); return;  // v2.7：受控单行插入修复（需 --yes；先备份可回滚）
                 default:
                     Console.WriteLine(T("未知参数：", "Unknown argument: ") + args[0]);
                     Help();
@@ -3096,6 +3099,582 @@ public static class Program
         catch (Exception ex) { LogErr("备份删除失败: " + ex); Console.WriteLine("BKDEL_FAIL " + ex.Message); }
     }
 
+    // ---------------- profile 诊断与修复（v2.7：profilecheck / bootdiag / profilepatch） ----------------
+    // 背景（真实故障样本）：dsh web 启动时 plugin tree 加载失败——
+    //   tool-subagent: provider "kimi" cannot enforce maxDepth (no depthLimit capability)
+    //   — set maxDepth: 'provider-managed' to leave the recursion budget to the provider
+    // profile 补丁层是 YAML，语义：带 id 的顶层条目 = 改已有行；新增行必须放进 insert: 列表。
+    // 所以本功能只做「在某个已存在条目的 config: 块内补一行」，绝不改顶层结构、绝不新增/删除条目。
+    // 三个命令全程零第三方依赖：块扫描（不做 YAML 全解析）+ 单行插入。
+
+    /// <summary>profile 目录（~/.dsh/profiles）。</summary>
+    static string ProfilesRoot() { return Path.Combine(DataRoot(), "profiles"); }
+
+    /// <summary>需要 maxDepth 的插件包：provider 自己管不了递归预算的那些。</summary>
+    static bool NeedsMaxDepthPlugin(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        string n = name.Trim().Trim('\'', '"');
+        return n == "@deepseek-ai/dsh-tool-subagent" || n == "@deepseek-ai/dsh-subagent-acp";
+    }
+
+    /// <summary>YAML 标量清洗：去引号 + 去掉引号外的行尾注释（引号内的 # 不当注释）。纯函数。</summary>
+    static string CleanYamlScalar(string v)
+    {
+        if (v == null) return "";
+        string s = v.Trim();
+        bool inS = false, inD = false;
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (c == '\'' && !inD) inS = !inS;
+            else if (c == '"' && !inS) inD = !inD;
+            else if (c == '#' && !inS && !inD && i > 0 && s[i - 1] == ' ') { s = s.Substring(0, i).Trim(); break; }
+        }
+        if (s.Length >= 2 && ((s[0] == '\'' && s[s.Length - 1] == '\'') || (s[0] == '"' && s[s.Length - 1] == '"')))
+            s = s.Substring(1, s.Length - 2);
+        return s.Trim();
+    }
+
+    /// <summary>剪切过长文本（诊断输出用）。</summary>
+    static string ClipText(string s, int n)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        return s.Length <= n ? s : s.Substring(0, n) + "…";
+    }
+
+    /// <summary>看着像路径（含分隔符或常见可执行后缀）——用于 mcp command 只报不修的顺带检查。</summary>
+    static bool LooksLikeCommandPath(string v)
+    {
+        if (string.IsNullOrEmpty(v)) return false;
+        if (v.IndexOf('\\') >= 0 || v.IndexOf('/') >= 0) return true;
+        string l = v.ToLowerInvariant();
+        return l.EndsWith(".exe") || l.EndsWith(".cmd") || l.EndsWith(".bat") || l.EndsWith(".ps1");
+    }
+
+    /// <summary>路径脱敏 + 相对 ~/.dsh 友好化（pretty=true → ~/.dsh/profiles/...）。</summary>
+    static string RelToDataRoot(string path, bool pretty)
+    {
+        try
+        {
+            string root = DataRoot().TrimEnd('\\');
+            if (!string.IsNullOrEmpty(path) && path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            {
+                string rel = path.Substring(root.Length).TrimStart('\\');
+                return pretty ? ("~/.dsh/" + rel.Replace('\\', '/')) : rel;
+            }
+        }
+        catch { }
+        return pretty ? SanitizeForReport(path) : Path.GetFileName(path);
+    }
+
+    /// <summary>一个 profile 风险项（块级扫描结果）。</summary>
+    class ProfileFinding
+    {
+        public string File = "";
+        public int Line;
+        public string Id = "";
+        public string Missing = "";   // 缺失/有问题的键
+        public string Hint = "";      // 处方
+    }
+
+    /// <summary>是否条目起始行：输出缩进、去缩进正文、是否 `- id:` 形式。</summary>
+    static bool TryEntryStart(string line, out int indent, out string body, out bool dashForm)
+    {
+        indent = 0; body = ""; dashForm = false;
+        if (line == null) return false;
+        string t = line.TrimEnd();
+        if (t.Trim().Length == 0 || t.TrimStart().StartsWith("#")) return false;
+        while (indent < t.Length && t[indent] == ' ') indent++;
+        body = t.Substring(indent);
+        if (Regex.IsMatch(body, @"^-\s+id:\s*\S")) { dashForm = true; return true; }
+        if (Regex.IsMatch(body, @"^id:\s*\S")) { dashForm = false; return true; }
+        return false;
+    }
+
+    /// <summary>条目块结束行下标（不含）。dash 形式按缩进切分；顶层 `id:` 形式没有结构边界，
+    /// 退到下一个同级/更浅的 `id:`/`- ` 行为止。</summary>
+    static int ProfileBlockEnd(string[] lines, int start, int entryIndent, bool dashForm)
+    {
+        int j = start + 1;
+        while (j < lines.Length)
+        {
+            string s = (lines[j] ?? "").TrimEnd();
+            if (s.Trim().Length == 0) { j++; continue; }
+            int ind = 0; while (ind < s.Length && s[ind] == ' ') ind++;
+            string b = s.Substring(ind);
+            if (b.StartsWith("#")) { j++; continue; }
+            if (dashForm)
+            {
+                if (ind < entryIndent) break;
+                if (ind == entryIndent && (b.StartsWith("- ") || b == "-")) break;
+            }
+            else
+            {
+                if (ind <= entryIndent && (b.StartsWith("id:") || b.StartsWith("- ") || b == "-")) break;
+            }
+            j++;
+        }
+        return j;
+    }
+
+    /// <summary>块级扫描（纯函数，单测入口）：找出「需要 maxDepth 却没写」的条目，
+    /// 以及 mcp-client 里 failOnStartupError=true 但 command 指向不存在文件的条目（只报不修）。
+    /// 不做 YAML 全解析——`- id: x`（insert 条目）或顶层 `id: x`（修改条目）开块。</summary>
+    static List<ProfileFinding> ProfileCheckText(string text, string fileLabel)
+    {
+        var list = new List<ProfileFinding>();
+        if (string.IsNullOrEmpty(text)) return list;
+        string[] lines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+        int i = 0;
+        while (i < lines.Length)
+        {
+            int entryIndent; string body; bool dashForm;
+            if (!TryEntryStart(lines[i], out entryIndent, out body, out dashForm)) { i++; continue; }
+            Match idm = Regex.Match(body, dashForm ? @"^-\s+id:\s*(.*)$" : @"^id:\s*(.*)$");
+            string id = CleanYamlScalar(idm.Groups[1].Value);
+            int j = ProfileBlockEnd(lines, i, entryIndent, dashForm);
+
+            string name = null;
+            bool hasConfig = false, hasMaxDepth = false, hasKeyAnywhere = false;
+            int configIndent = -1;
+            string mcpCommand = null; bool mcpFailOnStartup = false;
+            for (int k = i + 1; k < j; k++)
+            {
+                string s = (lines[k] ?? "").TrimEnd();
+                if (s.Trim().Length == 0 || s.TrimStart().StartsWith("#")) continue;
+                int ind = 0; while (ind < s.Length && s[ind] == ' ') ind++;
+                string b = s.Substring(ind);
+                if (name == null && b.StartsWith("name:")) name = CleanYamlScalar(b.Substring(5));
+                if (b.StartsWith("maxDepth:")) { hasKeyAnywhere = true; if (hasConfig && ind > configIndent) hasMaxDepth = true; }
+                if (!hasConfig && b.StartsWith("config:")) { hasConfig = true; configIndent = ind; continue; }
+                if (b.StartsWith("command:")) mcpCommand = CleanYamlScalar(b.Substring(8));
+                if (b.StartsWith("failOnStartupError:")) mcpFailOnStartup = CleanYamlScalar(b.Substring(19)).ToLowerInvariant() == "true";
+            }
+
+            if (NeedsMaxDepthPlugin(name) && !hasMaxDepth && !hasKeyAnywhere)
+            {
+                var f = new ProfileFinding();
+                f.File = fileLabel; f.Line = i + 1; f.Id = id; f.Missing = "maxDepth";
+                f.Hint = hasConfig ? "set maxDepth: 'provider-managed'" : "set maxDepth: 'provider-managed' (no config: block - manual)";
+                list.Add(f);
+            }
+            else if (!string.IsNullOrEmpty(name) && name.Trim().Trim('\'', '"') == "@deepseek-ai/dsh-mcp-client"
+                     && mcpFailOnStartup && LooksLikeCommandPath(mcpCommand) && !File.Exists(mcpCommand))
+            {
+                var f = new ProfileFinding();
+                f.File = fileLabel; f.Line = i + 1; f.Id = id; f.Missing = "command";
+                f.Hint = "command path not found: " + mcpCommand;
+                list.Add(f);
+            }
+            i = j;
+        }
+        return list;
+    }
+
+    /// <summary>扫描 profile 目录下所有 yaml/yml（只读）。dir 空 = ~/.dsh/profiles。
+    /// 默认跳过 node_modules（那是包自带的 vendor 补丁层，改了会被重装覆盖，不该由工具箱动）；
+    /// includeVendor=true 时才一并扫描。skippedVendor 回报被跳过的文件数（透明，不静默吞掉）。</summary>
+    static List<ProfileFinding> ProfileCheckScan(string dir, bool includeVendor, out int fileCount, out int skippedVendor)
+    {
+        fileCount = 0;
+        skippedVendor = 0;
+        var all = new List<ProfileFinding>();
+        try
+        {
+            if (string.IsNullOrEmpty(dir)) dir = ProfilesRoot();
+            if (!Directory.Exists(dir)) return all;
+            var merged = new List<string>();
+            merged.AddRange(Directory.GetFiles(dir, "*.yml", SearchOption.AllDirectories));
+            merged.AddRange(Directory.GetFiles(dir, "*.yaml", SearchOption.AllDirectories));
+            merged.Sort(StringComparer.OrdinalIgnoreCase);
+            foreach (string f in merged)
+            {
+                if (!includeVendor && f.IndexOf("\\node_modules\\", StringComparison.OrdinalIgnoreCase) >= 0) { skippedVendor++; continue; }
+                string text = null;
+                try { text = File.ReadAllText(f, new UTF8Encoding(false)); } catch { continue; }
+                fileCount++;
+                all.AddRange(ProfileCheckText(text, RelToDataRoot(f, true)));
+            }
+        }
+        catch { }
+        return all;
+    }
+
+    /// <summary>profilecheck：静态预检（只读，不用等它崩）。
+    /// 用法：profilecheck [--dir &lt;目录&gt;] [--file &lt;单个 yaml&gt;] [--vendor]</summary>
+    static void ProfileCheckCli(string[] args)
+    {
+        string dir = FlagValue(args, "--dir") ?? FlagValue(args, "-dir");
+        string one = FlagValue(args, "--file") ?? FlagValue(args, "-file");
+        bool vendor = HasFlag(args, "--vendor") || HasFlag(args, "-vendor");
+        int files = 0, skipped = 0;
+        List<ProfileFinding> fs;
+        if (!string.IsNullOrEmpty(one))
+        {
+            var list = new List<ProfileFinding>();
+            try
+            {
+                if (File.Exists(one))
+                {
+                    files = 1;
+                    list.AddRange(ProfileCheckText(File.ReadAllText(one, new UTF8Encoding(false)), RelToDataRoot(one, true)));
+                }
+            }
+            catch { }
+            fs = list;
+        }
+        else fs = ProfileCheckScan(dir, vendor, out files, out skipped);
+
+        foreach (ProfileFinding f in fs)
+            Console.WriteLine("PROFILECHK_WARN " + f.File + " " + f.Line + " " + f.Id + " " + f.Missing + " " + f.Hint);
+        Console.WriteLine("PROFILECHK_TOTAL " + fs.Count + " " + files);
+        if (skipped > 0) Console.WriteLine("PROFILECHK_SKIPPED_VENDOR " + skipped);
+        if (fs.Count == 0) Console.WriteLine("PROFILECHK_OK");
+    }
+
+    // ---- bootdiag：解析捕获到的启动输出（只读） ----
+
+    class BootDiagResult
+    {
+        public bool Recognized;
+        public string Kind = "unknown";
+        public string Plugin = "";
+        public string Entry = "";
+        public string File = "";
+        public int Line;
+        public string Hint = "";
+        public string FirstError = "";
+    }
+
+    /// <summary>file:///C:/a/b#entry → C:\a\b + entry（纯函数，单测覆盖）。</summary>
+    static string FileUrlToPath(string url, out string fragment)
+    {
+        fragment = "";
+        if (string.IsNullOrEmpty(url)) return "";
+        string u = url.Trim().Trim('\'', '"');
+        int hash = u.IndexOf('#');
+        if (hash >= 0) { fragment = u.Substring(hash + 1); u = u.Substring(0, hash); }
+        if (u.StartsWith("file:///")) u = u.Substring(8);
+        else if (u.StartsWith("file://")) u = u.Substring(7);
+        else if (u.StartsWith("file:/")) u = u.Substring(6);
+        try { u = Uri.UnescapeDataString(u); } catch { }
+        // file:///C:/a/b → C:\a\b （盘符形式无需再加前导反斜杠）
+        if (Regex.IsMatch(u, @"^/[A-Za-z]:/")) u = u.Substring(1);
+        return u.Replace('/', '\\');
+    }
+
+    /// <summary>在文件或目录里定位某个条目 id 的行号（1-based）；找不到返回 0。</summary>
+    static int LocateEntryLine(string dirOrFile, string entry, out string foundFile)
+    {
+        foundFile = "";
+        if (string.IsNullOrEmpty(entry)) return 0;
+        var cands = new List<string>();
+        try
+        {
+            if (File.Exists(dirOrFile)) cands.Add(dirOrFile);
+            else if (Directory.Exists(dirOrFile))
+            {
+                cands.AddRange(Directory.GetFiles(dirOrFile, "*.yml", SearchOption.AllDirectories));
+                cands.AddRange(Directory.GetFiles(dirOrFile, "*.yaml", SearchOption.AllDirectories));
+            }
+            else if (Directory.Exists(ProfilesRoot()))
+            {
+                cands.AddRange(Directory.GetFiles(ProfilesRoot(), "*.yml", SearchOption.AllDirectories));
+                cands.AddRange(Directory.GetFiles(ProfilesRoot(), "*.yaml", SearchOption.AllDirectories));
+            }
+        }
+        catch { return 0; }
+        foreach (string f in cands)
+        {
+            try
+            {
+                string[] ls = File.ReadAllLines(f, new UTF8Encoding(false));
+                for (int k = 0; k < ls.Length; k++)
+                {
+                    int ind; string body; bool dash;
+                    if (!TryEntryStart(ls[k], out ind, out body, out dash)) continue;
+                    Match m = Regex.Match(body, dash ? @"^-\s+id:\s*(.*)$" : @"^id:\s*(.*)$");
+                    if (CleanYamlScalar(m.Groups[1].Value) == entry) { foundFile = f; return k + 1; }
+                }
+            }
+            catch { }
+        }
+        return 0;
+    }
+
+    /// <summary>解析启动输出（纯函数，单测入口）。识别不到已知签名时 Recognized=false（不做猜测）。</summary>
+    static BootDiagResult BootDiagText(string text)
+    {
+        var r = new BootDiagResult();
+        if (string.IsNullOrEmpty(text)) return r;
+        string[] lines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+        foreach (string ln in lines) { string t = (ln ?? "").Trim(); if (t.Length > 0) { r.FirstError = t; break; } }
+        foreach (string ln in lines)
+        {
+            string t = (ln ?? "").Trim();
+            if (t.IndexOf("plugin tree failed to load", StringComparison.OrdinalIgnoreCase) >= 0) { r.FirstError = t; r.Recognized = true; break; }
+        }
+        if (!r.Recognized)
+        {
+            foreach (string ln in lines)
+            {
+                string t = (ln ?? "").Trim();
+                if (t.StartsWith("Error", StringComparison.OrdinalIgnoreCase) || t.IndexOf("error:", StringComparison.OrdinalIgnoreCase) >= 0) { r.FirstError = t; break; }
+            }
+            return r;
+        }
+        r.Kind = (text.IndexOf("cannot enforce maxDepth", StringComparison.OrdinalIgnoreCase) >= 0) ? "maxDepth-missing" : "plugin-tree-load";
+
+        MatchCollection mc = Regex.Matches(text, @"failed to apply loader entry\s+([^\s(]+)\s*\(([^)]+)\)");
+        // cause 链是一层层包的：最外层往往是 include (cordis:include)，真正的病灶是最内层那条。
+        // 规则：优先取带 @ 的包名匹配（最靠后的那个=最内层）；没有包名时退回最后一个匹配。
+        string lastEntry = "", lastPlugin = "", pkgEntry = "", pkgPlugin = "";
+        foreach (Match mm in mc)
+        {
+            string e = mm.Groups[1].Value.Trim();
+            string p = mm.Groups[2].Value.Trim();
+            lastEntry = e; lastPlugin = p;
+            if (p.StartsWith("@")) { pkgEntry = e; pkgPlugin = p; }
+        }
+        r.Entry = pkgEntry.Length > 0 ? pkgEntry : lastEntry;
+        r.Plugin = pkgPlugin.Length > 0 ? pkgPlugin : lastPlugin;
+        Match mh = Regex.Match(text, @"set maxDepth:\s*'([^']+)'");
+        r.Hint = mh.Success ? ("set maxDepth: '" + mh.Groups[1].Value + "'") : "set maxDepth: 'provider-managed'";
+        Match mf = Regex.Match(text, "file:///[^\\s\"']+");
+        if (mf.Success)
+        {
+            string frag;
+            string p = FileUrlToPath(mf.Value, out frag);
+            if (frag.Length > 0) r.Entry = frag;   // file:///...#entry 里的片段是最可靠的条目 id
+            r.File = p;
+            string found; int line = LocateEntryLine(p, r.Entry, out found);
+            if (line > 0) { r.File = found; r.Line = line; }
+            else if (File.Exists(p)) r.File = p;
+        }
+        return r;
+    }
+
+    static void BootDiagCli(string[] args)
+    {
+        string from = FlagValue(args, "--from") ?? FlagValue(args, "-from");
+        if (string.IsNullOrEmpty(from)) { Console.WriteLine("BOOTDIAG_FAIL no-input"); return; }
+        string text = null;
+        try { if (File.Exists(from)) text = File.ReadAllText(from, new UTF8Encoding(false)); } catch { }
+        if (text == null) { Console.WriteLine("BOOTDIAG_FAIL cannot-read " + SanitizeForReport(from)); return; }
+        BootDiagResult r = BootDiagText(text);
+        if (!r.Recognized)
+        {
+            Console.WriteLine("BOOTDIAG_FAIL");
+            Console.WriteLine("BOOTDIAG_KIND unknown");
+            Console.WriteLine("BOOTDIAG_FIRST " + ClipText(r.FirstError, 200));
+            return;
+        }
+        Console.WriteLine("BOOTDIAG_OK");
+        Console.WriteLine("BOOTDIAG_KIND " + r.Kind);
+        Console.WriteLine("BOOTDIAG_PLUGIN " + r.Plugin);
+        Console.WriteLine("BOOTDIAG_ENTRY " + r.Entry);
+        Console.WriteLine("BOOTDIAG_FILE " + SanitizeForReport(r.File));
+        Console.WriteLine("BOOTDIAG_LINE " + r.Line);
+        Console.WriteLine("BOOTDIAG_HINT " + r.Hint);
+    }
+
+    // ---- profilepatch：受控单行插入（先备份，后写入，可回滚） ----
+
+    class ProfilePatchPlan
+    {
+        public bool Noop;
+        public string Reason = "";
+        public int InsertAt = -1;      // 原始文本的字符偏移（-1 = 无法插入）
+        public string InsertText = "";
+        public string Indent = "";
+        public int Line;               // 插入行的行号（1-based）
+        public string NewText = null;
+    }
+
+    /// <summary>规划单行插入（纯函数，单测入口）：在该 id 条目的 config: 块内、同级键最后一行之后插一行。
+    /// 已有同名键 → Noop；找不到条目 / 没有 config: 块 → Reason。除新增那一行外不改任何字符。</summary>
+    static ProfilePatchPlan PlanProfilePatch(string text, string id, string key, string value)
+    {
+        var plan = new ProfilePatchPlan();
+        if (string.IsNullOrEmpty(text)) { plan.Reason = "empty-file"; return plan; }
+        if (string.IsNullOrEmpty(id)) { plan.Reason = "no-id"; return plan; }
+        if (string.IsNullOrEmpty(key)) { plan.Reason = "no-key"; return plan; }
+
+        string nl = (text.IndexOf("\r\n") >= 0) ? "\r\n" : "\n";
+        var lines = new List<string>(text.Split('\n'));
+        var offsets = new List<int>();
+        int acc = 0;
+        for (int i = 0; i < lines.Count; i++) { offsets.Add(acc); acc += lines[i].Length + 1; }
+
+        int entryIdx = -1, entryIndent = 0; bool dashForm = false;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            int ind; string body; bool dash;
+            if (!TryEntryStart(lines[i], out ind, out body, out dash)) continue;
+            Match m = Regex.Match(body, dash ? @"^-\s+id:\s*(.*)$" : @"^id:\s*(.*)$");
+            if (CleanYamlScalar(m.Groups[1].Value) == id) { entryIdx = i; entryIndent = ind; dashForm = dash; break; }
+        }
+        if (entryIdx < 0) { plan.Reason = "entry-not-found"; return plan; }
+
+        string[] arr = lines.ToArray();
+        int end = ProfileBlockEnd(arr, entryIdx, entryIndent, dashForm);
+        int configIdx = -1, configIndent = -1;
+        int lastKeyIdx = -1, keyIndent = -1;
+        for (int k = entryIdx + 1; k < end; k++)
+        {
+            string s = (arr[k] ?? "").TrimEnd();
+            if (s.Trim().Length == 0 || s.TrimStart().StartsWith("#")) continue;
+            int ind = 0; while (ind < s.Length && s[ind] == ' ') ind++;
+            string b = s.Substring(ind);
+            if (configIdx < 0)
+            {
+                if (b.StartsWith("config:")) { configIdx = k; configIndent = ind; }
+                continue;
+            }
+            if (ind <= configIndent) continue;
+            if (b.StartsWith(key + ":")) { plan.Noop = true; return plan; }   // 幂等：已有该键
+            if (lastKeyIdx < 0) keyIndent = ind;
+            lastKeyIdx = k;
+        }
+        if (configIdx < 0) { plan.Reason = "no-config-block"; return plan; }
+
+        string insertIndent = new string(' ', lastKeyIdx >= 0 ? keyIndent : (configIndent + 2));
+        string val = value.Trim();
+        if (val.StartsWith("'") || val.StartsWith("\"")) val = val.Trim('\'', '"');
+        string line = insertIndent + key + ": '" + val + "'";
+
+        int afterIdx = lastKeyIdx >= 0 ? lastKeyIdx : configIdx;
+        if (afterIdx + 1 < lines.Count)
+        {
+            plan.InsertAt = offsets[afterIdx + 1];
+            plan.InsertText = line + nl;
+            plan.Line = afterIdx + 2;
+        }
+        else
+        {
+            // 插在文件末尾（末行没有换行符）
+            plan.InsertAt = text.Length;
+            plan.InsertText = nl + line;
+            plan.Line = lines.Count + 1;
+        }
+        plan.Indent = insertIndent;
+        plan.NewText = text.Substring(0, plan.InsertAt) + plan.InsertText + text.Substring(plan.InsertAt);
+        return plan;
+    }
+
+    /// <summary>备份 profile 文件到 StateDir\backup\bootdiag-&lt;时间戳&gt;\（保留相对 ~/.dsh 的路径）。</summary>
+    static string BackupProfileFile(string file)
+    {
+        try
+        {
+            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            string root = Path.Combine(BackupsRoot(), "bootdiag-" + stamp);
+            string dest = Path.Combine(root, RelToDataRoot(file, false));
+            string dir = Path.GetDirectoryName(dest);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            File.Copy(file, dest, true);
+            LogErr("profilepatch: 备份 " + SanitizeForReport(file) + " → " + dest);
+            return dest;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>完整流程：读（严格 UTF-8，保留 BOM 与否）→ 幂等 → 备份 → 写一行 → 复扫 → 失败回滚。
+    /// simulateVerifyFail 仅供单测覆盖回滚路径。返回机器标记行。</summary>
+    static string ProfilePatchApply(string file, string id, string key, string value, bool simulateVerifyFail, out string backupPath)
+    {
+        backupPath = null;
+        if (!File.Exists(file)) return "PROFILEPATCH_FAIL file-not-found";
+        bool bom;
+        string text;
+        try
+        {
+            byte[] raw = File.ReadAllBytes(file);
+            bom = raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF;
+            text = new UTF8Encoding(false, true).GetString(raw, bom ? 3 : 0, raw.Length - (bom ? 3 : 0));
+        }
+        catch { return "PROFILEPATCH_FAIL not-utf8"; }
+
+        ProfilePatchPlan plan = PlanProfilePatch(text, id, key, value);
+        if (plan.Noop) return "PROFILEPATCH_NOOP";
+        if (plan.InsertAt < 0) return "PROFILEPATCH_FAIL " + plan.Reason;
+
+        backupPath = BackupProfileFile(file);
+        if (backupPath == null) return "PROFILEPATCH_FAIL backup-failed";
+        try
+        {
+            byte[] body = new UTF8Encoding(false).GetBytes(plan.NewText);
+            byte[] outBytes = new byte[body.Length + (bom ? 3 : 0)];
+            if (bom) { outBytes[0] = 0xEF; outBytes[1] = 0xBB; outBytes[2] = 0xBF; }
+            Array.Copy(body, 0, outBytes, bom ? 3 : 0, body.Length);
+            File.WriteAllBytes(file, outBytes);
+        }
+        catch (Exception ex) { return "PROFILEPATCH_FAIL write: " + ClipText(ex.Message, 120); }
+
+        bool still = simulateVerifyFail;
+        if (!still)
+        {
+            foreach (ProfileFinding f in ProfileCheckText(plan.NewText, SanitizeForReport(file)))
+                if (f.Id == id && f.Missing == "maxDepth") { still = true; break; }
+        }
+        if (still)
+        {
+            try { File.Copy(backupPath, file, true); } catch { }
+            return "PROFILEPATCH_ROLLBACK " + SanitizeForReport(backupPath);
+        }
+        return "PROFILEPATCH_OK " + SanitizeForReport(file) + ":" + plan.Line;
+    }
+
+    /// <summary>profilepatch：受控写入（必须先预览；--yes 才落盘；白名单只允许 maxDepth 处方）。</summary>
+    static void ProfilePatchCli(string[] args)
+    {
+        string file = FlagValue(args, "--file") ?? FlagValue(args, "-file");
+        string id = FlagValue(args, "--id") ?? FlagValue(args, "-id");
+        string setPair = FlagValue(args, "--set") ?? FlagValue(args, "-set");
+        bool yes = HasFlag(args, "--yes") || HasFlag(args, "-yes");
+        if (string.IsNullOrEmpty(file) || string.IsNullOrEmpty(id) || string.IsNullOrEmpty(setPair))
+        {
+            Console.WriteLine("PROFILEPATCH_FAIL usage: profilepatch --file <yaml> --id <entry> --set key=value [--yes]");
+            return;
+        }
+        int eq = setPair.IndexOf('=');
+        if (eq <= 0) { Console.WriteLine("PROFILEPATCH_FAIL bad-set"); return; }
+        string key = setPair.Substring(0, eq).Trim();
+        string value = setPair.Substring(eq + 1).Trim();
+        // 白名单：本命令只为这一个处方存在，拒绝变成"通用配置改写器"
+        if (key != "maxDepth" || value.Trim('\'', '"') != "provider-managed")
+        {
+            Console.WriteLine("PROFILEPATCH_FAIL unsupported-set (only maxDepth=provider-managed)");
+            return;
+        }
+        if (!File.Exists(file)) { Console.WriteLine("PROFILEPATCH_FAIL file-not-found " + SanitizeForReport(file)); return; }
+
+        bool bom; string text;
+        try
+        {
+            byte[] raw = File.ReadAllBytes(file);
+            bom = raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF;
+            text = new UTF8Encoding(false, true).GetString(raw, bom ? 3 : 0, raw.Length - (bom ? 3 : 0));
+        }
+        catch { Console.WriteLine("PROFILEPATCH_FAIL not-utf8"); return; }
+
+        ProfilePatchPlan plan = PlanProfilePatch(text, id, key, value);
+        if (plan.Noop) { Console.WriteLine("PROFILEPATCH_NOOP"); return; }
+        if (plan.InsertAt < 0) { Console.WriteLine("PROFILEPATCH_FAIL " + plan.Reason); return; }
+        Console.WriteLine("PROFILEPATCH_PLAN " + SanitizeForReport(file) + ":" + plan.Line + " " + plan.Indent + key + ": 'provider-managed'");
+        if (!yes)
+        {
+            // 预览模式不落任何文件（备份在 --yes 时先于写入执行）
+            Console.WriteLine("PROFILEPATCH_DRYRUN");
+            return;
+        }
+        string bk;
+        string res = ProfilePatchApply(file, id, key, value, false, out bk);
+        if (!string.IsNullOrEmpty(bk)) Console.WriteLine("PROFILEPATCH_BACKUP " + SanitizeForReport(bk));
+        Console.WriteLine(res);
+    }
+
     // ---------------- 配置读写命令（v2.8 Configuration） ----------------
 
     /// <summary>config-set 校验（供单测）：白名单键 + 值域；返回 null=通过，否则原因键（no-key/unknown-key/bad-value）。</summary>
@@ -3390,6 +3969,26 @@ public static class Program
         public static int CountBk() { return Program.CountValidBackups(); }
         public static string ValCfg(string key, string value) { return Program.NIValidateConfigSet(key, value); }
         public static string UptimeT(double seconds) { return Program.FormatUptime(TimeSpan.FromSeconds(seconds)); }
+        // ---- v2.7 profile 诊断与修复 ----
+        public static string[] ProfChkT(string text)
+        {
+            List<string> r = new List<string>();
+            foreach (Program.ProfileFinding f in Program.ProfileCheckText(text, "T")) r.Add(f.Line + "|" + f.Id + "|" + f.Missing);
+            return r.ToArray();
+        }
+        public static string[] FileUrlT(string url) { string frag; string p = Program.FileUrlToPath(url, out frag); return new string[] { p, frag }; }
+        public static string[] BootDiagT(string text)
+        {
+            Program.BootDiagResult r = Program.BootDiagText(text);
+            return new string[] { r.Recognized ? "OK" : "FAIL", r.Kind, r.Plugin, r.Entry, r.File, r.Line.ToString(), r.Hint, r.FirstError };
+        }
+        public static string[] PatchT(string text, string id, string key, string value)
+        {
+            Program.ProfilePatchPlan p = Program.PlanProfilePatch(text, id, key, value);
+            return new string[] { p.Noop ? "NOOP" : (p.InsertAt < 0 ? "FAIL:" + p.Reason : "PLAN"), p.Line.ToString(), p.Indent, p.NewText == null ? "" : p.NewText };
+        }
+        public static string PatchApplyT(string file, string id, bool simulateFail, out string bk) { return Program.ProfilePatchApply(file, id, "maxDepth", "provider-managed", simulateFail, out bk); }
+        public static string CleanScalarT(string v) { return Program.CleanYamlScalar(v); }
     }
 #endif
 }
