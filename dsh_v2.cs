@@ -3274,8 +3274,9 @@ public static class Program
 
     /// <summary>扫描 profile 目录下所有 yaml/yml（只读）。dir 空 = ~/.dsh/profiles。
     /// 默认跳过 node_modules（那是包自带的 vendor 补丁层，改了会被重装覆盖，不该由工具箱动）；
-    /// includeVendor=true 时才一并扫描。skippedVendor 回报被跳过的文件数（透明，不静默吞掉）。</summary>
-    static List<ProfileFinding> ProfileCheckScan(string dir, bool includeVendor, out int fileCount, out int skippedVendor)
+    /// includeVendor=true 时才一并扫描。skippedVendor 回报被跳过的文件数（透明，不静默吞掉）。
+    /// abs=true 时报告里用绝对路径（GUI 要拿它去调 profilepatch；默认是脱敏的 ~/.dsh/... 友好形式）。</summary>
+    static List<ProfileFinding> ProfileCheckScan(string dir, bool includeVendor, bool abs, out int fileCount, out int skippedVendor)
     {
         fileCount = 0;
         skippedVendor = 0;
@@ -3294,7 +3295,7 @@ public static class Program
                 string text = null;
                 try { text = File.ReadAllText(f, new UTF8Encoding(false)); } catch { continue; }
                 fileCount++;
-                all.AddRange(ProfileCheckText(text, RelToDataRoot(f, true)));
+                all.AddRange(ProfileCheckText(text, abs ? f : RelToDataRoot(f, true)));
             }
         }
         catch { }
@@ -3302,12 +3303,14 @@ public static class Program
     }
 
     /// <summary>profilecheck：静态预检（只读，不用等它崩）。
-    /// 用法：profilecheck [--dir &lt;目录&gt;] [--file &lt;单个 yaml&gt;] [--vendor]</summary>
+    /// 用法：profilecheck [--dir &lt;目录&gt;] [--file &lt;单个 yaml&gt;] [--vendor] [--abs]
+    ///   --abs：报告用绝对路径，并追加机器可解析的 PROFILECHK_FIX &lt;文件&gt;|&lt;行&gt;|&lt;id&gt;|&lt;键&gt; 行（GUI 用）。</summary>
     static void ProfileCheckCli(string[] args)
     {
         string dir = FlagValue(args, "--dir") ?? FlagValue(args, "-dir");
         string one = FlagValue(args, "--file") ?? FlagValue(args, "-file");
         bool vendor = HasFlag(args, "--vendor") || HasFlag(args, "-vendor");
+        bool abs = HasFlag(args, "--abs") || HasFlag(args, "-abs");
         int files = 0, skipped = 0;
         List<ProfileFinding> fs;
         if (!string.IsNullOrEmpty(one))
@@ -3318,18 +3321,24 @@ public static class Program
                 if (File.Exists(one))
                 {
                     files = 1;
-                    list.AddRange(ProfileCheckText(File.ReadAllText(one, new UTF8Encoding(false)), RelToDataRoot(one, true)));
+                    list.AddRange(ProfileCheckText(File.ReadAllText(one, new UTF8Encoding(false)), abs ? one : RelToDataRoot(one, true)));
                 }
             }
             catch { }
             fs = list;
         }
-        else fs = ProfileCheckScan(dir, vendor, out files, out skipped);
+        else fs = ProfileCheckScan(dir, vendor, abs, out files, out skipped);
 
         foreach (ProfileFinding f in fs)
             Console.WriteLine("PROFILECHK_WARN " + f.File + " " + f.Line + " " + f.Id + " " + f.Missing + " " + f.Hint);
         Console.WriteLine("PROFILECHK_TOTAL " + fs.Count + " " + files);
         if (skipped > 0) Console.WriteLine("PROFILECHK_SKIPPED_VENDOR " + skipped);
+        if (abs)
+        {
+            // 只有能自动修的（maxDepth）才给 FIX 行；command 类只报不修
+            foreach (ProfileFinding f in fs)
+                if (f.Missing == "maxDepth") Console.WriteLine("PROFILECHK_FIX " + f.File + "|" + f.Line + "|" + f.Id + "|" + f.Missing);
+        }
         if (fs.Count == 0) Console.WriteLine("PROFILECHK_OK");
     }
 
