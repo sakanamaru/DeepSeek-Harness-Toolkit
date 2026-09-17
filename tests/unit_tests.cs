@@ -19,6 +19,13 @@ public static class UnitTests
         else { fails++; Console.WriteLine("  [FAIL] " + name); }
     }
 
+    static bool BytesEq(byte[] a, byte[] b)
+    {
+        if (a == null || b == null || a.Length != b.Length) return false;
+        for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
+        return true;
+    }
+
     public static void Main()
     {
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
@@ -553,6 +560,110 @@ public static class UnitTests
         Check(Program.Test.ValCfg("auto_start", "off") == null, "auto_start off ok");
         Check(Program.Test.ValCfg("auto_start", "") == "bad-value", "auto_start empty rejected");
         Check(Program.Test.ValCfg("auto_start", "yes") == "bad-value", "auto_start yes rejected");
+
+        // ---- v2.7 profile 诊断与修复（profilecheck / bootdiag / profilepatch）----
+        Console.WriteLine("[V27] profilecheck / bootdiag / profilepatch");
+        string fixDir = Path.Combine("tests", "fixtures");
+        string fBroken = Path.Combine(fixDir, "profile_broken.yaml");
+        string fFixed = Path.Combine(fixDir, "profile_fixed.yaml");
+        Check(File.Exists(fBroken) && File.Exists(fFixed), "fixtures present (tests/fixtures/*.yaml)");
+        string tBroken = File.Exists(fBroken) ? File.ReadAllText(fBroken, new UTF8Encoding(false)) : "";
+        string tFixed = File.Exists(fFixed) ? File.ReadAllText(fFixed, new UTF8Encoding(false)) : "";
+
+        // 1) fixed → 0 警告；broken → 1 警告且定位到条目
+        string[] wFix = Program.Test.ProfChkT(tFixed);
+        string[] wBrk = Program.Test.ProfChkT(tBroken);
+        Check(wFix.Length == 0, "profilecheck(fixed) = 0 warnings, got " + wFix.Length);
+        Check(wBrk.Length == 2, "profilecheck(broken) = 2 warnings (maxDepth + mcp command), got " + wBrk.Length + " [" + string.Join(",", wBrk) + "]");
+        Check(wBrk.Length >= 1 && wBrk[0].EndsWith("|subagent-acp-kimi|maxDepth"), "broken warning names entry+key, got " + (wBrk.Length >= 1 ? wBrk[0] : ""));
+        Check(wBrk.Length >= 2 && wBrk[1].EndsWith("|mcp-kimicu|command"), "broken fixture also flags mcp command (report-only), got " + (wBrk.Length >= 2 ? wBrk[1] : ""));
+        Check(wFix.Length == 0, "mcp entry with existing command: no warning");
+
+        // 2) 块边界：块内更深的 `- id:`（嵌套列表）不得被当成新条目
+        string nested = "- insert:\n    - id: outer\n      name: '@deepseek-ai/dsh-tool-subagent'\n      config:\n        list:\n          - id: inner\n            x: 1\n        maxDepth: 'provider-managed'\n";
+        Check(Program.Test.ProfChkT(nested).Length == 0, "nested '- id:' is not a separate entry");
+
+        // 3) mcp-client：failOnStartupError=true 且 command 指向不存在的文件 → 只报不修
+        string mcpText = "- insert:\n    - id: m1\n      name: '@deepseek-ai/dsh-mcp-client'\n      config:\n        command: 'C:\\nope\\nope.exe'\n        failOnStartupError: true\n";
+        string[] wMcp = Program.Test.ProfChkT(mcpText);
+        Check(wMcp.Length == 1 && wMcp[0].EndsWith("|m1|command"), "mcp missing command reported, got " + (wMcp.Length > 0 ? wMcp[0] : "(none)"));
+
+        // 4) 标量清洗：引号 / 引号内 # / 行尾注释
+        Check(Program.Test.CleanScalarT("'provider-managed' # note") == "provider-managed", "scalar: quotes + trailing comment");
+        Check(Program.Test.CleanScalarT("\"a#b\"") == "a#b", "scalar: '#' inside quotes kept");
+        Check(Program.Test.CleanScalarT("'@deepseek-ai/dsh-tool-subagent'") == "@deepseek-ai/dsh-tool-subagent", "scalar: package name unquoted");
+
+        // 5) file:/// URL → 本地路径 + 条目片段
+        string[] fu = Program.Test.FileUrlT("file:///C:/Users/x/.dsh/profiles/web/#tool-subagent-kimi");
+        Check(fu[0] == "C:\\Users\\x\\.dsh\\profiles\\web\\", "FileUrlToPath path, got " + fu[0]);
+        Check(fu[1] == "tool-subagent-kimi", "FileUrlToPath fragment, got " + fu[1]);
+
+        // 6) bootdiag：真实堆栈（外层 include 包裹 → 必须取最内层病灶）
+        string stack = "Error: dsh: plugin tree failed to load: failed to apply loader entry include (cordis:include): " +
+                       "failed to apply loader entry tool-subagent-kimi (@deepseek-ai/dsh-tool-subagent): " +
+                       "tool-subagent: provider \"kimi\" cannot enforce maxDepth (no depthLimit capability)\n" +
+                       "    - set maxDepth: 'provider-managed' to leave the recursion budget to the provider\n" +
+                       "    at file:///C:/Users/x/.dsh/profiles/web/#tool-subagent-kimi\n";
+        string[] bd = Program.Test.BootDiagT(stack);
+        Check(bd[0] == "OK" && bd[1] == "maxDepth-missing", "bootdiag kind, got " + bd[0] + "/" + bd[1]);
+        Check(bd[2] == "@deepseek-ai/dsh-tool-subagent", "bootdiag plugin = innermost package, got " + bd[2]);
+        Check(bd[3] == "tool-subagent-kimi", "bootdiag entry, got " + bd[3]);
+        Check(bd[6] == "set maxDepth: 'provider-managed'", "bootdiag hint, got " + bd[6]);
+        string[] bd2 = Program.Test.BootDiagT("Error: listen EADDRINUSE: address already in use 127.0.0.1:3080\n    at x\n");
+        Check(bd2[0] == "FAIL" && bd2[1] == "unknown" && bd2[7].StartsWith("Error: listen EADDRINUSE"), "bootdiag unknown + first error line, got " + bd2[1]);
+        string[] bd3 = Program.Test.BootDiagT("");
+        Check(bd3[0] == "FAIL" && bd3[1] == "unknown", "bootdiag empty input: no false positive");
+
+        // 7) patch 计划：幂等 / 缩进 / 仅新增一行 / 拒绝未知条目
+        string[] pNoop = Program.Test.PatchT(tFixed, "subagent-acp-kimi", "maxDepth", "provider-managed");
+        Check(pNoop[0] == "NOOP", "patch idempotent on fixed fixture, got " + pNoop[0]);
+        string[] pPlan = Program.Test.PatchT(tBroken, "subagent-acp-kimi", "maxDepth", "provider-managed");
+        Check(pPlan[0] == "PLAN", "patch plan on broken fixture, got " + pPlan[0]);
+        Check(pPlan[2] == "        ", "patch indent = 8 spaces (sibling level), got [" + pPlan[2] + "]");
+        string[] nt = pPlan[3].Split('\n');
+        string[] ot = tBroken.Split('\n');
+        Check(nt.Length == ot.Length + 1, "patch: exactly one line added (" + ot.Length + " -> " + nt.Length + ")");
+        int insLine = 0; int.TryParse(pPlan[1], out insLine);
+        string rejoined = "";
+        for (int i = 0; i < nt.Length; i++) { if (i == insLine - 1) continue; rejoined += nt[i]; if (i < nt.Length - 1) rejoined += "\n"; }
+        Check(rejoined == tBroken, "patch: all other lines byte-identical");
+        string[] pMiss = Program.Test.PatchT(tBroken, "no-such-entry", "maxDepth", "provider-managed");
+        Check(pMiss[0] == "FAIL:entry-not-found", "patch: unknown id rejected, got " + pMiss[0]);
+        string noCfg = "- insert:\n    - id: x1\n      name: '@deepseek-ai/dsh-tool-subagent'\n";
+        Check(Program.Test.PatchT(noCfg, "x1", "maxDepth", "provider-managed")[0] == "FAIL:no-config-block", "patch: entry without config: block refused");
+
+        // 8) 完整流程：备份→写入→复扫；验证失败回滚；BOM 保持
+        string ppTd = Path.Combine(Path.GetTempPath(), "dsh_ut_pp_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(ppTd);
+        Program.Test.SetStateDir(ppTd);
+        try
+        {
+            string ppF1 = Path.Combine(ppTd, "broken.yaml");
+            File.WriteAllText(ppF1, tBroken, new UTF8Encoding(false));
+            byte[] orig = File.ReadAllBytes(ppF1);
+            string bk;
+            string rRoll = Program.Test.PatchApplyT(ppF1, "subagent-acp-kimi", true, out bk);
+            Check(rRoll.StartsWith("PROFILEPATCH_ROLLBACK"), "patch: rollback on verify failure, got " + rRoll);
+            Check(BytesEq(File.ReadAllBytes(ppF1), orig), "patch: restored byte-identical after rollback");
+            Check(!string.IsNullOrEmpty(bk) && File.Exists(bk), "patch: backup taken before write");
+            string rOk = Program.Test.PatchApplyT(ppF1, "subagent-acp-kimi", false, out bk);
+            Check(rOk.StartsWith("PROFILEPATCH_OK"), "patch: apply ok, got " + rOk);
+            string[] afterW = Program.Test.ProfChkT(File.ReadAllText(ppF1, new UTF8Encoding(false)));
+            bool acpStill = false;
+            foreach (string w in afterW) if (w.EndsWith("|subagent-acp-kimi|maxDepth")) acpStill = true;
+            Check(!acpStill, "patch: no maxDepth warning for the patched entry after apply (remaining warnings: " + afterW.Length + ")");
+            Check(Program.Test.PatchApplyT(ppF1, "subagent-acp-kimi", false, out bk) == "PROFILEPATCH_NOOP", "patch: second apply is NOOP");
+            string ppF2 = Path.Combine(ppTd, "bom.yaml");
+            byte[] body = new UTF8Encoding(false).GetBytes(tBroken);
+            byte[] withBom = new byte[body.Length + 3];
+            withBom[0] = 0xEF; withBom[1] = 0xBB; withBom[2] = 0xBF;
+            Array.Copy(body, 0, withBom, 3, body.Length);
+            File.WriteAllBytes(ppF2, withBom);
+            string rBom = Program.Test.PatchApplyT(ppF2, "subagent-acp-kimi", false, out bk);
+            byte[] afterBom = File.ReadAllBytes(ppF2);
+            Check(rBom.StartsWith("PROFILEPATCH_OK") && afterBom.Length >= 3 && afterBom[0] == 0xEF && afterBom[1] == 0xBB && afterBom[2] == 0xBF, "patch: BOM preserved");
+        }
+        finally { try { Directory.Delete(ppTd, true); } catch { } }
 
         Console.WriteLine("");
         Console.WriteLine("== " + (total - fails) + "/" + total + " passed, " + fails + " failed ==");
