@@ -6,6 +6,55 @@ All notable changes to **DeepSeek Harness Toolkit** (unofficial). Full release n
 
 ---
 
+## v2.7.0 — 2026-09-18 —（托盘 · 关闭行为 · 状态栏 · 快捷键 · 验证此安装 / Tray, Close Behavior, Status Bar, Shortcuts & Verify This Install）
+
+### Added / 新增
+
+- **Tray icon & close-behavior memory (GUI)** — a tray icon (Show Window / Start dsh / Stop dsh / Exit) and one-time close prompting: the first time you close the window it asks whether to minimize to tray or exit directly and remembers the answer in `close_action` (`ask | tray | exit`; empty = never asked), changeable later on the Settings page.
+  **托盘图标与关闭行为记忆（GUI）**——托盘菜单（显示主窗口 / 启动 dsh / 停止 dsh / 退出）；首次关窗只问一次「最小化到托盘 / 直接退出」并把答案记入 `close_action`（`ask | tray | exit`，空=还没问过），之后可在设置页修改。
+- **Bottom status bar & keyboard shortcuts (GUI)** — the status bar shows service state, PID, uptime, current theme and language plus shortcut hints; `Ctrl+1`~`Ctrl+7` switch pages, `F5` refreshes status, `Ctrl+B` runs a backup (text-input fields keep their own keys).
+  **底部状态栏与快捷键（GUI）**——状态栏显示服务状态 / PID / 运行时长 / 当前主题 / 语言与快捷键提示；`Ctrl+1`~`Ctrl+7` 切页、`F5` 刷新状态、`Ctrl+B` 立即备份（文本输入框内按键不受影响）。
+- **New config keys `close_action` / `auto_start`** — both whitelisted in `config-set` and reported by `config-get`; `auto_start=off` turns off the interactive menu's 5-second auto-start countdown (the menu then waits for a manual choice and says so).
+  **新配置键 `close_action` / `auto_start`**——两者均加入 `config-set` 白名单、由 `config-get` 报告；`auto_start=off` 关闭交互菜单的 5 秒自动启动倒计时（改为明确提示、等待手动选择）。
+- **Read-only `status --detail`** — still prints the three-state marker line (`STATUS_UP` / `STATUS_STARTING` / `STATUS_DOWN`) and adds `STATUS_PID`, `STATUS_START`, `STATUS_UPTIME`; it feeds the GUI status bar and writes nothing.
+  **只读 `status --detail`**——仍输出三态标记行（`STATUS_UP` / `STATUS_STARTING` / `STATUS_DOWN`），并追加 `STATUS_PID` / `STATUS_START` / `STATUS_UPTIME` 三行；作为 GUI 状态栏数据源，全程不写任何东西。
+- **Doctor: 7th category `Integrity`** — compares the running exe against the bundled `hashes.txt`: match / mismatch (reported as an error) / no manifest found (normal for a single copied exe).
+  **体检新增第 7 类 `Integrity`**——把运行中的 exe 与随包 `hashes.txt` 比对：一致 / 不一致（按错误报告）/ 未找到清单（单独复制 exe 属正常）。
+- **About page: "Verify This Install"** — downloads the official `hashes.txt` (plain text: no JSON parsing, no third-party dependency) and compares the SHA-256 of the core exe and the GUI exe against it, with three states (match / mismatch / could not verify). It is explicitly a **hash-consistency** check, not signature verification.
+  **关于页「验证此安装」**——下载官方 `hashes.txt`（纯文本：不解析 JSON、无第三方依赖），比对核心 exe 与 GUI exe 的 SHA-256，三种结果（一致 / 不一致 / 未能验证）；明确标注为「哈希一致性」比对，**不是**签名验证。
+- **GUI startup & first-run checks** — every launch does a local consistency check against the bundled `hashes.txt` (local only, no network) and detects the "Mark of the Web" (downloaded-from-internet) marker, which only writes a log line; the very first launch runs an integrity self-check **only** — deliberately no environment inventory and no backup nagging, since a fresh machine has none of that yet.
+  **GUI 启动检查与首次启动**——每次启动都做随包 `hashes.txt` 的本地一致性检查（纯本地、不联网），并检测「来自网络」标记（Mark of the Web），只记一行日志；**首次**启动只做完整性自检——刻意不列环境清单、不谈备份（新机器上这些本来就不存在）。
+- **Toast feedback & unified restore flow (GUI)** — backup / restore / export / delete results are reported as tray balloon toasts; the "Restore" action switches to the Backup page (select → Dry-Run preview → confirm) instead of opening a second picker dialog, and restoring while the service is running is blocked up front with a clear reason.
+  **气泡反馈与恢复流程统一（GUI）**——备份 / 恢复 / 导出 / 删除结果改用托盘气泡提示；「恢复」不再弹第二个选择框，而是切到备份页（选择 → Dry-Run 预演 → 确认）；服务运行中恢复会在开始前直接阻止并说明原因。
+- **Home & Settings page updates (GUI)** — Home's Start and Install/Repair buttons swapped so Start is top-left, and the install button label follows detection ("Install dsh" when dsh is missing, "Repair dsh" when it is present); the Settings page gained two dropdowns (menu auto-start countdown; close-window behavior), both in the Toolkit group.
+  **首页与设置页调整（GUI）**——首页「启动」与「安装/修复」按钮对调，「启动」位于左上；安装按钮文案跟随检测结果（未装 dsh 显示「安装 dsh」，已装显示「修复 dsh」）；设置页新增两个下拉项（菜单倒计时自动启动 / 关闭主窗口时），同属「工具箱」组。
+- **Fewer processes, less dead code (GUI)** — the dsh version is cached and re-read only every 10th poll (plus right after operations) instead of spawning a process every 3 seconds; the now-redundant restore dialogs were removed (−348 lines) along with 18 unused localization keys.
+  **少起进程、清理死代码（GUI）**——dsh 版本改为缓存，每 10 次轮询才重读一次（操作后立即重读），不再每 3 秒起一个进程；移除已冗余的恢复对话框（−348 行）与 18 个无用本地化键。
+- **Boot-failure triage CLI — `profilecheck` / `bootdiag` / `profilepatch`** — three zero-dependency commands for the "dsh will not start" case (aliases `pc` / `bdiag` / `pp`). `profilecheck` statically scans `~/.dsh/profiles/**/*.yaml|*.yml` and reports the profile entries that make dsh fail to boot (`PROFILECHK_WARN <file> <line> <id> <key> <hint>`, `PROFILECHK_TOTAL <warnings> <files>`, `PROFILECHK_SKIPPED_VENDOR <n>`, `PROFILECHK_OK`, plus a machine-readable `PROFILECHK_FIX` line with `--abs`); `--dir` / `--file` pick another target, and `--vendor` also scans `node_modules` (skipped by default — those are package-shipped patch files). It also flags `@deepseek-ai/dsh-mcp-client` entries with `failOnStartupError: true` whose `command:` points at a missing file (report-only, never auto-fixed). `bootdiag --from <captured.txt>` parses captured dsh startup output and extracts the innermost cause from the error chain (`BOOTDIAG_OK` / `BOOTDIAG_KIND` / `BOOTDIAG_PLUGIN` / `BOOTDIAG_ENTRY` / `BOOTDIAG_FILE` / `BOOTDIAG_LINE` / `BOOTDIAG_HINT`); an unknown error prints `BOOTDIAG_KIND unknown` plus the first error line — it never guesses. `profilepatch --file <yaml> --id <entry> --set maxDepth=provider-managed [--yes]` is the controlled write: a one-line plan (`PROFILEPATCH_PLAN`), no write without `--yes` (`PROFILEPATCH_DRYRUN`), a backup into `<toolkit dir>\backup\bootdiag-<timestamp>\` before writing, exactly one inserted line with matching indentation, idempotent on a second run (`PROFILEPATCH_NOOP`), and a rescan with automatic rollback if verification fails (`PROFILEPATCH_ROLLBACK`). It accepts that single key/value pair only — deliberately not a general YAML editor.
+  **启动失败诊断与修复命令 `profilecheck` / `bootdiag` / `profilepatch`**——三个零依赖命令，专治「dsh 起不来」（别名 `pc` / `bdiag` / `pp`）。`profilecheck` 静态扫描 `~/.dsh/profiles/**/*.yaml|*.yml`，报出会让 dsh 启动失败的 profile 条目（`PROFILECHK_WARN <文件> <行> <id> <键> <提示>`、`PROFILECHK_TOTAL <告警数> <文件数>`、`PROFILECHK_SKIPPED_VENDOR <n>`、`PROFILECHK_OK`；带 `--abs` 时另给机器可读的 `PROFILECHK_FIX` 行）；`--dir` / `--file` 可换扫描目标，`--vendor` 才一并扫描 `node_modules`（默认跳过——那是包自带的补丁文件）。它还会标记 `@deepseek-ai/dsh-mcp-client` 中 `failOnStartupError: true` 但 `command:` 指向不存在文件的条目（**只报不修**）。`bootdiag --from <捕获的启动输出.txt>` 解析启动输出、从错误链里取最内层病灶（`BOOTDIAG_OK` / `BOOTDIAG_KIND` / `BOOTDIAG_PLUGIN` / `BOOTDIAG_ENTRY` / `BOOTDIAG_FILE` / `BOOTDIAG_LINE` / `BOOTDIAG_HINT`）；识别不了时报 `BOOTDIAG_KIND unknown` 并附第一条错误行——绝不猜测。`profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed [--yes]` 是受控写入：先给一行计划（`PROFILEPATCH_PLAN`），没有 `--yes` 绝不落盘（`PROFILEPATCH_DRYRUN`），写入前先备份到 `<工具箱目录>\backup\bootdiag-<时间戳>\`，只按同级缩进插入一行，二次运行幂等（`PROFILEPATCH_NOOP`），写入后复扫、校验不过自动回滚（`PROFILEPATCH_ROLLBACK`）。它只接受这一个键值对——刻意不做通用 YAML 改写器。
+- **Doctor page: "Config Check / 配置自检" (GUI)** — a new Doctor-page button runs `profilecheck`; when fixable risks are found it lists them and asks for confirmation, then backs them up and fixes them through `profilepatch` and rescans (result reported as a toast plus log lines). The scan is read-only, and the fix backs up first and rolls back automatically if verification fails.
+  **体检页新增「配置自检」按钮（GUI）**——体检页新按钮运行 `profilecheck`；发现可修风险时先列出警告并弹框确认，确认后经 `profilepatch` 先备份再修复，随后复扫（结果以气泡 + 日志反馈）。扫描全程只读；修复先备份、校验失败自动回滚。
+
+### Fixed / 修复
+
+- **GitHub HTTPS requests failed on .NET Framework** — the default `SecurityProtocol` did not include TLS 1.2, so any HTTPS request to GitHub (update check, integrity check) failed with "could not create SSL/TLS secure channel"; TLS 1.2 is now enabled explicitly.
+  **.NET Framework 下 GitHub HTTPS 请求失败**——默认 `SecurityProtocol` 不含 TLS 1.2，导致所有发往 GitHub 的 HTTPS 请求（更新检查、完整性检查）报「无法创建 SSL/TLS 安全通道」；现已显式启用 TLS 1.2。
+- **Status bar text ghosting** — on some themes the transparent status label picked up pixels from the title bar and left artifacts; it is now drawn with an opaque surround colour.
+  **状态栏文字残影**——部分主题下透明标签会拾取标题栏像素、留下残影；改为不透明底色绘制。
+- **Toolkit version wording drift** — the version the GUI displays is now kept aligned with the core version (the two had drifted apart in wording).
+  **工具箱版本文案漂移**——GUI 显示的版本与核心版本对齐（此前两者措辞已漂移不一致）。
+
+### Tests / 测试
+
+- Unit tests **225 → 244** — `close_action` / `auto_start` configuration whitelist (accepted values, empty `close_action`, case-insensitive key name, rejected values) and status-bar uptime formatting (`FormatUptime` across the second / minute / hour / day boundaries). Integration tests unchanged at **33**; CI still runs both plus the three-variant GUI compile guard.
+  单元测试 **225 → 244**——`close_action` / `auto_start` 配置白名单（合法值、`close_action` 空值、键名大小写不敏感、非法值拒绝）与状态栏运行时长格式化（`FormatUptime` 的秒 / 分 / 时 / 天边界）。集成测试维持 **33**；CI 仍跑两套测试与三形态 GUI 编译守卫。
+- Unit tests **244 → 277** — profile block scanning (a missing `maxDepth`, an `mcp-client` entry whose `command` file does not exist, the package-patch skip, a nested `- id:` not mistaken for a new entry), boot-output parsing (`file:///…#entry` → path + line, the innermost cause of a nested error chain, unknown errors reported as `unknown` with the first error line), and the controlled patch path (plan / idempotent NOOP / unknown entry refused, backup taken before writing, exactly one inserted line at sibling indentation, rescan + rollback when verification fails, BOM preserved). Integration tests unchanged at **33**; CI still runs both plus the three-variant GUI compile guard.
+  单元测试 **244 → 277**——profile 块扫描（缺 `maxDepth`、`mcp-client` 条目 `command` 指向不存在文件、包内补丁跳过、嵌套 `- id:` 不被误判为新条目）、启动输出解析（`file:///…#entry` → 路径 + 行号、多层错误链取最内层病灶、未知错误报 `unknown` 并附首条错误行）与受控写入（计划 / 幂等 NOOP / 未知条目拒绝、写入前备份、只插一行且缩进同级、复扫失败回滚、BOM 保留）。集成测试维持 **33**；CI 仍跑两套测试与三形态 GUI 编译守卫。
+
+> ⚠️ 非官方工具，与 DeepSeek 官方无关。Unofficial community tool, not affiliated with DeepSeek.
+
+---
+
 ## v2.6.0 — 2026-09-15 —（备份管理器 · Dry-Run · 更新中心 · 设置 · 日志中心 / Backup Manager, Dry-Run, Update Center, Settings & Log Center）
 
 ### Added / 新增

@@ -17,7 +17,7 @@ Install, start, monitor and uninstall the dsh Web UI, with data backup / restore
 
 ## Official downloads
 
-Only this repository's [Releases page](https://github.com/sakanamaru/DeepSeek-Harness-Toolkit/releases) ships official binaries — anything else (cloud-drive re-uploads, "paid / cracked / modified" editions, other websites or accounts) is **not official**. The project is free and open source (MIT); **no one is authorized to sell it**. Verify before running with `verify.ps1`; the trust model, supply-chain controls and manual verification steps live in [SECURITY.md](SECURITY.md).
+Only this repository's [Releases page](https://github.com/sakanamaru/DeepSeek-Harness-Toolkit/releases) ships official binaries — anything else (cloud-drive re-uploads, "paid / cracked / modified" editions, other websites or accounts) is **not official**. The project is free and open source (MIT); **no one is authorized to sell it**. Verify before running: `verify.ps1` checks SHA-256 against the CI-generated manifest and the GPG signature, and the GitHub artifact attestation is an **independent extra** provenance check that `verify.ps1` does not perform — attestation does not replace the GPG signature check either. The trust model, supply-chain controls and manual verification steps live in [SECURITY.md](SECURITY.md).
 
 ## Screenshots
 
@@ -69,15 +69,57 @@ The GUI **Update** page visualizes the whole update picture read-only: current d
 
 ### Settings page — change behaviour without editing config files
 
-The GUI **Settings** page edits the toolkit's own configuration (`launcher.config`, still plain `key=value`) in four groups: **Harness** (Web host, workspace path), **Backup** (auto-backup retention, ≥3), **Update** (startup update check, dsh update detection, update channel), **Toolkit** (UI language). **Save submits only the keys you actually changed**, and out-of-range values are refused core-side — a typo cannot quietly corrupt your config. Headless equivalents: `config-get` (read every key) and `config-set <key> <value>` (whitelisted write).
+The GUI **Settings** page edits the toolkit's own configuration (`launcher.config`, still plain `key=value`) in four groups: **Harness** (Web host, workspace path), **Backup** (auto-backup retention, ≥3), **Update** (startup update check, dsh update detection, update channel), **Toolkit** (UI language, menu auto-start countdown, close-window behavior). **Save submits only the keys you actually changed**, and out-of-range values are refused core-side — a typo cannot quietly corrupt your config. Headless equivalents: `config-get` (read every key) and `config-set <key> <value>` (whitelisted write).
 
 ### Health check — "what exactly is broken?"
 
-`doctor` (CLI) and the GUI **Doctor** page run a read-only six-category check — System (Windows / Node / npm), Harness (installed & version), Service (port, listener identity, HTTP, 3-state), Workspace (path, permissions, size), Backup (dir, latest, age), Network (registry reachability) — and end with a machine-readable verdict (`DOCTOR_OK 0` / `DOCTOR_WARN n` / `DOCTOR_ERROR n`). `doctor --report <file>` exports a full diagnostic report with API keys / tokens / cookies / passwords redacted.
+`doctor` (CLI) and the GUI **Doctor** page run a read-only seven-category check — System (Windows / Node / npm), Harness (installed & version), Service (port, listener identity, HTTP, 3-state), Workspace (path, permissions, size), Backup (dir, latest, age), Network (registry reachability), Integrity (the running exe vs the bundled `hashes.txt`: match / mismatch, reported as an error / no manifest found, normal for a single copied exe) — and end with a machine-readable verdict (`DOCTOR_OK 0` / `DOCTOR_WARN n` / `DOCTOR_ERROR n`). `doctor --report <file>` exports a full diagnostic report with API keys / tokens / cookies / passwords redacted.
+
+### "dsh won't start" — from the error to the one line that fixes it
+
+A real failure (2026-09-15): `dsh web` refused to boot with
+
+```
+plugin tree failed to load: … provider "kimi" cannot enforce maxDepth (no depthLimit capability) — set maxDepth: 'provider-managed' …
+```
+
+The cure is **one line** inside the existing profile entry's `config:` block. The profile patch layer is YAML where an entry with an `id` modifies an existing row and new rows must go under `insert:` — so this tool **never restructures the file, never adds or removes entries, and touches nothing else**. Four steps from the raw error to the prescription:
+
+| # | Step | What tells you |
+| --- | --- | --- |
+| 1 | What the error says | `bootdiag` on the captured output, or `profilecheck` on the profile directory |
+| 2 | Which plugin | `BOOTDIAG_PLUGIN` (e.g. `@deepseek-ai/dsh-tool-subagent`) |
+| 3 | Which entry & line | `BOOTDIAG_ENTRY` + `BOOTDIAG_FILE` / `BOOTDIAG_LINE` (e.g. `tool-subagent-kimi`, line 20 of `cordis.patch.yml`) |
+| 4 | The one-line prescription | `maxDepth: 'provider-managed'` inside that entry's `config:` block |
+
+```powershell
+# 1) Proactive scan (read-only): which profile entries would break a boot?
+DeepSeek Harness Toolkit.exe profilecheck              # alias: pc
+DeepSeek Harness Toolkit.exe profilecheck --vendor     # also scan node_modules (skipped by default)
+
+# 2) Already failed to start? Save the startup output to a text file, then:
+DeepSeek Harness Toolkit.exe bootdiag --from captured.txt    # alias: bdiag
+
+# 3) The prescription — preview first, then apply (backup → verify → rollback on failure):
+DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <entry> --set maxDepth=provider-managed
+DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <entry> --set maxDepth=provider-managed --yes
+```
+
+In the GUI the **Doctor** page has a **Config Check** button that does the same thing: it runs `profilecheck`, and when fixable risks are found it asks for confirmation, then backs up and fixes them through `profilepatch` and rescans.
+
+**Honest limit — the live crash is not detected for you.** Detecting this failure automatically from a live failed start is **not** automatic: the tool cannot see that crash by itself. Either run `profilecheck` proactively (a static, read-only scan of `~/.dsh/profiles/**/*.yaml|*.yml`) or save the failing startup output to a file and run `bootdiag --from <file>` (it never guesses — an unrecognized error prints `BOOTDIAG_KIND unknown` plus the first error line). The scan and both diagnostics are read-only; the write path requires an explicit `--yes`, always takes a backup first, adds only that one line, verifies by rescanning and rolls back automatically on failure, and it never touches credentials, never goes online and never edits files under `node_modules` by default. On the maintainer's own machine the scan found exactly one real leftover issue (`subagent-acp-kimi` missing `maxDepth`) across 7 profile files while skipping 563 package files under `node_modules`; `bootdiag` resolved the real captured stack to `@deepseek-ai/dsh-tool-subagent` / `tool-subagent-kimi` / line 20 of `cordis.patch.yml`; and `profilepatch` on a copy added exactly one line and reported NOOP on the second run.
 
 ### Log Center — filter, search, export
 
 The GUI **Log** page is a structured operation log: every entry carries a level (`INFO / WARN / ERROR`) and a timestamp, with one-click level filters, a live search box, and **Export / Copy** buttons (export writes a UTF-8 text file). Failures — timeouts, refused operations, missing core — are logged as WARN/ERROR so you can jump straight to what went wrong.
+
+### Tray, status bar and shortcuts
+
+The GUI keeps a **tray icon** (Show Window / Start dsh / Stop dsh / Exit) and remembers what closing the window should do: the **first time** you close it, it asks once — minimize to tray or exit directly — and stores the answer in `close_action` (`ask | tray | exit`, empty = never asked), changeable later on the Settings page. A bottom **status bar** shows the service state, PID, uptime, the current theme and language plus shortcut hints (the headless equivalent is the read-only `status --detail`, which adds `STATUS_PID` / `STATUS_START` / `STATUS_UPTIME` to the three-state marker line); **`Ctrl+1`~`Ctrl+7`** switch pages, **`F5`** refreshes status and **`Ctrl+B`** runs a backup (text-input fields keep their own keys). Backup / restore / export / delete results come back as tray balloon toasts.
+
+### "Verify This Install" — check what you downloaded
+
+The About page has a **Verify This Install** button: it downloads the official `hashes.txt` (plain text — no JSON, no third-party dependency) and compares the SHA-256 of the core exe and the GUI exe against it, with three outcomes: **match / mismatch / could not verify**. The same comparison runs locally — no network — on every launch against the `hashes.txt` bundled beside the exe, and the **very first** launch runs that integrity self-check only (no environment inventory and no backup prompts on a machine that has neither yet). What it is, precisely: a **hash-consistency** check, **not** signature verification and **not** proof of publisher identity — see [SECURITY.md](SECURITY.md).
 
 ## Why this tool
 
@@ -105,7 +147,7 @@ Since v2.4.1 a **graphical panel** ships in three forms — pick what fits (the 
 | **B. GUI attached** | `Toolkit GUI.exe` + core **next to it** | **must unzip fully** — the GUI depends on the sibling core exe; a stray copy shows "Core exe (CLI) not found" | GUI users deploying with the core |
 | **C. GUI standalone** | `Toolkit GUI Standalone.exe` | **single file, fully independent** — embeds the core and extracts it next to itself on first launch | "one exe handles everything" users |
 
-**Shared features**: **seven pages** (Home — status LED + dsh version + Web address + action buttons · Backups — backup list with Restore / Export / Delete + Backup Now · Update — read-only update picture · Settings — four config groups · Log — structured log with level filters, search, export/copy · Doctor — six-category read-only health check · About), dark/light theme, Chinese/English, borderless rounded window, embedded logo; actions Install / Start Web / Stop Service / Backup Now / **Restore Backup (Dry-Run confirm dialog first)** / Check for Updates / Uninstall / Desktop Shortcut / Refresh Status. Starting Web while already running just opens the browser; current data is auto-backed up before any restore.
+**Shared features**: **seven pages** (Home — status LED + dsh version + Web address + action buttons · Backups — backup list with Restore / Export / Delete + Backup Now · Update — read-only update picture · Settings — four config groups, now incl. menu auto-start countdown and close-window behavior · Log — structured log with level filters, search, export/copy · Doctor — seven-category read-only health check (incl. exe vs bundled `hashes.txt`) · About — version, credits, unofficial notice, **Verify This Install**), dark/light theme, Chinese/English, borderless rounded window, embedded logo; **tray icon** (show / start dsh / stop dsh / exit), a bottom **status bar** (state · PID · uptime · theme · language) and `Ctrl+1`~`Ctrl+7` / `F5` / `Ctrl+B` shortcuts; actions **Start Web** (top-left) / Install dsh or Repair dsh (the label follows detection) / Stop Service / Backup Now / **Restore Backup (Dry-Run confirm dialog first)** / Check for Updates / Uninstall / Desktop Shortcut / Refresh Status. Starting Web while already running just opens the browser; current data is auto-backed up before any restore.
 
 **Recommended usage**:
 
@@ -137,9 +179,10 @@ Double-click `DeepSeek Harness Toolkit.exe`, or use the command line:
 
 ```
 DeepSeek Harness Toolkit.exe install|start|uninstall|update|check|about|help
+DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # when dsh won't start (see below)
 ```
 
-Launching without arguments opens the interactive menu: with dsh installed the first run auto-starts the Web UI after a 5-second countdown (interruptible); later launches auto-start too. If dsh is **not** installed, the menu waits for your choice (press 1) — nothing is auto-installed. With the service already running, it goes straight to the status page.
+Launching without arguments opens the interactive menu: with dsh installed the first run auto-starts the Web UI after a 5-second countdown (interruptible); later launches auto-start too. Set `auto_start=off` to drop the countdown — the menu then waits for a manual choice and says so. If dsh is **not** installed, the menu waits for your choice (press 1) — nothing is auto-installed. With the service already running, it goes straight to the status page.
 
 **About workspaces:** backup auto-detects the workspace (two levels above the exe, rejecting obvious system/user dirs); you can also set it manually and persistently via menu **7 Entry → 3 Set workspace path** (the `ws=` line in `launcher.config`). **Multiple workspaces** are supported — add paths one by one (empty Enter to finish) — packed under `_workspace\name\` and restored one by one.
 
@@ -147,6 +190,7 @@ Launching without arguments opens the interactive menu: with dsh installed the f
 
 | Issue | Fix |
 | --- | --- |
+| dsh web won't start (`plugin tree failed to load`, `cannot enforce maxDepth`) | Run `profilecheck` (or save the startup output and run `bootdiag --from <file>`), then apply the one-line prescription with `profilepatch … --yes` — or use the GUI **Doctor → Config Check**. See the "dsh won't start" section above |
 | 403 or blank page | Menu **7 Entry**, switch `127.0.0.1` ↔ `localhost` (the browser treats them as different sites; stale cache causes issues) |
 | Delete failed during uninstall / wipe | Close the dsh web window first (file locks), retry; see `logs\launcher.log` if it still fails |
 | Backup failed | Check `logs\launcher.log` next to the exe for the real reason |
@@ -164,18 +208,18 @@ Requires the built-in .NET Framework 4.x on Windows (preinstalled on Win10 / Win
 
 Or double-click `build_exe.cmd` in this directory. The GUI compiles from the same-rules single file `gui_v2.cs` (one source → both attached and standalone variants; the standalone adds `/resource:<core exe>,DSHCore.exe`).
 
-**Reproducible releases (source == artifact):** each GitHub Release exe is compiled from this source by **GitHub Actions CI**, and `hashes.txt` is regenerated + **GPG-signed** by CI in the same run. The repository stores no binaries.
+**Reproducible releases (source == artifact):** each GitHub Release exe is compiled from this source by **GitHub Actions CI**, and `hashes.txt` is regenerated + **GPG-signed** by CI in the same run. Tag builds additionally publish a **GitHub artifact attestation** — an independent provenance check, verified separately with `gh`; `verify.ps1` does not check it, and it does not replace the GPG signature check. The repository stores no binaries.
 
 ## Development / Testing
 
 No test framework or third-party dependency is required.
 
-- **Unit tests (225)** — same-assembly test proxy (`/define:UNIT`; the test entry point is `tests\unit_tests.cs`, everything else is the production code being tested):
+- **Unit tests (277)** — same-assembly test proxy (`/define:UNIT`; the test entry point is `tests\unit_tests.cs`, everything else is the production code being tested):
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs
   unittests.exe
   ```
-  Exit code 0 = all green. Covers: path round-trips (incl. UNC / non-ASCII), workspace blacklist, dsh-data markers, root marker strictness, backup dir validation, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection, netstat PID parsing, dry-run merge/delete planning (incl. restore-side skip-rule fidelity), backup kind parsing, export / delete validation, rollback-candidate lookup, configuration whitelist.
+  Exit code 0 = all green. Covers: path round-trips (incl. UNC / non-ASCII), workspace blacklist, dsh-data markers, root marker strictness, backup dir validation, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection, netstat PID parsing, dry-run merge/delete planning (incl. restore-side skip-rule fidelity), backup kind parsing, export / delete validation, rollback-candidate lookup, configuration whitelist (incl. the `close_action` / `auto_start` keys), status-bar uptime formatting, profile block scanning / `bootdiag` output parsing / the controlled patch path (one-line plan, idempotent NOOP, backup, verify and rollback).
 
 - **Integration tests (33 cases)** — stubbed end-to-end matrix (variants A/C, real 3080 probing; retention policy, restore/import blocked while running, bilingual asserts):
   ```
@@ -199,7 +243,7 @@ keys/                Maintainer GPG public key
 SECURITY.md          Security policy, data & network boundaries
 CHANGELOG.md         Release history (bilingual)
 hashes.txt           SHA-256 manifest (regenerated by CI per release)
-tests/               Unit (225) & integration (33) tests — no third-party deps
+tests/               Unit (277) & integration (33) tests — no third-party deps
 docs/screenshots/    README screenshots
 .github/workflows/   CI: tests on push/PR; release build + GPG sign on tag/dispatch
 .dsh_launcher_root   Install marker (shipped in the package; deletion guard)
@@ -217,19 +261,35 @@ backup/  logs/       Runtime dirs (gitignored — never committed)
 - **Verify before you run (≈20 seconds)**:
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.4.2 -OutDir D:\verify
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.0 -OutDir D:\verify
   ```
 
   `verify.ps1` (shipped in the package) downloads the release artifacts (all three
   variants + `hashes.txt`), checks SHA-256 against the CI-generated `hashes.txt`,
-  verifies the GPG signature (`hashes.txt.asc`) when GPG is available, and prints the
-  provenance links. Read-only — installs nothing. With `-Tag` it uses fixed release
+  verifies the GPG signature (`hashes.txt.asc`) **against the pinned maintainer
+  fingerprint** using a temporary isolated keyring (your local keyring is never
+  trusted — a signature made by any other key is rejected), and prints the
+  **Release → Tag → Commit** provenance chain (tag object, commit, commit URL).
+  Read-only — installs nothing. With `-Tag` it uses fixed release
   download URLs and never calls the GitHub API (immune to anonymous rate limits);
   without `-Tag` it resolves the newest release via the API (optional `-Token` for
   rate-limited networks).
 - **GPG signature**: `hashes.txt` is signed with the maintainer's key (`hashes.txt.asc`);
   public key `keys/sakanamaru-gpg.asc`, fingerprint
   `A2F67D170B5BE4845612642C240979232B4E4CE4`.
+- **GitHub artifact attestation — an independent extra check**: tag builds also publish a
+  GitHub artifact attestation; verify it with
+  `gh attestation verify <file> --repo sakanamaru/DeepSeek-Harness-Toolkit`. `verify.ps1` does
+  **not** verify attestations, and the attestation does **not** replace the GPG signature
+  check — the two are independent, so pick either or (better) run both.
+- **What the built-in integrity checks prove — and what they do not**: the GUI's
+  "Verify This Install" button, the startup/first-run consistency check and the doctor
+  `Integrity` category only compare a file against the `hashes.txt` shipped next to it —
+  replacing **both** the exe and that manifest would pass them, so they prove consistency,
+  **not** publisher identity. Identity/provenance comes only from the GPG-signed `hashes.txt`
+  (or `verify.ps1`) and the GitHub attestation. These checks are read-only (so is
+  `status --detail`), and HTTPS requests explicitly enable TLS 1.2 — see
+  [SECURITY.md](SECURITY.md).
 - Uninstall **"Wipe all data"** deletes the dsh data directory (`~/.dsh`, including sessions and API credentials) — the tool auto-backs it up to `backup\` first.
 - Deletion is guarded **three ways**:
   1. **Blocked while the dsh Web service is running** (avoids file locks).
