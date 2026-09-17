@@ -1,5 +1,5 @@
 // ============================================================================
-//  DeepSeek Harness Toolkit V2.6.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
+//  DeepSeek Harness Toolkit V2.7.0  ——  DeepSeek Harness(dsh) 安装 / 启动 / 卸载 / 备份恢复工具箱
 // ----------------------------------------------------------------------------
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
 //  v2 重构封装：DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）
@@ -22,12 +22,12 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 
-[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.6.0")]
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit V2.7.0")]
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
-[assembly: AssemblyVersion("2.6.0.0")]
-[assembly: AssemblyFileVersion("2.6.0.0")]
+[assembly: AssemblyVersion("2.7.0.0")]
+[assembly: AssemblyFileVersion("2.7.0.0")]
 
 public static class Program
 {
@@ -46,6 +46,8 @@ public static class Program
     static bool cfgCheckDshUpdate = true; // 检测 dsh 本体更新开关（配置 check_dsh_update=off 关闭）
     static string cfgDshVersions = "";    // 本机装过的 dsh 历史版本（逗号分隔，最近 10 个）
     static string cfgChannel = "stable";  // v2.7 更新通道（配置 update_channel=stable|rc）
+    static string cfgCloseAction = "";    // v2.7 GUI 关闭行为记忆（配置 close_action=ask|tray|exit；空=还没问过 → 首次关窗询问）
+    static bool cfgAutoStart = true;      // v2.7 CLI 菜单倒计时自动启动（配置 auto_start=off 关闭倒计时，只手动选择）
     const int    AUTO_SECONDS = 5;
 
     static Lang lang = Lang.Auto;
@@ -63,7 +65,11 @@ public static class Program
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Toolkit V2.6.0"; } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.7.0"; } catch { }
+        // v2.7：显式启用 TLS 1.2。.NET Framework 4.x 的 SecurityProtocol 默认只含 Ssl3|Tls，
+        // 访问 GitHub HTTPS（更新检查 / 完整性校验）会直接抛"未能创建 SSL/TLS 安全通道"。
+        // 只做 |= 追加，不动系统默认值；失败静默（老系统上最差退化为原行为）。
+        try { System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072; } catch { }
         StateDir = ResolveStateDir();
         // 注意：根目录标记 .dsh_launcher_root 只随发布包分发，本程序永不自行补建——
         // 若启动时"看起来像完整安装"就自动写标记，攻击者可诱导用户将 exe 与任意同名文件
@@ -97,7 +103,7 @@ public static class Program
                         NIRestorePath(args.Length > 2 ? args[2] : "");
                     else NIRestore();
                     return;   // 非交互恢复（GUI/脚本用；--path 恢复指定备份）
-                case "status": StatusCli(); return;   // 服务三态（GUI 状态灯用）
+                case "status": StatusCli(HasFlag(args, "--detail") || HasFlag(args, "-detail")); return;   // 服务三态（GUI 状态灯用）；--detail 追加 PID/启动时间/运行时长（v2.7 状态栏，只读）
                 case "help":      case "h": Help();    return;
                 case "selftest": Selftest(args); return;
                 case "doctor":    case "d": Doctor(args); return;   // v2.5：体检/诊断（GUI 体检页用）
@@ -248,7 +254,7 @@ public static class Program
     static void Banner()
     {
         CL(ConsoleColor.Cyan,   "==============================================");
-        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.6.0");
+        CL(ConsoleColor.Cyan,   "  DeepSeek Harness Toolkit V2.7.0");
         CL(ConsoleColor.Cyan,   "==============================================");
         C(ConsoleColor.Gray,    "  v1 脚本协助 : "); CL(ConsoleColor.White, "SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
         C(ConsoleColor.Gray,    "  v2 重构封装 : "); CL(ConsoleColor.White, "DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
@@ -284,14 +290,20 @@ public static class Program
             bool installed = LocateDsh() != null;
             string def = installed ? "2" : "1";
             Console.WriteLine();
-            if (!autoApplied)
+            bool countdown = installed && cfgAutoStart && !autoApplied;   // v2.7：auto_start=off 时彻底不进入倒计时
+            if (countdown)
             {
-                if (installed)
-                    Info(T("检测到 dsh 已安装，5 秒后将自动【启动 Web 界面】（按任意键可手动选择）",
-                           "dsh detected. Auto-running【Start Web UI】in 5s (press any key to choose manually)."));
-                else
+                Info(T("检测到 dsh 已安装，5 秒后将自动【启动 Web 界面】（按任意键可手动选择）",
+                       "dsh detected. Auto-running【Start Web UI】in 5s (press any key to choose manually)."));
+            }
+            else if (!autoApplied)
+            {
+                if (!installed)
                     CL(ConsoleColor.Gray, T("  dsh 未安装：按 1 开始安装（默认官方源），其余操作可正常使用。",
                                             "  dsh not installed: press 1 to install (official registry default); other actions still work."));
+                else
+                    CL(ConsoleColor.Gray, T("  自动启动已关闭（配置 auto_start=off）：请手动选择。",
+                                            "  Auto-start disabled (auto_start=off): please choose manually."));
             }
             Console.WriteLine();
             CL(ConsoleColor.White, "  1) " + T("安装 / 修复 dsh", "Install / Repair dsh"));
@@ -305,7 +317,7 @@ public static class Program
             CL(ConsoleColor.White, "  0) " + T("退出", "Exit"));
             Console.WriteLine();
 
-            string choice = autoApplied ? ReadChoice("  > ") : (installed ? CountdownInput("  > ", def) : ReadChoice("  > "));
+            string choice = countdown ? CountdownInput("  > ", def) : ReadChoice("  > ");
             autoApplied = true;   // 首次倒计时（含按键接管）后，本次运行不再自动执行
             SafeClear();
             switch (choice)
@@ -1609,6 +1621,8 @@ public static class Program
                 if (t.StartsWith("check_dsh_update=")) { string v = t.Substring(17).Trim().ToLowerInvariant(); if (v.Length > 0) cfgCheckDshUpdate = v != "off"; }   // dsh 本体更新检测开关
                 if (t.StartsWith("dsh_versions=")) { string v = t.Substring(13).Trim(); if (v.Length > 0) cfgDshVersions = v; }   // 本机 dsh 历史版本
                 if (t.StartsWith("update_channel=")) { string v = t.Substring(15).Trim().ToLowerInvariant(); cfgChannel = (v == "rc") ? "rc" : "stable"; }   // v2.7 更新通道
+                if (t.StartsWith("close_action=")) { string v = t.Substring(13).Trim().ToLowerInvariant(); cfgCloseAction = (v == "tray" || v == "exit") ? v : (v == "ask" ? "ask" : ""); }   // v2.7 GUI 关闭行为记忆（非法值一律退回"未询问"）
+                if (t.StartsWith("auto_start=")) { string v = t.Substring(11).Trim().ToLowerInvariant(); if (v.Length > 0) cfgAutoStart = v != "off"; }   // v2.7 CLI 倒计时开关
             }
         }
         catch { }
@@ -1619,7 +1633,7 @@ public static class Program
         try
         {
             string v = lang == Lang.Zh ? "zh" : (lang == Lang.En ? "en" : "auto");
-            File.WriteAllText(ConfigPath(), "lang=" + v + Environment.NewLine + "host=" + webHost + Environment.NewLine + "ws=" + (cfgWs ?? "") + Environment.NewLine + "keep_backups=" + cfgKeep + Environment.NewLine + "check_update=" + (cfgCheckUpdate ? "on" : "off") + Environment.NewLine + "check_dsh_update=" + (cfgCheckDshUpdate ? "on" : "off") + Environment.NewLine + "dsh_versions=" + cfgDshVersions + Environment.NewLine + "update_channel=" + cfgChannel + Environment.NewLine, new UTF8Encoding(false));
+            File.WriteAllText(ConfigPath(), "lang=" + v + Environment.NewLine + "host=" + webHost + Environment.NewLine + "ws=" + (cfgWs ?? "") + Environment.NewLine + "keep_backups=" + cfgKeep + Environment.NewLine + "check_update=" + (cfgCheckUpdate ? "on" : "off") + Environment.NewLine + "check_dsh_update=" + (cfgCheckDshUpdate ? "on" : "off") + Environment.NewLine + "dsh_versions=" + cfgDshVersions + Environment.NewLine + "update_channel=" + cfgChannel + Environment.NewLine + "close_action=" + cfgCloseAction + Environment.NewLine + "auto_start=" + (cfgAutoStart ? "on" : "off") + Environment.NewLine, new UTF8Encoding(false));
         }
         catch { }
     }
@@ -2209,13 +2223,34 @@ public static class Program
         }
     }
 
-    /// <summary>非交互服务三态：输出 STATUS_UP / STATUS_STARTING / STATUS_DOWN。</summary>
-    static void StatusCli()
+    /// <summary>非交互服务三态：输出 STATUS_UP / STATUS_STARTING / STATUS_DOWN。
+    /// v2.7：detail=true 追加 STATUS_PID / STATUS_START / STATUS_UPTIME 三行（GUI 底部状态栏数据源，全程只读）。
+    /// 注意 STATUS_START 取的是监听进程的本地启动时间；仅当端口有人在听时才去查 PID，
+    /// 避免服务已停时误报上一次的残留进程信息。</summary>
+    static void StatusCli(bool detail)
     {
         ServiceState st = ProbeService();
         if (st == ServiceState.Ready) Console.WriteLine("STATUS_UP");
         else if (st == ServiceState.Listening) Console.WriteLine("STATUS_STARTING");
         else Console.WriteLine("STATUS_DOWN");
+        if (!detail) return;
+        int pid = (st == ServiceState.Down) ? 0 : FindPortPid(WEB_PORT);
+        Console.WriteLine("STATUS_PID " + (pid > 0 ? pid.ToString() : "0"));
+        bool haveStart = false;
+        DateTime start = DateTime.MinValue;
+        if (pid > 0) { try { start = Process.GetProcessById(pid).StartTime; haveStart = true; } catch { haveStart = false; } }
+        Console.WriteLine("STATUS_START " + (haveStart ? start.ToString("yyyy-MM-dd HH:mm:ss") : ""));
+        Console.WriteLine("STATUS_UPTIME " + (haveStart ? FormatUptime(DateTime.Now - start) : ""));
+    }
+
+    /// <summary>运行时长格式化（单测覆盖）：&lt;60 秒报秒；&lt;60 分报分；&lt;24 小时报"时 分"；再长报"天 时"。</summary>
+    static string FormatUptime(TimeSpan t)
+    {
+        if (t < TimeSpan.Zero) t = TimeSpan.Zero;                       // 时钟回拨保护：不显示负数时长
+        if (t.TotalSeconds < 60) return ((int)t.TotalSeconds) + " 秒";
+        if (t.TotalMinutes < 60) return ((int)t.TotalMinutes) + " 分";
+        if (t.TotalHours < 24) return ((int)t.TotalHours) + " 小时 " + t.Minutes + " 分";
+        return ((int)t.TotalDays) + " 天 " + (t.Hours) + " 小时";
     }
 
     // ---------------- dsh 更新管理 ----------------
@@ -2684,7 +2719,7 @@ public static class Program
         }
     }
 
-    /// <summary>收集六类检查项（独立于输出，便于复用/单测）。全程只读。</summary>
+    /// <summary>收集七类检查项（System/Harness/Service/Workspace/Backup/Network/Integrity；独立于输出，便于复用/单测）。全程只读。</summary>
     static void DoctorCollect(List<DocItem> items)
     {
         // ---- System ----
@@ -2780,6 +2815,13 @@ public static class Program
         if (reg.Length == 0) reg = NPM_OFFICIAL;
         bool reach = HttpResponds(reg, 4000);
         items.Add(new DocItem("Network", reach ? 0 : 1, "npm registry " + SanitizeForReport(reg) + (reach ? " 可达" : " 不可达（离线或网络受限；不影响本地功能）")));
+
+        // ---- Integrity（v2.7：自身 exe 与随包 hashes.txt 的一致性）----
+        // 三态：true=匹配；false=不匹配（高度可疑，按错误级报出）；null=旁无清单（单独复制 exe / 开发布局，正常，按通过级并说明）
+        bool? si = SelfIntegrity();
+        if (si == true) items.Add(new DocItem("Integrity", 0, "自身 exe 与随包 hashes.txt 一致（未被改动）"));
+        else if (si == false) items.Add(new DocItem("Integrity", 2, "自身 exe 与随包 hashes.txt 不一致！（可能被篡改或替换，请从官方 Release 重新下载）"));
+        else items.Add(new DocItem("Integrity", 0, "旁无 hashes.txt，跳过自身校验（单独复制 exe 或源码编译属正常；如需校验请使用官方发布包）"));
     }
 
     // ---------------- 备份管理 / Dry-Run（v2.6） ----------------
@@ -3068,6 +3110,8 @@ public static class Program
         if (k == "keep_backups") { int n; if (int.TryParse(v, out n) && n >= 3) return null; return "bad-value"; }
         if (k == "check_update" || k == "check_dsh_update") { if (v == "on" || v == "off") return null; return "bad-value"; }
         if (k == "update_channel") { if (v == "stable" || v == "rc") return null; return "bad-value"; }
+        if (k == "close_action") { if (v.Length == 0 || v == "ask" || v == "tray" || v == "exit") return null; return "bad-value"; }   // v2.7：空=清除记忆（下次关窗重新询问）
+        if (k == "auto_start") { if (v == "on" || v == "off") return null; return "bad-value"; }
         return "unknown-key";
     }
 
@@ -3087,6 +3131,8 @@ public static class Program
         else if (k == "check_update") cfgCheckUpdate = v != "off";
         else if (k == "check_dsh_update") cfgCheckDshUpdate = v != "off";
         else if (k == "update_channel") cfgChannel = v == "rc" ? "rc" : "stable";
+        else if (k == "close_action") cfgCloseAction = (v == "tray" || v == "exit") ? v : (v == "ask" ? "ask" : "");
+        else if (k == "auto_start") cfgAutoStart = v != "off";
         SaveConfig();
         Console.WriteLine("CONFIGSET_OK " + k);
     }
@@ -3102,6 +3148,8 @@ public static class Program
         Console.WriteLine("CONFIG check_update " + (cfgCheckUpdate ? "on" : "off"));
         Console.WriteLine("CONFIG check_dsh_update " + (cfgCheckDshUpdate ? "on" : "off"));
         Console.WriteLine("CONFIG update_channel " + cfgChannel);
+        Console.WriteLine("CONFIG close_action " + cfgCloseAction);
+        Console.WriteLine("CONFIG auto_start " + (cfgAutoStart ? "on" : "off"));
         Console.WriteLine("CONFIG dsh_versions " + cfgDshVersions);
     }
 
@@ -3341,6 +3389,7 @@ public static class Program
         public static string LatestBk(string suffix) { return Program.LatestBackupWithSuffix(suffix); }
         public static int CountBk() { return Program.CountValidBackups(); }
         public static string ValCfg(string key, string value) { return Program.NIValidateConfigSet(key, value); }
+        public static string UptimeT(double seconds) { return Program.FormatUptime(TimeSpan.FromSeconds(seconds)); }
     }
 #endif
 }
