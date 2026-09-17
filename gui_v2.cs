@@ -249,6 +249,17 @@ static class L10N
         Add("stat.lang", "语言", "Lang");
         Add("settings.autostart", "菜单倒计时自动启动", "Menu auto-start countdown");
         Add("settings.closeact", "关闭主窗口时", "On closing the window");
+        Add("doc.profcheck", "配置自检", "Config Check");
+        Add("prof.running", "正在扫描 profile 配置（只读）…", "Scanning profile config (read-only)...");
+        Add("prof.ok", "配置自检通过：未发现会导致 dsh 启动失败的 profile 问题。",
+            "Config check passed: no profile problem that would break dsh startup.");
+        Add("prof.found", "检测到 {0} 项可能导致 dsh 启动失败的 profile 配置：\n\n{1}",
+            "Found {0} profile setting(s) that can break dsh startup:\n\n{1}");
+        Add("prof.fixnote", "修复方式：在原条目里新增一行 maxDepth: 'provider-managed'（只加这一行，先自动备份，可回滚；node_modules 里的包内补丁会被跳过）。",
+            "Fix: add one line, maxDepth: 'provider-managed', inside the existing entry (that single line only; a backup is taken first and can be rolled back; package patches under node_modules are skipped).");
+        Add("prof.fixed", "已修复 {0} 项（已备份）：{1}", "Fixed {0} item(s) (backed up): {1}");
+        Add("prof.fixfail", "修复失败：{0}", "Fix failed: {0}");
+        Add("prof.after", "修复后复扫：仍有 {0} 项风险。", "After fix: {0} risk(s) remain.");
         Add("verify.btn", "验证此安装", "Verify This Install");
         Add("verify.running", "正在联网比对官方清单…", "Comparing against the official manifest...");
         Add("verify.state.idle", "尚未验证：点上面的按钮，联网比对官方 Release 的 hashes.txt。",
@@ -696,6 +707,7 @@ public class App : Form
     // 体检页（v2.5 doctor）
     TextBox txtDoctor;
     RButton btnDocRecheck, btnDocExport;
+    RButton btnProfCheck;   // v2.7：profile 配置自检 + 一键修复
     string doctorReportPath = "";
 
     // 备份管理页（v2.6 Backup Manager）
@@ -1918,6 +1930,14 @@ public class App : Form
         t.Tag = "doc.title";
         top.Controls.Add(t);
 
+        btnProfCheck = new RButton();
+        btnProfCheck.Size = new Size(100, 28);
+        btnProfCheck.Location = new Point(440, 8);
+        btnProfCheck.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnProfCheck.Text = L10N._("doc.profcheck");
+        btnProfCheck.Click += delegate(object s, EventArgs e) { RunProfileCheck(); };
+        top.Controls.Add(btnProfCheck);
+
         btnDocRecheck = new RButton();
         btnDocRecheck.Size = new Size(92, 28);
         // 初始坐标必须为正（构建期 top 宽度可能为 0，负坐标会把按钮甩到窗口外、点击落空）；
@@ -1939,6 +1959,7 @@ public class App : Form
         {
             btnDocRecheck.Location = new Point(top.ClientSize.Width - 92 - 92 - 28, 8);
             btnDocExport.Location = new Point(top.ClientSize.Width - 92 - 20, 8);
+            btnProfCheck.Location = new Point(top.ClientSize.Width - 100 - 92 - 92 - 36, 8);
         };
 
         txtDoctor = new TextBox();
@@ -1981,6 +2002,98 @@ public class App : Form
             });
         });
     }
+    // ---- v2.7：profile 配置自检 + 一键修复（诊断 → 询问 → 备份后修复 → 复扫）----
+    // 全程：扫描只读；修复走核心 profilepatch（先备份、只加一行、失败自动回滚）。
+    void RunProfileCheck()
+    {
+        string core = CoreExePath();
+        if (core == null) { LogWarn(L10N._("op.coremissing")); return; }
+        if (Interlocked.CompareExchange(ref busy, 1, 0) != 0) { LogLine(L10N._("op.busy")); return; }
+        UpdateActionButtons();
+        LogLine(L10N._("prof.running"));
+        ThreadPool.QueueUserWorkItem(delegate(object _)
+        {
+            CoreRunResult r = RunCoreCapture(core, "profilecheck --abs", 30000);
+            string all = r.All ?? "";
+            var fixes = new List<string[]>();      // {file, id, line}
+            StringBuilder warn = new StringBuilder();
+            foreach (string ln in all.Split('\n'))
+            {
+                string t = ln.Trim();
+                if (t.StartsWith("PROFILECHK_FIX "))
+                {
+                    string[] parts = t.Substring(15).Split('|');
+                    if (parts.Length >= 3) fixes.Add(new string[] { parts[0], parts[2], parts[1] });
+                }
+                else if (t.StartsWith("PROFILECHK_WARN ")) warn.AppendLine("  " + t.Substring(16));
+            }
+            string warnText = warn.ToString().TrimEnd();
+            BeginInvoke((Action)delegate { OnProfileChecked(fixes, warnText); });
+        });
+    }
+
+    void OnProfileChecked(List<string[]> fixes, string warnText)
+    {
+        if (fixes == null || fixes.Count == 0)
+        {
+            Interlocked.Exchange(ref busy, 0);
+            UpdateActionButtons();
+            if (warnText.Length > 0) LogWarn(L10N._("doc.profcheck") + ": " + warnText);   // 只报不修的那类
+            LogLine(L10N._("prof.ok"));
+            ShowToast(L10N._("prof.ok"));
+            return;
+        }
+        string msg = string.Format(L10N._("prof.found"), fixes.Count, warnText) + "\n\n" + L10N._("prof.fixnote");
+        DialogResult dr = MessageBox.Show(this, msg, L10N._("doc.profcheck"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        if (dr != DialogResult.Yes)
+        {
+            LogLine(L10N._("doc.profcheck") + " → " + L10N._("op.busy"));
+            LogWarn(warnText);
+            Interlocked.Exchange(ref busy, 0);
+            UpdateActionButtons();
+            return;
+        }
+        ApplyProfileFixes(fixes);
+    }
+
+    void ApplyProfileFixes(List<string[]> fixes)
+    {
+        string core = CoreExePath();
+        var failed = new List<string>();
+        int done = 0;
+        ThreadPool.QueueUserWorkItem(delegate(object _)
+        {
+            foreach (string[] f in fixes)
+            {
+                if (core == null) { failed.Add(f[1]); continue; }
+                CoreRunResult pr = RunCoreCapture(core, "profilepatch --file \"" + f[0] + "\" --id \"" + f[1] + "\" --set maxDepth=provider-managed --yes", 30000);
+                string mk = (pr.MarkLine ?? "").Trim();
+                if (mk.StartsWith("PROFILEPATCH_OK") || mk.StartsWith("PROFILEPATCH_NOOP")) done++;
+                else failed.Add(f[1] + " " + mk);
+            }
+            // 复扫
+            int remain = -1;
+            if (core != null)
+            {
+                CoreRunResult rr = RunCoreCapture(core, "profilecheck --abs", 30000);
+                string all = rr.All ?? "";
+                remain = 0;
+                foreach (string ln in all.Split('\n')) { string t = ln.Trim(); if (t.StartsWith("PROFILECHK_FIX ")) remain++; }
+            }
+            int doneFinal = done, remainFinal = remain;
+            string failText = string.Join("; ", failed.ToArray());
+            BeginInvoke((Action)delegate
+            {
+                Interlocked.Exchange(ref busy, 0);
+                UpdateActionButtons();
+                if (doneFinal > 0) LogLine(string.Format(L10N._("prof.fixed"), doneFinal, "maxDepth: 'provider-managed'"));
+                if (failText.Length > 0) LogWarn(string.Format(L10N._("prof.fixfail"), failText));
+                if (remainFinal >= 0) LogLine(string.Format(L10N._("prof.after"), remainFinal));
+                ShowToast(doneFinal > 0 ? string.Format(L10N._("prof.fixed"), doneFinal, "maxDepth") : L10N._("prof.ok"));
+            });
+        });
+    }
+
     void ExportDoctorReport()
     {
         if (string.IsNullOrEmpty(doctorReportPath) || !File.Exists(doctorReportPath))
@@ -2580,6 +2693,7 @@ public class App : Form
         }
         if (btnDocRecheck != null) btnDocRecheck.Text = L10N._("doc.recheck");
         if (btnDocExport != null) btnDocExport.Text = L10N._("doc.export");
+        if (btnProfCheck != null) btnProfCheck.Text = L10N._("doc.profcheck");
         if (upInfoLoaded) LoadUpdateInfo();   // 语言切换后以新语言刷新更新中心数值
         RefreshTrayTexts();                   // v2.7：托盘菜单文案跟随语言
         UpdateStatusBar();
