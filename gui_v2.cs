@@ -2176,7 +2176,11 @@ public class App : Form
 
         StringBuilder sb = new StringBuilder();
         sb.AppendLine(LineFor("DeepSeek Harness Toolkit.exe", c1, m1, remote != null || local != null));
-        sb.AppendLine(LineFor("Toolkit GUI.exe", c2, m2, remote != null || local != null));
+        // 报告里用真实文件名：attached 版是 Toolkit GUI.exe，standalone 版是 Toolkit GUI Standalone.exe
+        // （清单查找本来就按真实文件名，这里只是让显示与实际核对的对象一致）
+        string guiName = "Toolkit GUI.exe";
+        try { guiName = Path.GetFileName(Application.ExecutablePath); } catch { }
+        sb.AppendLine(LineFor(guiName, c2, m2, remote != null || local != null));
         sb.Append(L10N._("verify.note"));
         verifyReport = sb.ToString();
 
