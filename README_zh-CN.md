@@ -17,7 +17,7 @@ DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具
 
 ## 官方下载
 
-只有本仓库的 [Releases 页面](https://github.com/sakanamaru/DeepSeek-Harness-Toolkit/releases) 提供官方产物——其他任何来源（网盘二次上传、"收费 / 破解 / 修改版"、其他网站或账号）均**非官方**。本项目免费开源（MIT），**任何收费售卖均未经授权**。运行前请用 `verify.ps1` 核验；信任模型、供应链控制与手动核验步骤见 [SECURITY.md](SECURITY.md)。
+只有本仓库的 [Releases 页面](https://github.com/sakanamaru/DeepSeek-Harness-Toolkit/releases) 提供官方产物——其他任何来源（网盘二次上传、"收费 / 破解 / 修改版"、其他网站或账号）均**非官方**。本项目免费开源（MIT），**任何收费售卖均未经授权**。运行前请核验：`verify.ps1` 对照 CI 生成的清单校验 SHA-256 并验证 GPG 签名，而 GitHub 构建溯源证明（attestation）是**独立的额外**溯源检查，`verify.ps1` **不会**验证它，它也不能替代 GPG 签名校验。信任模型、供应链控制与手动核验步骤见 [SECURITY.md](SECURITY.md)。
 
 ## 界面截图
 
@@ -69,11 +69,53 @@ GUI **更新**页只读可视化整幅更新图景：当前 dsh 版本、最新�
 
 ### 设置页——改行为不必手改配置文件
 
-GUI **设置**页把工具箱自身配置（`launcher.config`，仍是明文 `key=value`）分成四组：**Harness**（Web 主机 / 工作区路径）、**备份**（自动备份保留份数，≥3）、**更新**（启动更新检查 / dsh 更新检测 / 更新通道）、**工具箱**（界面语言）。**保存只提交你真正改动过的键**，越界值由核心侧白名单拒绝——打错字不会悄悄写坏配置。无界面对应命令：`config-get`（读全部键）、`config-set <键> <值>`（白名单写入）。
+GUI **设置**页把工具箱自身配置（`launcher.config`，仍是明文 `key=value`）分成四组：**Harness**（Web 主机 / 工作区路径）、**备份**（自动备份保留份数，≥3）、**更新**（启动更新检查 / dsh 更新检测 / 更新通道）、**工具箱**（界面语言 / 菜单倒计时自动启动 / 关闭主窗口时）。**保存只提交你真正改动过的键**，越界值由核心侧白名单拒绝——打错字不会悄悄写坏配置。无界面对应命令：`config-get`（读全部键）、`config-set <键> <值>`（白名单写入）。
+
+### dsh 起不来怎么办——从报错到那一行处方
+
+真实故障（2026-09-15）：`dsh web` 启动失败，报
+
+```
+plugin tree failed to load: … provider "kimi" cannot enforce maxDepth (no depthLimit capability) — set maxDepth: 'provider-managed' …
+```
+
+处方是**一行**：在已有 profile 条目的 `config:` 块里补 `maxDepth: 'provider-managed'`。profile 补丁层是 YAML——带 `id` 的条目 = 修改已有行，新增行必须放进 `insert:`——所以本工具**绝不重构文件结构、绝不新增/删除条目、不动其他任何内容**。从原始报错到处方共四步：
+
+| 步骤 | 看什么 | 数据来源 |
+| --- | --- | --- |
+| 1 报错说了什么 | 属于哪类启动失败 | 把启动输出存成文件后跑 `bootdiag`，或直接对 profile 目录跑 `profilecheck` |
+| 2 哪个插件 | 病灶插件包 | `BOOTDIAG_PLUGIN`（例：`@deepseek-ai/dsh-tool-subagent`） |
+| 3 哪个条目、哪一行 | 具体条目与行号 | `BOOTDIAG_ENTRY` + `BOOTDIAG_FILE` / `BOOTDIAG_LINE`（例：`tool-subagent-kimi`，`cordis.patch.yml` 第 20 行） |
+| 4 一行处方 | 要补的那一行 | 在该条目 `config:` 块内加 `maxDepth: 'provider-managed'` |
+
+```powershell
+# 1) 主动预检（只读）：哪些 profile 条目会让 dsh 起不来？
+DeepSeek Harness Toolkit.exe profilecheck              # 别名：pc
+DeepSeek Harness Toolkit.exe profilecheck --vendor     # 连 node_modules 一起扫（默认跳过）
+
+# 2) 已经起不来了？把启动输出存成文本文件，然后：
+DeepSeek Harness Toolkit.exe bootdiag --from captured.txt    # 别名：bdiag
+
+# 3) 处方——先预览，确认后再落盘（先备份 → 复扫校验 → 失败自动回滚）：
+DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed
+DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed --yes
+```
+
+GUI 里对应体检页的**配置自检**按钮：运行 `profilecheck`，发现可修风险时弹框确认，确认后经 `profilepatch` 先备份再修复，随后复扫。
+
+**诚实边界：从「正在失败的启动」里自动发现问题——做不到。** 工具看不到你那次崩溃，需要你二选一：主动跑一次 `profilecheck`（对 `~/.dsh/profiles/**/*.yaml|*.yml` 的静态只读扫描），或把启动失败输出存成文件后跑 `bootdiag --from <文件>`（它绝不猜：识别不了就报 `BOOTDIAG_KIND unknown` + 第一条错误行）。写入路径必须显式 `--yes`，永远先备份、只加这一行、复扫校验、失败自动回滚；全程不碰凭据、不联网、默认不改 `node_modules` 下的任何文件。维护者本机实测：7 个 profile 文件中查出 1 处真实遗留问题（`subagent-acp-kimi` 缺 `maxDepth`），同时跳过 `node_modules` 下 563 个包内文件；`bootdiag` 把真实捕获堆栈解析为 `@deepseek-ai/dsh-tool-subagent` / `tool-subagent-kimi` / `cordis.patch.yml` 第 20 行；`profilepatch` 在副本上只加了一行，第二次运行报 NOOP。
 
 ### 日志中心——筛选、搜索、导出
 
 GUI **日志**页是结构化操作日志：每条带级别（`INFO / WARN / ERROR`）与时间戳，一键级别筛选、实时搜索框、**导出 / 复制**按钮（导出为 UTF-8 文本）。失败——超时、被拒绝的操作、核心缺失——记为 WARN/ERROR，一眼定位问题。
+
+### 托盘、状态栏与快捷键
+
+GUI 常驻**托盘图标**（显示主窗口 / 启动 dsh / 停止 dsh / 退出），并记住关窗行为：**第一次**关窗时只问一次——最小化到托盘还是直接退出——答案记入 `close_action`（`ask | tray | exit`，空=还没问过），之后随时可在设置页修改。底部**状态栏**显示服务状态 / PID / 运行时长 / 当前主题 / 语言与快捷键提示（无界面对应只读命令 `status --detail`：在三态标记行之后追加 `STATUS_PID` / `STATUS_START` / `STATUS_UPTIME`）；**`Ctrl+1`~`Ctrl+7`** 切页、**`F5`** 刷新状态、**`Ctrl+B`** 立即备份（文本输入框内按键不受影响）。备份 / 恢复 / 导出 / 删除的结果改用托盘气泡提示。
+
+### 「验证此安装」——核对你下载到的东西
+
+关于页有**验证此安装**按钮：下载官方 `hashes.txt`（纯文本——不解析 JSON、无第三方依赖），比对核心 exe 与 GUI exe 的 SHA-256，三种结果：**一致 / 不一致 / 未能验证**。同样的比对在每次启动时离线执行一次，对照 exe 旁随包的 `hashes.txt`（不联网）；**首次**启动只做这一项完整性自检（新机器上既没有环境清单也没有备份，刻意不做这些打扰）。性质要说清：这是**哈希一致性**比对，**不是**签名验证，也**不能**证明发布者身份——详见 [SECURITY.md](SECURITY.md)。
 
 ## 和官方部署方式的关系
 
@@ -104,18 +146,21 @@ dsh web
 
 | 功能 | 说明 |
 | --- | --- |
-| 智能启动 | 打开即检测服务状态（**三态：运行中 / 启动中 / 已停止**，端口＋HTTP 双重校验，其他程序占 3080 不会误判）：已在运行 → 直接进状态页；未运行 → 5 秒倒计时自动启动（仅当 dsh 已安装；未安装时菜单等待你选择，**不会自动安装**） |
+| 智能启动 | 打开即检测服务状态（**三态：运行中 / 启动中 / 已停止**，端口＋HTTP 双重校验，其他程序占 3080 不会误判）：已在运行 → 直接进状态页；未运行 → 5 秒倒计时自动启动（仅当 dsh 已安装；`auto_start=off` 可关掉倒计时，改为等待手动选择并明确提示；未安装时菜单等待你选择，**不会自动安装**） |
 | 安装 / 修复 | 安装时询问源：**默认官方源 npmjs.org**，国内镜像 npmmirror 可选；失败自动换另一源重试，不污染全局 npm 配置；回车=装最新版，`L`=查看历史版本列表可选装 |
 | 状态监控 | 每 3 秒自动刷新服务状态（三态）/端口/运行时长，服务掉线红字提醒；按 1 返回 / 2 打开 WebUI |
-| 体检 / Doctor | 只读六类检查：系统（Windows/Node/npm）、Harness（安装与版本）、服务（端口/监听身份/HTTP/三态）、工作区（路径/权限/大小）、备份（目录/最新/天数）、网络（registry 可达）；结论机器可读（`DOCTOR_OK/WARN/ERROR n`）；GUI 体检页一键跑，`doctor --report` 可导出**脱敏**诊断报告（API Key/Token/Cookie/密码一律打码） |
+| 体检 / Doctor | 只读七类检查：系统（Windows/Node/npm）、Harness（安装与版本）、服务（端口/监听身份/HTTP/三态）、工作区（路径/权限/大小）、备份（目录/最新/天数）、网络（registry 可达）、完整性（运行中的 exe 与随包 `hashes.txt`：一致 / 不一致（按错误报告）/ 无清单可比（单独复制 exe 属正常））；结论机器可读（`DOCTOR_OK/WARN/ERROR n`）；GUI 体检页一键跑，`doctor --report` 可导出**脱敏**诊断报告（API Key/Token/Cookie/密码一律打码） |
+| 配置自检 / dsh 起不来（v2.7） | `profilecheck`（别名 `pc`，只读）静态扫描 `~/.dsh/profiles/**/*.yaml\|*.yml`，报出会让 dsh 启动失败的 profile 条目（`PROFILECHK_WARN/TOTAL/SKIPPED_VENDOR/OK`；默认跳过 `node_modules`，`--vendor` 才一并扫）；`bootdiag --from <启动输出.txt>`（别名 `bdiag`）从错误链取最内层病灶（`BOOTDIAG_PLUGIN/ENTRY/FILE/LINE/HINT`，识别不了报 `unknown` 绝不猜）；`profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed [--yes]`（别名 `pp`）受控修复：先预览、需 `--yes`、先备份到 `backup\bootdiag-<时间戳>\`、只插一行、复扫校验失败自动回滚，且只接受这一个键值对；GUI 体检页「配置自检」= 扫描 → 确认 → 备份修复 → 复扫 |
 | 更新 dsh（菜单 8） | 检测新版本 → 选版本（回车最新 / `L` 历史列表，支持 rc 预发布）→ ⚠️ 破坏性警告**双确认** → 更新前自动备份（`-pre-update`）→ npm 安装 → 记录本机历史版本（最多 10 个，列表带 `*`）；**dsh 运行中拒绝**；更新失败**不会自动回滚**——会提示你备份位置与手动回滚命令，用 `-pre-update` 备份或历史版本列表即可恢复 |
 | 更新检查 | 启动后静默查询 GitHub Releases API，仅当存在新版本时提示（附下载链接）；离线/接口失败静默；`check_update=off` 关闭；**dsh 本体更新检测**：`check` 显示 npm 最新版（`check_dsh_update=off` 关闭） |
 | 备份 / 恢复 | 一键备份数据目录到 `backup\`（可添加**多个工作区**：自动探测，之后逐个输入路径、留空结束，备份包按 `_workspace\名称\` 分包存放并可逐一恢复），自动跳过 node_modules 与自身备份目录；支持列表恢复、跨电脑导入、直接打开备份文件夹；**手动备份（无后缀）永久保留**，自动/保护类备份（`-auto / -pre-*`）超出 `keep_backups`（默认 10、最小 3）按最旧自动清理；**dsh 运行中禁止恢复/导入**（与清除数据同一防线） |
 | 备份管理器（GUI 备份页） | 每条备份一行（时间 / 类型：手动·自动·更新前·恢复前·清除前 / 大小 / 有效性），选中即可**恢复 / 导出 / 删除**，一键**立即备份**；任何变更后列表自动刷新。导出=把备份副本复制到任意目录（跨机迁移/离线归档友好）；删除仅限备份根内 `dsh-data-*` 且写审计日志 |
 | Dry-Run 预演 | 恢复 / 导入 / 清除执行前先**只读预演**：`restore … --dry-run` 输出机器可读合并计划（`DRYRUN_NEW/OVERWRITE/KEEP/BYTES/TOTAL`，仅目标端存在的文件不会被删除）；GUI 恢复先弹预演确认框（新增/覆盖/保留/字节）；交互清除在两步确认前预演删除量（文件/目录/总大小）。预演与执行共用同一套跳过规则，**所见即所得** |
 | 更新中心（GUI 更新页） | 只读可视化整幅更新图景：当前版本 / 最新 stable / 最新 rc（npm）/ 更新通道（`stable\|rc`）/ 最近一次更新前备份 / 回滚候选（有效备份数）/ dsh 发布说明链接；网络失败降级为 unknown 永不阻断；**检查可以自动，更新永不自动**（仍走交互双确认） |
-| 设置页（GUI 设置页） | 四组配置：Harness（Web 主机 / 工作区路径）、备份（自动备份保留份数 ≥3）、更新（启动更新检查 / dsh 更新检测 / 更新通道）、工具箱（界面语言）；**保存只提交变化项**，非法值由核心侧白名单拒绝；命令 `config-get` / `config-set <键> <值>` |
+| 设置页（GUI 设置页） | 四组配置：Harness（Web 主机 / 工作区路径）、备份（自动备份保留份数 ≥3）、更新（启动更新检查 / dsh 更新检测 / 更新通道）、工具箱（界面语言 / 菜单倒计时自动启动 `auto_start` / 关闭主窗口时 `close_action`）；**保存只提交变化项**，非法值由核心侧白名单拒绝；命令 `config-get` / `config-set <键> <值>` |
 | 日志中心（GUI 日志页） | 结构化操作日志：每条带级别（`INFO / WARN / ERROR`）与时间戳、级别一键筛选、关键字实时搜索、**导出**（UTF-8）/ **复制**；超时、被拒绝的操作、核心缺失等失败一律记 WARN/ERROR |
+| 托盘 / 状态栏 / 快捷键 | 托盘图标（显示主窗口 / 启动 dsh / 停止 dsh / 退出）；**首次关窗只问一次**关窗行为（最小化到托盘 / 直接退出）并记入 `close_action`（`ask\|tray\|exit`，空=还没问过），之后可在设置页修改；底部状态栏显示状态 · PID · 运行时长 · 主题 · 语言（数据源为只读 `status --detail`，追加 `STATUS_PID` / `STATUS_START` / `STATUS_UPTIME`）；`Ctrl+1~7` 切页、`F5` 刷新状态、`Ctrl+B` 立即备份（输入框内按键不受影响）；备份/恢复/导出/删除结果以托盘气泡提示 |
+| 验证此安装（GUI 关于页） | 下载官方 `hashes.txt`（纯文本，不解析 JSON、无第三方依赖），比对核心 exe 与 GUI exe 的 SHA-256：一致 / 不一致 / 未能验证（离线或随包无清单）；启动时另做一次随包清单的本地一致性检查（不联网），**首次**启动只做完整性自检。注意：这是**哈希一致性**比对，**不是**签名验证，不能证明发布者身份 |
 | 卸载 | 默认保留数据；清除数据需两步确认（当天日期 + `yes`）、**清除前自动备份**；dsh web 运行中会阻止清除（避免文件占用） |
 | 数据定位 | 自动识别 dsh 数据目录（优先 `~/.dsh`，兼容 `%APPDATA%` 等位置） |
 | 长路径支持 | 备份/恢复内置 `\\?\` 长路径支持（>260 字符），并自动跳过嵌套的备份包目录（`dsh-data-*`） |
@@ -133,7 +178,7 @@ dsh web
 | **B. GUI 附加版** | `Toolkit GUI.exe` + 核心同目录 | **必须完整解压**——GUI 依赖同目录的核心 exe；单独拷 GUI 会提示「未找到核心程序（CLI）」 | 想用图形界面、与核心一起部署的人 |
 | **C. GUI 单文件集成版** | `Toolkit GUI Standalone.exe` | **单文件独立运行**——内嵌核心，首次启动自动解出到同目录 | 想「一个 exe 搞定一切」的人 |
 
-**三个版本共有的能力**：**七页界面**（首页——状态灯 + dsh 版本 + Web 地址 + 操作按钮 · 备份——备份列表 + 恢复/导出/删除 + 立即备份 · 更新——只读更新全貌 · 设置——四组配置 · 日志——结构化日志（级别筛选/搜索/导出/复制） · 体检——六类只读检查 · 关于）、深/浅主题、中英双语、圆角无边框、logo 内嵌；操作：安装 / 启动 Web / 停止服务 / 立即备份 / **恢复备份（先弹 Dry-Run 预演确认框：新增/覆盖/保留/字节）** / 检查更新 / 卸载 / 桌面快捷方式 / 刷新状态。服务已运行时点「启动 Web」直接打开浏览器；恢复前自动备份当前数据兜底。
+**三个版本共有的能力**：**七页界面**（首页——状态灯 + dsh 版本 + Web 地址 + 操作按钮 · 备份——备份列表 + 恢复/导出/删除 + 立即备份 · 更新——只读更新全貌 · 设置——四组配置（工具箱组新增菜单倒计时自动启动、关闭主窗口时两个下拉） · 日志——结构化日志（级别筛选/搜索/导出/复制） · 体检——七类只读检查（含运行中 exe 与随包 `hashes.txt` 的一致性） · 关于——版本、署名、非官方声明、**验证此安装**）、深/浅主题、中英双语、圆角无边框、logo 内嵌；**托盘图标**（显示主窗口 / 启动 dsh / 停止 dsh / 退出）、底部**状态栏**（状态 · PID · 运行时长 · 主题 · 语言）与 `Ctrl+1~7` / `F5` / `Ctrl+B` 快捷键；操作：**启动 Web（左上）** / 安装 dsh 或修复 dsh（按钮文案跟随检测） / 停止服务 / 立即备份 / **恢复备份（先弹 Dry-Run 预演确认框：新增/覆盖/保留/字节）** / 检查更新 / 卸载 / 桌面快捷方式 / 刷新状态。服务已运行时点「启动 Web」直接打开浏览器；恢复前自动备份当前数据兜底。
 
 **建议使用方式**：
 
@@ -165,10 +210,11 @@ dsh web
 
 ```
 DeepSeek Harness Toolkit.exe install|start|uninstall|update|check|about|help
+DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不来时的诊断与修复（见下）
 ```
 
 无参数启动为交互菜单：dsh 已安装时首次运行 5 秒倒计时自动启动（可按键接管），之后每次打开也自动启动 Web 界面；
-dsh **未安装**时菜单等待你选择（按 1 安装），不会自动安装；服务已在运行时直接进入状态页。
+`auto_start=off` 可关掉倒计时——菜单改为等待你手动选择并明确提示；dsh **未安装**时菜单等待你选择（按 1 安装），不会自动安装；服务已在运行时直接进入状态页。
 
 **关于工作区**：备份时会自动探测工作区（exe 上两级目录，并拒绝系统/用户目录等明显不合理位置）；
 也可在主菜单 **7 访问入口 → 3 设置工作区路径** 手动指定并持久保存（`launcher.config` 的 `ws=` 行），
@@ -180,6 +226,7 @@ dsh **未安装**时菜单等待你选择（按 1 安装），不会自动安装
 | --- | --- |
 | GUI 提示「未找到核心程序（CLI）」 | B 附加版必须与 `DeepSeek Harness Toolkit.exe` **同目录**——请完整解压发布包，或改用 C 单文件集成版 |
 | `stop` 提示「3080 被其他程序占用，已拒绝停止」 | 监听 3080 的进程不是 dsh（如其他开发服务器）。本工具**不会误杀他人程序**；若确要关闭它，请自行结束该进程 |
+| dsh 起不来（`plugin tree failed to load`、`cannot enforce maxDepth`） | 跑 `profilecheck`（或把启动输出存成文件后跑 `bootdiag --from <文件>`），再用 `profilepatch … --yes` 补那一行处方；也可直接用 GUI **体检 → 配置自检**——详见上文「dsh 起不来怎么办」 |
 | 打开 Web 界面 403 / 空白 | 菜单选 **7 访问入口**，切换 `127.0.0.1` ↔ `localhost`（浏览器把两者当不同站点，旧缓存会导致异常） |
 | 卸载/清除数据时提示删除失败 | 先关闭 dsh web 服务窗口（文件被占用），再重新执行；仍失败看 `logs\launcher.log` |
 | 备份失败 | 查看 exe 目录 `logs\launcher.log` 中的真实原因 |
@@ -196,18 +243,18 @@ dsh **未安装**时菜单等待你选择（按 1 安装），不会自动安装
 
 或双击本目录 `build_exe.cmd`。GUI 由同规则的单文件 `gui_v2.cs` 编译（一份源码 → 附加版与集成版两种形态；集成版多一个 `/resource:<核心exe>,DSHCore.exe`）。
 
-**可复现发布（源码即产物）**：每个 GitHub Release 的 exe 均由 **GitHub Actions CI** 从本仓库源码自动编译生成，并在同一流水线里重新生成 `hashes.txt` 且完成 **GPG 签名**——仓库自身不存放任何二进制文件。
+**可复现发布（源码即产物）**：每个 GitHub Release 的 exe 均由 **GitHub Actions CI** 从本仓库源码自动编译生成，并在同一流水线里重新生成 `hashes.txt` 且完成 **GPG 签名**。标签构建另会发布 **GitHub 构建溯源证明（attestation）**——这是独立的额外溯源检查，需用 `gh` 单独验证；`verify.ps1` **不**验证它，它也不能替代 GPG 签名校验。仓库自身不存放任何二进制文件。
 
 ## 开发与测试
 
 无需任何测试框架或第三方依赖：
 
-- **单元测试（225 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
+- **单元测试（277 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs
   unittests.exe
   ```
-  退出码 0=全过。覆盖：路径往返（含 UNC / 中文空格）、工作区黑名单、dsh 数据目录标记、根标记严格性、备份目录校验、日志轮转、备份命名 + 保留策略、服务三态判定、版本比较 / 发布解析 / 更新探测、netstat PID 解析、Dry-Run 合并/删除计划（含恢复侧跳过规则一致性）、备份类型解析、导出 / 删除校验、回滚候选查询、配置白名单。
+  退出码 0=全过。覆盖：路径往返（含 UNC / 中文空格）、工作区黑名单、dsh 数据目录标记、根标记严格性、备份目录校验、日志轮转、备份命名 + 保留策略、服务三态判定、版本比较 / 发布解析 / 更新探测、netstat PID 解析、Dry-Run 合并/删除计划（含恢复侧跳过规则一致性）、备份类型解析、导出 / 删除校验、回滚候选查询、配置白名单（含 `close_action` / `auto_start` 键）、状态栏 `FormatUptime`、profile 静态扫描 / `bootdiag` 输出解析 / 受控单行修复（一行计划、幂等 NOOP、备份、复扫校验与回滚）。
 
 - **集成测试（33 个用例）**：打桩端到端矩阵（变体 A/C，真实探测 3080；覆盖保留策略、运行中禁止恢复/导入、双语断言等）：
   ```
@@ -231,7 +278,7 @@ keys/                维护者 GPG 公钥
 SECURITY.md          安全策略、数据与网络边界声明
 CHANGELOG.md         更新日志（双语）
 hashes.txt           SHA-256 校验清单（CI 每次发布重新生成）
-tests/               单元（225）/ 集成（33）测试——无第三方依赖
+tests/               单元（277）/ 集成（33）测试——无第三方依赖
 docs/screenshots/    README 截图
 .github/workflows/   CI：push/PR 跑测试；标签/手动触发构建发布 + GPG 签名
 .dsh_launcher_root   安装标记（随包分发；误删保护）
@@ -249,12 +296,20 @@ backup/  logs/       运行时目录（已被 .gitignore 排除，切勿提交�
 - **下载后先核验再运行（约 20 秒）**：
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.4.2 -OutDir D:\verify
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.0 -OutDir D:\verify
   ```
 
-  `verify.ps1`（发布包内）自动完成：下载指定 release 的全部产物（三个版本 + `hashes.txt`）→ 对照 CI 生成的 `hashes.txt` 做 SHA-256 核验 → 若本机有 GPG 则验 `hashes.txt.asc` 签名 → 打印溯源链接。只读，不安装任何东西。带 `-Tag` 时走固定下载链接、完全不调 GitHub API（不怕匿名限速）；不带 `-Tag` 时通过 API 解析最新 release（网络受限可选传 `-Token`）。
+  `verify.ps1`（发布包内）自动完成：下载指定 release 的全部产物（三个版本 + `hashes.txt`）→ 对照 CI 生成的 `hashes.txt` 做 SHA-256 核验 → 用**临时隔离钥匙串**把 `hashes.txt.asc` 的签名**钉死比对维护者指纹**（不信任本机钥匙串：换任何别的钥匙签出的"好签名"都会被拒绝）→ 打印 **Release → Tag → Commit** 溯源链（tag 对象 / commit / commit 链接）。只读，不安装任何东西。带 `-Tag` 时走固定下载链接、完全不调 GitHub API（不怕匿名限速）；不带 `-Tag` 时通过 API 解析最新 release（网络受限可选传 `-Token`）。
 - **GPG 签名**：`hashes.txt` 由维护者私钥签名（`hashes.txt.asc`），公钥 `keys/sakanamaru-gpg.asc`，指纹：
   `A2F67D170B5BE4845612642C240979232B4E4CE4`
+- **GitHub 构建溯源证明（attestation）——独立的额外检查**：标签构建另会发布 GitHub 构建溯源证明，可用
+  `gh attestation verify <文件> --repo sakanamaru/DeepSeek-Harness-Toolkit` 单独验证。`verify.ps1`
+  **不**验证 attestation，attestation 也**不**能替代 GPG 签名校验——两者相互独立，任选其一即可（都做更好）。
+- **程序自带完整性检查能证明什么、不能证明什么**：GUI 的「验证此安装」、启动/首次启动一致性检查与体检
+  `Integrity` 类都只是把文件与**紧挨着它的** `hashes.txt` 比对——若有人同时替换 exe **和**该清单即可通过，
+  因此它们只证明「与随包清单一致」，**不能**证明发布者身份。身份与来源只能来自 **GPG 签名**的
+  `hashes.txt`（或 `verify.ps1`）与 GitHub attestation。这些检查全程只读（`status --detail` 同样只读）；
+  程序发起 HTTPS 请求时会显式启用 TLS 1.2——详见 [SECURITY.md](SECURITY.md)。
 - 卸载「清除全部数据」会删除 dsh 数据目录（`~/.dsh`，含会话与 API 凭据），程序会在清除前自动备份到 `backup\` 目录
 - **删除操作三重防误删**：
   1. **dsh Web 服务运行中直接阻止卸载**（避免文件占用）
