@@ -529,6 +529,31 @@ public static class UnitTests
         Check(Program.Test.ValCfg("nope", "x") == "unknown-key", "unknown key rejected");
         Check(Program.Test.ValCfg("", "x") == "no-key", "empty key rejected");
 
+        // ---- v2.7 状态栏运行时长格式化 ----
+        Console.WriteLine("[V27] FormatUptime");
+        Check(Program.Test.UptimeT(0) == "0 秒", "0s got " + Program.Test.UptimeT(0));
+        Check(Program.Test.UptimeT(59) == "59 秒", "59s got " + Program.Test.UptimeT(59));
+        Check(Program.Test.UptimeT(60) == "1 分", "60s got " + Program.Test.UptimeT(60));
+        Check(Program.Test.UptimeT(3599) == "59 分", "3599s got " + Program.Test.UptimeT(3599));
+        Check(Program.Test.UptimeT(3600) == "1 小时 0 分", "3600s got " + Program.Test.UptimeT(3600));
+        Check(Program.Test.UptimeT(86399) == "23 小时 59 分", "86399s got " + Program.Test.UptimeT(86399));
+        Check(Program.Test.UptimeT(86400) == "1 天 0 小时", "86400s got " + Program.Test.UptimeT(86400));
+        Check(Program.Test.UptimeT(200000) == "2 天 7 小时", "200000s got " + Program.Test.UptimeT(200000));
+        Check(Program.Test.UptimeT(-5) == "0 秒", "negative clamped got " + Program.Test.UptimeT(-5));
+
+        // ---- v2.7 close_action / auto_start 配置键（GUI 关闭行为 + CLI 倒计时开关）----
+        Console.WriteLine("[V27] close_action / auto_start 配置键");
+        Check(Program.Test.ValCfg("close_action", "ask") == null, "close_action ask ok");
+        Check(Program.Test.ValCfg("close_action", "tray") == null, "close_action tray ok");
+        Check(Program.Test.ValCfg("close_action", "exit") == null, "close_action exit ok");
+        Check(Program.Test.ValCfg("close_action", "") == null, "close_action empty（清除记忆）ok");
+        Check(Program.Test.ValCfg("close_action", "minimize") == "bad-value", "close_action minimize rejected");
+        Check(Program.Test.ValCfg("CLOSE_ACTION", "tray") == null, "close_action 键名大小写不敏感");
+        Check(Program.Test.ValCfg("auto_start", "on") == null, "auto_start on ok");
+        Check(Program.Test.ValCfg("auto_start", "off") == null, "auto_start off ok");
+        Check(Program.Test.ValCfg("auto_start", "") == "bad-value", "auto_start empty rejected");
+        Check(Program.Test.ValCfg("auto_start", "yes") == "bad-value", "auto_start yes rejected");
+
         Console.WriteLine("");
         Console.WriteLine("== " + (total - fails) + "/" + total + " passed, " + fails + " failed ==");
         Environment.Exit(fails == 0 ? 0 : 1);
