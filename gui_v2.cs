@@ -4,6 +4,7 @@
 //  架构：本体不变，GUI 通过非交互 CLI 协同（backup/restore/status/start --bg/stop/shortcut，
 //        install/update/uninstall 弹可见窗口交互）。
 //  本文件 = 无边框窗口 + 深/浅主题 + 中英双语 + 三页切换 + 状态灯 + 完整进程层。
+    //  v2.7 = 托盘驻留 + 关闭行为记忆 + 底部状态栏 + 快捷键 + Toast + 首启完整性检查 + 验证此安装。
 //  约束：C#5 / .NET 4.x / 零第三方依赖（仅 WinForms + GDI+）。
 //  发布：单独 Toolkit GUI.exe（与核心 DeepSeek Harness Toolkit.exe 同目录运行）。
 //  v1 脚本协助：SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）
@@ -25,8 +26,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 非官方图形辅助面板。v1: SOGR-Momono Dango；v2: DeepSeek DSH；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit GUI")]
-[assembly: AssemblyVersion("2.6.0.0")]
-[assembly: AssemblyFileVersion("2.6.0.0")]
+[assembly: AssemblyVersion("2.7.0.0")]
+[assembly: AssemblyFileVersion("2.7.0.0")]
 
 // ---------------- 主题 ----------------
 
@@ -162,7 +163,6 @@ static class L10N
         Add("log.info", "信息", "Info");
         Add("log.warn", "警告", "Warn");
         Add("log.error", "错误", "Error");
-        Add("log.search", "搜索…", "Search…");
         Add("log.export", "导出", "Export");
         Add("log.copy", "复制", "Copy");
         Add("nav.about", "关于", "About");
@@ -204,11 +204,7 @@ static class L10N
         Add("disclaimer", "非官方项目，与 DeepSeek 官方无隶属关系。",
             "This is an unofficial project and is not affiliated with DeepSeek.");
 
-        Add("theme.toggle", "主题", "Theme");
-        Add("lang.toggle", "语言", "Lang");
 
-        Add("ph.notyet", "「{0}」将在下一步（P2）接入。", "\"{0}\" will be wired up in the next step (P2).");
-        Add("ph.refreshing", "正在检测服务状态…", "Detecting service status...");
 
         // P2 进程层文案
         Add("op.running", "执行「{0}」…", "Running \"{0}\"...");
@@ -225,27 +221,59 @@ static class L10N
         Add("badir.msg", "你在桌面/下载目录直接运行本程序：备份与日志会写到该目录，文件容易被误删或丢失。\n建议移到独立文件夹（例如 D:\\Tools\\DSHToolkit）后再使用。\n\n仍要继续吗？",
             "You are running directly from Desktop/Downloads: backups & logs land there and are easy to lose.\nMove to a dedicated folder (e.g. D:\\Tools\\DSHToolkit) instead.\n\nContinue anyway?");
         Add("op.launchfailed", "启动失败：", "Launch failed: ");
-        Add("dsh.notinstalled", "未安装", "not installed");
         Add("dsh.verreadfail", "读取失败", "read failed");
 
         // P3 恢复选择对话框
-        Add("rp.title", "恢复备份 — 选择备份文件夹", "Restore Backup — Pick a Backup Folder");
-        Add("rp.warn", "恢复会用所选备份覆盖当前 dsh 数据；恢复前会自动备份当前数据。",
-            "Restoring will overwrite current dsh data with the chosen backup; current data is auto-backed up first.");
-        Add("rp.pick", "双击选择备份文件夹：", "Double-click a backup folder:");
-        Add("rp.restore", "恢复此备份", "Restore This Backup");
-        Add("rp.cancel", "取消", "Cancel");
-        Add("rp.empty", "没有可恢复的备份", "No restorable backups");
-        Add("rp.fetchfail", "读取备份列表失败", "Failed to read backup list");
-        Add("rp.canceled", "已取消恢复", "Restore canceled");
-        Add("rp.confirm.title", "确认恢复", "Confirm Restore");
-        Add("rp.confirm.text", "确定恢复所选备份？\n当前 dsh 数据将被自动备份后覆盖。",
-            "Restore the selected backup?\nCurrent dsh data will be auto-backed up before being overwritten.");
-        Add("rp.confirm.ok", "确定恢复", "Restore");
-        Add("rp.confirm.cancel", "再想想", "Cancel");
         Add("rp.running", "dsh 正在运行，需先停止服务后才能恢复。",
             "dsh is running. Stop the service first to restore.");
         Add("start.openweb", "已在运行 → 打开 Web 界面…", "Already running — opening the Web UI...");
+        Add("act.repair", "修复 dsh", "Repair dsh");
+        Add("backup.goto", "已切换到备份页：选中一份备份后点【恢复此备份】。",
+            "Switched to the Backup page: pick a backup, then click [Restore This Backup].");
+        Add("tray.show", "显示主窗口", "Show Window");
+        Add("tray.start", "启动 dsh", "Start dsh");
+        Add("tray.stop", "停止 dsh", "Stop dsh");
+        Add("tray.exit", "退出", "Exit");
+        Add("tray.balloon.title", "仍在后台运行", "Still running in the background");
+        Add("tray.balloon.body", "工具箱已最小化到托盘，dsh 服务不受影响；双击托盘图标可恢复窗口。",
+            "The toolkit is minimized to the tray; the dsh service is unaffected. Double-click the tray icon to restore.");
+        Add("close.title", "关闭窗口", "Close Window");
+        Add("close.body", "关闭主窗口时要怎么做？（之后可在【设置】页修改）",
+            "What should happen when you close the main window? (Changeable on the Settings page)");
+        Add("close.tray", "最小化到托盘", "Minimize to Tray");
+        Add("close.exit", "直接退出", "Exit Directly");
+        Add("stat.pid", "PID", "PID");
+        Add("stat.uptime", "运行", "up");
+        Add("stat.theme.dark", "深色", "Dark");
+        Add("stat.theme.light", "浅色", "Light");
+        Add("stat.lang", "语言", "Lang");
+        Add("settings.autostart", "菜单倒计时自动启动", "Menu auto-start countdown");
+        Add("settings.closeact", "关闭主窗口时", "On closing the window");
+        Add("verify.btn", "验证此安装", "Verify This Install");
+        Add("verify.running", "正在联网比对官方清单…", "Comparing against the official manifest...");
+        Add("verify.state.idle", "尚未验证：点上面的按钮，联网比对官方 Release 的 hashes.txt。",
+            "Not verified yet: click the button above to compare against the official hashes.txt.");
+        Add("verify.state.ok", "一致：本机文件与官方清单记录的 SHA-256 相同。",
+            "Match: local files have the same SHA-256 as the official manifest.");
+        Add("verify.state.bad", "不一致！本机文件与清单记录不符（可能被替换或篡改），请从官方 Release 重新下载。",
+            "MISMATCH! Local files differ from the manifest (possibly replaced/tampered). Re-download from the official Release.");
+        Add("verify.state.none", "未能验证：", "Could not verify: ");
+        Add("verify.reason.offline", "离线或无法访问 GitHub", "offline or GitHub unreachable");
+        Add("verify.reason.nolist", "随包没有 hashes.txt（单独复制 exe 属正常）", "no hashes.txt next to the exe (normal for a single-file copy)");
+        Add("verify.line.ok", "{0}：SHA-256 与清单一致", "{0}: SHA-256 matches the manifest");
+        Add("verify.line.bad", "{0}：与清单不一致 ← 可疑", "{0}: differs from the manifest <-- suspicious");
+        Add("verify.line.skip", "{0}：清单里没有记录，跳过", "{0}: not listed in the manifest, skipped");
+        Add("verify.line.nolist", "{0}：无清单可比", "{0}: no manifest to compare");
+        Add("verify.note", "说明：这里只做「与官方清单的哈希一致性」比对，不是签名验证，也无法证明发布者身份；"
+            + "签名校验请用仓库里的 verify.ps1（GPG + Release→Tag→Commit 链）。",
+            "Note: this only compares SHA-256 against the official manifest. It is NOT signature verification and cannot prove publisher identity; "
+            + "use verify.ps1 from the repo (GPG + Release->Tag->Commit chain) for that.");
+        Add("verify.localmismatch", "本机 exe 与随包 hashes.txt 不一致，请从官方 Release 重新下载。",
+            "Local exe does not match the bundled hashes.txt. Re-download from the official Release.");
+        Add("motw.warn", "本程序带有「来自网络」标记（Mark of the Web）：SmartScreen / 杀软提示属常见现象，可用 verify.ps1 校验签名。",
+            "This program carries the Mark of the Web: SmartScreen/AV prompts are common; verify the signature with verify.ps1.");
+        Add("firstrun.title", "首次启动：完整性自检", "First run: integrity self-check");
+        Add("firstrun.log", "首次启动完整性自检已完成。", "First-run integrity self-check completed.");
     }
 }
 
@@ -623,245 +651,6 @@ static class WinRound
     }
 }
 
-// ---------------- 恢复备份：确认对话框（自绘，主题一致） ----------------
-
-class RestoreConfirm : Form
-{
-    Point dragStart;
-
-    public RestoreConfirm(string line1, string line2, Theme th)
-    {
-        FormBorderStyle = FormBorderStyle.None;
-        StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(430, 168);
-        ShowInTaskbar = false;
-        Font = new Font("Microsoft YaHei UI", 10f);
-        BackColor = th.Panel;
-        Text = "";
-
-        RLabel lbl = new RLabel();
-        lbl.Surround = th.Panel;
-        lbl.ForeColor = th.Fg;
-        lbl.Font = new Font("Microsoft YaHei UI", 10f);
-        lbl.Text = line1;
-        lbl.SetBounds(24, 28, 382, 26);
-        Controls.Add(lbl);
-
-        RLabel lblName = new RLabel();
-        lblName.Surround = th.Panel;
-        lblName.ForeColor = th.FgDim;
-        lblName.Font = new Font("Microsoft YaHei UI", 9f);
-        lblName.Text = line2;
-        lblName.SetBounds(24, 58, 382, 22);
-        Controls.Add(lblName);
-
-        RButton ok = new RButton();
-        ok.SetTheme(th, th.Panel);
-        ok.Checked = true;   // Accent 高亮 = 主操作
-        ok.Text = L10N._("rp.confirm.ok");
-        ok.SetBounds(230, 108, 86, 32);
-        ok.DialogResult = DialogResult.OK;
-        Controls.Add(ok);
-
-        RButton cancel = new RButton();
-        cancel.SetTheme(th, th.Panel);
-        cancel.Text = L10N._("rp.confirm.cancel");
-        cancel.SetBounds(322, 108, 86, 32);
-        cancel.DialogResult = DialogResult.Cancel;
-        Controls.Add(cancel);
-
-        // 标题栏（拖动）
-        Panel bar = new Panel();
-        bar.Dock = DockStyle.Top;
-        bar.Height = 8;
-        bar.BackColor = th.Panel;
-        bar.MouseDown += delegate(object s, MouseEventArgs e) { dragStart = e.Location; };
-        bar.MouseMove += delegate(object s, MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Left)
-                Location = new Point(Location.X + e.X - dragStart.X, Location.Y + e.Y - dragStart.Y);
-        };
-        Controls.Add(bar);
-        bar.BringToFront();
-    }
-
-    protected override void OnLoad(EventArgs e)
-    {
-        base.OnLoad(e);
-        WinRound.Apply(this, 12);
-    }
-
-    public static bool Ask(IWin32Window owner, string line1, string line2, Theme th)
-    {
-        using (RestoreConfirm f = new RestoreConfirm(line1, line2, th))
-            return f.ShowDialog(owner) == DialogResult.OK;
-    }
-}
-
-// ---------------- 恢复备份：选择对话框（自绘，列出备份文件夹，默认选最新） ----------------
-
-class RestorePicker : Form
-{
-    Theme th;
-    string[] items;
-    bool running;
-    string picked;
-    ListBox list;
-    RLabel lblDetail;
-    Point dragStart;
-    RButton btnRestore;
-
-    public RestorePicker(string[] backupPaths, bool serviceRunning, Theme theme)
-    {
-        th = theme;
-        items = backupPaths;
-        running = serviceRunning;
-        picked = null;
-        FormBorderStyle = FormBorderStyle.None;
-        StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(520, 402);
-        ShowInTaskbar = false;
-        Font = new Font("Microsoft YaHei UI", 10f);
-        BackColor = th.Bg;
-
-        // 标题栏（拖动 + 关闭）
-        Panel bar = new Panel();
-        bar.Dock = DockStyle.Top;
-        bar.Height = 42;
-        bar.BackColor = th.Panel;
-        bar.MouseDown += delegate(object s, MouseEventArgs e) { dragStart = e.Location; };
-        bar.MouseMove += delegate(object s, MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Left)
-                Location = new Point(Location.X + e.X - dragStart.X, Location.Y + e.Y - dragStart.Y);
-        };
-        Controls.Add(bar);
-        bar.BringToFront();
-
-        RLabel title = new RLabel();
-        title.Surround = th.Panel;
-        title.ForeColor = th.Fg;
-        title.Font = new Font("Microsoft YaHei UI", 11f, FontStyle.Bold);
-        title.Text = L10N._("rp.title");
-        title.SetBounds(16, 10, 380, 24);
-        bar.Controls.Add(title);
-
-        RButton close = new RButton();
-        close.SetTheme(th, th.Panel);
-        close.Icon = delegate(Graphics g, Rectangle r) { Glyphs.Close(g, r); };
-        close.HoverTint = Color.FromArgb(0xE8, 0x11, 0x23);
-        close.SetBounds(478, 7, 34, 28);
-        close.Click += delegate(object s, EventArgs e) { picked = null; DialogResult = DialogResult.Cancel; Close(); };
-        bar.Controls.Add(close);
-
-        // 提示
-        RLabel hint = new RLabel();
-        hint.Surround = th.Bg;
-        hint.ForeColor = th.FgDim;
-        hint.Text = L10N._("rp.pick");
-        hint.SetBounds(20, 52, 480, 22);
-        Controls.Add(hint);
-
-        // 列表（自绘，最新在前，默认选第一项）
-        list = new ListBox();
-        list.SetBounds(20, 78, 480, 216);
-        list.BorderStyle = BorderStyle.None;
-        list.DrawMode = DrawMode.OwnerDrawFixed;
-        list.ItemHeight = 34;
-        list.BackColor = th.PanelAlt;
-        foreach (string p in items) list.Items.Add(Path.GetFileName(p));
-        if (list.Items.Count > 0) list.SelectedIndex = 0;
-        list.DrawItem += delegate(object s, DrawItemEventArgs e)
-        {
-            if (e.Index < 0) return;
-            bool sel = (e.State & DrawItemState.Selected) != 0;
-            Color bgc = sel ? th.Accent : th.PanelAlt;
-            using (SolidBrush b = new SolidBrush(bgc)) e.Graphics.FillRectangle(b, e.Bounds);
-            string txt = Convert.ToString(list.Items[e.Index]);
-            if (txt != null)
-            {
-                e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-                using (SolidBrush b = new SolidBrush(sel ? th.AccentFg : th.Fg))
-                    e.Graphics.DrawString(txt, Font, b, new RectangleF(e.Bounds.X + 10, e.Bounds.Y, e.Bounds.Width - 20, e.Bounds.Height),
-                        new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center });
-            }
-        };
-        list.SelectedIndexChanged += delegate(object s, EventArgs e)
-        {
-            UpdateDetail();
-        };
-        Controls.Add(list);
-
-        // 详情（所选备份路径）
-        lblDetail = new RLabel();
-        lblDetail.Surround = th.Bg;
-        lblDetail.ForeColor = th.FgDim;
-        lblDetail.Text = "";
-        lblDetail.SetBounds(20, 300, 480, 20);
-        Controls.Add(lblDetail);
-
-        // 警告：运行中 = 红字提示需先停止服务；未运行 = 橙色覆盖警告
-        RLabel warn = new RLabel();
-        warn.Surround = th.Bg;
-        if (running)
-        {
-            warn.ForeColor = th.LedBad;
-            warn.Text = L10N._("rp.running");
-        }
-        else
-        {
-            warn.ForeColor = th.LedWarn;
-            warn.Text = L10N._("rp.warn");
-        }
-        warn.SetBounds(20, 326, 480, 22);
-        Controls.Add(warn);
-
-        // 按钮：运行中「恢复此备份」置灰（红字已说明原因），未运行正常
-        btnRestore = new RButton();
-        btnRestore.SetTheme(th, th.Bg);
-        btnRestore.Text = L10N._("rp.restore");
-        btnRestore.SetBounds(282, 360, 110, 32);
-        btnRestore.Enabled = !running;
-        btnRestore.Click += delegate(object s, EventArgs e)
-        {
-            if (list.SelectedIndex < 0 || list.SelectedIndex >= items.Length) return;
-            string fn = Path.GetFileName(items[list.SelectedIndex]);
-            bool yes = RestoreConfirm.Ask(this, L10N._("rp.confirm.text"), fn, th);
-            if (yes)
-            {
-                picked = items[list.SelectedIndex];
-                DialogResult = DialogResult.OK;
-                Close();
-            }
-        };
-        Controls.Add(btnRestore);
-
-        RButton cancel = new RButton();
-        cancel.SetTheme(th, th.Bg);
-        cancel.Text = L10N._("rp.cancel");
-        cancel.SetBounds(398, 360, 102, 32);
-        cancel.Click += delegate(object s, EventArgs e) { picked = null; DialogResult = DialogResult.Cancel; Close(); };
-        Controls.Add(cancel);
-
-        UpdateDetail();
-    }
-
-    void UpdateDetail()
-    {
-        if (lblDetail == null || list == null) return;
-        if (list.SelectedIndex >= 0 && list.SelectedIndex < items.Length)
-            lblDetail.Text = items[list.SelectedIndex];
-        else lblDetail.Text = "";
-    }
-
-    public string Picked { get { return picked; } }
-
-    protected override void OnLoad(EventArgs e)
-    {
-        base.OnLoad(e);
-        WinRound.Apply(this, 12);
-    }
-}
 
 // ---------------- 主窗体 ----------------
 
@@ -920,7 +709,7 @@ public class App : Form
     bool upInfoLoaded = false;
 
     // 设置页（v2.8 Configuration）
-    ComboBox cmbHost, cmbChkUpd, cmbChkDshUpd, cmbChannel, cmbLang;
+    ComboBox cmbHost, cmbChkUpd, cmbChkDshUpd, cmbChannel, cmbLang, cmbAutoStart, cmbCloseAct;
     TextBox txtWs, txtKeep;
     RButton btnSetSave;
     readonly Dictionary<string, string> setOrig = new Dictionary<string, string>();
@@ -946,6 +735,31 @@ public class App : Form
     // 当前页索引（导航高亮）
     int curPage = 0;
 
+    // ---- v2.7：底部状态栏 ----
+    Panel statBar;
+    RLabel lblStatusBar;
+    string svcPid = "";          // 状态栏 PID（status --detail）
+    string svcUptime = "";       // 状态栏运行时长（status --detail）
+
+    // ---- v2.7：托盘 + 关闭行为 ----
+    NotifyIcon trayIcon;
+    ContextMenuStrip trayMenu;
+    string cfgClose = "";        // 关闭行为记忆（config-get close_action；空=还没问过 → 首次关窗询问）
+    bool forceExit = false;      // 用户明确"直接退出"→ 放行 Close
+    bool trayTipShown = false;   // 首次最小化到托盘的提示只弹一次
+    const int POLL_VISIBLE = 3000;   // 窗口可见时的轮询间隔
+    const int POLL_HIDDEN = 10000;   // 最小化到托盘后的轮询间隔（省电，服务仍在跑）
+
+    // ---- v2.7：状态轮询计数 + dsh 版本缓存（原先每 3 秒都 spawn 一次 cmd 读版本，浪费）----
+    int pollTicks = 0;
+    bool verDirty = true;        // true=下次轮询强制重读版本（安装/更新/卸载后置位）
+
+    // ---- v2.7：完整性校验（关于页 + 首启自检）----
+    RButton btnVerifyInstall;
+    RLabel lblVerifyResult;
+    int verifyState = 0;         // 0=未验证 1=一致 2=不一致 3=未能验证 9=进行中
+    string verifyReport = "";    // 明细（语言切换后按当前语言重渲染）
+
     public App()
     {
         Text = L10N._("app.title");
@@ -962,9 +776,14 @@ public class App : Form
         ShowPage(0);
         RefreshStatus();
 
+        KeyPreview = true;              // v2.7：快捷键（Ctrl+1~7 切页 / F5 刷新 / Ctrl+B 备份）
+        InitTray();                     // v2.7：托盘驻留（关闭行为依赖它）
+        LoadCloseAction();              // v2.7：读回上次记住的关闭行为（异步，读完即生效）
+        FormClosing += delegate(object s, FormClosingEventArgs e) { OnAppClosing(e); };
+
         // 3 秒状态轮询（定时器，不阻塞 UI）
         pollTimer = new System.Windows.Forms.Timer();
-        pollTimer.Interval = 3000;
+        pollTimer.Interval = POLL_VISIBLE;
         pollTimer.Tick += delegate(object s, EventArgs e) { RefreshStatus(); };
         pollTimer.Start();
     }
@@ -1008,7 +827,10 @@ public class App : Form
     {
         base.OnLoad(e);
         ApplyWindowRound();
-        CheckBadDirWarning();   // 防误用：桌面/下载目录直接运行 → 弹窗提醒（可取消继续）
+        CheckBadDirWarning();            // 防误用：桌面/下载目录直接运行 → 弹窗提醒（可取消继续）
+        CheckMotwWarning();              // v2.7：网络来源标记提醒（只记日志，不弹窗）
+        CheckLocalIntegrityAtStartup();  // v2.7：随包清单一致性（纯本地，不联网）
+        CheckFirstRun();                 // v2.7：首次启动只做完整性自检（一次性）
     }
 
     protected override void OnResize(EventArgs e)
@@ -1111,6 +933,19 @@ public class App : Form
             for (int i = 0; i < navBtns.Length; i++)
                 navBtns[i].Width = w;
         };
+
+        // ---- v2.7 底部状态栏（Dock 逆序：先 Add → 后布局 → 落在 disclaimer 之上）----
+        statBar = new Panel();
+        statBar.Dock = DockStyle.Bottom;
+        statBar.Height = 26;
+        lblStatusBar = new RLabel();
+        lblStatusBar.Dock = DockStyle.Fill;
+        lblStatusBar.TextAlign = ContentAlignment.MiddleLeft;
+        lblStatusBar.Padding = new Padding(16, 0, 0, 0);
+        lblStatusBar.Tag = "statusbar";
+        lblStatusBar.ForeColor = Th.FgDim;
+        statBar.Controls.Add(lblStatusBar);
+        Controls.Add(statBar);
 
         // ---- 底部 disclaimer ----
         lblDisclaimer = new RLabel();
@@ -1222,8 +1057,8 @@ public class App : Form
         for (int r = 0; r < 5; r++) actionGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 54f));
         p.Controls.Add(actionGrid);
 
-        AddActionButton(0, 0, "act.install", 1);
-        AddActionButton(1, 0, "act.start", 1);
+        AddActionButton(0, 0, "act.start", 1);     // v2.7：日常最常用的是"启动"，与"安装/修复"互换到左上
+        AddActionButton(1, 0, "act.install", 1);
         AddActionButton(0, 1, "act.stop", 1);
         AddActionButton(1, 1, "act.backup", 1);
         AddActionButton(0, 2, "act.restore", 1);
@@ -1260,8 +1095,8 @@ public class App : Form
             if (key == "act.install") { LaunchInteractive("install", key); return; }
             if (key == "act.update") { LaunchInteractive("update", key); return; }
             if (key == "act.uninstall") { LaunchInteractive("uninstall", key); return; }
-            // 恢复备份：先拉备份列表 → 弹选择框 → 确认后推 CLI restore --path（busy 全程保持）
-            if (key == "act.restore") { keepBusy = true; FetchRestoreList(); return; }
+            // 恢复备份：切到备份页（选择/预演/确认都在那一页，不再弹第二个选择框）
+            if (key == "act.restore") { ShowPage(1); LogLine(L10N._("backup.goto")); return; }
             // 运行中点「启动 Web」= 直接打开 Web 界面（不阻止点击，给真实反馈）
             if (key == "act.start" && currentKind == SKind.Up) { OpenWebUI(); return; }
             // 其余非交互：后台捕获单行标记（busy 延迟到 OnCaptureDone 清零）
@@ -1306,6 +1141,7 @@ public class App : Form
             };
             Process.Start(psi);
             LogLine(L10N._(key) + " → " + L10N._("op.ok"));
+            verDirty = true;   // v2.7：交互命令结束后 dsh 版本可能变了，下次轮询强制重读
             // 交互命令结束后服务状态可能变化，稍后触发一次状态刷新
             ThreadPool.QueueUserWorkItem(delegate(object _)
             {
@@ -1360,117 +1196,11 @@ public class App : Form
         Interlocked.Exchange(ref busy, 0);
         UpdateActionButtons();
         if (ok && (key == "bk.delete" || key == "act.backup")) LoadBackupList();   // 备份列表变化后自动刷新管理页
+        // v2.7：后台捕获型操作的结果用托盘气泡反馈一次（窗口在后台/最小化时也能看到）
+        if (ok && (key == "act.backup" || key == "act.restore" || key == "bk.export" || key == "bk.delete"))
+            ShowToast(L10N._(key) + " → " + L10N._("op.ok"));
     }
 
-    // ---- 恢复备份：列表 → 选择框 → 确认 → 推 CLI restore --path ----
-    // busy 在进入本流程前已置 1（keepBusy），直到恢复完成（OnCaptureDone）或取消/失败时手动清零。
-    void FetchRestoreList()
-    {
-        string core = CoreExePath();
-        if (core == null)
-        {
-            LogWarn(L10N._("op.coremissing"));
-            Interlocked.Exchange(ref busy, 0);
-            UpdateActionButtons();
-            return;
-        }
-        LogLine(string.Format(L10N._("op.running"), L10N._("act.restore")));
-        ThreadPool.QueueUserWorkItem(delegate(object _)
-        {
-            CoreRunResult r = RunCoreCapture(core, "backup-list", 10000);
-            BeginInvoke((Action)delegate { OnRestoreListReady(r); });
-        });
-    }
-
-    void OnRestoreListReady(CoreRunResult r)
-    {
-        List<string> paths = null;
-        try
-        {
-            bool keepBusyForRestore = false;
-            if (r.TimedOut)
-            {
-                LogLine(L10N._("act.restore") + " → " + L10N._("op.timeout"));
-            }
-            else
-            {
-                string mark = (r.MarkLine ?? "").Trim();
-                if (!mark.StartsWith("BACKUP_LIST_OK"))
-                {
-                    LogLine(L10N._("act.restore") + " → " + L10N._("op.fail") + "  (" + L10N._("rp.fetchfail") + ")");
-                }
-                else
-                {
-                    paths = ParseBackupList(r.All);
-                    if (paths.Count == 0)
-                    {
-                        LogLine(L10N._("act.restore") + " → " + L10N._("rp.empty"));
-                    }
-                    else
-                    {
-                        string picked = null;
-                        using (RestorePicker dlg = new RestorePicker(paths.ToArray(), currentKind == SKind.Up, Th))
-                        {
-                            if (dlg.ShowDialog(this) == DialogResult.OK) picked = dlg.Picked;
-                        }
-                        if (picked != null)
-                        {
-                            LogLine(string.Format(L10N._("op.running"), L10N._("act.restore")));
-                            keepBusyForRestore = LaunchRestorePath(picked);
-                        }
-                        else LogLine(L10N._("act.restore") + " → " + L10N._("rp.canceled"));
-                    }
-                }
-            }
-            // busy 释放：仅当未成功发起恢复时才在本函数清（恢复路径由 OnCaptureDone 清）
-            if (!keepBusyForRestore) { Interlocked.Exchange(ref busy, 0); UpdateActionButtons(); }
-        }
-        catch (Exception ex)
-        {
-            LogLine(L10N._("act.restore") + " → " + L10N._("op.fail") + "  (" + ex.Message + ")");
-            Interlocked.Exchange(ref busy, 0);
-            UpdateActionButtons();
-        }
-    }
-
-    // 解析 backup-list 输出：BACKUP_LIST_OK 标记后的绝对路径行（dsh-data-*）
-    static List<string> ParseBackupList(string all)
-    {
-        List<string> list = new List<string>();
-        if (string.IsNullOrEmpty(all)) return list;
-        string[] lines = all.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-        bool markSeen = false;
-        foreach (string ln in lines)
-        {
-            string t = ln.Trim();
-            if (t.StartsWith("BACKUP_LIST_OK")) { markSeen = true; continue; }
-            if (markSeen && t.Length > 0 && t.IndexOf("dsh-data-", StringComparison.OrdinalIgnoreCase) >= 0 && Path.IsPathRooted(t))
-                list.Add(t);
-        }
-        return list;
-    }
-
-    // 恢复所选备份（用户已在选择框 + 确认框双重确认）；返回 true=已发起（busy 交给 OnCaptureDone 释放）
-    bool LaunchRestorePath(string path)
-    {
-        string core = CoreExePath();
-        if (core == null)
-        {
-            LogWarn(L10N._("op.coremissing"));
-            return false;   // 未发起 → OnRestoreListReady 释放 busy
-        }
-        string arg = "restore --path \"" + path + "\"";
-        ThreadPool.QueueUserWorkItem(delegate(object _)
-        {
-            CoreRunResult r = RunCoreCapture(core, arg, 120000);   // 恢复大目录可能较久
-            BeginInvoke((Action)delegate
-            {
-                OnCaptureDone("act.restore", r);
-                RefreshStatus();
-            });
-        });
-        return true;
-    }
 
     // 从完整输出中扫描机器标记行（核心可能在标记前后打印进度文案，如「正在恢复数据...」）。
     static string FindMarker(string all)
@@ -1830,6 +1560,13 @@ public class App : Form
     {
         string[] e = BkSelected();
         if (e == null) { LogLine(L10N._("backup.nosel")); return; }
+        // v2.7：恢复必须先停服务——先拦下来，省得 dry-run 白跑一趟再报错
+        if (currentKind == SKind.Up || currentKind == SKind.Starting)
+        {
+            LogWarn(L10N._("backup.restore") + " → " + L10N._("rp.running"));
+            MessageBox.Show(this, L10N._("rp.running"), L10N._("backup.restore"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
         string core = CoreExePath();
         if (core == null) { LogWarn(L10N._("op.coremissing")); return; }
         Interlocked.Exchange(ref busy, 1);
@@ -1931,6 +1668,8 @@ public class App : Form
         cmbChannel = AddSetCombo(p, ref y, "settings.channel", new string[] { "stable", "rc" });
         AddSetGroup(p, ref y, "settings.g.toolkit");
         cmbLang = AddSetCombo(p, ref y, "settings.lang", new string[] { "auto", "zh", "en" });
+        cmbAutoStart = AddSetCombo(p, ref y, "settings.autostart", new string[] { "on", "off" });
+        cmbCloseAct = AddSetCombo(p, ref y, "settings.closeact", new string[] { "ask", "tray", "exit" });
 
         Label note = new RLabel();
         note.AutoSize = true;
@@ -2017,6 +1756,14 @@ public class App : Form
         if (cmbChkDshUpd != null && setOrig.TryGetValue("check_dsh_update", out g)) cmbChkDshUpd.SelectedItem = g;
         if (cmbChannel != null && setOrig.TryGetValue("update_channel", out g)) cmbChannel.SelectedItem = g;
         if (cmbLang != null && setOrig.TryGetValue("lang", out g)) cmbLang.SelectedItem = g;
+        if (cmbAutoStart != null && setOrig.TryGetValue("auto_start", out g)) cmbAutoStart.SelectedItem = g;
+        // close_action：配置里空串="还没问过"，在设置页显示为 ask（首次关窗仍会询问并记住）
+        if (cmbCloseAct != null)
+        {
+            string ca = "";
+            if (setOrig.TryGetValue("close_action", out g)) ca = g;
+            cmbCloseAct.SelectedItem = ca.Length == 0 ? "ask" : ca;
+        }
     }
 
     void SaveSettings()
@@ -2030,6 +1777,14 @@ public class App : Form
         if (cmbChkDshUpd != null && cmbChkDshUpd.SelectedItem != null && setOrig.TryGetValue("check_dsh_update", out g) && cmbChkDshUpd.SelectedItem.ToString() != g) changes.Add(new string[] { "check_dsh_update", cmbChkDshUpd.SelectedItem.ToString() });
         if (cmbChannel != null && cmbChannel.SelectedItem != null && setOrig.TryGetValue("update_channel", out g) && cmbChannel.SelectedItem.ToString() != g) changes.Add(new string[] { "update_channel", cmbChannel.SelectedItem.ToString() });
         if (cmbLang != null && cmbLang.SelectedItem != null && setOrig.TryGetValue("lang", out g) && cmbLang.SelectedItem.ToString() != g) changes.Add(new string[] { "lang", cmbLang.SelectedItem.ToString() });
+        if (cmbAutoStart != null && cmbAutoStart.SelectedItem != null && setOrig.TryGetValue("auto_start", out g) && cmbAutoStart.SelectedItem.ToString() != g) changes.Add(new string[] { "auto_start", cmbAutoStart.SelectedItem.ToString() });
+        if (cmbCloseAct != null && cmbCloseAct.SelectedItem != null)
+        {
+            string ca = "";
+            if (setOrig.TryGetValue("close_action", out g)) ca = g;
+            string want = cmbCloseAct.SelectedItem.ToString();
+            if (want != ca) changes.Add(new string[] { "close_action", want });
+        }
         if (changes.Count == 0) { LogLine(L10N._("settings.title") + " → " + L10N._("op.ok")); return; }
         Interlocked.Exchange(ref busy, 1);
         UpdateActionButtons();
@@ -2292,7 +2047,283 @@ public class App : Form
         cred.Text = "v1 脚本协助 : SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）\nv2 重构封装 : DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）";
         p.Controls.Add(cred);
 
+        // v2.7：验证此安装（联网比对官方 Release 的 hashes.txt；只读，不改任何文件）
+        btnVerifyInstall = new RButton();
+        btnVerifyInstall.Size = new Size(160, 30);
+        btnVerifyInstall.Location = new Point((PageWidth() - 160) / 2, 302);
+        btnVerifyInstall.Text = L10N._("verify.btn");
+        btnVerifyInstall.Click += delegate(object s, EventArgs e) { RunVerifyInstall(); };
+        p.Controls.Add(btnVerifyInstall);
+
+        lblVerifyResult = new RLabel();
+        lblVerifyResult.SetBounds(20, 344, 580, 116);
+        lblVerifyResult.TextAlign = ContentAlignment.TopLeft;
+        lblVerifyResult.Font = new Font("Microsoft YaHei UI", 8.5f);
+        lblVerifyResult.ForeColor = Th.FgDim;
+        lblVerifyResult.Tag = "verify.result";
+        p.Controls.Add(lblVerifyResult);
+        RenderVerifyResult();
+
         return p;
+    }
+
+    // ================= v2.7：完整性校验（关于页「验证此安装」+ 首启自检） =================
+
+    // 官方最新 Release 的纯文本清单（零 JSON、零第三方依赖）
+    const string OFFICIAL_MANIFEST_URL = "https://github.com/sakanamaru/DeepSeek-Harness-Toolkit/releases/latest/download/hashes.txt";
+
+    /// <summary>文件 SHA-256（小写 hex）；失败返回 null。</summary>
+    static string Sha256OfFile(string path)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
+            using (System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create())
+            using (FileStream fs = File.OpenRead(path))
+            {
+                byte[] h = sha.ComputeHash(fs);
+                StringBuilder sb = new StringBuilder();
+                foreach (byte b in h) sb.Append(b.ToString("x2"));
+                return sb.ToString();
+            }
+        }
+        catch { return null; }
+    }
+
+    /// <summary>从 hashes.txt 文本取某文件的 SHA-256（小写）；未找到/格式非法返回 null。纯函数。</summary>
+    static string ManifestHashOf(string manifest, string fileName)
+    {
+        if (string.IsNullOrEmpty(manifest) || string.IsNullOrEmpty(fileName)) return null;
+        string[] lines = manifest.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (string ln in lines)
+        {
+            string t = ln.Trim();
+            if (t.Length == 0 || t.StartsWith("#")) continue;
+            int sp = t.IndexOf(' ');
+            if (sp <= 0) continue;
+            string hash = t.Substring(0, sp).Trim().ToLowerInvariant();
+            string nm = t.Substring(sp + 1).Trim();
+            if (string.Compare(nm, fileName, StringComparison.OrdinalIgnoreCase) != 0) continue;
+            if (hash.Length != 64) return null;
+            for (int i = 0; i < hash.Length; i++) { if (!Uri.IsHexDigit(hash[i])) return null; }
+            return hash;
+        }
+        return null;
+    }
+
+    /// <summary>本机随包 hashes.txt（与 exe 同目录）；没有则 null。</summary>
+    static string LocalManifest()
+    {
+        try
+        {
+            string p = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "hashes.txt");
+            if (!File.Exists(p)) return null;
+            return File.ReadAllText(p, Encoding.UTF8);
+        }
+        catch { return null; }
+    }
+
+    /// <summary>联网取官方最新 Release 的 hashes.txt；离线/失败/内容不像清单 → null。</summary>
+    static string FetchOfficialManifest()
+    {
+        try { System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072; } catch { }
+        try
+        {
+            System.Net.WebRequest req = System.Net.WebRequest.Create(OFFICIAL_MANIFEST_URL);
+            req.Timeout = 8000;
+            try { req.Headers.Add("User-Agent", "dsh-toolkit-gui"); } catch { }
+            using (System.Net.WebResponse resp = req.GetResponse())
+            using (Stream s = resp.GetResponseStream())
+            using (StreamReader sr = new StreamReader(s, Encoding.UTF8))
+            {
+                string txt = sr.ReadToEnd();
+                // 认一下内容：必须像我们的清单（含 SHA-256 表头），避免把错误页当清单用
+                if (txt != null && txt.IndexOf("SHA-256", StringComparison.OrdinalIgnoreCase) >= 0) return txt;
+                return null;
+            }
+        }
+        catch { return null; }
+    }
+
+    /// <summary>单文件比对：官方清单优先（remoteCompared=true），否则用随包清单。
+    /// compared=清单里有这个文件（否则无从比对）；mismatch=找到了但哈希不一致。</summary>
+    static void VerifyOneExe(string file, string localManifest, string remoteManifest, out bool compared, out bool remoteCompared, out bool mismatch)
+    {
+        compared = false; remoteCompared = false; mismatch = false;
+        try
+        {
+            string name = Path.GetFileName(file);
+            string remote = ManifestHashOf(remoteManifest, name);
+            string want = remote;
+            remoteCompared = (remote != null);
+            if (want == null) want = ManifestHashOf(localManifest, name);
+            if (want == null) return;                 // 两个清单都没有该文件
+            compared = true;
+            string got = Sha256OfFile(file);
+            mismatch = (got == null) || (got != want);
+        }
+        catch { }
+    }
+
+    string CoreExePathForVerify() { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DeepSeek Harness Toolkit.exe"); }
+
+    /// <summary>跑一次三态报告：返回 0=未验证 1=一致 2=不一致 3=未能验证，并填充 verifyReport。</summary>
+    int BuildVerifyResult(string remote, string local)
+    {
+        bool c1, r1, m1, c2, r2, m2;
+        VerifyOneExe(CoreExePathForVerify(), local, remote, out c1, out r1, out m1);
+        VerifyOneExe(Application.ExecutablePath, local, remote, out c2, out r2, out m2);
+
+        StringBuilder sb = new StringBuilder();
+        sb.AppendLine(LineFor("DeepSeek Harness Toolkit.exe", c1, m1, remote != null || local != null));
+        sb.AppendLine(LineFor("Toolkit GUI.exe", c2, m2, remote != null || local != null));
+        sb.Append(L10N._("verify.note"));
+        verifyReport = sb.ToString();
+
+        if (!c1 && !c2) return 3;                       // 两份都没比对上 → 未能验证
+        if ((c1 && m1) || (c2 && m2)) return 2;         // 任一不一致 → 不一致
+        return 1;
+    }
+
+    string LineFor(string name, bool compared, bool mismatch, bool haveAnyList)
+    {
+        if (!haveAnyList) return string.Format(L10N._("verify.line.nolist"), name);
+        if (!compared) return string.Format(L10N._("verify.line.skip"), name);
+        return string.Format(L10N._(mismatch ? "verify.line.bad" : "verify.line.ok"), name);
+    }
+
+    /// <summary>关于页结果区渲染（三态 + 明细；语言切换后调用即可按新语言重排）。</summary>
+    void RenderVerifyResult()
+    {
+        if (lblVerifyResult == null) return;
+        string head;
+        if (verifyState == 9) head = L10N._("verify.running");
+        else if (verifyState == 1) head = L10N._("verify.state.ok");
+        else if (verifyState == 2) head = L10N._("verify.state.bad");
+        else if (verifyState == 3) head = L10N._("verify.state.none") + L10N._("verify.reason.nolist");
+        else head = L10N._("verify.state.idle");
+        lblVerifyResult.Text = head + (verifyReport.Length > 0 ? "\n" + verifyReport : "");
+        lblVerifyResult.ForeColor = (verifyState == 2) ? Color.FromArgb(0xE8, 0x11, 0x23) : Th.FgDim;
+    }
+
+    /// <summary>关于页「验证此安装」：联网取官方清单 → 比对核心 exe 与 GUI exe（只读，不改任何文件）。</summary>
+    void RunVerifyInstall()
+    {
+        if (Interlocked.CompareExchange(ref busy, 1, 0) != 0) { LogLine(L10N._("op.busy")); return; }
+        UpdateActionButtons();
+        verifyState = 9;
+        RenderVerifyResult();
+        LogLine(L10N._("verify.running"));
+        ThreadPool.QueueUserWorkItem(delegate(object _)
+        {
+            int state;
+            string remote = null;
+            try
+            {
+                remote = FetchOfficialManifest();
+                string local = LocalManifest();
+                state = BuildVerifyResult(remote, local);
+            }
+            catch { state = 3; }
+            string rep = verifyReport;
+            BeginInvoke((Action)delegate
+            {
+                verifyReport = rep;
+                verifyState = state;
+                RenderVerifyResult();
+                Interlocked.Exchange(ref busy, 0);
+                UpdateActionButtons();
+                if (state == 1) LogLine(L10N._("verify.state.ok"));
+                else if (state == 2) LogErr(L10N._("verify.state.bad"));
+                else LogWarn(L10N._("verify.state.none") + (remote == null ? L10N._("verify.reason.offline") : L10N._("verify.reason.nolist")));
+                ShowToast(L10N._(state == 1 ? "verify.state.ok" : (state == 2 ? "verify.state.bad" : "verify.state.none")));
+            });
+        });
+    }
+
+    /// <summary>启动时的本地一致性检查（不联网）：随包清单存在且本机 exe 不符 → 记错误 + 托盘提示。</summary>
+    void CheckLocalIntegrityAtStartup()
+    {
+        try
+        {
+            string local = LocalManifest();
+            if (local == null) return;   // 单独复制 exe：无从比对，静默（不打扰）
+            bool c1, r1, m1, c2, r2, m2;
+            VerifyOneExe(CoreExePathForVerify(), local, null, out c1, out r1, out m1);
+            VerifyOneExe(Application.ExecutablePath, local, null, out c2, out r2, out m2);
+            if ((c1 && m1) || (c2 && m2))
+            {
+                verifyState = 2;
+                BuildVerifyResult(null, local);   // 填充明细（不复用上面的 out，保持代码直观）
+                RenderVerifyResult();
+                LogErr(L10N._("verify.localmismatch"));
+                ShowToast(L10N._("verify.localmismatch"));
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>「来自网络」标记（Mark of the Web）提醒：只记日志，不弹窗（杀软误报属常见现象）。</summary>
+    void CheckMotwWarning()
+    {
+        try
+        {
+            string ads = Application.ExecutablePath + ":Zone.Identifier";
+            if (!File.Exists(ads)) return;
+            string txt = File.ReadAllText(ads);
+            int zone = 0;
+            foreach (string ln in txt.Split('\n'))
+            {
+                string t = ln.Trim();
+                if (t.StartsWith("ZoneId=", StringComparison.OrdinalIgnoreCase)) { int.TryParse(t.Substring(7).Trim(), out zone); }
+            }
+            if (zone == 3 || zone == 4) { LogWarn(L10N._("motw.warn")); return; }
+            // Win10/11 有时写的是 [ZoneTransfer] 段而不是 ZoneId：只要出现该段就按"来自网络"处理
+            if (txt.IndexOf("ZoneTransfer", StringComparison.OrdinalIgnoreCase) >= 0) LogWarn(L10N._("motw.warn"));
+        }
+        catch { }
+    }
+
+    /// <summary>本机状态目录（与核心一致：exe 目录可写就用它，否则 %APPDATA%\DeepSeekHarnessLauncher）。</summary>
+    string StateDirGuess()
+    {
+        string dir = AppDomain.CurrentDomain.BaseDirectory;
+        try
+        {
+            if (File.Exists(Path.Combine(dir, "launcher.config"))) return dir;
+            string probe = Path.Combine(dir, ".gui-write-test");
+            using (File.Create(probe)) { }
+            File.Delete(probe);
+            return dir;
+        }
+        catch { }
+        string alt = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DeepSeekHarnessLauncher");
+        return alt;
+    }
+
+    /// <summary>首次启动：只做完整性自检（用户明确要求：首启环境本来就是空的，不列环境清单、不谈备份）。</summary>
+    void CheckFirstRun()
+    {
+        try
+        {
+            string dir = StateDirGuess();
+            string mark = Path.Combine(dir, ".gui_firstrun_done");
+            if (File.Exists(mark)) return;
+            try { File.WriteAllText(mark, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), new UTF8Encoding(false)); } catch { }
+
+            string local = LocalManifest();
+            int state = BuildVerifyResult(null, local);
+            string head = (state == 2) ? L10N._("verify.state.bad")
+                        : (state == 1 ? L10N._("verify.state.ok")
+                        : (local == null ? L10N._("verify.reason.nolist") : L10N._("verify.state.none")));
+            string body = head + "\n\n" + verifyReport;
+            try { MessageBox.Show(this, body, L10N._("firstrun.title"), MessageBoxButtons.OK, MessageBoxIcon.Information); }
+            catch { }
+            verifyState = state;
+            RenderVerifyResult();
+            LogLine(L10N._("firstrun.log"));
+        }
+        catch { }
     }
 
     // 关于页内容区宽（content Frame 宽度）
@@ -2338,7 +2369,7 @@ public class App : Form
     string AssemblyVersion()
     {
         try { return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Major + "." + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Minor + "." + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Build; }
-        catch { return "2.6.0"; }
+        catch { return "2.7.0"; }
     }
 
     // ---- 页面切换 ----
@@ -2384,6 +2415,11 @@ public class App : Form
         if (lblDisclaimer is RLabel) { (lblDisclaimer as RLabel).Surround = t.Panel; }
         lblDisclaimer.ForeColor = t.FgDim;
 
+        // v2.7 状态栏（围绕 = Panel 色，避免透明底拾到标题栏像素产生重影）
+        if (statBar != null) statBar.BackColor = t.Panel;
+        if (lblStatusBar is RLabel) { (lblStatusBar as RLabel).Surround = t.Panel; }
+        if (lblStatusBar != null) lblStatusBar.ForeColor = t.FgDim;
+
         led.SetTheme(t, t.PanelAlt);
         ApplyStatusColor();
 
@@ -2398,6 +2434,8 @@ public class App : Form
         btnClearLog.SetTheme(t, t.Bg);   // 清空按钮父 = 日志页 top（Bg 色）
 
         UpdateActionButtons();   // 禁用态着色后重新应用
+        UpdateStatusBar();       // v2.7：状态栏含主题/语言字样，主题切换后重渲染
+        RenderVerifyResult();    // v2.7：关于页结果区（不一致时是红字，需跟随主题恢复）
 
         ResumeLayout();
         Invalidate(true);
@@ -2539,6 +2577,25 @@ public class App : Form
         if (btnDocRecheck != null) btnDocRecheck.Text = L10N._("doc.recheck");
         if (btnDocExport != null) btnDocExport.Text = L10N._("doc.export");
         if (upInfoLoaded) LoadUpdateInfo();   // 语言切换后以新语言刷新更新中心数值
+        RefreshTrayTexts();                   // v2.7：托盘菜单文案跟随语言
+        UpdateStatusBar();
+        UpdateInstallButtonLabel();           // 安装/修复 按钮文案跟随语言
+        if (btnVerifyInstall != null) btnVerifyInstall.Text = L10N._("verify.btn");
+        RenderVerifyResult();                 // v2.7：关于页验证结果跟随语言
+    }
+
+    /// <summary>托盘右键菜单文案跟随语言（菜单项不是 Control，ApplyLang 的遍历覆盖不到）。</summary>
+    void RefreshTrayTexts()
+    {
+        try
+        {
+            if (trayMenu == null || trayMenu.Items.Count < 6) return;
+            trayMenu.Items[0].Text = L10N._("tray.show");
+            trayMenu.Items[2].Text = L10N._("tray.start");
+            trayMenu.Items[3].Text = L10N._("tray.stop");
+            trayMenu.Items[5].Text = L10N._("tray.exit");
+        }
+        catch { }
     }
 
     void RefreshActionButtons()
@@ -2615,14 +2672,27 @@ public class App : Form
         {
             try
             {
-                CoreRunResult r = RunCoreCapture(core, "status", 10000);
+                CoreRunResult r = RunCoreCapture(core, "status --detail", 10000);
                 string k = (r.MarkLine ?? "").Trim();
                 SKind st = SKind.Unknown;
                 if (k == "STATUS_UP") st = SKind.Up;
                 else if (k == "STATUS_STARTING") st = SKind.Starting;
                 else if (k == "STATUS_DOWN") st = SKind.Down;
-                string ver = ReadDshVersion();   // 轮询顺带读 dsh 版本
-                BeginInvoke((Action)delegate { SetStatus(st); SetDshVersion(ver); });
+                // v2.7：--detail 追加的 PID / 运行时长（只读，状态栏用）
+                string pid = "", up = "";
+                foreach (string ln in (r.All ?? "").Split('\n'))
+                {
+                    string t = ln.Trim();
+                    if (t.StartsWith("STATUS_PID ")) { string v = t.Substring(11).Trim(); if (v != "0") pid = v; }
+                    else if (t.StartsWith("STATUS_UPTIME ")) up = t.Substring(14).Trim();
+                }
+                // v2.7：dsh 版本改为缓存读取——每 10 次轮询或操作后（verDirty）才真的 spawn 一次 cmd
+                pollTicks++;
+                bool wantVer = verDirty || (pollTicks % 10 == 0);
+                string ver = wantVer ? ReadDshVersion() : null;   // 轮询顺带读 dsh 版本
+                if (wantVer) verDirty = false;
+                string verArg = ver;
+                BeginInvoke((Action)delegate { SetStatus(st); SetStatusBarData(pid, up); if (wantVer) SetDshVersion(verArg); });
             }
             catch { BeginInvoke((Action)delegate { SetStatus(SKind.Unknown); }); }
             finally { Interlocked.Exchange(ref refreshing, 0); }
@@ -2635,6 +2705,7 @@ public class App : Form
         if (led != null) led.Set(k);
         if (lblStatusText != null) { lblStatusText.Text = StatusText(k); ApplyStatusColor(); }
         UpdateActionButtons();
+        UpdateStatusBar();
     }
 
     // ---- dsh 版本读取（后台线程调用） ----
@@ -2659,6 +2730,7 @@ public class App : Form
         if (string.IsNullOrEmpty(dv))
             dv = L10N._("dsh.verreadfail");
         lblDshVer.Text = L10N._("home.version") + ": " + dv;
+        UpdateInstallButtonLabel();   // v2.7：装/未装 → 安装 dsh / 修复 dsh
     }
 
     // ---- 按钮禁用态：操作进行中全禁用（入口按钮不再按服务状态置灰——
@@ -2671,6 +2743,250 @@ public class App : Form
         {
             kv.Value.Enabled = !busyNow;
         }
+    }
+
+    // ================= v2.7：托盘 / 关闭行为 / 状态栏 / 快捷键 / Toast =================
+
+    /// <summary>托盘图标 + 右键菜单（显示窗口 / 启停 dsh / 退出）。失败静默：没有托盘也必须能用。</summary>
+    void InitTray()
+    {
+        try
+        {
+            trayMenu = new ContextMenuStrip();
+            trayMenu.Items.Add(L10N._("tray.show"), null, delegate(object s, EventArgs e) { RestoreWindow(); });
+            trayMenu.Items.Add(new ToolStripSeparator());
+            trayMenu.Items.Add(L10N._("tray.start"), null, delegate(object s, EventArgs e) { RestoreWindow(); OnAction("act.start"); });
+            trayMenu.Items.Add(L10N._("tray.stop"), null, delegate(object s, EventArgs e) { RestoreWindow(); OnAction("act.stop"); });
+            trayMenu.Items.Add(new ToolStripSeparator());
+            trayMenu.Items.Add(L10N._("tray.exit"), null, delegate(object s, EventArgs e) { forceExit = true; Close(); });
+
+            trayIcon = new NotifyIcon();
+            Icon ico = null;
+            try { ico = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { ico = null; }
+            trayIcon.Icon = (ico != null) ? ico : SystemIcons.Application;
+            trayIcon.Text = "DeepSeek Harness Toolkit " + AssemblyVersion();   // 托盘提示上限 63 字符
+            trayIcon.ContextMenuStrip = trayMenu;
+            trayIcon.DoubleClick += delegate(object s, EventArgs e) { RestoreWindow(); };
+            trayIcon.Visible = true;
+        }
+        catch { trayIcon = null; }   // 托盘不可用：关闭行为退化为"直接退出"，不影响其他功能
+    }
+
+    /// <summary>从托盘恢复窗口。</summary>
+    void RestoreWindow()
+    {
+        try
+        {
+            Show();
+            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            Activate();
+            BringToFront();
+            SetPollInterval(POLL_VISIBLE);
+        }
+        catch { }
+    }
+
+    /// <summary>最小化到托盘（窗口 Hide；进程与 dsh 服务继续运行）。</summary>
+    void HideToTray()
+    {
+        try
+        {
+            Hide();
+            SetPollInterval(POLL_HIDDEN);   // 看不见时降频轮询
+            if (!trayTipShown && trayIcon != null)
+            {
+                trayTipShown = true;
+                try { trayIcon.ShowBalloonTip(3000, L10N._("tray.balloon.title"), L10N._("tray.balloon.body"), ToolTipIcon.Info); } catch { }
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>托盘气泡提示（操作结果反馈）。托盘不可用时静默——日志里已经有同样的结果行。</summary>
+    void ShowToast(string msg)
+    {
+        try { if (trayIcon != null) trayIcon.ShowBalloonTip(3000, L10N._("app.title"), msg, ToolTipIcon.Info); } catch { }
+    }
+
+    void SetPollInterval(int ms)
+    {
+        try { if (pollTimer != null && pollTimer.Interval != ms) pollTimer.Interval = ms; } catch { }
+    }
+
+    /// <summary>关闭窗口行为（v2.7）：未记忆 → 询问并记住；"ask" → 每次都问；"tray"/"exit" → 直接执行。
+    /// 非用户关闭（系统关机/注销）一律放行，避免拖住关机。</summary>
+    void OnAppClosing(FormClosingEventArgs e)
+    {
+        if (forceExit || e.CloseReason != CloseReason.UserClosing) return;
+        string act = cfgClose;
+        if (act.Length == 0 || act == "ask")
+        {
+            string picked = AskCloseAction();
+            if (picked == null) { e.Cancel = true; return; }                 // 取消 → 不关窗
+            act = picked;
+            if (cfgClose.Length == 0) { cfgClose = picked; SaveCloseAction(picked); }   // 只有"首次"才记忆
+        }
+        if (act == "tray" && trayIcon != null) { e.Cancel = true; HideToTray(); return; }
+        forceExit = true;   // exit（或托盘不可用）→ 真正退出
+    }
+
+    /// <summary>首次关闭时的询问框：最小化到托盘 / 直接退出；关掉对话框=取消（窗口留着）。</summary>
+    string AskCloseAction()
+    {
+        try
+        {
+            using (Form dlg = new Form())
+            {
+                dlg.Text = L10N._("close.title");
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.StartPosition = FormStartPosition.CenterParent;
+                dlg.MinimizeBox = false;
+                dlg.MaximizeBox = false;
+                dlg.ShowInTaskbar = false;
+                dlg.ClientSize = new Size(420, 132);
+                dlg.BackColor = Th.Panel;
+                dlg.ForeColor = Th.Fg;
+
+                Label lbl = new Label();
+                lbl.Text = L10N._("close.body");
+                lbl.Location = new Point(18, 16);
+                lbl.Size = new Size(384, 56);
+                lbl.ForeColor = Th.Fg;
+                dlg.Controls.Add(lbl);
+
+                Button bTray = new Button();
+                bTray.Text = L10N._("close.tray");
+                bTray.Location = new Point(94, 86);
+                bTray.Size = new Size(150, 30);
+                bTray.DialogResult = DialogResult.Yes;
+                dlg.Controls.Add(bTray);
+
+                Button bExit = new Button();
+                bExit.Text = L10N._("close.exit");
+                bExit.Location = new Point(256, 86);
+                bExit.Size = new Size(150, 30);
+                bExit.DialogResult = DialogResult.No;
+                dlg.Controls.Add(bExit);
+
+                DialogResult r = dlg.ShowDialog(this);
+                if (r == DialogResult.Yes) return "tray";
+                if (r == DialogResult.No) return "exit";
+                return null;   // 对话框被关掉 = 取消
+            }
+        }
+        catch { return "exit"; }   // 弹窗本身失败时不要卡住用户：按退出处理
+    }
+
+    /// <summary>把关闭行为写回配置（后台线程，不阻塞关窗）。</summary>
+    void SaveCloseAction(string act)
+    {
+        try
+        {
+            string core = CoreExePath();
+            if (core == null) return;
+            string a = act;
+            ThreadPool.QueueUserWorkItem(delegate(object _) { try { RunCoreCapture(core, "config-set close_action " + a, 8000); } catch { } });
+        }
+        catch { }
+    }
+
+    /// <summary>启动时异步读回 close_action（不拖慢启动）。</summary>
+    void LoadCloseAction()
+    {
+        try
+        {
+            string core = CoreExePath();
+            if (core == null) return;
+            ThreadPool.QueueUserWorkItem(delegate(object _)
+            {
+                try
+                {
+                    CoreRunResult r = RunCoreCapture(core, "config-get", 8000);
+                    string all = r.All ?? "";
+                    foreach (string ln in all.Split('\n'))
+                    {
+                        string t = ln.Trim();
+                        if (t.StartsWith("CONFIG close_action "))
+                        {
+                            string v = t.Substring(20).Trim();
+                            BeginInvoke((Action)delegate { cfgClose = v; });
+                            break;
+                        }
+                    }
+                }
+                catch { }
+            });
+        }
+        catch { }
+    }
+
+    /// <summary>状态栏数据（来自 status --detail，只读）。</summary>
+    void SetStatusBarData(string pid, string uptime)
+    {
+        svcPid = pid ?? "";
+        svcUptime = uptime ?? "";
+        UpdateStatusBar();
+    }
+
+    /// <summary>状态栏文案：服务状态 · PID · 运行时长 · 主题 · 语言 · 快捷键提示。</summary>
+    void UpdateStatusBar()
+    {
+        if (lblStatusBar == null) return;
+        string s = StatusText(currentKind);
+        if (svcPid.Length > 0) s += "   ·   " + L10N._("stat.pid") + " " + svcPid;
+        if (svcUptime.Length > 0) s += "   ·   " + L10N._("stat.uptime") + " " + svcUptime;
+        s += "   ·   " + (dark ? L10N._("stat.theme.dark") : L10N._("stat.theme.light"));
+        s += "   ·   " + L10N._("stat.lang") + " " + (L10N.IsZh ? "中文" : "EN");
+        s += "   ·   Ctrl+1~7  F5  Ctrl+B";
+        lblStatusBar.Text = s;
+    }
+
+    /// <summary>安装按钮文案：检测到已装 dsh → "修复 dsh"，未装 → "安装 dsh"（v2.7）。</summary>
+    void UpdateInstallButtonLabel()
+    {
+        try
+        {
+            Button b;
+            if (actBtns == null || !actBtns.TryGetValue("act.install", out b)) return;
+            b.Text = string.IsNullOrEmpty(dshVer) ? L10N._("act.install") : L10N._("act.repair");
+        }
+        catch { }
+    }
+
+    /// <summary>深度优先找当前焦点控件（判断是否在文本输入框里）。</summary>
+    Control FocusedCtl(Control root)
+    {
+        try
+        {
+            if (root == null) return null;
+            if (root.Focused) return root;
+            foreach (Control c in root.Controls)
+            {
+                Control f = FocusedCtl(c);
+                if (f != null) return f;
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>焦点在文本输入控件上时，快捷键让位（输入框里按 Ctrl+B 不该触发备份）。</summary>
+    bool IsTextInputFocused()
+    {
+        Control f = FocusedCtl(this);
+        if (f == null) return false;
+        return (f is TextBox) || (f is RichTextBox) || (f is NumericUpDown) || (f is MaskedTextBox);
+    }
+
+    /// <summary>快捷键（v2.7）：Ctrl+1~7 切页、F5 刷新状态、Ctrl+B 备份。</summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Handled || IsTextInputFocused()) return;
+        if (e.Control && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D7) { ShowPage(e.KeyCode - Keys.D1); e.Handled = true; return; }
+        if (e.Control && e.KeyCode >= Keys.NumPad1 && e.KeyCode <= Keys.NumPad7) { ShowPage(e.KeyCode - Keys.NumPad1); e.Handled = true; return; }
+        if (e.KeyCode == Keys.F5) { RefreshStatus(); e.Handled = true; return; }
+        if (e.Control && e.KeyCode == Keys.B) { OnAction("act.backup"); e.Handled = true; return; }
     }
 
     // 运行中直接打开 Web 界面（UseShellExecute，立即返回）
