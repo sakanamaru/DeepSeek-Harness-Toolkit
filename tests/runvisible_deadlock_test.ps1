@@ -1,4 +1,4 @@
-# RunVisible pipe deadlock regression test
+﻿# RunVisible pipe deadlock regression test
 # Simulates npm-like large output (>pipe buffer) to confirm the fixed
 # drain-and-forward logic never deadlocks. Mirrors dsh_v2.cs RunVisible.
 $ErrorActionPreference = 'Stop'

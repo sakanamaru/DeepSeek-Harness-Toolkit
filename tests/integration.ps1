@@ -1,4 +1,4 @@
-# DeepSeek Harness Toolkit - 集成测试（端到端打桩矩阵）
+﻿# DeepSeek Harness Toolkit - 集成测试（端到端打桩矩阵）
 # 用法:  pwsh -NoProfile -File tests\integration.ps1 [-RepoRoot <仓库根>]   （默认取脚本上级目录）
 # 退出码: 0=全过（SKIP 不计失败）, 1=有失败, 2=环境/锚点错误
 # 说明: ① 只碰打桩数据目录 ~/.dsh_test，绝不接触真实 ~/.dsh；
@@ -25,7 +25,7 @@ function Build-Variant($variant, $outExe) {
         @{ o = 'const string DATA_DIR     = ".dsh";';                                                   n = 'const string DATA_DIR     = ".dsh_test";' },
         @{ o = '"DeepSeek-Harness-Toolkit-single"';                                                        n = '"DSH-Toolkit-TEST-single"' },
         @{ o = '"DSH-Toolkit-V2.0.0-single"';                                                           n = '"DSH-Toolkit-TEST-legacy"' },
-        @{ o = 'string choice = autoApplied ? ReadChoice("  > ") : (installed ? CountdownInput("  > ", def) : ReadChoice("  > "));'; n = 'string choice = ReadLineTrim(); // TEST line-driven' },
+        @{ o = 'string choice = countdown ? CountdownInput("  > ", def) : ReadChoice("  > ");'; n = 'string choice = ReadLineTrim(); // TEST line-driven' },
         @{ o = 'int code = RunVisible("cmd.exe", "/c npm install -g --registry=" + registries[i] + " " + pkg);'; n = 'int code = 0; // TEST install no-op' },
         @{ o = 'int code = RunVisible("cmd.exe", "/c npm uninstall -g @deepseek-ai/dsh");';            n = 'int code = 0; // TEST npm no-op' }
     )
