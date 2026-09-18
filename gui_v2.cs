@@ -26,8 +26,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 非官方图形辅助面板。v1: SOGR-Momono Dango；v2: DeepSeek DSH；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
 [assembly: AssemblyProduct("DeepSeek Harness Toolkit GUI")]
-[assembly: AssemblyVersion("2.7.0.0")]
-[assembly: AssemblyFileVersion("2.7.0.0")]
+[assembly: AssemblyVersion("2.7.1.0")]
+[assembly: AssemblyFileVersion("2.7.1.0")]
 
 // ---------------- 主题 ----------------
 
@@ -2490,7 +2490,7 @@ public class App : Form
     string AssemblyVersion()
     {
         try { return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Major + "." + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Minor + "." + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.Build; }
-        catch { return "2.7.0"; }
+        catch { return "2.7.1"; }
     }
 
     // ---- 页面切换 ----
