@@ -303,6 +303,20 @@ public static class UnitTests
         string sd2 = Path.Combine(Path.GetTempPath(), "dsh_ut_shortcut_missing_" + Guid.NewGuid().ToString("N"));
         string err2 = Program.Test.Shortcut(sd2);
         Check(err2 == null && File.Exists(Path.Combine(sd2, "DeepSeek Harness Toolkit.lnk")), "shortcut auto-creates missing dir");
+        // ---- v2.7：目标/基名可指定（GUI 要建"指向 GUI 自己"的快捷方式，而不是 CLI 的）----
+        Console.WriteLine("[Z2] desktop shortcut target/name");
+        string sd3 = Path.Combine(Path.GetTempPath(), "dsh_ut_shortcut_gui_" + Guid.NewGuid().ToString("N"));
+        string selfExe = System.Reflection.Assembly.GetExecutingAssembly().Location;
+        string err3 = Program.Test.ShortcutT(sd3, selfExe, "DeepSeek Harness Toolkit GUI", "DeepSeek Harness Toolkit GUI");
+        Check(err3 == null, "custom target/name shortcut created (err=" + (err3 ?? "(null)") + ")");
+        Check(File.Exists(Path.Combine(sd3, "DeepSeek Harness Toolkit GUI.lnk")), "GUI shortcut keeps its own file name");
+        Check(!File.Exists(Path.Combine(sd3, "DeepSeek Harness Toolkit.lnk")), "GUI action does NOT create the CLI shortcut");
+        Check(Program.Test.ShortcutNameT(@"..\..\evil") == "evil", "shortcut name strips directories (no traversal), got " + Program.Test.ShortcutNameT(@"..\..\evil"));
+        Check(Program.Test.ShortcutNameT("a/b:c*d?e") == "bcde", "shortcut name strips invalid chars, got " + Program.Test.ShortcutNameT("a/b:c*d?e"));
+        Check(Program.Test.ShortcutNameT("   ") == "", "blank shortcut name rejected");
+        string err4 = Program.Test.ShortcutT(sd3, @"C:\nope\missing.exe", "x", null);
+        Check(err4 != null && !File.Exists(Path.Combine(sd3, "x.lnk")), "missing target exe rejected (err=" + (err4 ?? "(null)") + ")");
+        try { Directory.Delete(sd3, true); } catch { }
         try { Directory.Delete(sd, true); } catch { }
         try { Directory.Delete(sd2, true); } catch { }
 
