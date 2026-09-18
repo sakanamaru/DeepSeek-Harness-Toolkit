@@ -6,6 +6,22 @@ All notable changes to **DeepSeek Harness Toolkit** (unofficial). Full release n
 
 ---
 
+## v2.7.1 — 未发布 / Unreleased
+
+### Fixed / 修复
+
+- **GUI 的「桌面快捷方式」建出来的是 CLI 的快捷方式** — `CreateDesktopShortcut` 此前固定指向核心 exe、固定命名 `DeepSeek Harness Toolkit.lnk`，所以在 GUI 里点这个按钮得到的是命令行程序的快捷方式。现在 `shortcut` 支持 `--exe <目标>` / `--name <基名>` / `--desc <描述>`，GUI 传自己的 exe 与 `DeepSeek Harness Toolkit GUI` 基名：GUI 建出的快捷方式指向 GUI 自己，且与 CLI 的快捷方式**并存不互相覆盖**。核心 CLI 的默认行为不变（仍指向核心自己）。
+  **GUI's "Desktop Shortcut" created a CLI shortcut** — `CreateDesktopShortcut` was hardcoded to the core exe and to the name `DeepSeek Harness Toolkit.lnk`, so clicking that button in the GUI produced a shortcut to the command-line program. `shortcut` now accepts `--exe <target>` / `--name <base name>` / `--desc <description>`, and the GUI passes its own exe plus the `DeepSeek Harness Toolkit GUI` base name, so the GUI shortcut points at the GUI and the two coexist without overwriting each other. The core CLI's default behaviour is unchanged (still points at the core).
+  - 顺带加固：目标必须是**存在的 .exe 文件**（否则 `SHORTCUT_FAIL` 且不落文件）；快捷方式基名做净化（只取文件名部分、剔除 `\ / : * ? " < > |` 与控制字符、最长 80 字），**路径分隔符一律剔除**，防止写出桌面目录之外。
+  - Hardening along the way: the target must be an existing `.exe` (otherwise `SHORTCUT_FAIL` and nothing is written), and the base name is sanitized (file-name part only, `\ / : * ? " < > |` and control characters stripped, max 80 chars) so a crafted name cannot escape the desktop directory.
+
+### Tests / 测试
+
+- 单元测试 **277 → 284**：新增自定义目标/基名、GUI 快捷方式与 CLI 快捷方式互不覆盖、基名净化（`..\..\evil` → `evil`、非法字符剔除）、空名拒绝、目标不存在拒绝。
+  Unit tests **277 → 284**: custom target/base name, GUI vs CLI shortcut coexistence, base-name sanitizing (`..\..\evil` → `evil`, invalid characters stripped), blank name rejected, missing target rejected.
+
+---
+
 ## v2.7.0 — 2026-09-18 —（托盘 · 关闭行为 · 状态栏 · 快捷键 · 验证此安装 / Tray, Close Behavior, Status Bar, Shortcuts & Verify This Install）
 
 ### Added / 新增

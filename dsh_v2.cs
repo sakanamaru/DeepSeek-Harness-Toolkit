@@ -89,7 +89,7 @@ public static class Program
                 case "check":     case "c": Check();   return;
                 case "update":    case "up": UpdateDsh(); return;
                 case "about":     case "a": About();   return;
-                case "shortcut":  case "sc": ShortcutCli(); return; // 创建桌面快捷方式（脚本/安装后调用）
+                case "shortcut":  case "sc": ShortcutCli(args); return; // 创建桌面快捷方式（--exe/--name 可指定目标；GUI 用它建自己的）
                 case "backup":    case "b": NIBackup();  return;   // 非交互备份（GUI/脚本用）
                 case "backup-list": case "bl": NiListBackups(HasFlag(args, "--detail") || HasFlag(args, "-detail")); return;   // 非交互列出有效备份目录（--detail 附类型/大小/时间，GUI 备份管理页用）
                 case "backup-export": case "be": NIBackupExport(args); return;   // v2.6：导出备份副本到指定目录
@@ -2074,19 +2074,48 @@ public static class Program
 
     // ---------------- 桌面快捷方式 ----------------
 
-    /// <summary>创建桌面快捷方式指向本程序 exe；返回 null=成功，否则=原因。</summary>
-    static string CreateDesktopShortcut(string desktopDir)
+    /// <summary>核心（CLI）桌面快捷方式基名。</summary>
+    const string SHORTCUT_NAME = "DeepSeek Harness Toolkit";
+
+    /// <summary>快捷方式基名净化：只取文件名部分、剔除非法字符（含路径分隔符，防目录穿越），最长 80 字符。
+    /// 纯函数，可单测。返回空串表示名字非法（调用方应拒绝创建，而不是写一个怪名字）。</summary>
+    static string SafeShortcutName(string raw)
+    {
+        string s = (raw ?? "").Trim();
+        if (s.Length == 0) return "";
+        // 手工取最后一段，避免 Path.GetFileName 对非法字符抛异常
+        int cut = s.LastIndexOfAny(new char[] { '\\', '/' });
+        if (cut >= 0 && cut + 1 < s.Length) s = s.Substring(cut + 1);
+        StringBuilder sb = new StringBuilder();
+        foreach (char c in s)
+        {
+            if (c < 32) continue;
+            if ("\\/:*?\"<>|".IndexOf(c) >= 0) continue;
+            sb.Append(c);
+        }
+        string n = sb.ToString().Trim().Trim('.');
+        return n.Length > 80 ? n.Substring(0, 80) : n;
+    }
+
+    /// <summary>创建桌面快捷方式；返回 null=成功，否则=原因。
+    /// v2.7：可指定目标 exe / 基名 / 描述——GUI 调用时指向 GUI 自己的 exe
+    /// （此前固定指向核心 exe，导致在 GUI 里点「桌面快捷方式」建出来的是 CLI 的，属错位）。
+    /// targetExe 为空时指向本程序；必须是已存在的 .exe 文件。</summary>
+    static string CreateDesktopShortcut(string desktopDir, string targetExe, string lnkBase, string desc)
     {
         try
         {
-            string exe = Assembly.GetExecutingAssembly().Location;   // 本体 exe 绝对路径
-            if (string.IsNullOrEmpty(exe)) return "无法定位本体 exe 路径";
+            string exe = string.IsNullOrEmpty(targetExe) ? Assembly.GetExecutingAssembly().Location : targetExe;
+            if (string.IsNullOrEmpty(exe)) return "无法定位 exe 路径";
+            if (!File.Exists(exe)) return "目标 exe 不存在：" + exe;
+            string name = SafeShortcutName(lnkBase);
+            if (name.Length == 0) name = SHORTCUT_NAME;
             if (!Directory.Exists(desktopDir))
             {
                 try { Directory.CreateDirectory(desktopDir); } catch { }
                 if (!Directory.Exists(desktopDir)) return "桌面目录不可用：" + desktopDir;
             }
-            string lnk = Path.Combine(desktopDir, "DeepSeek Harness Toolkit.lnk");
+            string lnk = Path.Combine(desktopDir, name + ".lnk");
             // COM WScript.Shell 创建 .lnk（.NET 4.x 无内置 .lnk 写入 API；WScript.Shell 为 Windows 自带组件）
             Type wsType = Type.GetTypeFromProgID("WScript.Shell");
             if (wsType == null) return "WScript.Shell 组件不可用";
@@ -2095,11 +2124,18 @@ public static class Program
             Type scType = sc.GetType();
             scType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, sc, new object[] { exe });
             scType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, sc, new object[] { Path.GetDirectoryName(exe) });
-            scType.InvokeMember("Description", BindingFlags.SetProperty, null, sc, new object[] { "DeepSeek Harness Toolkit" });
+            scType.InvokeMember("Description", BindingFlags.SetProperty, null, sc, new object[] { string.IsNullOrEmpty(desc) ? name : desc });
+            try { scType.InvokeMember("IconLocation", BindingFlags.SetProperty, null, sc, new object[] { exe + ",0" }); } catch { }
             scType.InvokeMember("Save", BindingFlags.InvokeMethod, null, sc, null);
             return File.Exists(lnk) ? null : "快捷方式文件未生成";
         }
         catch (Exception ex) { LogErr("CreateDesktopShortcut: " + ex.Message); return ex.Message; }
+    }
+
+    /// <summary>默认（指向核心本程序）的桌面快捷方式。</summary>
+    static string CreateDesktopShortcut(string desktopDir)
+    {
+        return CreateDesktopShortcut(desktopDir, null, SHORTCUT_NAME, "DeepSeek Harness Toolkit");
     }
 
     /// <summary>当前用户桌面目录（SpecialFolder.DesktopDirectory，重定向到 OneDrive 桌面也生效）。
@@ -2115,11 +2151,20 @@ public static class Program
         catch { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Desktop"); }
     }
 
-    /// <summary>非交互创建桌面快捷方式（CLI shortcut 用）：成功输出 SHORTCUT_OK，失败 SHORTCUT_FAIL 原因。</summary>
-    static void ShortcutCli()
+    /// <summary>非交互创建桌面快捷方式（CLI shortcut 用）：成功输出 SHORTCUT_OK，失败 SHORTCUT_FAIL 原因。
+    /// v2.7：支持 --exe &lt;目标 exe&gt; / --name &lt;基名&gt; / --desc &lt;描述&gt;（GUI 传自己的 exe，避免建成 CLI 的）。</summary>
+    static void ShortcutCli(string[] args)
     {
-        string err = CreateDesktopShortcut(DesktopDir());
-        if (err == null) { Console.WriteLine("SHORTCUT_OK " + Path.Combine(DesktopDir(), "DeepSeek Harness Toolkit.lnk")); return; }
+        string exe = FlagValue(args, "--exe") ?? FlagValue(args, "-exe");
+        string name = FlagValue(args, "--name") ?? FlagValue(args, "-name");
+        string desc = FlagValue(args, "--desc") ?? FlagValue(args, "-desc");
+        if (string.IsNullOrEmpty(name)) name = SHORTCUT_NAME;
+        string err = CreateDesktopShortcut(DesktopDir(), exe, name, desc);
+        if (err == null)
+        {
+            Console.WriteLine("SHORTCUT_OK " + Path.Combine(DesktopDir(), SafeShortcutName(name) + ".lnk"));
+            return;
+        }
         Console.WriteLine("SHORTCUT_FAIL " + err);
         Environment.Exit(1);
     }
@@ -2127,7 +2172,7 @@ public static class Program
     /// <summary>桌面快捷方式是否已存在（监控页条件显示 I 选项）。</summary>
     static bool ShortcutExists()
     {
-        return File.Exists(Path.Combine(DesktopDir(), "DeepSeek Harness Toolkit.lnk"));
+        return File.Exists(Path.Combine(DesktopDir(), SHORTCUT_NAME + ".lnk"));
     }
 
     // ---------------- 非交互 CLI（GUI 集成地基：单行机器可读标记，不 Pause、不读输入） ----------------
@@ -3954,6 +3999,8 @@ public static class Program
         public static bool ValidBackup(string dir) { return Program.IsValidBackupDir(dir); }
         public static string ResolveBackup(string dir) { return Program.ResolveBackupDir(dir); }
         public static string Shortcut(string desktopDir) { return Program.CreateDesktopShortcut(desktopDir); }
+        public static string ShortcutT(string desktopDir, string exe, string name, string desc) { return Program.CreateDesktopShortcut(desktopDir, exe, name, desc); }
+        public static string ShortcutNameT(string raw) { return Program.SafeShortcutName(raw); }
         public static string Desktop(string dir) { string old = Environment.GetEnvironmentVariable("DSH_TEST_DESKTOP"); try { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", dir); return Program.DesktopDir(); } finally { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", old); } }
         public static bool ShortcutExists(string dir) { string old = Environment.GetEnvironmentVariable("DSH_TEST_DESKTOP"); try { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", dir); return Program.ShortcutExists(); } finally { Environment.SetEnvironmentVariable("DSH_TEST_DESKTOP", old); } }
         public static int ParsePort(string netstat, int port) { return Program.ParsePortPid(netstat, port); }

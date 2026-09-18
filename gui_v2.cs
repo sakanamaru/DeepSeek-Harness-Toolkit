@@ -667,6 +667,9 @@ static class WinRound
 
 public class App : Form
 {
+    // v2.7：GUI 桌面快捷方式的基名（与核心 CLI 的「DeepSeek Harness Toolkit.lnk」区分开，两个可共存）
+    const string SHORTCUT_GUI_NAME = "DeepSeek Harness Toolkit GUI";
+
     bool dark = false;   // 默认浅色主题（白色模式），右上角月牙/太阳可切换
     Theme Th { get { return dark ? Theme.Dark : Theme.Light; } }
 
@@ -1116,7 +1119,8 @@ public class App : Form
             if (key == "act.start") args = "start --bg";
             else if (key == "act.stop") args = "stop";
             else if (key == "act.backup") args = "backup";
-            else if (key == "act.shortcut") args = "shortcut";
+            // v2.7 修复：桌面快捷方式要指向 GUI 自己（此前调核心默认逻辑，建出来的是 CLI 的快捷方式）
+            else if (key == "act.shortcut") args = "shortcut --exe \"" + Application.ExecutablePath + "\" --name \"" + SHORTCUT_GUI_NAME + "\" --desc \"DeepSeek Harness Toolkit GUI\"";
             else return;   // 未知 key：finally 清零
             keepBusy = true;
             if (CoreExePath() == null) { LogWarn(L10N._("op.coremissing")); keepBusy = false; }
