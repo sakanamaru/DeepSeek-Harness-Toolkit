@@ -6,7 +6,7 @@ All notable changes to **DeepSeek Harness Toolkit** (unofficial). Full release n
 
 ---
 
-## v2.7.1 — 未发布 / Unreleased
+## v2.7.1 — 2026-09-18 —（修复：GUI 桌面快捷方式指向 GUI · 版本号对齐 / GUI Desktop Shortcut Fix & Version Alignment）
 
 ### Fixed / 修复
 
