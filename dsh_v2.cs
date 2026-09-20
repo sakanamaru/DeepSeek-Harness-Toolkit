@@ -3680,6 +3680,130 @@ public static class Program
         return "PROFILEPATCH_OK " + SanitizeForReport(file) + ":" + plan.Line;
     }
 
+    // ---- v2.7.2：第二条处方「禁用出问题的插件」（顶层补丁项 - id: x / disabled: true） ----
+    // 依据（本机 dsh 包内的类型定义 + 实现，不是猜的）：
+    //   cordis-plugin-include 的 PatchOptions 有 `disabled?: boolean | null` 这个一等公民字段；
+    //   applyEntryPatches 对「非 insert 补丁」做平铺覆盖（target[key] = value），匹配不到只 warn 跳过。
+    //   所以 `- id: <条目>` + `disabled: true` 就是「关掉这一行」的正统写法 —— dsh 自己关遥测行也这么干。
+    // 注意：同一补丁列表里，`insert:` 插入的行会被索引，后面的 id 补丁才能命中 → 必须「追加在文件末尾」。
+    // 与 maxDepth 处方的区别：那条让插件继续能用（外科修复），这条是通用兜底（任何坏插件都能先关掉）。
+
+    /// <summary>条目 id 必须是安全标量：只允许 [A-Za-z0-9._@/-]。
+    /// 防 YAML 注入：id 来自文件扫描或 GUI 传参，若带换行/冒号会往补丁文件里注入新键。</summary>
+    static bool IsSafePatchId(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return false;
+        foreach (char c in id)
+        {
+            bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+            if (!ok && c != '.' && c != '_' && c != '-' && c != '@' && c != '/') return false;
+        }
+        return true;
+    }
+
+    /// <summary>文件里是否存在该 id 的条目（insert 条目或顶层补丁项）。</summary>
+    static bool PatchHasEntry(string text, string id)
+    {
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(id)) return false;
+        string[] lines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+        for (int i = 0; i < lines.Length; i++)
+        {
+            int ind; string body; bool dash;
+            if (!TryEntryStart(lines[i], out ind, out body, out dash)) continue;
+            Match m = Regex.Match(body, dash ? @"^-\s+id:\s*(.*)$" : @"^id:\s*(.*)$");
+            if (CleanYamlScalar(m.Groups[1].Value) == id) return true;
+        }
+        return false;
+    }
+
+    /// <summary>是否已有该 id 且 disabled: true（幂等判断 + 写后复检共用）。</summary>
+    static bool PatchHasDisabled(string text, string id)
+    {
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(id)) return false;
+        string[] lines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+        int i = 0;
+        while (i < lines.Length)
+        {
+            int entryIndent; string body; bool dash;
+            if (!TryEntryStart(lines[i], out entryIndent, out body, out dash)) { i++; continue; }
+            Match m = Regex.Match(body, dash ? @"^-\s+id:\s*(.*)$" : @"^id:\s*(.*)$");
+            string cur = CleanYamlScalar(m.Groups[1].Value);
+            int j = ProfileBlockEnd(lines, i, entryIndent, dash);
+            if (cur == id)
+            {
+                for (int k = i + 1; k < j; k++)
+                {
+                    string s = (lines[k] ?? "").Trim();
+                    if (!s.StartsWith("disabled:")) continue;
+                    string v = CleanYamlScalar(s.Substring(9)).ToLowerInvariant();
+                    if (v == "true" || v == "yes" || v == "on") return true;
+                }
+            }
+            i = j;
+        }
+        return false;
+    }
+
+    /// <summary>规划「禁用该条目」：在文件末尾追加一个顶层补丁项（只追加，不改动任何已有字符）。
+    /// 已有 disabled: true → Noop；id 不存在 → entry-not-found（免得写一条永远匹配不到的补丁）。</summary>
+    static ProfilePatchPlan PlanProfileDisable(string text, string id)
+    {
+        var plan = new ProfilePatchPlan();
+        if (string.IsNullOrEmpty(text)) { plan.Reason = "empty-file"; return plan; }
+        if (string.IsNullOrEmpty(id)) { plan.Reason = "no-id"; return plan; }
+        if (!IsSafePatchId(id)) { plan.Reason = "bad-id"; return plan; }
+        if (!PatchHasEntry(text, id)) { plan.Reason = "entry-not-found"; return plan; }
+        if (PatchHasDisabled(text, id)) { plan.Noop = true; return plan; }
+
+        string nl = (text.IndexOf("\r\n") >= 0) ? "\r\n" : "\n";
+        bool needNl = !text.EndsWith("\n");
+        plan.InsertAt = text.Length;
+        plan.InsertText = (needNl ? nl : "") + "- id: " + id + nl + "  disabled: true" + nl;
+        plan.Indent = "";
+        plan.Line = text.Replace("\r\n", "\n").Split('\n').Length + (needNl ? 1 : 0);
+        plan.NewText = text + plan.InsertText;
+        return plan;
+    }
+
+    /// <summary>执行「禁用」：读（严格 UTF-8，保留 BOM）→ 幂等 → 备份 → 追加 → 复检 → 失败回滚。</summary>
+    static string ProfilePatchDisableApply(string file, string id, bool simulateVerifyFail, out string backupPath)
+    {
+        backupPath = null;
+        if (!File.Exists(file)) return "PROFILEPATCH_FAIL file-not-found";
+        bool bom; string text;
+        try
+        {
+            byte[] raw = File.ReadAllBytes(file);
+            bom = raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF;
+            text = new UTF8Encoding(false, true).GetString(raw, bom ? 3 : 0, raw.Length - (bom ? 3 : 0));
+        }
+        catch { return "PROFILEPATCH_FAIL not-utf8"; }
+
+        ProfilePatchPlan plan = PlanProfileDisable(text, id);
+        if (plan.Noop) return "PROFILEPATCH_NOOP";
+        if (plan.InsertAt < 0) return "PROFILEPATCH_FAIL " + plan.Reason;
+
+        backupPath = BackupProfileFile(file);
+        if (backupPath == null) return "PROFILEPATCH_FAIL backup-failed";
+        try
+        {
+            byte[] body = new UTF8Encoding(false).GetBytes(plan.NewText);
+            byte[] outBytes = new byte[body.Length + (bom ? 3 : 0)];
+            if (bom) { outBytes[0] = 0xEF; outBytes[1] = 0xBB; outBytes[2] = 0xBF; }
+            Array.Copy(body, 0, outBytes, bom ? 3 : 0, body.Length);
+            File.WriteAllBytes(file, outBytes);
+        }
+        catch (Exception ex) { return "PROFILEPATCH_FAIL write: " + ClipText(ex.Message, 120); }
+
+        bool ok = !simulateVerifyFail && PatchHasDisabled(plan.NewText, id);
+        if (!ok)
+        {
+            try { File.Copy(backupPath, file, true); } catch { }
+            return "PROFILEPATCH_ROLLBACK " + SanitizeForReport(backupPath);
+        }
+        return "PROFILEPATCH_OK " + SanitizeForReport(file) + ":" + plan.Line + " disabled";
+    }
+
     /// <summary>profilepatch：受控写入（必须先预览；--yes 才落盘；白名单只允许 maxDepth 处方）。</summary>
     static void ProfilePatchCli(string[] args)
     {
@@ -3687,9 +3811,38 @@ public static class Program
         string id = FlagValue(args, "--id") ?? FlagValue(args, "-id");
         string setPair = FlagValue(args, "--set") ?? FlagValue(args, "-set");
         bool yes = HasFlag(args, "--yes") || HasFlag(args, "-yes");
+        // ---- v2.7.2：手动隔离处方（--disable）----
+        // 只做「用户显式点/显式敲」的兜底：不自动、不改已有字符、先备份、写后复检、失败回滚。
+        if (HasFlag(args, "--disable") || HasFlag(args, "-disable"))
+        {
+            if (string.IsNullOrEmpty(file) || string.IsNullOrEmpty(id))
+            {
+                Console.WriteLine("PROFILEPATCH_FAIL usage: profilepatch --file <yaml> --id <entry> --disable [--yes]");
+                return;
+            }
+            if (!File.Exists(file)) { Console.WriteLine("PROFILEPATCH_FAIL file-not-found " + SanitizeForReport(file)); return; }
+            bool dbom; string dtext;
+            try
+            {
+                byte[] draw = File.ReadAllBytes(file);
+                dbom = draw.Length >= 3 && draw[0] == 0xEF && draw[1] == 0xBB && draw[2] == 0xBF;
+                dtext = new UTF8Encoding(false, true).GetString(draw, dbom ? 3 : 0, draw.Length - (dbom ? 3 : 0));
+            }
+            catch { Console.WriteLine("PROFILEPATCH_FAIL not-utf8"); return; }
+            ProfilePatchPlan dplan = PlanProfileDisable(dtext, id);
+            if (dplan.Noop) { Console.WriteLine("PROFILEPATCH_NOOP"); return; }
+            if (dplan.InsertAt < 0) { Console.WriteLine("PROFILEPATCH_FAIL " + dplan.Reason); return; }
+            Console.WriteLine("PROFILEPATCH_PLAN " + SanitizeForReport(file) + ":" + dplan.Line + " - id: " + id + " / disabled: true");
+            if (!yes) { Console.WriteLine("PROFILEPATCH_DRYRUN"); return; }
+            string dbk;
+            string dres = ProfilePatchDisableApply(file, id, false, out dbk);
+            if (!string.IsNullOrEmpty(dbk)) Console.WriteLine("PROFILEPATCH_BACKUP " + SanitizeForReport(dbk));
+            Console.WriteLine(dres);
+            return;
+        }
         if (string.IsNullOrEmpty(file) || string.IsNullOrEmpty(id) || string.IsNullOrEmpty(setPair))
         {
-            Console.WriteLine("PROFILEPATCH_FAIL usage: profilepatch --file <yaml> --id <entry> --set key=value [--yes]");
+            Console.WriteLine("PROFILEPATCH_FAIL usage: profilepatch --file <yaml> --id <entry> --set key=value [--yes] | --disable [--yes]");
             return;
         }
         int eq = setPair.IndexOf('=');
@@ -4044,6 +4197,15 @@ public static class Program
             return new string[] { p.Noop ? "NOOP" : (p.InsertAt < 0 ? "FAIL:" + p.Reason : "PLAN"), p.Line.ToString(), p.Indent, p.NewText == null ? "" : p.NewText };
         }
         public static string PatchApplyT(string file, string id, bool simulateFail, out string bk) { return Program.ProfilePatchApply(file, id, "maxDepth", "provider-managed", simulateFail, out bk); }
+        // ---- v2.7.2 隔离处方 ----
+        public static string[] PatchDisableT(string text, string id)
+        {
+            Program.ProfilePatchPlan p = Program.PlanProfileDisable(text, id);
+            return new string[] { p.Noop ? "NOOP" : (p.InsertAt < 0 ? "FAIL:" + p.Reason : "PLAN"), p.Line.ToString(), p.NewText == null ? "" : p.NewText };
+        }
+        public static string PatchDisableApplyT(string file, string id, bool simulateFail, out string bk) { return Program.ProfilePatchDisableApply(file, id, simulateFail, out bk); }
+        public static bool PatchHasDisabledT(string text, string id) { return Program.PatchHasDisabled(text, id); }
+        public static bool SafePatchIdT(string id) { return Program.IsSafePatchId(id); }
         public static string CleanScalarT(string v) { return Program.CleanYamlScalar(v); }
     }
 #endif

@@ -646,6 +646,17 @@ public static class UnitTests
         string noCfg = "- insert:\n    - id: x1\n      name: '@deepseek-ai/dsh-tool-subagent'\n";
         Check(Program.Test.PatchT(noCfg, "x1", "maxDepth", "provider-managed")[0] == "FAIL:no-config-block", "patch: entry without config: block refused");
 
+        // 9) v2.7.2 第二条处方：手动隔离该插件（末尾追加 - id / disabled: true；只增不改）
+        string[] dPlan = Program.Test.PatchDisableT(tBroken, "subagent-acp-kimi");
+        Check(dPlan[0] == "PLAN", "disable: plan ok, got " + dPlan[0]);
+        Check(dPlan[2].StartsWith(tBroken), "disable: append-only (existing text untouched)");
+        Check(dPlan[2].EndsWith("- id: subagent-acp-kimi\n  disabled: true\n") || dPlan[2].EndsWith("- id: subagent-acp-kimi\r\n  disabled: true\r\n"), "disable: appended the expected patch item");
+        Check(Program.Test.PatchHasDisabledT(dPlan[2], "subagent-acp-kimi"), "disable: detectable after append");
+        Check(Program.Test.PatchDisableT(dPlan[2], "subagent-acp-kimi")[0] == "NOOP", "disable: idempotent NOOP");
+        Check(Program.Test.PatchDisableT(tBroken, "no-such-id")[0] == "FAIL:entry-not-found", "disable: unknown id refused");
+        Check(Program.Test.PatchDisableT(tBroken, "x\n  disabled: false")[0] == "FAIL:bad-id", "disable: YAML injection via id refused");
+        Check(Program.Test.SafePatchIdT("tool-subagent-kimi") && !Program.Test.SafePatchIdT("a b") && !Program.Test.SafePatchIdT("a:b"), "disable: id charset guard");
+
         // 8) 完整流程：备份→写入→复扫；验证失败回滚；BOM 保持
         string ppTd = Path.Combine(Path.GetTempPath(), "dsh_ut_pp_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(ppTd);
@@ -667,6 +678,19 @@ public static class UnitTests
             foreach (string w in afterW) if (w.EndsWith("|subagent-acp-kimi|maxDepth")) acpStill = true;
             Check(!acpStill, "patch: no maxDepth warning for the patched entry after apply (remaining warnings: " + afterW.Length + ")");
             Check(Program.Test.PatchApplyT(ppF1, "subagent-acp-kimi", false, out bk) == "PROFILEPATCH_NOOP", "patch: second apply is NOOP");
+
+            // v2.7.2：隔离处方的写入 + 回滚（第二条处方，同样手动/可回滚）
+            string ppDj = Path.Combine(ppTd, "disable.yaml");
+            File.WriteAllText(ppDj, tBroken, new UTF8Encoding(false));
+            byte[] orig2 = File.ReadAllBytes(ppDj);
+            string bk2;
+            string dr = Program.Test.PatchDisableApplyT(ppDj, "subagent-acp-kimi", true, out bk2);
+            Check(dr.StartsWith("PROFILEPATCH_ROLLBACK"), "disable: rollback on verify failure, got " + dr);
+            Check(BytesEq(File.ReadAllBytes(ppDj), orig2), "disable: restored byte-identical after rollback");
+            string dOk = Program.Test.PatchDisableApplyT(ppDj, "subagent-acp-kimi", false, out bk2);
+            Check(dOk.StartsWith("PROFILEPATCH_OK"), "disable: apply ok, got " + dOk);
+            Check(Program.Test.PatchHasDisabledT(File.ReadAllText(ppDj, new UTF8Encoding(false)), "subagent-acp-kimi"), "disable: present on disk after apply");
+            Check(Program.Test.PatchDisableApplyT(ppDj, "subagent-acp-kimi", false, out bk2) == "PROFILEPATCH_NOOP", "disable: second apply NOOP");
             string ppF2 = Path.Combine(ppTd, "bom.yaml");
             byte[] body = new UTF8Encoding(false).GetBytes(tBroken);
             byte[] withBom = new byte[body.Length + 3];
