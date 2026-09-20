@@ -6,6 +6,28 @@ All notable changes to **DeepSeek Harness Toolkit** (unofficial). Full release n
 
 ---
 
+## v2.7.2 — 未发布 / Unreleased
+
+### Added / 新增
+
+- **`profilepatch --disable`：手动隔离出问题的插件（第二条处方）** — 在 profile 的 `cordis.patch.yml` **末尾追加**一个顶层补丁项（只追加，不改动任何已有字符）：
+  ```yaml
+  - id: <条目 id>
+    disabled: true
+  ```
+  与 `maxDepth` 处方的区别：那条让插件**继续可用**（外科修复），这条是**通用兜底**——任何坏插件都能先隔离掉再排查。**只做用户显式触发的手动操作，绝不自动执行**；同样遵守既有证据链：幂等（已隔离则 `PROFILEPATCH_NOOP`）→ 预览（不带 `--yes` 时 `PROFILEPATCH_DRYRUN`，零写入）→ 先备份 → 写入 → 写后复检 → 失败自动回滚（`PROFILEPATCH_ROLLBACK`，逐字节还原）。id 做字符集白名单（`[A-Za-z0-9._@/-]`），带换行/冒号的 id 一律 `bad-id` 拒绝，防止往补丁文件里注入 YAML。
+  **`profilepatch --disable` — manually quarantine a failing plugin (second prescription)** — appends a top-level patch item to the end of the profile's `cordis.patch.yml` (append-only; not one existing character is modified). Unlike the `maxDepth` prescription (which keeps the plugin working — a surgical fix), this is the generic fallback: any broken plugin can be quarantined first and diagnosed after. It is **manual-only and never runs automatically**, and it follows the same evidence chain: idempotent (`PROFILEPATCH_NOOP`) → preview (`PROFILEPATCH_DRYRUN`, zero writes without `--yes`) → backup first → write → re-check → automatic byte-identical rollback on failure (`PROFILEPATCH_ROLLBACK`). The entry id is charset-whitelisted (`[A-Za-z0-9._@/-]`); ids containing newlines or colons are refused as `bad-id`, which prevents YAML injection into the patch file.
+
+  依据（不使用任何第三方项目的实现或配置格式）：`disabled` 是 **dsh 补丁层自身的一等能力** —— `@deepseek-ai/cordis-plugin-include` 的 `PatchOptions.disabled?: boolean | null`，且 dsh 自身（`profile-boot` 的 `resolveTelemetryPatch`）就用它关闭遥测行。同一补丁列表里 `insert:` 插入的行会被索引，因此后续的 `id` 补丁能命中它，必须追加在文件末尾。
+  Basis (no third-party implementation or config format is reused): `disabled` is a **first-class capability of dsh's own patch layer** — `PatchOptions.disabled?: boolean | null` in `@deepseek-ai/cordis-plugin-include`, and dsh itself uses it (see `resolveTelemetryPatch` in `profile-boot`) to switch off its telemetry row. Rows inserted by `insert:` are indexed within the same patch list so a later `id` patch can target them, which is why the item is appended at the end of the file.
+
+### Tests / 测试
+
+- 单元测试 **284 → 297**：隔离处方的规划（只追加、末尾形态正确、写入后可检出、幂等 NOOP、未知 id 拒绝、id 注入拒绝、字符集白名单）与写入路径（验证失败回滚且逐字节还原、写入后磁盘可见、二次执行为 NOOP）。
+  Unit tests **284 → 297**: the quarantine prescription's planning (append-only, correct trailing form, detectable after write, idempotent NOOP, unknown id refused, injected id refused, charset whitelist) and its write path (rollback restores bytes exactly, visible on disk after apply, second run is a NOOP).
+
+---
+
 ## v2.7.1 — 2026-09-18 —（修复：GUI 桌面快捷方式指向 GUI · 版本号对齐 / GUI Desktop Shortcut Fix & Version Alignment）
 
 ### Fixed / 修复
