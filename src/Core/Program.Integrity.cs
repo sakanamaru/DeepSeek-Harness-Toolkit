@@ -75,4 +75,20 @@ partial class Program
         catch { return null; }
     }
 
+
+    /// <summary>高风险操作闸门（卸载含清数据 / 恢复 / 更新 dsh）：完整性不匹配即拒绝；无 manifest 时放行。返回是否可继续。</summary>
+    static bool IntegrityGate(string opZh, string opEn)
+    {
+        bool? ok = SelfIntegrity();
+        if (ok != false) return true;
+        Console.WriteLine(T("自身完整性校验失败：当前程序与随包 hashes.txt 不匹配（可能被篡改）。已拒绝执行「" + opZh + "」。请从官方 Releases 重新下载。",
+                            "Self-integrity FAILED: this executable does not match the shipped hashes.txt (possible tampering). '" + opEn + "' refused. Re-download from the official Releases."));
+        LogErr("IntegrityGate refused: " + opEn);
+        return false;
+    }
+
+    // ---------------- 自检 ----------------
+
+
+
 }

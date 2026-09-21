@@ -429,4 +429,279 @@ partial class Program
         catch { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Desktop"); }
     }
 
+
+    static void CheckNode()
+    {
+        string v = RunCapture("node.exe", "--version");
+        if (string.IsNullOrWhiteSpace(v))
+        {
+            Warn(T("未检测到 Node.js，尝试用 winget 自动安装...", "Node.js not found. Trying winget..."));
+            int c = RunVisible("winget.exe", "install --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements");
+            if (c != 0)
+            {
+                Error(T("winget 安装 Node 失败。请手动安装：https://nodejs.org 后重试。",
+                        "winget failed. Please install Node.js LTS from https://nodejs.org and retry."));
+                Pause();
+                Environment.Exit(1);
+            }
+            Info(T("Node.js 安装完成，请关闭窗口后重新运行本程序。", "Node.js installed. Close this window and re-run."));
+            Pause();
+            Environment.Exit(0);
+        }
+        Success(T("Node.js " + v, "Node.js " + v));
+        int major = 0;
+        if (v.StartsWith("v")) int.TryParse(v.Substring(1).Split('.')[0], out major);
+        if (major > 0 && major < 16)
+            Warn(string.Format(T("Node 版本偏低（v{0}），如异常请升级到 LTS", "Node v{0} is old; upgrade to LTS if issues occur"), major));
+    }
+
+    // ---------------- 启动 ----------------
+
+
+
+
+    /// <summary>从 netstat 输出解析监听指定端口的进程 PID；找不到返回 0。纯解析，便于单测。</summary>
+    static int ParsePortPid(string netstatOutput, int port)
+    {
+        if (string.IsNullOrWhiteSpace(netstatOutput)) return 0;
+        string suffix = ":" + port;
+        foreach (string raw in netstatOutput.Split('\n'))
+        {
+            string t = raw.Trim();
+            if (t.Length == 0 || t.IndexOf("LISTENING", StringComparison.OrdinalIgnoreCase) < 0) continue;
+            string[] parts = t.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            // 格式: TCP  127.0.0.1:3080  0.0.0.0:0  LISTENING  1234   （本地地址为第 2 列，PID 末列）
+            if (parts.Length < 5) continue;
+            if (!parts[1].EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) continue;
+            int pid;
+            if (int.TryParse(parts[parts.Length - 1], out pid) && pid > 0) return pid;
+        }
+        return 0;
+    }
+
+
+
+
+    /// <summary>停止前进程归属校验：监听 3080 的进程必须确认为 dsh 才允许终止。
+    /// 判定依据：进程命令行含 "dsh"（dsh.cmd / npm / node 启动链命令行必含 dsh 字样，如 @deepseek-ai\dsh）；
+    /// 命令行读取失败时保守拒绝——宁可不杀，不可误杀他人程序。</summary>
+    static bool IsOurDshProcess(int pid)
+    {
+        if (pid <= 0) return false;
+        try { return IsDshCommandLine(GetProcessCommandLine(pid)); }
+        catch { return false; }
+    }
+
+
+
+
+    /// <summary>纯函数（可单测）：命令行是否属于 dsh 进程。空/未知 → false。</summary>
+    static bool IsDshCommandLine(string cmdline)
+    {
+        if (string.IsNullOrWhiteSpace(cmdline)) return false;
+        return cmdline.IndexOf("dsh", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+
+
+
+    /// <summary>标记文件有效：存在且内容含产品名（防"伪造空 marker 文件"诱导清除；版本无关，兼容未来版本演进）。</summary>
+    static bool RootMarkerValid(string dir)
+    {
+        try
+        {
+            string p = Path.Combine(dir, ROOT_MARKER);
+            if (!File.Exists(p)) return false;
+            string c = File.ReadAllText(p, new UTF8Encoding(false));
+            return c.IndexOf("DeepSeek Harness Toolkit", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+        catch { return false; }
+    }
+
+    // ---------------- 卸载 ----------------
+
+
+
+
+    /// <summary>稳健递归删除：先清只读属性，失败自动重试 3 次；仍失败则说明并列出占用文件。返回是否成功。</summary>
+    static bool DeleteTreeRobust(string dir)
+    {
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                ClearReadOnlyRecursive(dir);
+                Directory.Delete(dir, true);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (attempt == 2)
+                {
+                    string locked = FindFirstLockedFile(dir);
+                    Error(T("删除失败：" + ex.Message + (locked == null ? "" : "（占用文件：" + locked + "）"),
+                            "Delete failed: " + ex.Message + (locked == null ? "" : " (locked file: " + locked + ")")));
+                }
+                Thread.Sleep(800);
+            }
+        }
+        return false;
+    }
+
+
+
+
+    static void ClearReadOnlyRecursive(string dir)
+    {
+        if (!Directory.Exists(dir)) return;
+        foreach (string f in Directory.GetFiles(dir))
+            try { File.SetAttributes(f, FileAttributes.Normal); } catch { }
+        foreach (string d in Directory.GetDirectories(dir))
+        {
+            try { File.SetAttributes(d, FileAttributes.Normal); } catch { }
+            ClearReadOnlyRecursive(d);
+        }
+    }
+
+
+
+
+    static string FindFirstLockedFile(string dir)
+    {
+        try
+        {
+            foreach (string f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    // 只读打开 + 允许共享：只有真正被独占的文件才报锁定，正常读取中的文件不再误报
+                    using (var s = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)) { }
+                }
+                catch { return f; }
+            }
+        }
+        catch { LogErr("FindLockedFile: 枚举目录异常"); }
+        return null;
+    }
+
+
+
+
+    /// <summary>后台线程逐行读取子进程输出流并转发到主控制台（转发保持 npm/winget 进度可见；排空防止管道死锁）。</summary>
+    static void DrainAndForward(System.IO.StreamReader src, System.IO.TextWriter dst)
+    {
+        try
+        {
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    string line;
+                    while ((line = src.ReadLine()) != null)
+                    {
+                        try { if (dst != null) dst.WriteLine(line); } catch { }
+                    }
+                }
+                catch { }
+            });
+        }
+        catch { }
+    }
+
+
+
+
+    /// <summary>进程树终止：taskkill /T /F 连带杀派生子进程（npm.cmd→node.exe 等），失败时回退 p.Kill()。
+    /// 解决仅 kill 直接进程（cmd.exe）导致 npm/node 孤儿进程继续运行的问题（与重试产生文件锁竞态）。</summary>
+    static void KillProcessTree(int pid)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("taskkill.exe", "/PID " + pid + " /T /F")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using (var k = Process.Start(psi))
+            {
+                if (k != null)
+                {
+                    var o = k.StandardOutput.ReadToEndAsync();
+                    var e = k.StandardError.ReadToEndAsync();
+                    if (!k.WaitForExit(5000)) { try { k.Kill(); } catch { } }
+                    else { string r = o.Result.Trim(); LogErr("taskkill 结果: " + (string.IsNullOrWhiteSpace(r) ? "(empty)" : r)); }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogErr("taskkill 失败，回退直接 Kill: " + ex.Message);
+            try { var p = Process.GetProcessById(pid); p.Kill(); } catch { }
+        }
+    }
+
+
+
+
+    static string RunDshVersion()
+    {
+        string v = RunCapture("cmd.exe", "/c dsh --version 2>nul");
+        if (string.IsNullOrWhiteSpace(v))
+        {
+            string dsh = LocateDsh();
+            if (dsh != null) v = RunCapture("cmd.exe", "/c \"" + dsh + "\" --version");
+        }
+        return v;
+    }
+
+
+
+
+    static string LocateDsh()
+    {
+        string appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        string npmPath = Path.Combine(appdata, "npm", "dsh.cmd");
+        if (File.Exists(npmPath)) return npmPath;
+        string where = RunCapture("cmd.exe", "/c where dsh 2>nul");
+        if (!string.IsNullOrWhiteSpace(where))
+        {
+            // L-1：where 结果逐行净化——拒绝含 %（cmd 变量展开面）或控制符的候选，防 PATH 中恶意同名 dsh.cmd 改写命令结构
+            string[] lines = where.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string cand in lines)
+            {
+                string c = cand.Trim();
+                if (c.Length == 0) continue;
+                if (c.IndexOf('%') >= 0) continue;                       // %VAR% 会被 cmd /c 展开
+                if (c.IndexOfAny(new char[] { '&', '|', ';', '>', '<', '^' }) >= 0) continue;   // 命令结构字符
+                if (File.Exists(c)) return c;
+            }
+        }
+        return null;
+    }
+
+
+
+
+    /// <summary>纯判定：端口开 + HTTP 就绪 → Ready；仅端口开 → Listening；否则 Down。（单测可直接调用）</summary>
+    static ServiceState JudgeState(bool portOpen, bool httpOk)
+    {
+        if (!portOpen) return ServiceState.Down;
+        return httpOk ? ServiceState.Ready : ServiceState.Listening;
+    }
+
+
+
+
+    /// <summary>桌面快捷方式是否已存在（监控页条件显示 I 选项）。</summary>
+    static bool ShortcutExists()
+    {
+        return File.Exists(Path.Combine(DesktopDir(), SHORTCUT_NAME + ".lnk"));
+    }
+
+    // ---------------- 非交互 CLI（GUI 集成地基：单行机器可读标记，不 Pause、不读输入） ----------------
+
+
+
 }

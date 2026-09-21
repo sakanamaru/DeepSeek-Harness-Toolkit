@@ -691,4 +691,378 @@ partial class Program
         return n;
     }
 
+
+    /// <summary>防呆校验：目录含任一 dsh 数据标记（文件或子目录）即视为 dsh 数据目录。</summary>
+    static bool LooksLikeDshData(string dir)
+    {
+        foreach (string marker in new string[] { "settings.yaml", "credentials.yaml", "sessions", "profiles", "storages" })
+        {
+            string p = Path.Combine(dir, marker);
+            if (File.Exists(p) || Directory.Exists(p)) return true;
+        }
+        return false;
+    }
+
+
+
+
+    /// <summary>备份目录定位：本身是有效备份包（dsh-data-* + 数据特征/工作区）则返回；
+    /// 若所选目录下恰好只含一个 dsh-data-* 子目录（用户可能选了备份的父目录），自动下探定位；
+    /// 其余一律返回 null（不是备份包）。防把任意文件夹当备份恢复/导入。</summary>
+    static string ResolveBackupDir(string dir)
+    {
+        if (IsValidBackupDir(dir)) return dir;
+        try
+        {
+            var subs = new List<string>();
+            foreach (string d in Directory.GetDirectories(dir))
+            {
+                string n = Path.GetFileName(d.TrimEnd('\\'));
+                if (n.StartsWith("dsh-data-", StringComparison.OrdinalIgnoreCase)) subs.Add(d);
+            }
+            if (subs.Count == 1 && IsValidBackupDir(subs[0])) return subs[0];
+        }
+        catch { }
+        return null;
+    }
+
+
+
+
+    /// <summary>备份数据目录到备份目录（自动跳过 node_modules 与被锁文件），返回备份路径；失败返回 null。</summary>
+    static string DoBackup(string source) { return DoBackup(source, null, BackupKind.Manual); }
+
+
+
+
+    /// <summary>备份数据目录；wsList 非空时把每个工作区放入备份包 _workspace\<名字>\（含 .dshws 标记）；kind 决定目录名来源后缀，备份成功后自动执行保留策略清理。</summary>
+    static string DoBackup(string source, List<string> wsList, BackupKind kind)
+    {
+        string dest = null;
+        try
+        {
+            if (!Directory.Exists(source)) return null;
+            string root = BackupsRoot();
+            Directory.CreateDirectory(root);
+            dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff") + BackupSuffix(kind));
+            // v2.1.2 安全：保护性备份（Pre*）严格模式——任意文件复制失败 → 整个备份失败 → 中止后续危险操作；
+            // 手动/自动备份保持 best-effort（跳过被锁文件并记日志）
+            bool strict = kind == BackupKind.PreWipe || kind == BackupKind.PreRestore || kind == BackupKind.PreImport || kind == BackupKind.PreUpdate;
+            CopyTree(source, dest, !strict);
+            if (wsList != null)
+            {
+                var used = new List<string>();
+                foreach (string w in wsList)
+                {
+                    string name = SanitizeName(Path.GetFileName(Path.GetFullPath(w).TrimEnd('\\')));
+                    if (name.Length == 0) name = "workspace";
+                    string sub = name; int k = 2;
+                    while (used.Contains(sub)) { sub = name + "_" + k; k++; }
+                    used.Add(sub);
+                    string wsDest = Path.Combine(dest, "_workspace", sub);
+                    CopyTree(w, wsDest, !strict);
+                    File.WriteAllText(Path.Combine(wsDest, ".dshws"),
+                                      "DeepSeek Harness Toolkit workspace\n" + w + "\n",
+                                      new UTF8Encoding(false));
+                }
+            }
+            // v2.1 保留策略：备份成功后清理自动类旧备份（手动备份永久保留）
+            var removed = EnforceBackupRetention();
+            if (removed.Count > 0)
+                Info(T("保留策略：已清理 " + removed.Count + " 个旧自动备份：" + string.Join(", ", removed.ToArray()),
+                       "Retention: removed " + removed.Count + " old auto backup(s): " + string.Join(", ", removed.ToArray())));
+            return dest;
+        }
+        catch (Exception ex)
+        {
+            LogErr("备份失败: " + ex);
+            if (dest != null) { try { if (Directory.Exists(dest)) { ClearReadOnlyRecursive(dest); Directory.Delete(dest, true); } } catch { } }   // 清理半成品，避免残目录伪装成有效备份
+            return null;
+        }
+    }
+
+    // ---------------- 备份保留策略（v2.1：只清理自动类，手动永久保留） ----------------
+
+
+
+
+    /// <summary>备份目录名是否属于"自动类"（自动类参与保留策略清理；手动备份永久保留）。</summary>
+    static bool IsAutoBackupName(string name)
+    {
+        return name.EndsWith("-auto") || name.EndsWith("-pre-restore") || name.EndsWith("-pre-import") || name.EndsWith("-pre-wipe") || name.EndsWith("-pre-update");
+    }
+
+
+
+
+    /// <summary>保留策略：仅清理自动类备份（-auto / -pre-*），手动备份永久保留；自动类超过 cfgKeep 份时按最旧删除、保底 3 份。返回被清理的目录名列表（空=未清理）。</summary>
+    static List<string> EnforceBackupRetention()
+    {
+        var removed = new List<string>();
+        try
+        {
+            string root = BackupsRoot();
+            if (!Directory.Exists(root)) return removed;
+            var autos = new List<string>();
+            foreach (string d in Directory.GetDirectories(root))
+            {
+                string name = Path.GetFileName(d);
+                if (name.StartsWith("dsh-data-") && IsAutoBackupName(name)) autos.Add(d);
+            }
+            autos.Sort();   // 名字时间戳字典序 = 时间序，旧的在前面
+            int keep = cfgKeep; if (keep < 3) keep = 3;
+            for (int i = 0; i < autos.Count - keep; i++)
+            {
+                try { Directory.Delete(autos[i], true); removed.Add(Path.GetFileName(autos[i])); }
+                catch (Exception ex) { LogErr("保留策略清理失败: " + autos[i] + " : " + ex.Message); }
+            }
+        }
+        catch (Exception ex) { LogErr("保留策略执行异常: " + ex.Message); }
+        return removed;
+    }
+
+
+
+
+    /// <summary>判定路径是否像"合理的用户工作区"。仅用于自动探测：系统级/用户级/常见奇怪目录一律拒绝；
+    /// 手动输入的路径（备份附加、恢复目标、ws= 配置）不受本函数限制。</summary>
+    static bool LooksLikeWorkspace(string p)
+    {
+        try
+        {
+            p = Path.GetFullPath(p).TrimEnd('\\');
+            if (p.Length == 0) return false;
+            if (p.Length <= 3 && p[1] == ':') return false;                 // 盘根：C:\ D:\
+            string pc = p.ToLowerInvariant();
+            // 各盘根下（或 UNC 根）的保留名字：只查第一段，避免误伤深层同名目录
+            string[] topNames = { "$recycle.bin", "system volume information", "perflogs", "inetpub",
+                                  "recovery", "windows.old", "$windows.~bt", "$windows.~ws", "$winreagent", "users" };
+            string[] segs = p.Split('\\');
+            foreach (string r in topNames)
+                if (segs.Length > 1 && segs[1].ToLowerInvariant() == r) return false;
+            // 系统/用户根目录及其子树
+            string[] roots = {
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),          // 用户主目录（含桌面/下载/文档）
+                Path.GetDirectoryName(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)), // C:\Users 整级
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),              // C:\Windows
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),// C:\ProgramData
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),         // C:\Program Files
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)       // C:\Program Files (x86)
+            };
+            foreach (string r in roots)
+            {
+                if (string.IsNullOrEmpty(r)) continue;
+                string rc = r.TrimEnd('\\').ToLowerInvariant();
+                if (rc.Length == 0) continue;
+                if (pc == rc || pc.StartsWith(rc + "\\")) return false;
+            }
+            return true;
+        }
+        catch { LogErr("LooksLikeWorkspace: 路径异常，按拒绝处理 " + p); return false; }
+    }
+
+
+
+
+    static void OpenBackupFolder()
+    {
+        try
+        {
+            Directory.CreateDirectory(BackupsRoot());
+            Process.Start(BackupsRoot());
+        }
+        catch (Exception ex) { Error(T("打开失败：" + ex.Message, "Failed: " + ex.Message)); }
+    }
+
+
+
+
+    static void ImportBackup()
+    {
+        Console.WriteLine();
+        C(ConsoleColor.Gray, T("  跨电脑导入：把备份文件夹（dsh-data-日期）从其他电脑复制到本机后，输入它的完整路径。",
+                               "  Import: copy a backup folder (dsh-data-YYYYMMDD-HHMMSS) from another PC, then type its full path."));
+        Console.WriteLine();
+        Console.Write(T("  备份目录路径：", "  Backup directory path: "));
+        string path = ReadLineTrim();
+        if (path.Length == 0 || !Directory.Exists(path)) { Warn(T("目录不存在。", "Directory not found.")); Pause(); return; }
+        // 备份格式校验：必须是 dsh-data-* 备份包（或所选目录下恰好一个）；防把任意文件夹当备份导入
+        string bkPath = ResolveBackupDir(path);
+        if (bkPath == null)
+        {
+            Warn(T("所选目录不是有效的备份包（目录名须为 dsh-data-时间戳，且内容含 dsh 数据或工作区）。\n  请选择备份文件夹本身（或仅含一个备份子目录的父目录）。",
+                   "Not a valid backup package (directory name must be dsh-data-TIMESTAMP and contain dsh data or workspaces).\n  Pick the backup folder itself (or a parent containing exactly one)."));
+            Pause();
+            return;
+        }
+        path = bkPath;
+        bool hasWs = Directory.Exists(Path.Combine(path, "_workspace"));
+        bool hasData = LooksLikeDshData(path);
+        Console.WriteLine();
+        C(ConsoleColor.Gray, T("  导入内容：", "  Import contents:"));
+        C(ConsoleColor.Gray, "    - " + T("dsh 数据", "dsh data") + " : "); CL(ConsoleColor.White, hasData ? T("有", "yes") : T("无", "no"));
+        C(ConsoleColor.Gray, "    - " + T("工作区", "workspace") + " : "); CL(ConsoleColor.White, hasWs ? T("有", "yes") : T("无", "no"));
+        Console.Write(T("  确认导入？输入 y 继续：", "  Confirm import? Type y: "));
+        string importAsk = ReadLineTrim();
+        if (importAsk != "y" && importAsk != "Y") { Warn(T("已取消。", "Cancelled.")); return; }
+        // v2.1 安全：dsh 运行中拒绝导入（与恢复/清除一致）
+        if (ProbeService() != ServiceState.Down)
+        {
+            Error(T("dsh web 仍在运行，数据被占用无法安全导入。\n  请先关闭 dsh web，再重新执行导入。",
+                    "dsh web is still running; data is in use and cannot be imported safely.\n  Close the dsh web window first, then retry the import."));
+            Pause();
+            return;
+        }
+        string dst = DataRoot();
+        if (Directory.Exists(dst))
+        {
+            Info(T("导入前自动备份当前数据...", "Auto-backing up current data before import..."));
+            string preBk = DoBackup(dst, null, BackupKind.PreImport);
+            if (preBk == null)
+            {
+                Error(T("导入前自动备份失败，已中止导入（请先手动备份或检查磁盘空间）。", "Pre-import backup failed; import aborted (back up manually or check disk space first)."));
+                Pause();
+                return;
+            }
+        }
+        RestoreFromSource(path);
+        Pause();
+    }
+
+    // ---------------- 语言设置 ----------------
+
+
+
+
+    /// <summary>设置（或清除）手动指定的工作区路径，持久化到 launcher.config 的 ws= 行。</summary>
+    static void SetWorkspacePrompt()
+    {
+        Console.WriteLine();
+        C(ConsoleColor.Gray, T("  当前工作区: ", "  Current workspace: "));
+        CL(ConsoleColor.White, (cfgWs != null && cfgWs.Length > 0) ? cfgWs : T("（未设置）", "(none)"));
+        Console.Write(T("  输入新工作区路径（直接回车清除自定义设置）：", "  New workspace path (Enter to clear): "));
+        string p = ReadLineTrim().Trim().Trim('"');
+        if (p.Length == 0)
+        {
+            cfgWs = null; SaveConfig();
+            Info(T("已清除自定义工作区，恢复自动探测。", "Custom workspace cleared, auto-detect restored."));
+            return;
+        }
+        string full = null;
+        try { full = Path.GetFullPath(p); } catch { full = null; }
+        if (full == null || !Directory.Exists(full)) { Warn(T("目录不存在，未保存。", "Directory not found, not saved.")); return; }
+        cfgWs = full; SaveConfig();
+        Success(T("工作区已设为 " + full, "Workspace set to " + full));
+    }
+
+    // ---------------- 配置 / 状态文件 ----------------
+
+
+
+
+    /// <summary>restore --path 路径校验（纯逻辑，供单测）；返回 null=通过，否则失败原因键（no-path/outside/invalid）。</summary>
+    static string NIValidateRestorePath(string pathArg, string backupsRoot)
+    {
+        string bk = (pathArg ?? "").Trim().Trim('"');
+        if (bk.Length == 0) return "no-path";
+        if (!IsSubPath(backupsRoot, bk)) return "outside";
+        if (!IsValidBackupDir(bk)) return "invalid";
+        return null;
+    }
+
+
+
+
+    /// <summary>非交互列出全部有效备份目录（最新在前）：首行 BACKUP_LIST_OK &lt;n&gt;，其后每行一个绝对路径。
+    /// 无备份/全部无效时输出 BACKUP_LIST_OK 0（GUI 选择框据此判空）。</summary>
+    static void NiListBackups(bool detail)
+    {
+        string root = BackupsRoot();
+        if (!Directory.Exists(root)) { Console.WriteLine("BACKUP_LIST_OK 0"); return; }
+        string[] dirs;
+        try { dirs = Directory.GetDirectories(root, "dsh-data-*"); }
+        catch { Console.WriteLine("BACKUP_LIST_OK 0"); return; }
+        Array.Sort(dirs);       // 时间戳升序
+        Array.Reverse(dirs);    // 最新在前（GUI 默认选第一项）
+        List<string> valid = new List<string>();
+        foreach (string d in dirs) { if (IsValidBackupDir(d)) valid.Add(d); }
+        Console.WriteLine("BACKUP_LIST_OK " + valid.Count);
+        foreach (string d in valid)
+        {
+            Console.WriteLine(d);
+            if (detail)
+            {
+                string name = Path.GetFileName(d);
+                long bytes = DirSize(d);
+                string mt = "(unknown)";
+                try { mt = Directory.GetLastWriteTime(d).ToString("yyyy-MM-dd HH:mm:ss"); } catch { }
+                Console.WriteLine("BACKUP_ITEM " + name + " " + BackupKindName(name) + " " + bytes + " " + mt);
+            }
+        }
+    }
+
+
+
+
+    static void WalkFiles(string root, string dir, Dictionary<string, long> acc, bool copyRules)
+    {
+        string[] subs;
+        try { subs = Directory.GetDirectories(P(dir)); } catch { subs = new string[0]; }
+        foreach (string d in subs)
+        {
+            if (copyRules) { if (CopySkipDir(TrimP(d), Path.GetFileName(TrimP(d)))) continue; }
+            else { if (IsReparse(d)) continue; }
+            WalkFiles(root, d, acc, copyRules);
+        }
+        string[] files;
+        try { files = Directory.GetFiles(P(dir)); } catch { files = new string[0]; }
+        string rootPrefix = P(root);
+        foreach (string f in files)
+        {
+            try
+            {
+                if (IsReparse(f)) continue;
+                var fi = new FileInfo(P(f));
+                string rel = fi.FullName.Length > rootPrefix.Length ? fi.FullName.Substring(rootPrefix.Length).TrimStart('\\', '/') : fi.Name;
+                acc[rel] = fi.Length;
+            }
+            catch { }
+        }
+    }
+
+
+
+
+    /// <summary>export 校验（供单测）：返回 null=通过，否则原因键（no-path/no-to/outside/not-found/bad-target/nested）。</summary>
+    static string NIValidateExport(string srcArg, string toArg, string backupsRoot)
+    {
+        string src = (srcArg ?? "").Trim().Trim('"');
+        string to = (toArg ?? "").Trim().Trim('"');
+        if (src.Length == 0) return "no-path";
+        if (to.Length == 0) return "no-to";
+        if (!IsSubPath(backupsRoot, src)) return "outside";
+        if (!Directory.Exists(src)) return "not-found";
+        string dst;
+        try { dst = Path.GetFullPath(to); } catch { return "bad-target"; }
+        if (string.Equals(dst, src, StringComparison.OrdinalIgnoreCase) || IsSubPath(src, dst)) return "nested";
+        return null;
+    }
+
+
+
+
+    /// <summary>backup-delete 校验（供单测）：返回 null=通过，否则原因键（no-path/outside/not-backup/not-found）。</summary>
+    static string NIValidateBackupDelete(string srcArg, string backupsRoot)
+    {
+        string src = (srcArg ?? "").Trim().Trim('"');
+        if (src.Length == 0) return "no-path";
+        if (!IsSubPath(backupsRoot, src)) return "outside";
+        string name = Path.GetFileName(src.TrimEnd('\\', '/'));
+        if (!name.StartsWith("dsh-data-", StringComparison.OrdinalIgnoreCase)) return "not-backup";
+        if (!Directory.Exists(src)) return "not-found";
+        return null;
+    }
+
+
+
 }
