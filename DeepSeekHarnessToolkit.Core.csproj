@@ -13,6 +13,9 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
+    <!-- 阶段 2：多 RID。Linux 优先，macOS 视真实需求后补（见设计稿 §13 决策 1）。
+         注意：Windows 的**发布**路径当前仍是 csc（未切换），本工程先在 CI 里做编译守卫。 -->
+    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
     <AssemblyName>DeepSeek Harness Toolkit</AssemblyName>
     <RootNamespace>DeepSeekHarnessToolkit</RootNamespace>
     <LangVersion>latest</LangVersion>

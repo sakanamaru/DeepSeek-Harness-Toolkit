@@ -274,6 +274,22 @@ if ($portLive) {
     $o32a = (& (Join-Path $d32 't.exe') status 2>&1 | Out-String)
     $o32b = (& (Join-Path $d32 't.exe') start --bg 2>&1 | Out-String)
     TC '32 status up + start --bg idempotent' (($o32a.Contains('STATUS_UP')) -and ($o32b.Contains('START_OK')))
+
+# v2.8 阶段 2 守卫：csproj 的编译清单必须与实际源码集合一致（防止"加了文件忘了加进工程"）
+$csprojPath = Join-Path $RepoRoot 'DeepSeekHarnessToolkit.Core.csproj'
+$csprojOk = $false; $csprojDetail = 'csproj 缺失'
+if (Test-Path -LiteralPath $csprojPath) {
+    $xml = [xml](Get-Content -LiteralPath $csprojPath -Raw)
+    $incs = @($xml.Project.ItemGroup.Compile | Where-Object { $_.Include } | ForEach-Object { $_.Include })
+    $expect = @('dsh_v2.cs', 'src\Core\**\*.cs', 'src\Platform\**\*.cs', 'src\Cli\**\*.cs')
+    $csprojOk = ($incs.Count -eq $expect.Count)
+    foreach ($e in $expect) { if ($incs -notcontains $e) { $csprojOk = $false } }
+    $all = @('dsh_v2.cs') + (Get-ChildItem (Join-Path $RepoRoot 'src') -Recurse -Filter *.cs | ForEach-Object { $_.FullName.Substring($RepoRoot.Length).TrimStart('\') })
+    $uncovered = @($all | Where-Object { $_ -ne 'dsh_v2.cs' -and $_ -notlike 'src\Core\*' -and $_ -notlike 'src\Platform\*' -and $_ -notlike 'src\Cli\*' })
+    if ($uncovered.Count -gt 0) { $csprojOk = $false; $csprojDetail = '未覆盖: ' + ($uncovered -join ',') }
+    else { $csprojDetail = 'glob 覆盖 ' + $all.Count + ' 个源文件' }
+}
+TC '33 csproj source set matches' $csprojOk $csprojDetail
 } else {
     $results.Add('32 status/start-bg(needs 3080)    SKIP')
 }
