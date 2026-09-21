@@ -208,7 +208,7 @@ Requires the built-in .NET Framework 4.x on Windows (preinstalled on Win10 / Win
 
 Or double-click `build_exe.cmd` in this directory. The GUI compiles from the same-rules single file `gui_v2.cs` (one source → both attached and standalone variants; the standalone adds `/resource:<core exe>,DSHCore.exe`).
 
-> The `src\` globs in the command above belong to the **v2.8 stage 1 target layout** — the in-progress **move-only** split of the single 4000+ line `dsh_v2.cs` into `partial class Program` layers (see Directory Layout). The **released v2.7.2** core is still the single file `dsh_v2.cs`: to rebuild that, drop the three `src\` globs. `csc.exe` does not expand wildcards itself — when an explicit file list is needed, expand them with `Get-ChildItem src -Recurse -Filter *.cs`.
+> The `src\` globs in the command above belong to the **v2.8 stage 1 layout, complete as of 2026-09-21** — the **move-only** split of the single 4000+ line `dsh_v2.cs` into `partial class Program` layers (see Directory Layout). The **released v2.7.2** core is still the single file `dsh_v2.cs`: to rebuild that, drop the three `src\` globs. `csc.exe` does not expand wildcards itself — when an explicit file list is needed, expand them with `Get-ChildItem src -Recurse -Filter *.cs`.
 
 **Reproducible releases (source == artifact):** each GitHub Release exe is compiled from this source by **GitHub Actions CI**, and `hashes.txt` is regenerated + **GPG-signed** by CI in the same run. Tag builds additionally publish a **GitHub artifact attestation** — an independent provenance check, verified separately with `gh`; `verify.ps1` does not check it, and it does not replace the GPG signature check. The repository stores no binaries.
 
@@ -261,7 +261,7 @@ docs/screenshots/    README screenshots
 backup/  logs/       Runtime dirs (gitignored — never committed)
 ```
 
-> **The `src/` lines above are the v2.8 stage 1 target layout — not a released state.** Stage 1 is a **move-only** split of the single 4000+ line `dsh_v2.cs` into `partial class Program` layers (`partial` within the same assembly, so no call site, signature or behaviour changes); it is **in progress since 2026-09-21**. The released **v2.7.2** still builds from the single file `dsh_v2.cs`. Stage 1 does not touch `gui_v2.cs`, `tests/unit_tests.cs` or `verify.ps1`.
+> **The `src/` lines above are the v2.8 stage 1 layout, complete as of 2026-09-21 — not a released state.** Stage 1 is a **move-only** split of the single 4000+ line `dsh_v2.cs` into `partial class Program` layers (`partial` within the same assembly, so no call site, signature or behaviour changes); it landed in commit ee36ac0 (CI green). The released **v2.7.2** still builds from the single file `dsh_v2.cs`. Stage 1 does not touch `gui_v2.cs`, `tests/unit_tests.cs` or `verify.ps1`.
 
 ## Error Log
 

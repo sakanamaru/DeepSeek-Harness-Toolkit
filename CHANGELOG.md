@@ -8,9 +8,9 @@ All notable changes to **DeepSeek Harness Toolkit** (unofficial). Full release n
 
 ## v2.8.0 — 未发布 / Unreleased
 
-### Changed / 变更（重构 · 阶段 1：分层，进行中）
+### Changed / 变更（重构 · 阶段 1：分层，已完成 · 2026-09-21）
 
-- **单文件核心拆成 Core / Platform / Cli 三层**（`dsh_v2.cs` → `dsh_v2.cs` + `src/**`）。这是**只搬不改**的重构：用 `partial class Program` 把同一个类分散到多个文件，**不改变任何调用点、签名、字符串、注释或行为**，也不引入任何依赖或 Unix 代码。
+- **单文件核心拆成 Core / Platform / Cli 三层**（落地：`dsh_v2.cs` 4212 行 → **1344 行** + `src/**` 9 个文件共约 3050 行；提交 `ee36ac0`，CI 绿）（`dsh_v2.cs` → `dsh_v2.cs` + `src/**`）。这是**只搬不改**的重构：用 `partial class Program` 把同一个类分散到多个文件，**不改变任何调用点、签名、字符串、注释或行为**，也不引入任何依赖或 Unix 代码。
   **The single-file core is split into Core / Platform / Cli layers** (`dsh_v2.cs` → `dsh_v2.cs` + `src/**`). This is a **move-only** refactor: `partial class Program` spreads the same class across files, **without changing a single call site, signature, string, comment or behaviour**, and without adding any dependency or any Unix code.
 
   分层（阶段 1 目标布局）：`src/Core/Program.{Config,Backup,Doctor,Profile,Integrity,Update,Util}.cs`（平台无关）、`src/Platform/Windows/Program.Platform.cs`（P/Invoke、端口/进程探测、桌面与快捷方式、StateDir/DataRoot、控制台辅助）、`src/Cli/Program.Cli.cs`（`Main`、菜单、各 `*Cli` 非交互命令）。`dsh_v2.cs` 保留文件头、`using`、程序集属性与 `#if UNIT` 测试代理块；**没被归类命中的成员一律留在 `dsh_v2.cs`**（宁可少搬，不可搬坏）。
