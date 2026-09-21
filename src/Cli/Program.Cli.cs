@@ -230,7 +230,7 @@ partial class Program
     static void StopCli()
     {
         if (ProbeService() == ServiceState.Down) { Console.WriteLine("STOP_OK"); return; }   // 已停止 → 幂等成功
-        int pid = FindPortPid(WEB_PORT);
+        int pid = Platform.Probe.FindPortPid(WEB_PORT);
         if (pid <= 0) { Console.WriteLine("STOP_FAIL " + T("未找到监听 3080 的进程", "no process listening on 3080")); return; }
         if (!IsOurDshProcess(pid))
         {
@@ -445,7 +445,7 @@ partial class Program
         else if (st == ServiceState.Listening) Console.WriteLine("STATUS_STARTING");
         else Console.WriteLine("STATUS_DOWN");
         if (!detail) return;
-        int pid = (st == ServiceState.Down) ? 0 : FindPortPid(WEB_PORT);
+        int pid = (st == ServiceState.Down) ? 0 : Platform.Probe.FindPortPid(WEB_PORT);
         Console.WriteLine("STATUS_PID " + (pid > 0 ? pid.ToString() : "0"));
         bool haveStart = false;
         DateTime start = DateTime.MinValue;

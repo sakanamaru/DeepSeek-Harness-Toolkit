@@ -31,6 +31,7 @@ partial class Program
         bool PortOpen(int port, int timeoutMs);
         bool HttpReady(string url, int ms);
         bool ListenerIsDsh();
+        int FindPortPid(int port);   // 监听指定端口的进程 PID（Windows: netstat；Linux: ss）
         ServiceState Judge(bool portOpen, bool httpOk, Func<bool> listenerIsDsh);
         ServiceState Probe();
     }
@@ -90,6 +91,7 @@ partial class Program
         public bool PortOpen(int port, int timeoutMs) { return Program.IsPortOpen(port, timeoutMs); }
         public bool HttpReady(string url, int ms) { return Program.HttpReady(url, ms); }
         public bool ListenerIsDsh() { return Program.ListenerIsDsh(); }
+        public int FindPortPid(int port) { return Program.FindPortPid(port); }
         public ServiceState Judge(bool portOpen, bool httpOk, Func<bool> listenerIsDsh) { return Program.JudgeState3(portOpen, httpOk, listenerIsDsh); }
         public ServiceState Probe() { return Program.ProbeService(); }
     }

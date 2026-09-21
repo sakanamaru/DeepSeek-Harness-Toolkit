@@ -18,6 +18,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 
 partial class Program
 {
@@ -79,6 +80,38 @@ partial class Program
                 return Program.IsDshCommandLine(cmdline);
             }
             catch { return false; }
+        }
+        /// <summary>监听指定端口的进程 PID（Linux）：解析 `ss -ltnp` 的 pid= 字段。
+        /// 依赖 iproute2（主流发行版默认自带）；取不到返回 0（与 Windows 侧"找不到返回 0"语义一致）。</summary>
+        public int FindPortPid(int port)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("ss", "-ltnp");
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
+                psi.UseShellExecute = false;
+                using (Process p = Process.Start(psi))
+                {
+                    if (p == null) return 0;
+                    string outp = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(5000);
+                    foreach (string ln in outp.Split('\n'))
+                    {
+                        string t = ln.Trim();
+                        if (t.Length == 0) continue;
+                        if (t.IndexOf(":" + port, StringComparison.Ordinal) < 0) continue;
+                        Match mm = Regex.Match(t, @"pid=(\d+)");
+                        if (mm.Success)
+                        {
+                            int pid;
+                            if (int.TryParse(mm.Groups[1].Value, out pid) && pid > 0) return pid;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return 0;
         }
     }
 
