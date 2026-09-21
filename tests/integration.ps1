@@ -32,8 +32,8 @@ function Build-Variant($variant, $outExe) {
         @{ o = '"DeepSeek-Harness-Toolkit-single"';                                                        n = '"DSH-Toolkit-TEST-single"' },
         @{ o = '"DSH-Toolkit-V2.0.0-single"';                                                           n = '"DSH-Toolkit-TEST-legacy"' },
         @{ o = 'string choice = countdown ? CountdownInput("  > ", def) : ReadChoice("  > ");'; n = 'string choice = ReadLineTrim(); // TEST line-driven' },
-        @{ o = 'int code = RunVisible("cmd.exe", "/c npm install -g --registry=" + registries[i] + " " + pkg);'; n = 'int code = 0; // TEST install no-op' },
-        @{ o = 'int code = RunVisible("cmd.exe", "/c npm uninstall -g @deepseek-ai/dsh");';            n = 'int code = 0; // TEST npm no-op' }
+        @{ o = 'int code = Platform.Shell.NpmInstallGlobal(pkg, registries[i]);'; n = 'int code = 0; // TEST install no-op' },
+        @{ o = 'int code = Platform.Shell.NpmUninstallGlobal();';            n = 'int code = 0; // TEST npm no-op' }
     )
     if ($variant -eq 'A') {
         $pats += @{ o = 'if (ProbeService() == ServiceState.Ready)'; n = 'if (false && ProbeService() == ServiceState.Ready)' }

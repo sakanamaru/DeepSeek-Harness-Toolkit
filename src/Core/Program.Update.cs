@@ -28,7 +28,7 @@ partial class Program
         for (int i = 0; i < registries.Length; i++)
         {
             Info(string.Format(T("第 {0}/{1} 次尝试，源：{2}", "Attempt {0}/{1}, registry: {2}"), i + 1, registries.Length, registries[i]));
-            int code = RunVisible("cmd.exe", "/c npm install -g --registry=" + registries[i] + " " + pkg);
+            int code = Platform.Shell.NpmInstallGlobal(pkg, registries[i]);
             if (code == 0) return 0;
             if (code == -2)
                 Warn(T("安装/更新超时（10 分钟），已终止。请检查网络或稍后重试。", "Timed out after 10 minutes; terminated. Check the network and retry."));

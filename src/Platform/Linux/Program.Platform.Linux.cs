@@ -196,7 +196,34 @@ partial class Program
         public string NpmViewVersions() { return Program.RunCapture("npm", "view @deepseek-ai/dsh versions"); }
 
         /// <summary>npm view <pkg> version（Linux 直接执行）。失败/离线返回 null。</summary>
-        public string NpmViewLatest() { return Program.RunCapture("npm", "view @deepseek-ai/dsh version"); }    }
+        public string NpmViewLatest() { return Program.RunCapture("npm", "view @deepseek-ai/dsh version"); }
+        /// <summary>全局安装 npm 包（Linux 直接执行 npm，无需 cmd.exe 包装）。返回退出码，-1=启动失败。</summary>
+        public int NpmInstallGlobal(string pkg, string registry)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("npm", "install -g --registry=" + registry + " " + pkg);
+                psi.UseShellExecute = false;
+                using (Process p = Process.Start(psi)) { if (p == null) return -1; p.WaitForExit(); return p.ExitCode; }
+            }
+            catch { return -1; }
+        }
+
+        /// <summary>全局卸载 dsh（Linux 直接执行 npm）。返回退出码，-1=启动失败。</summary>
+        public int NpmUninstallGlobal()
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("npm", "uninstall -g @deepseek-ai/dsh");
+                psi.UseShellExecute = false;
+                using (Process p = Process.Start(psi)) { if (p == null) return -1; p.WaitForExit(); return p.ExitCode; }
+            }
+            catch { return -1; }
+        }
+
+        /// <summary>Linux 没有 winget：返回 -1，由调用方走既有的「请手动安装 Node」提示（诚实降级，不假装成功）。
+        /// 真实发行版可在此接 apt/dnf/pacman，但那属于"改用户系统"的动作，须由用户显式确认后再做。</summary>
+        public int WingetInstallNode() { return -1; }    }
 
     class LinuxShortcutService : IShortcutService
     {

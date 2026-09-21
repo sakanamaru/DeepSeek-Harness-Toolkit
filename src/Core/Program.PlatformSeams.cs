@@ -48,6 +48,9 @@ partial class Program
         string NpmVersion();                        // npm --version（Windows 走 cmd.exe 包装）
         string NpmViewVersions();                   // npm view <pkg> versions
         string NpmViewLatest();                     // npm view <pkg> version
+        int NpmInstallGlobal(string pkg, string registry);   // 全局安装（Windows: cmd.exe /c npm install -g --registry=…）
+        int NpmUninstallGlobal();                   // 全局卸载（Windows: cmd.exe /c npm uninstall -g @deepseek-ai/dsh）
+        int WingetInstallNode();                    // Windows: winget 装 Node LTS；Linux: -1（无对应物，交回手动指引）
     }
 
     // ---- 桌面快捷方式 ----
@@ -114,6 +117,9 @@ partial class Program
         public string NpmVersion() { return Program.RunCapture("cmd.exe", "/c npm --version 2>nul"); }
         public string NpmViewVersions() { return Program.RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh versions 2>nul"); }
         public string NpmViewLatest() { return Program.RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh version 2>nul"); }
+        public int NpmInstallGlobal(string pkg, string registry) { return Program.RunVisible("cmd.exe", "/c npm install -g --registry=" + registry + " " + pkg); }
+        public int NpmUninstallGlobal() { return Program.RunVisible("cmd.exe", "/c npm uninstall -g @deepseek-ai/dsh"); }
+        public int WingetInstallNode() { return Program.RunVisible("winget.exe", "install --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements"); }
     }
 
     class WindowsShortcutService : IShortcutService
