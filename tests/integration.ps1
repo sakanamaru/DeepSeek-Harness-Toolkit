@@ -68,12 +68,13 @@ Build-Variant 'A' $tA
 Build-Variant 'C' $tC
 # 交互用例统一关闭启动更新检查（避免每次启动连 GitHub 的随机耗时/超时）
 [IO.File]::WriteAllText((Join-Path $T 'launcher.config'), ('lang=zh' + [Environment]::NewLine + 'check_update=off' + [Environment]::NewLine))
+$allowLive = ($env:DSH_TOOLKIT_INTEGRATION_ALLOW_LIVE -eq '1')   # 活体 dsh 保护：默认不碰真实 3080
 $portLive = Test-NetConnection -ComputerName 127.0.0.1 -Port 3080 -InformationLevel Quiet -WarningAction SilentlyContinue
 $date = Get-Date -Format 'yyyyMMdd'
 $dt = Join-Path $env:USERPROFILE '.dsh_test'
 function Seed-DT { Remove-Item -LiteralPath $dt -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType File -Path (Join-Path $dt 'settings.yaml') -Force | Out-Null }
 
-Write-Output ("环境: 3080=" + $(if ($portLive) { '运行中' } else { '未运行' }) + "  仓库根=" + $RepoRoot)
+Write-Output ("环境: 3080=" + $(if ($portLive -and $allowLive) { '运行中' } else { '未运行' }) + "  仓库根=" + $RepoRoot)
 
 # 1-5 基础 / CLI
 & $tA selftest *> $null;   TC '1 selftest' ($LASTEXITCODE -eq 0)
@@ -137,7 +138,7 @@ $o = ("y`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') uninstall 2>&1 | Out-St
 TC '12 cli uninstall refused' ($o.Contains('未检测到完整安装') -or $o.Contains('does not look like a full installation'))
 
 # 13-14,19 真实端口（3080 未开则 SKIP）
-if ($portLive) {
+if ($portLive -and $allowLive) {
     $pn0 = (Get-Process node -ErrorAction SilentlyContinue | Measure-Object).Count
     $o = ("2`n0`n" | & $tC 2>&1 | Out-String); $pn1 = (Get-Process node -ErrorAction SilentlyContinue | Measure-Object).Count
     TC '13 running->monitor' (($o.Contains('运行中') -or $o.Contains('RUNNING')) -and ($pn1 -le $pn0 + 1)) ('node:' + $pn0 + '->' + $pn1)
@@ -154,7 +155,7 @@ if ($portLive) {
 }
 
 # 27/28 监控页 I 选项条件显示（变体 C 真实端口；DSH_TEST_DESKTOP 隔离，不碰真实桌面）
-if ($portLive) {
+if ($portLive -and $allowLive) {
     # 27：快捷方式不存在 -> 显示 I 行
     $desk27 = Join-Path $T 'desk27'; NewDir $desk27
     $env:DSH_TEST_DESKTOP = $desk27
@@ -216,7 +217,7 @@ $retMsg = (($o -join ' ').Contains('保留策略') -or ($o -join ' ').Contains('
 TC '20 retention auto-only' (($preCnt -eq 4) -and $man1 -and $man2 -and $oldestGone -and $retMsg)
 
 # 21/22 运行中拒绝（v2.1 🔴2：Restore/Import 在 dsh 运行中禁止；变体 C 真实端口）
-if ($portLive) {
+if ($portLive -and $allowLive) {
     $d21 = Join-Path $T 'fullC21'; NewDir $d21; Copy-Item $tC (Join-Path $d21 't.exe')
     [IO.File]::WriteAllText((Join-Path $d21 'launcher.config'), ('lang=zh' + [Environment]::NewLine + 'check_update=off' + [Environment]::NewLine))
     NewDir (Join-Path $d21 'backup\dsh-data-20260101-000001')
@@ -233,7 +234,7 @@ if ($portLive) {
 }
 
 # 25 更新运行中拒绝（UpdateDsh 守卫，变体 C 真实端口，CLI update）
-if ($portLive) {
+if ($portLive -and $allowLive) {
     $d25 = Join-Path $T 'updC'; NewDir $d25; Copy-Item $tC (Join-Path $d25 't.exe')
     [IO.File]::WriteAllText((Join-Path $d25 'launcher.config'), ('lang=zh' + [Environment]::NewLine + 'check_update=off' + [Environment]::NewLine))
     $o25 = ("" | & (Join-Path $d25 't.exe') update 2>&1 | Out-String)
@@ -268,7 +269,7 @@ $o31b = (& (Join-Path $d29 't.exe') restore 2>&1 | Out-String)
 TC '31 backup+restore CLI' (($o31a.Contains('BACKUP_OK')) -and ($bk31 -ge 1) -and ($o31b.Contains('RESTORE_OK')) -and (Test-Path (Join-Path $dt 'settings.yaml')))
 
 # 32 start --bg / status up（变体 C 真实端口：3080 运行时 START_OK 幂等，不真启动；未开则 SKIP）
-if ($portLive) {
+if ($portLive -and $allowLive) {
     $d32 = Join-Path $T 'bgC'; NewDir $d32; Copy-Item $tC (Join-Path $d32 't.exe')
     [IO.File]::WriteAllText((Join-Path $d32 'launcher.config'), ('lang=zh' + [Environment]::NewLine + 'check_update=off' + [Environment]::NewLine))
     $o32a = (& (Join-Path $d32 't.exe') status 2>&1 | Out-String)
