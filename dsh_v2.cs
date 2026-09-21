@@ -7,8 +7,10 @@
 //  功能：安装/修复、启动 Web 界面、运行状态监控、卸载（含两步确认清数据）、
 //        数据备份/恢复、多语言、自动倒计时选择、彩色输出。
 //
-//  编译： csc.exe /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit.exe" dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs /warn:4
+//  编译： csc.exe /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit.exe" dsh_v2.cs /warn:4
 // ============================================================================
+
+
 
 
 
@@ -34,113 +36,39 @@ using System.Threading;
 partial class Program
 {
 
+
     enum Lang { Auto, Zh, En }
+
 
 
     const string NPM_MIRROR   = "https://registry.npmmirror.com";
     const string NPM_OFFICIAL = "https://registry.npmjs.org";
     const string GITHUB_HANDLE = "github.com/sakanamaru";
 
+
     const string DATA_DIR     = ".dsh";
+
 
     const string ROOT_MARKER  = ".dsh_launcher_root";   // 工具箱根目录标记文件（防误删验证；随包分发）
 
+
     const int    WEB_PORT     = 3080;
 
+
     static string webHost = "127.0.0.1";
+
 
     const int    AUTO_SECONDS = 5;
 
 
+
     static Lang lang = Lang.Auto;
+
 
     static string StateDir;
 
+
     static bool autoApplied = false;   // 自动倒计时是否已在本程序本次运行中用过
-
-#if !UNIT
-    public static void Main(string[] args)
-    {
-        // .NET Framework 长路径支持：开启后 >260 字符路径可用（须在首次文件操作前设置）
-        try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
-        try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
-        Platform.Init();   // v2.8：按平台选择实现（Windows 上无变化）
-        try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Toolkit V2.7.3"; } catch { }
-        // v2.7：显式启用 TLS 1.2。.NET Framework 4.x 的 SecurityProtocol 默认只含 Ssl3|Tls，
-        // 访问 GitHub HTTPS（更新检查 / 完整性校验）会直接抛"未能创建 SSL/TLS 安全通道"。
-        // 只做 |= 追加，不动系统默认值；失败静默（老系统上最差退化为原行为）。
-        try { System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072; } catch { }
-        StateDir = ResolveStateDir();
-        // 注意：根目录标记 .dsh_launcher_root 只随发布包分发，本程序永不自行补建——
-        // 若启动时"看起来像完整安装"就自动写标记，攻击者可诱导用户将 exe 与任意同名文件
-        // 放一处后自动补建标记，削弱"单独复制 exe 永远不能 wipe"的安全边界。
-        LoadConfig();
-        if (args.Length > 0)
-        {
-            switch (args[0].TrimStart('-', '/').ToLowerInvariant())
-            {
-                case "install":   case "i": Install(); return;
-                case "start":     case "s":
-                    if (args.Length > 1 && (args[1] == "--bg" || args[1] == "-bg")) StartBg();   // GUI 后台启动：启动后立即返回，不进监控页
-                    else Start();
-                    return;
-                case "stop": StopCli(); return;   // 非交互停止 dsh web（GUI 用）
-                case "uninstall": case "u": Uninstall(); return;
-                case "check":     case "c": Check();   return;
-                case "update":    case "up": UpdateDsh(); return;
-                case "about":     case "a": About();   return;
-                case "shortcut":  case "sc": ShortcutCli(args); return; // 创建桌面快捷方式（--exe/--name 可指定目标；GUI 用它建自己的）
-                case "backup":    case "b": NIBackup();  return;   // 非交互备份（GUI/脚本用）
-                case "backup-list": case "bl": NiListBackups(HasFlag(args, "--detail") || HasFlag(args, "-detail")); return;   // 非交互列出有效备份目录（--detail 附类型/大小/时间，GUI 备份管理页用）
-                case "backup-export": case "be": NIBackupExport(args); return;   // v2.6：导出备份副本到指定目录
-                case "backup-delete": case "bd": NIBackupDelete(args); return;   // v2.6：删除指定备份（仅限备份根内 dsh-data-*）
-                case "update-info": case "ui": UpdateInfo(); return;   // v2.7：Update Center 只读数据源
-                case "config-get": case "cg": ConfigGet(); return;   // v2.8：设置页只读数据源
-                case "config-set": case "cs": ConfigSet(args); return;   // v2.8：白名单配置写入
-                case "restore":   case "r":
-                    if (HasFlag(args, "--dry-run") || HasFlag(args, "-dry-run")) { NIRestoreDryRun(FlagValue(args, "--path") ?? FlagValue(args, "-path")); return; }   // v2.6 Dry-Run：只读预演
-                    if (args.Length > 1 && (args[1] == "--path" || args[1] == "-path"))
-                        NIRestorePath(args.Length > 2 ? args[2] : "");
-                    else NIRestore();
-                    return;   // 非交互恢复（GUI/脚本用；--path 恢复指定备份）
-                case "status": StatusCli(HasFlag(args, "--detail") || HasFlag(args, "-detail")); return;   // 服务三态（GUI 状态灯用）；--detail 追加 PID/启动时间/运行时长（v2.7 状态栏，只读）
-                case "help":      case "h": Help();    return;
-                case "selftest": Selftest(args); return;
-                case "doctor":    case "d": Doctor(args); return;   // v2.5：体检/诊断（GUI 体检页用）
-                case "profilecheck":  case "pc": ProfileCheckCli(args); return;      // v2.7：profile 静态预检（只读，不用等它崩）
-                case "bootdiag":      case "bdiag": BootDiagCli(args); return;      // v2.7：启动失败堆栈解析（只读；"bd" 已被 backup-delete 占用）
-                case "profilepatch":  case "pp": ProfilePatchCli(args); return;  // v2.7：受控单行插入修复（需 --yes；先备份可回滚）
-                default:
-                    Console.WriteLine(T("未知参数：", "Unknown argument: ") + args[0]);
-                    Help();
-                    return;
-            }
-        }
-        // 单例防多开：交互模式检测已有实例则提示退出（CLI 子命令不受限制，便于脚本/自检调用）
-        // v2.1.0：同时持有产品级新锁 + v2.0 旧锁——与已发布的 v2.0 exe（旧锁名）双向互斥，
-        // 同时保证 v2.1 及未来版本之间互斥（新锁）
-        _singleMutex = new Mutex(false, "DeepSeek-Harness-Toolkit-single");   // 产品级固定单实例锁
-        _legacyMutex = new Mutex(false, "DSH-Toolkit-V2.0.0-single");         // 旧锁名：与已发布的 v2.0 exe 互斥
-        bool haveLock;
-        try { haveLock = _singleMutex.WaitOne(0); }
-        catch (AbandonedMutexException) { haveLock = true; } // 上一实例异常退出，本实例接管
-        bool haveLegacy = true;
-        try { haveLegacy = _legacyMutex.WaitOne(0); }
-        catch (AbandonedMutexException) { haveLegacy = true; }
-        if (!haveLock || !haveLegacy)
-        {
-            if (haveLock) { try { _singleMutex.ReleaseMutex(); } catch { } }    // 只释放自己已拿到的
-            if (haveLegacy) { try { _legacyMutex.ReleaseMutex(); } catch { } }
-            Info(T("检测到程序已在运行（含旧版本 v2.0），请切换到已打开的窗口（本实例自动退出）。",
-                   "The launcher is already running (incl. v2.0) — switch to the open window (this instance exits)."));
-            return;
-        }
-        DetectBadDir();   // 桌面/下载目录直跑 → 黄字提醒（不阻塞）
-        Menu();
-    }
-
-#endif
 
 
     static bool IsZh
@@ -154,79 +82,6 @@ partial class Program
         }
     }
 
-
-    /// <summary>把错误追加写入 StateDir\logs\launcher.log（带时间戳；超过 1MB 归档为 launcher.log.1，不再直接丢弃）。</summary>
-    static void LogErr(string msg)
-    {
-        try
-        {
-            string dir = Path.Combine(StateDir, "logs");
-            Directory.CreateDirectory(dir);
-            string file = Path.Combine(dir, "launcher.log");
-            RotateLogIfNeeded(file, 1024 * 1024);
-            File.AppendAllText(file, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss ") + msg + Environment.NewLine, new UTF8Encoding(false));
-        }
-        catch { }
-    }
-
-
-    /// <summary>日志轮转：现有文件超过 maxBytes 时归档为 file+".1"（覆盖旧归档）并留下新的空文件，返回是否发生轮转。（单测可直接调用）</summary>
-    static bool RotateLogIfNeeded(string file, long maxBytes)
-    {
-        try
-        {
-            if (File.Exists(file) && new FileInfo(file).Length > maxBytes)
-            {
-                if (File.Exists(file + ".1")) File.Delete(file + ".1");
-                File.Move(file, file + ".1");
-                File.WriteAllText(file, "");   // 轮转后留下新的空日志
-                return true;
-            }
-        }
-        catch { }
-        return false;
-    }
-
-
-    /// <summary>倒计时等待输入；超时返回默认值（单键选择，无需回车）。</summary>
-    static string CountdownInput(string prompt, string defaultChoice)
-    {
-        bool redirected = false;
-        try { redirected = Console.IsInputRedirected; } catch { redirected = true; }
-        for (int left = AUTO_SECONDS; left > 0; left--)
-        {
-            Console.Write("\r  " + prompt);
-            C(ConsoleColor.Yellow, string.Format(T("[{0} 秒后自动: {1}]", "[auto in {0}s: {1}]"), left, defaultChoice));
-            Console.Write("   ");
-            bool key = false;
-            try { key = Console.KeyAvailable; } catch { key = false; }
-            if (key && !redirected)
-            {
-                var k = Console.ReadKey(true);
-                Console.WriteLine();
-                return k.KeyChar.ToString();
-            }
-            Thread.Sleep(1000);
-        }
-        Console.WriteLine();
-        return defaultChoice;
-    }
-
-
-    /// <summary>阻塞读取单键选择（供自动倒计时之后的菜单页使用，不会自动执行）。</summary>
-    static string ReadChoice(string prompt)
-    {
-        Console.Write(prompt);
-        try
-        {
-            var k = Console.ReadKey(true);
-            Console.WriteLine();
-            return k.KeyChar.ToString();
-        }
-        catch { inputEof = true; Console.WriteLine(); Thread.Sleep(2000); return ""; }
-    }
-
-    // ---------------- 安装 ----------------
 
 
     static void CheckNode()
@@ -257,17 +112,6 @@ partial class Program
     // ---------------- 启动 ----------------
 
 
-    static string WebUrl() { return "http://" + webHost + ":" + WEB_PORT; }
-    static void OpenBrowser() { OpenUrl(WebUrl()); }
-
-
-    static void OpenUrl(string url)
-    {
-        try { Process.Start(url); }
-        catch (Exception ex) { Warn(T("打开失败：" + ex.Message + "（可手动访问 " + url + "）",
-                                      "Failed to open: " + ex.Message + " (visit " + url + " manually).")); }
-    }
-
 
     /// <summary>从 netstat 输出解析监听指定端口的进程 PID；找不到返回 0。纯解析，便于单测。</summary>
     static int ParsePortPid(string netstatOutput, int port)
@@ -289,6 +133,7 @@ partial class Program
     }
 
 
+
     /// <summary>停止前进程归属校验：监听 3080 的进程必须确认为 dsh 才允许终止。
     /// 判定依据：进程命令行含 "dsh"（dsh.cmd / npm / node 启动链命令行必含 dsh 字样，如 @deepseek-ai\dsh）；
     /// 命令行读取失败时保守拒绝——宁可不杀，不可误杀他人程序。</summary>
@@ -300,6 +145,7 @@ partial class Program
     }
 
 
+
     /// <summary>纯函数（可单测）：命令行是否属于 dsh 进程。空/未知 → false。</summary>
     static bool IsDshCommandLine(string cmdline)
     {
@@ -307,96 +153,6 @@ partial class Program
         return cmdline.IndexOf("dsh", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
-
-    /// <summary>启动后的实时运行状态监控页：每 3 秒刷新，按任意键返回菜单。</summary>
-    static void StatusMonitor()
-    {
-        string node = RunCapture("node.exe", "--version");
-        string dver = RunDshVersion();
-        DateTime? upSince = null;
-        bool wasUp = false;
-        while (true)
-        {
-            SafeClear();
-            Banner();
-            CL(ConsoleColor.White, "  " + T("▍ 运行状态监控", "▍ Runtime Status Monitor"));
-            Console.WriteLine();
-            ServiceState st = ProbeService();
-            bool up = st == ServiceState.Ready;
-            if (up && upSince == null) upSince = DateTime.Now;
-            if (!up) upSince = null;
-            C(ConsoleColor.Gray, "  Web 服务  : ");
-            if (st == ServiceState.Ready) CL(ConsoleColor.Green, T("● 运行中", "● RUNNING"));
-            else if (st == ServiceState.Listening) CL(ConsoleColor.Yellow, T("● 启动中（端口已开，服务未就绪）", "● STARTING (port open, not ready)"));
-            else CL(ConsoleColor.Red, T("● 已停止", "● STOPPED"));
-            C(ConsoleColor.Gray, "  地址      : "); CL(ConsoleColor.White, WebUrl());
-            C(ConsoleColor.Gray, "  运行时长  : ");
-            CL(up && upSince != null ? ConsoleColor.Green : ConsoleColor.Gray,
-               up && upSince != null ? (DateTime.Now - upSince.Value).ToString(@"hh\:mm\:ss") : "-");
-            C(ConsoleColor.Gray, "  dsh 版本  : "); CL(ConsoleColor.White, string.IsNullOrWhiteSpace(dver) ? "-" : dver);
-            C(ConsoleColor.Gray, "  Node.js   : "); CL(ConsoleColor.White, string.IsNullOrWhiteSpace(node) ? "-" : node);
-            C(ConsoleColor.Gray, "  最近刷新  : "); CL(ConsoleColor.DarkGray, DateTime.Now.ToString("HH:mm:ss"));
-            if (!up && wasUp)
-                Error(T("服务在运行中停止了！", "The service stopped while running!"));
-            if (!up)
-                Warn(T("可返回菜单按 2 重新启动，或查看 dsh web 窗口日志。",
-                       "Back to menu and press 2 to restart, or check the dsh web window log."));
-            wasUp = up;
-            Console.WriteLine();
-            Console.WriteLine();
-            C(ConsoleColor.White, "  1) " + T("返回菜单", "Back to menu"));
-            Console.WriteLine();
-            C(ConsoleColor.White, "  2) " + T("打开 WebUI", "Open Web UI"));
-            if (!ShortcutExists())
-            {
-                Console.WriteLine();
-                C(ConsoleColor.White, "  I) " + T("创建桌面快捷方式", "Create desktop shortcut"));
-            }
-            Console.WriteLine();
-            Console.WriteLine();
-            bool redir = true;
-            try { redir = Console.IsInputRedirected; } catch { redir = true; }
-            if (redir) return;   // v2.1：管道/重定向模式显示一轮即返回（供脚本/测试取状态），不空等
-            string k = WaitKeyChar(3000);
-            if (k == "1") return;            // 返回菜单
-            if (k == "2") OpenBrowser();     // 快捷打开 WebUI，留在监控页
-            if ((k == "i" || k == "I") && !ShortcutExists())
-            {
-                string serr = CreateDesktopShortcut(DesktopDir());
-                Console.WriteLine();
-                if (serr == null) Success(T("桌面快捷方式已创建：DeepSeek Harness Toolkit.lnk", "Desktop shortcut created: DeepSeek Harness Toolkit.lnk"));
-                else Error(T("桌面快捷方式创建失败：" + serr, "Desktop shortcut creation failed: " + serr));
-            }
-            // 其他按键忽略，继续自动刷新
-        }
-    }
-
-
-    /// <summary>等待最多 ms 毫秒；期间有按键立即返回键字符，超时返回 null。输入被重定向（无控制台）时按时间流逝。</summary>
-    static string WaitKeyChar(int ms)
-    {
-        bool redirected = false;
-        try { redirected = Console.IsInputRedirected; } catch { redirected = true; }
-        if (redirected) { Thread.Sleep(ms); return null; }
-        int waited = 0;
-        while (waited < ms)
-        {
-            try
-            {
-                if (Console.KeyAvailable)
-                {
-                    var k = Console.ReadKey(true);
-                    return k.KeyChar.ToString();
-                }
-            }
-            catch { }
-            Thread.Sleep(100);
-            waited += 100;
-        }
-        return null;
-    }
-
-    // ---------------- 根目录标记（防误删验证） ----------------
 
 
     /// <summary>标记文件有效：存在且内容含产品名（防"伪造空 marker 文件"诱导清除；版本无关，兼容未来版本演进）。</summary>
@@ -413,6 +169,7 @@ partial class Program
     }
 
     // ---------------- 卸载 ----------------
+
 
 
     /// <summary>稳健递归删除：先清只读属性，失败自动重试 3 次；仍失败则说明并列出占用文件。返回是否成功。</summary>
@@ -441,6 +198,7 @@ partial class Program
     }
 
 
+
     static void ClearReadOnlyRecursive(string dir)
     {
         if (!Directory.Exists(dir)) return;
@@ -452,6 +210,7 @@ partial class Program
             ClearReadOnlyRecursive(d);
         }
     }
+
 
 
     static string FindFirstLockedFile(string dir)
@@ -473,6 +232,7 @@ partial class Program
     }
 
 
+
     /// <summary>防呆校验：目录含任一 dsh 数据标记（文件或子目录）即视为 dsh 数据目录。</summary>
     static bool LooksLikeDshData(string dir)
     {
@@ -483,6 +243,7 @@ partial class Program
         }
         return false;
     }
+
 
 
     /// <summary>备份目录定位：本身是有效备份包（dsh-data-* + 数据特征/工作区）则返回；
@@ -506,24 +267,10 @@ partial class Program
     }
 
 
-    /// <summary>清除数据的两步确认：第 1 步输入当天日期（yyyyMMdd），第 2 步输入 yes。</summary>
-    static bool TwoStepConfirm()
-    {
-        string today = DateTime.Now.ToString("yyyyMMdd");
-        C(ConsoleColor.Red, T("  （第 1/2 步）请输入今天日期以确认（格式 yyyyMMdd，例如 " + today + "）：",
-                              "  (Step 1/2) Type today's date to confirm (yyyyMMdd, e.g. " + today + "): "));
-        string d = ReadLineTrim();
-        if (d != today) { Warn(T("日期不符，已取消。", "Date mismatch. Cancelled.")); return false; }
-        C(ConsoleColor.Red, T("  （第 2/2 步）输入 yes 确认卸载：", "  (Step 2/2) Type yes to confirm the wipe: "));
-        if (ReadLineTrim() != "yes") { Warn(T("未输入 yes，已取消。", "Not confirmed. Cancelled.")); return false; }
-        return true;
-    }
-
-    // ---------------- 备份 / 恢复 ----------------
-
 
     /// <summary>备份数据目录到备份目录（自动跳过 node_modules 与被锁文件），返回备份路径；失败返回 null。</summary>
     static string DoBackup(string source) { return DoBackup(source, null, BackupKind.Manual); }
+
 
 
     /// <summary>备份数据目录；wsList 非空时把每个工作区放入备份包 _workspace\<名字>\（含 .dshws 标记）；kind 决定目录名来源后缀，备份成功后自动执行保留策略清理。</summary>
@@ -575,11 +322,13 @@ partial class Program
     // ---------------- 备份保留策略（v2.1：只清理自动类，手动永久保留） ----------------
 
 
+
     /// <summary>备份目录名是否属于"自动类"（自动类参与保留策略清理；手动备份永久保留）。</summary>
     static bool IsAutoBackupName(string name)
     {
         return name.EndsWith("-auto") || name.EndsWith("-pre-restore") || name.EndsWith("-pre-import") || name.EndsWith("-pre-wipe") || name.EndsWith("-pre-update");
     }
+
 
 
     /// <summary>保留策略：仅清理自动类备份（-auto / -pre-*），手动备份永久保留；自动类超过 cfgKeep 份时按最旧删除、保底 3 份。返回被清理的目录名列表（空=未清理）。</summary>
@@ -609,6 +358,7 @@ partial class Program
     }
 
 
+
     /// <summary>把字符串变成安全的文件夹名（去掉 Windows 非法字符）。</summary>
     static string SanitizeName(string s)
     {
@@ -617,6 +367,7 @@ partial class Program
         foreach (char c in bad) s = s.Replace(c.ToString(), "_");
         return s.Trim().Trim('.');
     }
+
 
 
     /// <summary>判断 child 是否位于 parent 子树内（含相等）；大小写不敏感。用于 wipe 前校验备份/状态目录不被误删。</summary>
@@ -629,6 +380,7 @@ partial class Program
     }
 
 
+
     /// <summary>去掉结尾分隔符，但保留盘根语义（D:\ 不会变成 D:，UNC 共享根不会丢失尾部斜杠）。</summary>
     static string TrimTrailingSep(string p)
     {
@@ -639,6 +391,7 @@ partial class Program
         if (root != null && p.Length < root.Length) return root;   // 盘根被 trim 掉时还原
         return p;
     }
+
 
 
     /// <summary>判定路径是否像"合理的用户工作区"。仅用于自动探测：系统级/用户级/常见奇怪目录一律拒绝；
@@ -679,6 +432,7 @@ partial class Program
     }
 
 
+
     static void OpenBackupFolder()
     {
         try
@@ -688,6 +442,7 @@ partial class Program
         }
         catch (Exception ex) { Error(T("打开失败：" + ex.Message, "Failed: " + ex.Message)); }
     }
+
 
 
     static void ImportBackup()
@@ -745,6 +500,7 @@ partial class Program
     // ---------------- 语言设置 ----------------
 
 
+
     /// <summary>设置（或清除）手动指定的工作区路径，持久化到 launcher.config 的 ws= 行。</summary>
     static void SetWorkspacePrompt()
     {
@@ -769,6 +525,7 @@ partial class Program
     // ---------------- 配置 / 状态文件 ----------------
 
 
+
     /// <summary>后台线程逐行读取子进程输出流并转发到主控制台（转发保持 npm/winget 进度可见；排空防止管道死锁）。</summary>
     static void DrainAndForward(System.IO.StreamReader src, System.IO.TextWriter dst)
     {
@@ -789,6 +546,7 @@ partial class Program
         }
         catch { }
     }
+
 
 
     /// <summary>进程树终止：taskkill /T /F 连带杀派生子进程（npm.cmd→node.exe 等），失败时回退 p.Kill()。
@@ -823,6 +581,7 @@ partial class Program
     }
 
 
+
     static string RunDshVersion()
     {
         string v = RunCapture("cmd.exe", "/c dsh --version 2>nul");
@@ -833,6 +592,7 @@ partial class Program
         }
         return v;
     }
+
 
 
     static string LocateDsh()
@@ -858,7 +618,9 @@ partial class Program
     }
 
 
+
     public enum ServiceState { Down, Listening, Ready }
+
 
 
     /// <summary>纯判定：端口开 + HTTP 就绪 → Ready；仅端口开 → Listening；否则 Down。（单测可直接调用）</summary>
@@ -869,14 +631,18 @@ partial class Program
     }
 
 
+
     // 监听进程身份判定缓存（同一进程内 10 秒内复用）：状态页每 3 秒刷新一次，
     // 不做缓存就会每轮都拉起 netstat + WMI。
     static bool listenerIsDshCached = false;
 
+
     static DateTime listenerIsDshAt = DateTime.MinValue;
 
 
+
     static Func<string, int, string> HttpGetImpl = null;   // 单测注入点（为空走真实实现）
+
 
 
     /// <summary>GET 指定 URL，成功返回正文，失败/超时返回 null。GitHub API 要求 User-Agent。</summary>
@@ -897,6 +663,7 @@ partial class Program
     }
 
 
+
     /// <summary>从 GitHub Releases API JSON 提取 tag_name（"v2.1.0" → "2.1.0"），失败返回 null。（单测可直接调用）</summary>
     static string ParseLatestTag(string body)
     {
@@ -913,6 +680,7 @@ partial class Program
     }
 
 
+
     /// <summary>取版本核心段（去掉 -rc/-beta 等 pre-release 后缀）："0.1.1-rc.2" → "0.1.1"。</summary>
     static string CoreVersion(string v)
     {
@@ -920,6 +688,7 @@ partial class Program
         int d = v.IndexOf('-');
         return d >= 0 ? v.Substring(0, d) : v;
     }
+
 
 
     /// <summary>版本号比较（semver 语义）：核心段数字比较；核心段相同再比较 pre-release 后缀——
@@ -939,6 +708,7 @@ partial class Program
         }
         return ComparePreRelease(a, b);
     }
+
 
 
     /// <summary>比较 pre-release 后缀（仅当核心段已相等时调用）：无后缀（正式版）> 有后缀；
@@ -978,10 +748,13 @@ partial class Program
     }
 
 
+
     static bool inputEof = false;
+
 
     /// <summary>核心（CLI）桌面快捷方式基名。</summary>
     const string SHORTCUT_NAME = "DeepSeek Harness Toolkit";
+
 
 
     /// <summary>桌面快捷方式是否已存在（监控页条件显示 I 选项）。</summary>
@@ -993,6 +766,7 @@ partial class Program
     // ---------------- 非交互 CLI（GUI 集成地基：单行机器可读标记，不 Pause、不读输入） ----------------
 
 
+
     /// <summary>restore --path 路径校验（纯逻辑，供单测）；返回 null=通过，否则失败原因键（no-path/outside/invalid）。</summary>
     static string NIValidateRestorePath(string pathArg, string backupsRoot)
     {
@@ -1002,6 +776,7 @@ partial class Program
         if (!IsValidBackupDir(bk)) return "invalid";
         return null;
     }
+
 
 
     /// <summary>非交互列出全部有效备份目录（最新在前）：首行 BACKUP_LIST_OK &lt;n&gt;，其后每行一个绝对路径。
@@ -1033,6 +808,7 @@ partial class Program
     }
 
 
+
     /// <summary>是否为 数字[.数字[.数字]] 的干净版本串。</summary>
     static bool IsCleanVersion(string v)
     {
@@ -1047,6 +823,7 @@ partial class Program
         }
         return true;
     }
+
 
 
     /// <summary>显示历史版本列表（0/回车=取消），返回用户选中的版本；取消返回 null。本机装过的版本带 * 标记。</summary>
@@ -1072,6 +849,7 @@ partial class Program
     }
 
 
+
     /// <summary>记录本机装过的 dsh 版本（去重、最新在前、最多 10 个）。</summary>
     static void RecordDshVersion(string ver)
     {
@@ -1094,6 +872,7 @@ partial class Program
     }
 
 
+
     /// <summary>历史列表中是否含指定版本。</summary>
     static bool HasDshVersion(string ver)
     {
@@ -1102,6 +881,7 @@ partial class Program
             if (x.Trim().Equals(ver, StringComparison.OrdinalIgnoreCase)) return true;
         return false;
     }
+
 
 
     /// <summary>更新失败后自动回滚到旧版本 cur 并验证；回滚失败给出明确手动指引 + 备份位置（M-1）。</summary>
@@ -1127,6 +907,7 @@ partial class Program
     }
 
 
+
     /// <summary>配置摘要：launcher.config 的非注释行。</summary>
     static string ConfigSummary()
     {
@@ -1146,26 +927,12 @@ partial class Program
     }
 
 
-    /// <summary>日志摘要：launcher.log 行数 + 最近 3 行。</summary>
-    static string LogSummary()
-    {
-        string file = Path.Combine(StateDir, "logs", "launcher.log");
-        try
-        {
-            if (!File.Exists(file)) return "(无日志)";
-            string[] lines = File.ReadAllLines(file);
-            string tail = "";
-            for (int i = Math.Max(0, lines.Length - 3); i < lines.Length; i++)
-                tail += (tail.Length == 0 ? "" : " | ") + lines[i];
-            return "共 " + lines.Length + " 行；最近: " + tail;
-        }
-        catch (Exception ex) { return "读取失败: " + ex.Message; }
-    }
-
 
     static bool HasFlag(string[] args, string f) { foreach (string a in args) if (string.Equals(a, f, StringComparison.OrdinalIgnoreCase)) return true; return false; }
 
+
     static string FlagValue(string[] args, string f) { for (int i = 1; i < args.Length - 1; i++) if (string.Equals(args[i], f, StringComparison.OrdinalIgnoreCase)) return args[i + 1]; return null; }
+
 
 
     static void WalkFiles(string root, string dir, Dictionary<string, long> acc, bool copyRules)
@@ -1195,6 +962,7 @@ partial class Program
     }
 
 
+
     /// <summary>export 校验（供单测）：返回 null=通过，否则原因键（no-path/no-to/outside/not-found/bad-target/nested）。</summary>
     static string NIValidateExport(string srcArg, string toArg, string backupsRoot)
     {
@@ -1211,6 +979,7 @@ partial class Program
     }
 
 
+
     /// <summary>backup-delete 校验（供单测）：返回 null=通过，否则原因键（no-path/outside/not-backup/not-found）。</summary>
     static string NIValidateBackupDelete(string srcArg, string backupsRoot)
     {
@@ -1224,6 +993,7 @@ partial class Program
     }
 
 
+
     /// <summary>npm versions 列表里最后一个 -rc 版本号（发布序）；无/离线返回 null。</summary>
     static string GetLatestRcVersion()
     {
@@ -1233,6 +1003,7 @@ partial class Program
         foreach (string v in all) if (v.IndexOf("-rc", StringComparison.OrdinalIgnoreCase) >= 0) last = v;
         return last;
     }
+
 
 
     /// <summary>高风险操作闸门（卸载含清数据 / 恢复 / 更新 dsh）：完整性不匹配即拒绝；无 manifest 时放行。返回是否可继续。</summary>
@@ -1247,6 +1018,7 @@ partial class Program
     }
 
     // ---------------- 自检 ----------------
+
 
 
 #if UNIT
