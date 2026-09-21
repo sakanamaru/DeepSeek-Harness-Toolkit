@@ -1,4 +1,4 @@
-// DeepSeek Harness Toolkit - 单元测试（与生产源码同程序集编译）
+﻿// DeepSeek Harness Toolkit - 单元测试（与生产源码同程序集编译）
 // 构建: csc /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs
 // 运行: unittests.exe   （退出码 0=全过，1=有失败）
 // 说明: 生产文件 dsh_v2.cs 中 Main 被 #if !UNIT 包裹，本文件提供测试入口；
@@ -690,6 +690,20 @@ public static class UnitTests
         Check(Program.Test.PatchDisableT(tBroken, "no-such-id")[0] == "FAIL:entry-not-found", "disable: unknown id refused");
         Check(Program.Test.PatchDisableT(tBroken, "x\n  disabled: false")[0] == "FAIL:bad-id", "disable: YAML injection via id refused");
         Check(Program.Test.SafePatchIdT("tool-subagent-kimi") && !Program.Test.SafePatchIdT("a b") && !Program.Test.SafePatchIdT("a:b"), "disable: id charset guard");
+        // ---- v2.8 平台接缝契约（接口 + Windows 实现必须与旧静态方法逐项一致）----
+        Console.WriteLine("[V28] platform seams contract");
+        Check(Program.Test.SeamActivePaths() == "WindowsPathService", "Windows 上应选中 WindowsPathService，实际=" + Program.Test.SeamActivePaths());
+        Check(Program.Test.SeamNormalize(@"C:\x\y") == Program.Test.PathP(@"C:\x\y"), "seam Normalize == 旧 P");
+        Check(Program.Test.SeamTrim(@"D:\") == Program.Test.PathTrim(@"D:\"), "seam TrimTrailingSep == 旧 TrimP（盘根语义保持）");
+        Check(Program.Test.SeamDataRoot() == Program.Test.DataRootT(), "seam DataRoot == 旧 DataRoot");
+        Check(Program.Test.SeamBackupsRoot() == Program.Test.BackupsRootT(), "seam BackupsRoot == 旧 BackupsRoot");
+        string seamCap = Program.Test.SeamCapture("cmd.exe", "/c echo seam-probe");
+        Check(seamCap != null && seamCap.Trim() == "seam-probe", "seam Shell.Capture 可用，实际=[" + (seamCap == null ? "" : seamCap.Trim()) + "]");
+        Check(!Program.Test.SeamPortOpen(1, 300), "seam Probe.PortOpen(1) 为 false");
+        string seamDir = Path.Combine(Path.GetTempPath(), "dsh_ut_seam_" + Guid.NewGuid().ToString("N"));
+        string seamErr = Program.Test.SeamShortcut(seamDir, @"C:\nope\missing.exe", "x", null);
+        Check(seamErr != null && !File.Exists(Path.Combine(seamDir, "x.lnk")), "seam Shortcut 拒绝不存在的目标");
+        try { Directory.Delete(seamDir, true); } catch { }
 
         // 8) 完整流程：备份→写入→复扫；验证失败回滚；BOM 保持
         string ppTd = Path.Combine(Path.GetTempPath(), "dsh_ut_pp_" + Guid.NewGuid().ToString("N"));

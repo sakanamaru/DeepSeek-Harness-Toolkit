@@ -1338,6 +1338,17 @@ partial class Program
         public static string PatchDisableApplyT(string file, string id, bool simulateFail, out string bk) { return Program.ProfilePatchDisableApply(file, id, simulateFail, out bk); }
         public static bool PatchHasDisabledT(string text, string id) { return Program.PatchHasDisabled(text, id); }
         public static bool SafePatchIdT(string id) { return Program.IsSafePatchId(id); }
+        // ---- v2.8 平台接缝（契约测试用）----
+        public static string SeamActivePaths() { return Program.Platform.Paths.GetType().Name; }
+        public static string SeamNormalize(string p) { return Program.Platform.Paths.Normalize(p); }
+        public static string SeamTrim(string p) { return Program.Platform.Paths.TrimTrailingSep(p); }
+        public static string SeamDataRoot() { return Program.Platform.Paths.DataRoot(); }
+        public static string SeamBackupsRoot() { return Program.Platform.Paths.BackupsRoot(); }
+        public static string SeamCapture(string exe, string args) { return Program.Platform.Shell.Capture(exe, args); }
+        public static bool SeamPortOpen(int port, int ms) { return Program.Platform.Probe.PortOpen(port, ms); }
+        public static string SeamShortcut(string dir, string exe, string name, string desc) { return Program.Platform.Shortcuts.Create(dir, exe, name, desc); }
+        public static string DataRootT() { return Program.DataRoot(); }
+        public static string BackupsRootT() { return Program.BackupsRoot(); }
         public static string CleanScalarT(string v) { return Program.CleanYamlScalar(v); }
     }
 
