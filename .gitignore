@@ -10,3 +10,7 @@ logs/
 # GUI 测试/调试产物（不提交）
 gui_test/
 Toolkit GUI.exe
+
+# .NET SDK 工程产物（v2.8 阶段 2）
+bin/
+obj/
