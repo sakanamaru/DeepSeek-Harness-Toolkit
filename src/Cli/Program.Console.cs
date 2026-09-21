@@ -74,7 +74,7 @@ partial class Program
     static void StatusMonitor()
     {
         string node = RunCapture("node.exe", "--version");
-        string dver = RunDshVersion();
+        string dver = Platform.Shell.DshVersion();
         DateTime? upSince = null;
         bool wasUp = false;
         while (true)

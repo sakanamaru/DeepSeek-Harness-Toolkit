@@ -133,7 +133,59 @@ partial class Program
             }
             catch { return -1; }
         }
-    }
+
+        /// <summary>在 PATH 里找 dsh（Linux 没有 where）。找到返回绝对路径，否则 null。</summary>
+        public string WhichDsh()
+        {
+            try
+            {
+                string path = Environment.GetEnvironmentVariable("PATH") ?? "";
+                foreach (string d in path.Split(':'))
+                {
+                    string dir = d.Trim();
+                    if (dir.Length == 0) continue;
+                    try { string f = Path.Combine(dir, "dsh"); if (File.Exists(f)) return f; } catch { }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>dsh --version（Linux 直接执行，无需 cmd.exe 包装）。失败返回 null。</summary>
+        public string DshVersion() { return Program.RunCapture("dsh", "--version"); }
+
+        /// <summary>终止进程（尽力连带子进程）：先 SIGTERM，短暂等待后 SIGKILL。返回 0 表示至少发过一次信号。
+        /// 诚实标注：未在真机 Linux 上验收；失败时与 Windows 侧一样只记录日志，不抛异常。</summary>
+        public int KillTree(int pid)
+        {
+            if (pid <= 0) return -1;
+            int rc = Kill(pid, "-TERM");
+            try { System.Threading.Thread.Sleep(300); } catch { }
+            int rc2 = Kill(pid, "-KILL");
+            if (rc == 0 || rc2 == 0) return 0;
+            return rc != -1 ? rc : rc2;
+        }
+
+        int Kill(int pid, string sig)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("kill", sig + " " + pid);
+                psi.UseShellExecute = false;
+                psi.RedirectStandardError = true;
+                psi.RedirectStandardOutput = true;
+                using (Process p = Process.Start(psi))
+                {
+                    if (p == null) return -1;
+                    string e = p.StandardError.ReadToEnd();
+                    p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(3000);
+                    if (p.ExitCode != 0 && !string.IsNullOrWhiteSpace(e)) Program.LogErr("kill " + sig + " " + pid + ": " + e.Trim());
+                    return p.ExitCode;
+                }
+            }
+            catch { return -1; }
+        }    }
 
     class LinuxShortcutService : IShortcutService
     {
