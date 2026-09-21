@@ -28,7 +28,8 @@ jobs:
         shell: pwsh
         run: |
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          & $csc /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs /warn:4
+          $src = @('dsh_v2.cs') + (Get-ChildItem src -Recurse -Filter *.cs | ForEach-Object FullName)
+          & $csc /nologo /target:exe /define:UNIT /out:unittests.exe $src tests\unit_tests.cs /warn:4
           if ($LASTEXITCODE -ne 0) { throw "unit test build failed" }
           .\unittests.exe
           if ($LASTEXITCODE -ne 0) { throw "unit tests failed" }
@@ -37,7 +38,8 @@ jobs:
         shell: pwsh
         run: |
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          & $csc /nologo /optimize+ /target:exe /win32icon:icon.ico /out:core_check.exe dsh_v2.cs /warn:4
+          $src = @('dsh_v2.cs') + (Get-ChildItem src -Recurse -Filter *.cs | ForEach-Object FullName)
+          & $csc /nologo /optimize+ /target:exe /win32icon:icon.ico /out:core_check.exe $src /warn:4
           if ($LASTEXITCODE -ne 0) { throw "core compile failed (guard)" }
           & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico /win32manifest:app.manifest /resource:logo.png /out:gui_check.exe gui_v2.cs /warn:4
           if ($LASTEXITCODE -ne 0) { throw "GUI (attached) compile failed" }
@@ -67,7 +69,8 @@ jobs:
         shell: pwsh
         run: |
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          & $csc /nologo /optimize+ /target:exe /win32icon:icon.ico "/out:DeepSeek Harness Toolkit.exe" dsh_v2.cs /warn:4
+          $src = @('dsh_v2.cs') + (Get-ChildItem src -Recurse -Filter *.cs | ForEach-Object FullName)
+          & $csc /nologo /optimize+ /target:exe /win32icon:icon.ico "/out:DeepSeek Harness Toolkit.exe" $src /warn:4
           if ($LASTEXITCODE -ne 0) { throw "csc build failed" }
           Get-Item "DeepSeek Harness Toolkit.exe" | Select-Object Name,Length
 
@@ -91,6 +94,7 @@ jobs:
         shell: pwsh
         run: |
           $files = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.dsh_launcher_root')
+          $files += (Get-ChildItem src -Recurse -Filter *.cs | ForEach-Object { $_.FullName.Replace((Get-Location).Path + '\','') })
           # L-2：版本号从 AssemblyVersion 动态派生（取 major.minor.build 三段），避免每次 bump 手改 hashes 头（旧版本号残留）
           $verMatch = (Select-String -Path dsh_v2.cs -Pattern 'AssemblyVersion\("(\d+)\.(\d+)\.(\d+)\.\d+"' | Select-Object -First 1).Matches[0]
           $verLine = ($verMatch.Groups[1].Value + '.' + $verMatch.Groups[2].Value + '.' + $verMatch.Groups[3].Value)
@@ -152,7 +156,7 @@ jobs:
           if ($tag -in @('main','master','')) { $tag = "${{ inputs.release_tag }}" }
           if ($tag -eq '') { $tag = 'dev' }
           $zipName = "DeepSeek-Harness-Toolkit_${tag}_upload-package.zip"
-          $items = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.gitignore','hashes.txt','hashes.txt.asc','.dsh_launcher_root')
+          $items = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.gitignore','hashes.txt','hashes.txt.asc','.dsh_launcher_root','src')
           Compress-Archive -Path $items -DestinationPath $zipName -CompressionLevel Optimal
           Write-Output ("zip: " + [math]::Round((Get-Item $zipName).Length/1KB,1) + " KB")
 
