@@ -243,7 +243,7 @@ DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不
 
 或双击本目录 `build_exe.cmd`。GUI 由同规则的单文件 `gui_v2.cs` 编译（一份源码 → 附加版与集成版两种形态；集成版多一个 `/resource:<核心exe>,DSHCore.exe`）。
 
-> 上面命令里的 `src\` 通配符属于 **v2.8 阶段 1 的目标布局**——正在进行的 **move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（见「目录结构」）。**已发布的 v2.7.2** 核心仍是单文件 `dsh_v2.cs`，重编它时去掉那三个 `src\` 通配符。`csc.exe` 自身不展开通配符——需要显式文件清单时，用 `Get-ChildItem src -Recurse -Filter *.cs` 展开。
+> 上面命令里的 `src\` 通配符属于 **v2.8 阶段 1 的布局（2026-09-21 已完成）**——**move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（见「目录结构」）。**已发布的 v2.7.2** 核心仍是单文件 `dsh_v2.cs`，重编它时去掉那三个 `src\` 通配符。`csc.exe` 自身不展开通配符——需要显式文件清单时，用 `Get-ChildItem src -Recurse -Filter *.cs` 展开。
 
 **可复现发布（源码即产物）**：每个 GitHub Release 的 exe 均由 **GitHub Actions CI** 从本仓库源码自动编译生成，并在同一流水线里重新生成 `hashes.txt` 且完成 **GPG 签名**。标签构建另会发布 **GitHub 构建溯源证明（attestation）**——这是独立的额外溯源检查，需用 `gh` 单独验证；`verify.ps1` **不**验证它，它也不能替代 GPG 签名校验。仓库自身不存放任何二进制文件。
 
@@ -296,7 +296,7 @@ docs/screenshots/    README 截图
 backup/  logs/       运行时目录（已被 .gitignore 排除，切勿提交）
 ```
 
-> **上面的 `src/` 各行是 v2.8 阶段 1 的目标布局，不是已发布状态。** 阶段 1 是 **move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（同一程序集内的 `partial`，因此调用点、签名与行为零改动），**自 2026-09-21 起进行中**。已发布的 **v2.7.2** 仍由单文件 `dsh_v2.cs` 编译。阶段 1 不动 `gui_v2.cs`、`tests/unit_tests.cs`、`verify.ps1`。
+> **上面的 `src/` 各行是 v2.8 阶段 1 的布局（2026-09-21 已完成），不是已发布状态。** 阶段 1 是 **move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（同一程序集内的 `partial`，因此调用点、签名与行为零改动），已完成于 2026-09-21（提交 ee36ac0，CI 绿）。已发布的 **v2.7.2** 仍由单文件 `dsh_v2.cs` 编译。阶段 1 不动 `gui_v2.cs`、`tests/unit_tests.cs`、`verify.ps1`。
 
 ## 错误日志
 
