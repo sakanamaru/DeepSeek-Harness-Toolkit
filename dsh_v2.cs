@@ -64,6 +64,7 @@ partial class Program
         // .NET Framework 长路径支持：开启后 >260 字符路径可用（须在首次文件操作前设置）
         try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
+        Platform.Init();   // v2.8：按平台选择实现（Windows 上无变化）
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
         try { Console.Title = "DeepSeek Harness Toolkit V2.7.3"; } catch { }
         // v2.7：显式启用 TLS 1.2。.NET Framework 4.x 的 SecurityProtocol 默认只含 Ssl3|Tls，
