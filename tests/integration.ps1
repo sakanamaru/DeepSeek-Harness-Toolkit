@@ -290,6 +290,17 @@ if (Test-Path -LiteralPath $csprojPath) {
     else { $csprojDetail = 'glob 覆盖 ' + $all.Count + ' 个源文件' }
 }
 TC '33 csproj source set matches' $csprojOk $csprojDetail
+
+# v2.8 守卫：只搬不改（以 v2.7.2 的原始 dsh_v2.cs 为基线，断言 0 行丢失）
+$moScript = Join-Path $RepoRoot 'tests\verify_move_only.ps1'
+$moRc = 2; $moDetail = 'SKIP(no baseline)'
+if (Test-Path -LiteralPath $moScript) {
+    $moOut = & powershell -ExecutionPolicy Bypass -File $moScript -Repo $RepoRoot 2>&1 | Out-String
+    $moRc = $LASTEXITCODE
+    if ($moRc -eq 0) { $moDetail = (($moOut -split "`n") | Where-Object { $_ -match '基线有效行' }) -join '' }
+    elseif ($moRc -eq 1) { $moDetail = '有行丢失' }
+}
+TC '34 move-only guard' ($moRc -eq 0 -or $moRc -eq 2) $moDetail
 } else {
     $results.Add('32 status/start-bg(needs 3080)    SKIP')
 }
