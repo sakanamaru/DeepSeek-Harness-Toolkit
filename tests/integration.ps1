@@ -19,8 +19,14 @@ function TC($name, $ok, $extra = '') {
 }
 function NewDir($p) { if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force }; New-Item -ItemType Directory -Path $p -Force | Out-Null }
 
+$repoRoot = Split-Path -Parent $src
+function Get-SrcFiles { return @($src) + (Get-ChildItem (Join-Path $repoRoot 'src') -Recurse -Filter *.cs -ErrorAction SilentlyContinue | ForEach-Object FullName) }
+
 function Build-Variant($variant, $outExe) {
-    $text = [IO.File]::ReadAllText($src, [Text.UTF8Encoding]::new($false))
+    # v2.8：源码已拆成多层，锚点可能落在任意一个文件里 —— 逐文件查找并替换，再整体编译
+    $files = Get-SrcFiles
+    $map = @{}
+    foreach ($f in $files) { $map[$f] = [IO.File]::ReadAllText($f, [Text.UTF8Encoding]::new($false)) }
     $pats = @(
         @{ o = 'const string DATA_DIR     = ".dsh";';                                                   n = 'const string DATA_DIR     = ".dsh_test";' },
         @{ o = '"DeepSeek-Harness-Toolkit-single"';                                                        n = '"DSH-Toolkit-TEST-single"' },
@@ -30,24 +36,31 @@ function Build-Variant($variant, $outExe) {
         @{ o = 'int code = RunVisible("cmd.exe", "/c npm uninstall -g @deepseek-ai/dsh");';            n = 'int code = 0; // TEST npm no-op' }
     )
     if ($variant -eq 'A') {
-        # 变体 A：端口全打桩（菜单/卸载流程可离线跑通）；变体 C 保留真实端口（测"运行中"路径）
         $pats += @{ o = 'if (ProbeService() == ServiceState.Ready)'; n = 'if (false && ProbeService() == ServiceState.Ready)' }
         $pats += @{ o = 'if (IsPortOpen(WEB_PORT, 600))'; n = 'if (false && IsPortOpen(WEB_PORT, 600))' }
-        # v2.1：ProbeService 也要打桩——它内部裸调 IsPortOpen，不打桩会让"运行中拒绝"误触发（16/17 在 3080 开启时被拒）
-        # v2.4.2：ProbeService 改为 JudgeState3(..., ListenerIsDsh)（监听进程身份兜底），锚点同步更新
         $pats += @{ o = 'return JudgeState3(IsPortOpen(WEB_PORT, 800), HttpReady(WebUrl(), 800), ListenerIsDsh);'; n = 'return JudgeState(false, false); // TEST stub' }
     }
     foreach ($p in $pats) {
-        if ([regex]::Matches($text, [regex]::Escape($p.o)).Count -lt 1) { Write-Error ("锚点漂移（请同步 integration.ps1）: " + $p.o.Substring(0, 50)); exit 2 }
-        $text = $text.Replace($p.o, $p.n)
+        $done = $false
+        foreach ($f in $files) { if ($map[$f].Contains($p.o)) { $map[$f] = $map[$f].Replace($p.o, $p.n); $done = $true; break } }
+        if (-not $done) { Write-Error ("锚点漂移（请同步 integration.ps1）: " + $p.o.Substring(0, 50)); exit 2 }
     }
-    $tmp = Join-Path $env:TEMP ("t_dsh_" + $variant + ".cs")
-    [IO.File]::WriteAllText($tmp, $text, [Text.UTF8Encoding]::new($false))
-    & $csc /nologo /optimize+ /target:exe ("/out:" + $outExe) $tmp /warn:4 | Out-Null
+    $vd = Join-Path $env:TEMP ("t_dsh_" + $variant + "_" + [guid]::NewGuid().ToString('N'))
+    if (Test-Path -LiteralPath $vd) { Remove-Item -LiteralPath $vd -Recurse -Force }
+    New-Item -ItemType Directory -Path $vd -Force | Out-Null
+    $srcOut = New-Object System.Collections.Generic.List[string]
+    foreach ($f in $files) {
+        $rel = $f.Substring($repoRoot.Length).TrimStart('\')
+        $dest = Join-Path $vd $rel
+        $dd = Split-Path -Parent $dest
+        if (-not (Test-Path -LiteralPath $dd)) { New-Item -ItemType Directory -Path $dd -Force | Out-Null }
+        [IO.File]::WriteAllText($dest, $map[$f], [Text.UTF8Encoding]::new($false))
+        $srcOut.Add($dest)
+    }
+    & $csc /nologo /optimize+ /target:exe ("/out:" + $outExe) $srcOut /warn:4 | Out-Null
     if ($LASTEXITCODE -ne 0) { Write-Error ("变体" + $variant + " 编译失败"); exit 2 }
-    Remove-Item -LiteralPath $tmp -Force
+    Remove-Item -LiteralPath $vd -Recurse -Force
 }
-
 $T = Join-Path $env:TEMP ("tkint_" + [guid]::NewGuid().ToString('N'))
 NewDir $T
 $tA = Join-Path $T 'tA.exe'; $tC = Join-Path $T 'tC.exe'

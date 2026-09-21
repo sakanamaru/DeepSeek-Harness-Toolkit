@@ -6,7 +6,30 @@ All notable changes to **DeepSeek Harness Toolkit** (unofficial). Full release n
 
 ---
 
-## v2.7.2 — 未发布 / Unreleased
+## v2.8.0 — 未发布 / Unreleased
+
+### Changed / 变更（重构 · 阶段 1：分层，进行中）
+
+- **单文件核心拆成 Core / Platform / Cli 三层**（`dsh_v2.cs` → `dsh_v2.cs` + `src/**`）。这是**只搬不改**的重构：用 `partial class Program` 把同一个类分散到多个文件，**不改变任何调用点、签名、字符串、注释或行为**，也不引入任何依赖或 Unix 代码。
+  **The single-file core is split into Core / Platform / Cli layers** (`dsh_v2.cs` → `dsh_v2.cs` + `src/**`). This is a **move-only** refactor: `partial class Program` spreads the same class across files, **without changing a single call site, signature, string, comment or behaviour**, and without adding any dependency or any Unix code.
+
+  分层（阶段 1 目标布局）：`src/Core/Program.{Config,Backup,Doctor,Profile,Integrity,Update,Util}.cs`（平台无关）、`src/Platform/Windows/Program.Platform.cs`（P/Invoke、端口/进程探测、桌面与快捷方式、StateDir/DataRoot、控制台辅助）、`src/Cli/Program.Cli.cs`（`Main`、菜单、各 `*Cli` 非交互命令）。`dsh_v2.cs` 保留文件头、`using`、程序集属性与 `#if UNIT` 测试代理块；**没被归类命中的成员一律留在 `dsh_v2.cs`**（宁可少搬，不可搬坏）。
+  Layering: platform-agnostic `src/Core/**`, Windows-specific `src/Platform/Windows/**`, entry points in `src/Cli/**`. `dsh_v2.cs` keeps the header, `using`s, assembly attributes and the `#if UNIT` test proxies; **any member not matched by the mapping stays in `dsh_v2.cs`**.
+
+  门禁（全部必须通过才算完成）：四形态 `csc /warn:4` 编译 0 错误 0 新增警告 · 单元测试 **297/297** · 集成测试 **33/33** · 成员签名多重集与字符串字面量多重集与原文件**完全一致**（机器证明「只搬不改」）· 每个 `.cs` 保持 **UTF-8 无 BOM + CRLF**。
+  Gates: four build variants compile with 0 errors / 0 new warnings; unit tests **297/297**; integration **33/33**; member-signature and string-literal multisets **identical** to the original (machine proof of move-only); every `.cs` stays **UTF-8 without BOM, CRLF**.
+
+- 阶段 1 **不动** `gui_v2.cs`、`tests/unit_tests.cs`、`verify.ps1`；构建脚本与 CI 的源文件列表同步更新（`build_exe.cmd`、`.github/workflows/build-release.yml`）。
+  Stage 1 leaves `gui_v2.cs`, `tests/unit_tests.cs` and `verify.ps1` untouched; the build script and the CI source lists are updated to match.
+
+### Tests / 测试
+
+- 本阶段**不新增**测试用例：单元测试仍是 **297** 项，作为「行为未变」的验收网。
+  No new test cases in this stage: the suite stays at **297** and acts as the regression net proving behaviour did not change.
+
+---
+
+## v2.7.2 — 2026-09-20 —（新增：`profilepatch --disable` 手动隔离出问题的插件 / Manual Quarantine of a Failing Plugin）
 
 ### Added / 新增
 

@@ -238,10 +238,12 @@ DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不
 需要 Windows 自带的 .NET Framework 4.x（Win10 / Win11 默认已安装）：
 
 ```
-"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico /out:"DeepSeek Harness Toolkit.exe" dsh_v2.cs
+"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico "/out:DeepSeek Harness Toolkit.exe" dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs /warn:4
 ```
 
 或双击本目录 `build_exe.cmd`。GUI 由同规则的单文件 `gui_v2.cs` 编译（一份源码 → 附加版与集成版两种形态；集成版多一个 `/resource:<核心exe>,DSHCore.exe`）。
+
+> 上面命令里的 `src\` 通配符属于 **v2.8 阶段 1 的目标布局**——正在进行的 **move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（见「目录结构」）。**已发布的 v2.7.2** 核心仍是单文件 `dsh_v2.cs`，重编它时去掉那三个 `src\` 通配符。`csc.exe` 自身不展开通配符——需要显式文件清单时，用 `Get-ChildItem src -Recurse -Filter *.cs` 展开。
 
 **可复现发布（源码即产物）**：每个 GitHub Release 的 exe 均由 **GitHub Actions CI** 从本仓库源码自动编译生成，并在同一流水线里重新生成 `hashes.txt` 且完成 **GPG 签名**。标签构建另会发布 **GitHub 构建溯源证明（attestation）**——这是独立的额外溯源检查，需用 `gh` 单独验证；`verify.ps1` **不**验证它，它也不能替代 GPG 签名校验。仓库自身不存放任何二进制文件。
 
@@ -249,7 +251,7 @@ DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不
 
 无需任何测试框架或第三方依赖：
 
-- **单元测试（277 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
+- **单元测试（297 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs
   unittests.exe
@@ -267,7 +269,16 @@ DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不
 ## 目录结构
 
 ```
-dsh_v2.cs            命令行核心源码（C#5，单文件，无第三方依赖）
+dsh_v2.cs            命令行核心入口 partial——文件头 / 程序集属性 / 测试代理块（C#5，无第三方依赖）
+src/Core/Program.Config.cs         配置读写与白名单校验
+src/Core/Program.Backup.cs         备份 / 恢复 / 导出 / 删除、DryRun、PlanMerge / CopyTree
+src/Core/Program.Doctor.cs         体检 DocItem 系列
+src/Core/Program.Profile.cs        profilecheck / bootdiag / profilepatch
+src/Core/Program.Integrity.cs      自身完整性与清单解析
+src/Core/Program.Update.cs         版本 / 通道 / 更新信息、npm 版本校验
+src/Core/Program.Util.cs           纯工具（无 Win32、无控制台）
+src/Platform/Windows/Program.Platform.cs   P/Invoke、端口与进程探测、桌面与快捷方式、StateDir/DataRoot、控制台辅助
+src/Cli/Program.Cli.cs             Main、交互菜单、Banner/Help、各 *Cli 非交互命令
 gui_v2.cs            GUI 源码（WinForms；一份源码 → 附加版 + 集成版）
 app.manifest         GUI 清单（DPI 感知 / 兼容性）
 build_exe.cmd        重编译脚本（核心）
@@ -278,12 +289,14 @@ keys/                维护者 GPG 公钥
 SECURITY.md          安全策略、数据与网络边界声明
 CHANGELOG.md         更新日志（双语）
 hashes.txt           SHA-256 校验清单（CI 每次发布重新生成）
-tests/               单元（277）/ 集成（33）测试——无第三方依赖
+tests/               单元（297）/ 集成（33）测试——无第三方依赖
 docs/screenshots/    README 截图
 .github/workflows/   CI：push/PR 跑测试；标签/手动触发构建发布 + GPG 签名
 .dsh_launcher_root   安装标记（随包分发；误删保护）
 backup/  logs/       运行时目录（已被 .gitignore 排除，切勿提交）
 ```
+
+> **上面的 `src/` 各行是 v2.8 阶段 1 的目标布局，不是已发布状态。** 阶段 1 是 **move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（同一程序集内的 `partial`，因此调用点、签名与行为零改动），**自 2026-09-21 起进行中**。已发布的 **v2.7.2** 仍由单文件 `dsh_v2.cs` 编译。阶段 1 不动 `gui_v2.cs`、`tests/unit_tests.cs`、`verify.ps1`。
 
 ## 错误日志
 
