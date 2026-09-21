@@ -32,7 +32,7 @@ function Sigs([string]$t) {
     foreach ($p in $pats) {
         foreach ($m in [regex]::Matches($t, $p)) {
             $v = ($m.Value -replace '\s+', ' ').Trim()
-            if ($v -match 'class\s+Program\s*$') { continue }   # 类声明行属预期变化
+            if ($v -match 'class\s+Program') { continue }   # 类声明行属预期变化（可能带 {{）
             $out.Add($v)
         }
     }
