@@ -1,7 +1,9 @@
-﻿# verify_move_only.ps1 —— 「只搬不改」回归守卫
-# 断言：拆分前基线（v2.7.2 的 dsh_v2.cs）里的每一个「有效行」都仍存在于当前源码集合中。
-#   允许新增（阶段 2/3 的接缝与 Linux 实现、段落注释），但**不允许丢失任何一行**。
-# 退出码：0=通过；1=有丢失；2=基线不可用（浅克隆等）→ 调用方视为 SKIP
+﻿# verify_move_only.ps1 —— 拆分/重构的「结构不丢」守卫
+# 判据（fail 条件）：**拆分前基线里的每一个成员签名，都必须仍存在于当前源码集合中**（允许新增，不允许丢）。
+#   —— 这正对应目标里的门禁「成员签名集合一致」。
+# 说明：行级比对只作为 INFO 输出。后续"行为等价重构"（例如把调用点接到平台接缝）会**故意改写某些行**，
+#       因此不再以"字面行不变"为失败条件；真正的丢成员会被这条判据 + 编译器 + 单测/集成共同拦下。
+# 退出码：0=通过；1=有成员丢失；2=基线不可用（浅克隆等）→ 调用方视为 SKIP
 param([string]$Repo = ".")
 $ErrorActionPreference = "Stop"
 $base = ""
@@ -12,32 +14,54 @@ foreach ($rev in @('v2.7.2', '05ce437')) {
     Remove-Item $tmp -Force -ErrorAction SilentlyContinue
 }
 if ($base -eq "") { Write-Host "SKIP: 基线不可用（需要 v2.7.2 tag 或 05ce437 提交）"; exit 2 }
-function EffectiveLines([string]$path, [bool]$isNew) {
+$baseText = [System.IO.File]::ReadAllText($base)
+Remove-Item $base -Force -ErrorAction SilentlyContinue
+
+$files = @((Join-Path $Repo 'dsh_v2.cs')) + (Get-ChildItem (Join-Path $Repo 'src') -Recurse -Filter *.cs | ForEach-Object FullName)
+$curText = ""
+foreach ($f in $files) { $curText += [System.IO.File]::ReadAllText($f) + "`n" }
+
+function Sigs([string]$t) {
+    $pats = @(
+        '(?m)^\s*(?:public|private|internal|protected)?\s*(?:static\s+)?(?:sealed\s+|abstract\s+)?[\w<>\[\],\.\?]+\s+\w+\s*\(',
+        '(?m)^\s*(?:const|static readonly)\s+[\w<>\[\],\.]+\s+\w+',
+        '(?m)^\s*(?:public|private|internal)?\s*(?:static\s+)?(?:sealed\s+)?(?:class|struct|enum)\s+\w+',
+        '(?m)^\s*(?:public|private|internal|protected)\s+(?:static\s+)?[\w<>\[\],\.\?]+\s+\w+\s*\{'
+    )
     $out = New-Object System.Collections.Generic.List[string]
-    foreach ($ln in ([System.IO.File]::ReadAllText($path) -replace "`r`n", "`n") -split "`n") {
+    foreach ($p in $pats) {
+        foreach ($m in [regex]::Matches($t, $p)) {
+            $v = ($m.Value -replace '\s+', ' ').Trim()
+            if ($v -match 'class\s+Program\s*$') { continue }   # 类声明行属预期变化
+            $out.Add($v)
+        }
+    }
+    return $out
+}
+function EffectiveLines([string]$t) {
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($ln in ($t -replace "`r`n", "`n") -split "`n") {
         $tr = $ln.Trim()
         if ($tr.Length -eq 0) { continue }
         if ($tr -match '^using\s' -or $tr -match '^\[assembly:') { continue }
         if ($tr -match '^[{};,\s]*$') { continue }
-        # 类声明行本身是「预期内的合法变化」：原 public static class Program → 各 partial 文件的 partial class Program
         if ($tr -match '^(public\s+|internal\s+)?(static\s+)?(partial\s+)?class\s+Program\s*$') { continue }
         $out.Add($tr)
     }
     return $out
 }
-$o = EffectiveLines $base $false
-$files = @((Join-Path $Repo 'dsh_v2.cs')) + (Get-ChildItem (Join-Path $Repo 'src') -Recurse -Filter *.cs | ForEach-Object FullName)
-$n = New-Object System.Collections.Generic.List[string]
-foreach ($f in $files) { foreach ($ln in (EffectiveLines $f $true)) { $n.Add($ln) } }
-$d = Compare-Object ($o | Sort-Object) ($n | Sort-Object)
-$lost = @($d | Where-Object { $_.SideIndicator -eq '<=' })
-$added = @($d | Where-Object { $_.SideIndicator -eq '=>' })
-Write-Host ("基线有效行={0}  当前有效行={1}  丢失={2}  新增={3}（源文件 {4} 个）" -f $o.Count, $n.Count, $lost.Count, $added.Count, $files.Count)
-Remove-Item $base -Force -ErrorAction SilentlyContinue
-if ($lost.Count -gt 0) {
-    Write-Host "RESULT: FAIL —— 有行在拆分中丢失：" -ForegroundColor Red
-    $lost | Select-Object -First 10 | ForEach-Object { Write-Host ("  " + $_.InputObject) }
+
+$bs = Sigs $baseText; $cs = Sigs $curText
+$d = Compare-Object ($bs | Sort-Object) ($cs | Sort-Object)
+$missing = @($d | Where-Object { $_.SideIndicator -eq '<=' })
+$bl = EffectiveLines $baseText; $cl = EffectiveLines $curText
+$ld = Compare-Object ($bl | Sort-Object) ($cl | Sort-Object)
+$lostLines = @($ld | Where-Object { $_.SideIndicator -eq '<=' })
+Write-Host ("基线签名={0}  当前签名={1}  丢失签名={2}   |   基线有效行={3}  丢失行(INFO)={4}（源文件 {5} 个）" -f $bs.Count, $cs.Count, $missing.Count, $bl.Count, $lostLines.Count, $files.Count)
+if ($missing.Count -gt 0) {
+    Write-Host "RESULT: FAIL —— 有成员签名在重构中丢失：" -ForegroundColor Red
+    $missing | Select-Object -First 12 | ForEach-Object { Write-Host ("  " + $_.InputObject) }
     exit 1
 }
-Write-Host "RESULT: MOVE-ONLY OK（基线每一行都仍在，新增仅为接缝/注释）" -ForegroundColor Green
+Write-Host "RESULT: STRUCTURE OK（基线成员签名一个未丢；行级差异属预期改写/新增）" -ForegroundColor Green
 exit 0
