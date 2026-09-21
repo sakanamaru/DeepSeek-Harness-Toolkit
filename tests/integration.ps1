@@ -301,6 +301,17 @@ if (Test-Path -LiteralPath $moScript) {
     elseif ($moRc -eq 1) { $moDetail = '有行丢失' }
 }
 TC '34 move-only guard' ($moRc -eq 0 -or $moRc -eq 2) $moDetail
+
+# v2.8 守卫：核心平台中立（零 Windows-only 编译期 API；Windows 实现只能在 src/Platform/Windows/**）
+$cpScript = Join-Path $RepoRoot 'tests\verify_core_portable.ps1'
+$cpRc = 1; $cpDetail = 'script missing'
+if (Test-Path -LiteralPath $cpScript) {
+    $cpOut = & powershell -ExecutionPolicy Bypass -File $cpScript -Repo $RepoRoot 2>&1 | Out-String
+    $cpRc = $LASTEXITCODE
+    $cpDetail = (($cpOut -split "`n") | Where-Object { $_ -match '扫描核心源文件' }) -join ''
+    if ($cpRc -ne 0) { $cpDetail = (($cpOut -split "`n") | Where-Object { $_ -match 'Windows-only' } | Select-Object -First 1) }
+}
+TC '35 core stays portable' ($cpRc -eq 0) $cpDetail
 } else {
     $results.Add('32 status/start-bg(needs 3080)    SKIP')
 }
