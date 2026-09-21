@@ -73,7 +73,7 @@ partial class Program
     /// <summary>查询 npm 上 @deepseek-ai/dsh 的最新版本；失败/离线/版本非法返回 null。</summary>
     static string GetLatestDshVersion()
     {
-        return SanitizeLatestVersion(RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh version 2>nul"));
+        return SanitizeLatestVersion(Platform.Shell.NpmViewLatest());
     }
 
 
@@ -385,7 +385,7 @@ partial class Program
     /// <summary>显示历史版本列表（0/回车=取消），返回用户选中的版本；取消返回 null。本机装过的版本带 * 标记。</summary>
     static string ListDshVersions()
     {
-        string raw = RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh versions 2>nul");
+        string raw = Platform.Shell.NpmViewVersions();
         string[] recent = FilterVersions(ParseNpmVersions(raw), 10);
         if (recent.Length == 0)
         {
@@ -471,7 +471,7 @@ partial class Program
     /// <summary>npm versions 列表里最后一个 -rc 版本号（发布序）；无/离线返回 null。</summary>
     static string GetLatestRcVersion()
     {
-        string raw = RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh versions 2>nul");
+        string raw = Platform.Shell.NpmViewVersions();
         string[] all = ParseNpmVersions(raw);
         string last = null;
         foreach (string v in all) if (v.IndexOf("-rc", StringComparison.OrdinalIgnoreCase) >= 0) last = v;

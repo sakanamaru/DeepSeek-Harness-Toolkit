@@ -103,10 +103,10 @@ partial class Program
     {
         // ---- System ----
         items.Add(new DocItem("System", 0, "Windows: " + Environment.OSVersion.VersionString + " (" + (Environment.Is64BitOperatingSystem ? "x64" : "x86") + ")"));
-        string node = RunCapture("node.exe", "--version");
+        string node = Platform.Shell.NodeVersion();
         if (string.IsNullOrWhiteSpace(node)) items.Add(new DocItem("System", 1, "Node.js 未找到（dsh 依赖 npm 安装）"));
         else items.Add(new DocItem("System", 0, "Node.js: " + node.Trim()));
-        string npm = RunCapture("cmd.exe", "/c npm --version 2>nul");
+        string npm = Platform.Shell.NpmVersion();
         items.Add(new DocItem("System", string.IsNullOrWhiteSpace(npm) ? 1 : 0, string.IsNullOrWhiteSpace(npm) ? "npm 不可用" : "npm: " + npm.Trim()));
 
         // ---- Harness ----

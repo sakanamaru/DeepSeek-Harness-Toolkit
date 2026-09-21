@@ -44,6 +44,10 @@ partial class Program
         string WhichDsh();                          // 定位 dsh 可执行文件（Windows: where；Linux: PATH 扫描）
         string DshVersion();                        // dsh --version（Linux 无需 cmd.exe 包装）
         int KillTree(int pid);                      // 终止进程树（Windows: taskkill /T /F；Linux: kill -TERM/-KILL）
+        string NodeVersion();                       // node --version（Windows 走 node.exe）
+        string NpmVersion();                        // npm --version（Windows 走 cmd.exe 包装）
+        string NpmViewVersions();                   // npm view <pkg> versions
+        string NpmViewLatest();                     // npm view <pkg> version
     }
 
     // ---- 桌面快捷方式 ----
@@ -106,6 +110,10 @@ partial class Program
         public string WhichDsh() { return Program.LocateDsh(); }
         public string DshVersion() { return Program.RunDshVersion(); }
         public int KillTree(int pid) { Program.KillProcessTree(pid); return 0; }
+        public string NodeVersion() { return Program.RunCapture("node.exe", "--version"); }
+        public string NpmVersion() { return Program.RunCapture("cmd.exe", "/c npm --version 2>nul"); }
+        public string NpmViewVersions() { return Program.RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh versions 2>nul"); }
+        public string NpmViewLatest() { return Program.RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh version 2>nul"); }
     }
 
     class WindowsShortcutService : IShortcutService

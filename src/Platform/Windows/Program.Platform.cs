@@ -432,7 +432,7 @@ partial class Program
 
     static void CheckNode()
     {
-        string v = RunCapture("node.exe", "--version");
+        string v = Platform.Shell.NodeVersion();
         if (string.IsNullOrWhiteSpace(v))
         {
             Warn(T("未检测到 Node.js，尝试用 winget 自动安装...", "Node.js not found. Trying winget..."));

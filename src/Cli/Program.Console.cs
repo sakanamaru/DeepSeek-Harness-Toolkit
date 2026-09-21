@@ -73,7 +73,7 @@ partial class Program
     /// <summary>启动后的实时运行状态监控页：每 3 秒刷新，按任意键返回菜单。</summary>
     static void StatusMonitor()
     {
-        string node = RunCapture("node.exe", "--version");
+        string node = Platform.Shell.NodeVersion();
         string dver = Platform.Shell.DshVersion();
         DateTime? upSince = null;
         bool wasUp = false;
