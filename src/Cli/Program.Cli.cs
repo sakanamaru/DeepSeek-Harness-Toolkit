@@ -553,4 +553,90 @@ partial class Program
         catch (Exception ex) { Console.WriteLine("write report failed: " + ex.Message); }
     }
 
+
+#if !UNIT
+    public static void Main(string[] args)
+    {
+        // .NET Framework 长路径支持：开启后 >260 字符路径可用（须在首次文件操作前设置）
+        try { AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false); } catch { }
+        try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
+        Platform.Init();   // v2.8：按平台选择实现（Windows 上无变化）
+        try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.7.2"; } catch { }
+        // v2.7：显式启用 TLS 1.2。.NET Framework 4.x 的 SecurityProtocol 默认只含 Ssl3|Tls，
+        // 访问 GitHub HTTPS（更新检查 / 完整性校验）会直接抛"未能创建 SSL/TLS 安全通道"。
+        // 只做 |= 追加，不动系统默认值；失败静默（老系统上最差退化为原行为）。
+        try { System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072; } catch { }
+        StateDir = ResolveStateDir();
+        // 注意：根目录标记 .dsh_launcher_root 只随发布包分发，本程序永不自行补建——
+        // 若启动时"看起来像完整安装"就自动写标记，攻击者可诱导用户将 exe 与任意同名文件
+        // 放一处后自动补建标记，削弱"单独复制 exe 永远不能 wipe"的安全边界。
+        LoadConfig();
+        if (args.Length > 0)
+        {
+            switch (args[0].TrimStart('-', '/').ToLowerInvariant())
+            {
+                case "install":   case "i": Install(); return;
+                case "start":     case "s":
+                    if (args.Length > 1 && (args[1] == "--bg" || args[1] == "-bg")) StartBg();   // GUI 后台启动：启动后立即返回，不进监控页
+                    else Start();
+                    return;
+                case "stop": StopCli(); return;   // 非交互停止 dsh web（GUI 用）
+                case "uninstall": case "u": Uninstall(); return;
+                case "check":     case "c": Check();   return;
+                case "update":    case "up": UpdateDsh(); return;
+                case "about":     case "a": About();   return;
+                case "shortcut":  case "sc": ShortcutCli(args); return; // 创建桌面快捷方式（--exe/--name 可指定目标；GUI 用它建自己的）
+                case "backup":    case "b": NIBackup();  return;   // 非交互备份（GUI/脚本用）
+                case "backup-list": case "bl": NiListBackups(HasFlag(args, "--detail") || HasFlag(args, "-detail")); return;   // 非交互列出有效备份目录（--detail 附类型/大小/时间，GUI 备份管理页用）
+                case "backup-export": case "be": NIBackupExport(args); return;   // v2.6：导出备份副本到指定目录
+                case "backup-delete": case "bd": NIBackupDelete(args); return;   // v2.6：删除指定备份（仅限备份根内 dsh-data-*）
+                case "update-info": case "ui": UpdateInfo(); return;   // v2.7：Update Center 只读数据源
+                case "config-get": case "cg": ConfigGet(); return;   // v2.8：设置页只读数据源
+                case "config-set": case "cs": ConfigSet(args); return;   // v2.8：白名单配置写入
+                case "restore":   case "r":
+                    if (HasFlag(args, "--dry-run") || HasFlag(args, "-dry-run")) { NIRestoreDryRun(FlagValue(args, "--path") ?? FlagValue(args, "-path")); return; }   // v2.6 Dry-Run：只读预演
+                    if (args.Length > 1 && (args[1] == "--path" || args[1] == "-path"))
+                        NIRestorePath(args.Length > 2 ? args[2] : "");
+                    else NIRestore();
+                    return;   // 非交互恢复（GUI/脚本用；--path 恢复指定备份）
+                case "status": StatusCli(HasFlag(args, "--detail") || HasFlag(args, "-detail")); return;   // 服务三态（GUI 状态灯用）；--detail 追加 PID/启动时间/运行时长（v2.7 状态栏，只读）
+                case "help":      case "h": Help();    return;
+                case "selftest": Selftest(args); return;
+                case "doctor":    case "d": Doctor(args); return;   // v2.5：体检/诊断（GUI 体检页用）
+                case "profilecheck":  case "pc": ProfileCheckCli(args); return;      // v2.7：profile 静态预检（只读，不用等它崩）
+                case "bootdiag":      case "bdiag": BootDiagCli(args); return;      // v2.7：启动失败堆栈解析（只读；"bd" 已被 backup-delete 占用）
+                case "profilepatch":  case "pp": ProfilePatchCli(args); return;  // v2.7：受控单行插入修复（需 --yes；先备份可回滚）
+                default:
+                    Console.WriteLine(T("未知参数：", "Unknown argument: ") + args[0]);
+                    Help();
+                    return;
+            }
+        }
+        // 单例防多开：交互模式检测已有实例则提示退出（CLI 子命令不受限制，便于脚本/自检调用）
+        // v2.1.0：同时持有产品级新锁 + v2.0 旧锁——与已发布的 v2.0 exe（旧锁名）双向互斥，
+        // 同时保证 v2.1 及未来版本之间互斥（新锁）
+        _singleMutex = new Mutex(false, "DeepSeek-Harness-Toolkit-single");   // 产品级固定单实例锁
+        _legacyMutex = new Mutex(false, "DSH-Toolkit-V2.0.0-single");         // 旧锁名：与已发布的 v2.0 exe 互斥
+        bool haveLock;
+        try { haveLock = _singleMutex.WaitOne(0); }
+        catch (AbandonedMutexException) { haveLock = true; } // 上一实例异常退出，本实例接管
+        bool haveLegacy = true;
+        try { haveLegacy = _legacyMutex.WaitOne(0); }
+        catch (AbandonedMutexException) { haveLegacy = true; }
+        if (!haveLock || !haveLegacy)
+        {
+            if (haveLock) { try { _singleMutex.ReleaseMutex(); } catch { } }    // 只释放自己已拿到的
+            if (haveLegacy) { try { _legacyMutex.ReleaseMutex(); } catch { } }
+            Info(T("检测到程序已在运行（含旧版本 v2.0），请切换到已打开的窗口（本实例自动退出）。",
+                   "The launcher is already running (incl. v2.0) — switch to the open window (this instance exits)."));
+            return;
+        }
+        DetectBadDir();   // 桌面/下载目录直跑 → 黄字提醒（不阻塞）
+        Menu();
+    }
+
+#endif
+
+
 }
