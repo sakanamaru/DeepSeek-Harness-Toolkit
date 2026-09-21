@@ -55,6 +55,23 @@ partial class Program
         public static IServiceProbe Probe = new WindowsServiceProbe();
         public static IShellRunner Shell = new WindowsShellRunner();
         public static IShortcutService Shortcuts = new WindowsShortcutService();
+
+        /// <summary>按当前操作系统选择实现（启动早期调用一次）。Windows 上不做任何替换 → 行为零变化。</summary>
+        public static void Init()
+        {
+            try
+            {
+                bool win = true;
+                try { win = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows); }
+                catch { try { win = System.Environment.OSVersion.Platform == System.PlatformID.Win32NT; } catch { win = true; } }
+                if (win) return;
+                Paths = new LinuxPathService();
+                Probe = new LinuxServiceProbe();
+                Shell = new LinuxShellRunner();
+                Shortcuts = new LinuxShortcutService();
+            }
+            catch { }   // 平台识别失败时保守留在 Windows 实现
+        }
     }
 
     // ---- Windows 实现：纯转调，零行为差异 ----
