@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    v2.8 阶段 2（dotnet 化）：SDK 风格工程，把核心（CLI）从「csc 单文件」迁到 `dotnet build`。
+    当前是**加法式**落地：csc 路径与发布流程保持不变，本工程先在 CI 里验证「同一套源码能在 net8.0 下编译」。
+    设计约束（见 04-规划文档\V3.0跨平台方案设计稿.md §10）：
+      · 零第三方依赖：只用 BCL，不加任何 PackageReference
+      · 目标框架 net8.0（非 -windows）：核心侧不得出现 WinForms / System.Drawing / Microsoft.Win32.Registry 等
+        Windows-only 编译期 API（实测核心侧这些引用均为 0，Windows 耦合只在运行期行为：cmd/netstat/taskkill）
+      · GUI（gui_v2.cs）**不在**本工程内，也不在 v2.8 的跨平台承诺内
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>DeepSeek Harness Toolkit</AssemblyName>
+    <RootNamespace>DeepSeekHarnessToolkit</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- 源码里已有 [assembly: AssemblyTitle/Version/...]：关掉自动生成，避免 CS0579 重复属性 -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- 只编译核心的源文件集合：默认通配会把 gui_v2.cs 与 tests/** 一起吞进来 -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- .NET 8 把 WebRequest/ServicePointManager 标为过时（SYSLIB0014）；本项目仍用它发 HTTPS（TLS1.2 已显式开启），
+         这里显式静音该过时警告，避免"0 新增警告"门禁被无意义噪声污染；其余警告一律照常报出 -->
+    <NoWarn>$(NoWarn);SYSLIB0014</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="dsh_v2.cs" />
+    <Compile Include="src\Core\**\*.cs" />
+    <Compile Include="src\Platform\**\*.cs" />
+    <Compile Include="src\Cli\**\*.cs" />
+  </ItemGroup>
+
+</Project>
