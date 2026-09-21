@@ -128,4 +128,72 @@ partial class Program
         Console.WriteLine();
     }
 
+
+    /// <summary>把字符串变成安全的文件夹名（去掉 Windows 非法字符）。</summary>
+    static string SanitizeName(string s)
+    {
+        if (s == null) return "";
+        char[] bad = new char[] { '<', '>', ':', '"', '/', '\\', '|', '?', '*' };
+        foreach (char c in bad) s = s.Replace(c.ToString(), "_");
+        return s.Trim().Trim('.');
+    }
+
+
+
+
+    /// <summary>判断 child 是否位于 parent 子树内（含相等）；大小写不敏感。用于 wipe 前校验备份/状态目录不被误删。</summary>
+    static bool IsSubPath(string parent, string child)
+    {
+        if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(child)) return false;
+        string a = TrimTrailingSep(parent).ToLowerInvariant();
+        string b = TrimTrailingSep(child).ToLowerInvariant();
+        return b == a || b.StartsWith(a + "\\");
+    }
+
+
+
+
+    /// <summary>去掉结尾分隔符，但保留盘根语义（D:\ 不会变成 D:，UNC 共享根不会丢失尾部斜杠）。</summary>
+    static string TrimTrailingSep(string p)
+    {
+        if (string.IsNullOrEmpty(p)) return p;
+        string root = null;
+        try { root = Path.GetPathRoot(p); } catch { root = null; }
+        p = p.TrimEnd('\\');
+        if (root != null && p.Length < root.Length) return root;   // 盘根被 trim 掉时还原
+        return p;
+    }
+
+
+
+
+    /// <summary>配置摘要：launcher.config 的非注释行。</summary>
+    static string ConfigSummary()
+    {
+        try
+        {
+            if (!File.Exists(ConfigPath())) return "(无配置文件)";
+            var kept = new List<string>();
+            foreach (string l in File.ReadAllLines(ConfigPath()))
+            {
+                string t = l.Trim();
+                if (t.Length == 0 || t.StartsWith("#")) continue;
+                kept.Add(t);
+            }
+            return kept.Count == 0 ? "(空配置)" : string.Join(" ; ", kept.ToArray());
+        }
+        catch (Exception ex) { return "读取失败: " + ex.Message; }
+    }
+
+
+
+
+    static bool HasFlag(string[] args, string f) { foreach (string a in args) if (string.Equals(a, f, StringComparison.OrdinalIgnoreCase)) return true; return false; }
+
+
+
+    static string FlagValue(string[] args, string f) { for (int i = 1; i < args.Length - 1; i++) if (string.Equals(args[i], f, StringComparison.OrdinalIgnoreCase)) return args[i + 1]; return null; }
+
+
+
 }

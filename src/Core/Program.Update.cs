@@ -254,4 +254,230 @@ partial class Program
 
     // ---------------- 自身完整性闸门（v2.5 安全批：高风险操作保护） ----------------
 
+
+    /// <summary>GET 指定 URL，成功返回正文，失败/超时返回 null。GitHub API 要求 User-Agent。</summary>
+    static string HttpGet(string url, int ms)
+    {
+        if (HttpGetImpl != null) return HttpGetImpl(url, ms);
+        try
+        {
+            var req = (HttpWebRequest)WebRequest.Create(url);
+            req.Method = "GET";
+            req.Timeout = ms;
+            req.UserAgent = "DeepSeek-Harness-Toolkit";
+            using (var resp = (HttpWebResponse)req.GetResponse())
+            using (var sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+                return sr.ReadToEnd();
+        }
+        catch { return null; }
+    }
+
+
+
+
+    /// <summary>从 GitHub Releases API JSON 提取 tag_name（"v2.1.0" → "2.1.0"），失败返回 null。（单测可直接调用）</summary>
+    static string ParseLatestTag(string body)
+    {
+        try
+        {
+            int i = body.IndexOf("\"tag_name\"", StringComparison.OrdinalIgnoreCase);
+            if (i < 0) return null;
+            int q1 = body.IndexOf('"', i + 10);
+            int q2 = body.IndexOf('"', q1 + 1);
+            if (q1 < 0 || q2 < 0) return null;
+            return body.Substring(q1 + 1, q2 - q1 - 1).TrimStart('v', 'V');
+        }
+        catch { return null; }
+    }
+
+
+
+
+    /// <summary>取版本核心段（去掉 -rc/-beta 等 pre-release 后缀）："0.1.1-rc.2" → "0.1.1"。</summary>
+    static string CoreVersion(string v)
+    {
+        if (string.IsNullOrEmpty(v)) return v ?? "";
+        int d = v.IndexOf('-');
+        return d >= 0 ? v.Substring(0, d) : v;
+    }
+
+
+
+
+    /// <summary>版本号比较（semver 语义）：核心段数字比较；核心段相同再比较 pre-release 后缀——
+    /// ① 正式版（无后缀）高于 rc/beta（2.1.2 > 2.1.2-rc）；② 同带后缀按 `.` 分段逐段比较，数字段按数值序、
+    /// 字母段按字典序（rc.1 &lt; rc.2 &lt; rc.10），缺段视为更低。
+    /// "a 低于 b" 返回负数，"相等" 0，"a 高于 b" 正数。</summary>
+    static int CompareVersions(string a, string b)
+    {
+        string[] pa = CoreVersion(a).Split('.');
+        string[] pb = CoreVersion(b).Split('.');
+        for (int i = 0; i < Math.Max(pa.Length, pb.Length); i++)
+        {
+            int x = 0, y = 0;
+            int.TryParse(i < pa.Length ? pa[i] : "0", out x);
+            int.TryParse(i < pb.Length ? pb[i] : "0", out y);
+            if (x != y) return x < y ? -1 : 1;
+        }
+        return ComparePreRelease(a, b);
+    }
+
+
+
+
+    /// <summary>比较 pre-release 后缀（仅当核心段已相等时调用）：无后缀（正式版）> 有后缀；
+    /// 同带后缀按 `.` 分段逐段比（数字段数值序、字母/混合段字典序，ASCII 序下数字段天然低于字母段），缺段更低。</summary>
+    static int ComparePreRelease(string a, string b)
+    {
+        int da = a.IndexOf('-');
+        int db = b.IndexOf('-');
+        string pa = da >= 0 ? a.Substring(da + 1) : "";
+        string pb = db >= 0 ? b.Substring(db + 1) : "";
+        if (pa.Length == 0 && pb.Length == 0) return 0;
+        if (pa.Length == 0) return 1;    // 正式版（无后缀）高于预发布
+        if (pb.Length == 0) return -1;
+        string[] sa = pa.Split('.');
+        string[] sb = pb.Split('.');
+        for (int i = 0; i < Math.Max(sa.Length, sb.Length); i++)
+        {
+            string x = i < sa.Length ? sa[i] : null;
+            string y = i < sb.Length ? sb[i] : null;
+            if (x == null && y == null) return 0;
+            if (x == null) return -1;    // 较短后缀更低：rc < rc.1
+            if (y == null) return 1;
+            int nx, ny;
+            bool xn = int.TryParse(x, out nx);
+            bool yn = int.TryParse(y, out ny);
+            if (xn && yn)
+            {
+                if (nx != ny) return nx < ny ? -1 : 1;
+            }
+            else
+            {
+                int c = string.CompareOrdinal(x, y);
+                if (c != 0) return c < 0 ? -1 : 1;
+            }
+        }
+        return 0;
+    }
+
+
+
+
+    /// <summary>是否为 数字[.数字[.数字]] 的干净版本串。</summary>
+    static bool IsCleanVersion(string v)
+    {
+        if (v.Length == 0) return false;
+        string[] seg = v.Split('.');
+        if (seg.Length < 1 || seg.Length > 3) return false;
+        foreach (string s in seg)
+        {
+            if (s.Length == 0) return false;
+            for (int i = 0; i < s.Length; i++)
+                if (s[i] < '0' || s[i] > '9') return false;
+        }
+        return true;
+    }
+
+
+
+
+    /// <summary>显示历史版本列表（0/回车=取消），返回用户选中的版本；取消返回 null。本机装过的版本带 * 标记。</summary>
+    static string ListDshVersions()
+    {
+        string raw = RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh versions 2>nul");
+        string[] recent = FilterVersions(ParseNpmVersions(raw), 10);
+        if (recent.Length == 0)
+        {
+            Warn(T("无法获取版本列表（离线或源不可用）。", "Cannot get version list (offline or registry unavailable)."));
+            return null;
+        }
+        Console.WriteLine();
+        CL(ConsoleColor.White, T("  可选版本（* = 本机安装过）：", "  Available versions (* = installed before):"));
+        for (int i = 0; i < recent.Length; i++)
+            CL(ConsoleColor.White, "  " + (i + 1) + ") v" + recent[i] + (HasDshVersion(recent[i]) ? " *" : ""));
+        CL(ConsoleColor.Gray, "  0) " + T("取消", "Cancel"));
+        Console.Write("  > ");
+        string sel = ReadLineTrim().Trim();
+        int idx;
+        if (int.TryParse(sel, out idx) && idx >= 1 && idx <= recent.Length) return recent[idx - 1];
+        return null;
+    }
+
+
+
+
+    /// <summary>记录本机装过的 dsh 版本（去重、最新在前、最多 10 个）。</summary>
+    static void RecordDshVersion(string ver)
+    {
+        ver = ver.Trim().TrimStart('v', 'V');
+        // L-8：过滤逗号/控制符——逗号会污染历史列表的逗号分隔解析，控制符会污染 config 与后续展示
+        ver = ver.Replace(",", "");
+        var sb = new StringBuilder();
+        foreach (char c in ver)
+            if (c >= ' ' && c != '\x7f') sb.Append(c);   // 仅保留可打印非控制字符
+        ver = sb.ToString();
+        if (ver.Length == 0) return;
+        var list = new List<string>();
+        if (cfgDshVersions.Length > 0)
+            list.AddRange(cfgDshVersions.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries));
+        list.RemoveAll(x => x.Trim().Equals(ver, StringComparison.OrdinalIgnoreCase));
+        list.Insert(0, ver);
+        while (list.Count > 10) list.RemoveAt(list.Count - 1);
+        cfgDshVersions = string.Join(",", list.ToArray());
+        SaveConfig();
+    }
+
+
+
+
+    /// <summary>历史列表中是否含指定版本。</summary>
+    static bool HasDshVersion(string ver)
+    {
+        if (cfgDshVersions.Length == 0) return false;
+        foreach (string x in cfgDshVersions.Split(','))
+            if (x.Trim().Equals(ver, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+
+
+
+    /// <summary>更新失败后自动回滚到旧版本 cur 并验证；回滚失败给出明确手动指引 + 备份位置（M-1）。</summary>
+    static void RollbackUpdate(string cur, string preBk)
+    {
+        Info(T("正在自动回滚到 v" + cur + " ...", "Auto-rolling back to v" + cur + " ..."));
+        string[] regs = new string[] { NPM_OFFICIAL, NPM_MIRROR };
+        int rc = NpmInstallDsh(cur, regs);
+        string rv = rc == 0 ? RunDshVersion() : null;
+        string rvClean = SanitizeLatestVersion(rv);
+        bool rolledBack = rc == 0 && !string.IsNullOrWhiteSpace(rvClean) && CompareVersions(rvClean, cur) == 0;
+        if (rolledBack)
+        {
+            Success(T("已回滚到 v" + cur, "Rolled back to v" + cur));
+        }
+        else
+        {
+            Error(T("自动回滚失败。请手动执行：npm install -g @deepseek-ai/dsh@" + cur,
+                    "Auto-rollback failed. Manually run: npm install -g @deepseek-ai/dsh@" + cur));
+        }
+        if (!string.IsNullOrWhiteSpace(preBk))
+            Info(T("数据已备份于：" + preBk, "Data backed up at: " + preBk));
+    }
+
+
+
+
+    /// <summary>npm versions 列表里最后一个 -rc 版本号（发布序）；无/离线返回 null。</summary>
+    static string GetLatestRcVersion()
+    {
+        string raw = RunCapture("cmd.exe", "/c npm view @deepseek-ai/dsh versions 2>nul");
+        string[] all = ParseNpmVersions(raw);
+        string last = null;
+        foreach (string v in all) if (v.IndexOf("-rc", StringComparison.OrdinalIgnoreCase) >= 0) last = v;
+        return last;
+    }
+
+
+
 }
