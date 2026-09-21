@@ -273,7 +273,7 @@ partial class Program
         }
 
         Info(T("执行 npm 卸载...", "Running npm uninstall..."));
-        int code = RunVisible("cmd.exe", "/c npm uninstall -g @deepseek-ai/dsh");
+        int code = Platform.Shell.NpmUninstallGlobal();
         if (code != 0)
         {
             LogErr("npm uninstall 退出码 " + code);

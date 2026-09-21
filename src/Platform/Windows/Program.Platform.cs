@@ -436,7 +436,7 @@ partial class Program
         if (string.IsNullOrWhiteSpace(v))
         {
             Warn(T("未检测到 Node.js，尝试用 winget 自动安装...", "Node.js not found. Trying winget..."));
-            int c = RunVisible("winget.exe", "install --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements");
+            int c = Platform.Shell.WingetInstallNode();
             if (c != 0)
             {
                 Error(T("winget 安装 Node 失败。请手动安装：https://nodejs.org 后重试。",
