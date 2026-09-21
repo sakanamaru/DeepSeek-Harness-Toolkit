@@ -34,7 +34,7 @@ jobs:
           .\unittests.exe
           if ($LASTEXITCODE -ne 0) { throw "unit tests failed" }
 
-      - name: dotnet build (v2.8 stage 2: SDK-style core project, net8.0) — guard only
+      - name: dotnet build (v2.8 stage 2 — SDK-style core project, net8.0) — guard only
         shell: pwsh
         run: |
           dotnet --list-sdks
