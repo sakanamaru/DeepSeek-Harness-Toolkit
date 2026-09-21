@@ -1349,6 +1349,12 @@ partial class Program
         public static string SeamShortcut(string dir, string exe, string name, string desc) { return Program.Platform.Shortcuts.Create(dir, exe, name, desc); }
         public static string DataRootT() { return Program.DataRoot(); }
         public static string BackupsRootT() { return Program.BackupsRoot(); }
+        // ---- v2.8 阶段 3：Linux 实现契约（在 Windows 上靠环境变量驱动验证其逻辑）----
+        public static string LinuxDataRootT() { return new LinuxPathService().DataRoot(); }
+        public static string LinuxDesktopDirT() { return new LinuxPathService().DesktopDir(); }
+        public static string LinuxWorkspaceRootT() { return new LinuxPathService().WorkspaceRoot(); }
+        public static string LinuxNormalizeT(string p) { return new LinuxPathService().Normalize(p); }
+        public static string LinuxShortcutCreateT(string dir, string exe, string name, string desc) { return new LinuxShortcutService().Create(dir, exe, name, desc); }
         public static string CleanScalarT(string v) { return Program.CleanYamlScalar(v); }
     }
 

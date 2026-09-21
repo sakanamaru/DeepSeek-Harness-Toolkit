@@ -703,6 +703,30 @@ public static class UnitTests
         string seamDir = Path.Combine(Path.GetTempPath(), "dsh_ut_seam_" + Guid.NewGuid().ToString("N"));
         string seamErr = Program.Test.SeamShortcut(seamDir, @"C:\nope\missing.exe", "x", null);
         Check(seamErr != null && !File.Exists(Path.Combine(seamDir, "x.lnk")), "seam Shortcut 拒绝不存在的目标");
+        // ---- v2.8 阶段 3：Linux 实现契约（在 Windows 上用环境变量驱动，验证其路径/校验逻辑）----
+        Console.WriteLine("[V28] linux platform implementation contract");
+        string oldDshHome = Environment.GetEnvironmentVariable("DSH_HOME");
+        string oldXdgDesk = Environment.GetEnvironmentVariable("XDG_DESKTOP_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("DSH_HOME", @"C:\tmp\dsh-home-probe");
+            Check(Program.Test.LinuxDataRootT() == @"C:\tmp\dsh-home-probe", "Linux DataRoot 优先取 DSH_HOME，实际=" + Program.Test.LinuxDataRootT());
+            Environment.SetEnvironmentVariable("DSH_HOME", null);
+            string ldr = Program.Test.LinuxDataRootT();
+            Check(ldr != null && ldr.EndsWith(".dsh"), "Linux DataRoot 回退到 <home>/.dsh，实际=" + ldr);
+            Environment.SetEnvironmentVariable("XDG_DESKTOP_DIR", @"C:\tmp\xdg-desktop");
+            Check(Program.Test.LinuxDesktopDirT() == @"C:\tmp\xdg-desktop", "Linux DesktopDir 优先取 XDG_DESKTOP_DIR");
+            Environment.SetEnvironmentVariable("XDG_DESKTOP_DIR", null);
+            Check(Program.Test.LinuxWorkspaceRootT() == null, "Linux WorkspaceRoot 故意返回 null（不猜）");
+            Check(Program.Test.LinuxNormalizeT(@"C:\x\y") == Program.Test.PathP(@"C:\x\y"), "Linux seam Normalize 委托给共用规范化");
+            string lerr = Program.Test.LinuxShortcutCreateT(Path.GetTempPath(), @"C:\nope\missing", "x", null);
+            Check(lerr != null, "Linux 启动器写入器拒绝不存在的目标（不落文件）");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DSH_HOME", oldDshHome);
+            Environment.SetEnvironmentVariable("XDG_DESKTOP_DIR", oldXdgDesk);
+        }
         try { Directory.Delete(seamDir, true); } catch { }
 
         // 8) 完整流程：备份→写入→复扫；验证失败回滚；BOM 保持
