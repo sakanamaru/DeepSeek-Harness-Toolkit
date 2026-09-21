@@ -50,7 +50,7 @@ partial class Program
                     Info(T("发现新版本 v" + nu + "（当前 v" + CurrentVersion() + "）。前往 GitHub Releases 下载更新。",
                            "Update available: v" + nu + " (current v" + CurrentVersion() + "). Visit GitHub Releases to download."));
             }
-            bool installed = LocateDsh() != null;
+            bool installed = Platform.Shell.WhichDsh() != null;
             string def = installed ? "2" : "1";
             Console.WriteLine();
             bool countdown = installed && cfgAutoStart && !autoApplied;   // v2.7：auto_start=off 时彻底不进入倒计时
@@ -135,7 +135,7 @@ partial class Program
 
         Console.WriteLine();
         Success(T("安装成功！正在验证...", "Installed! Verifying..."));
-        string nv = RunDshVersion();
+        string nv = Platform.Shell.DshVersion();
         string disp = string.IsNullOrWhiteSpace(nv) ? ver : nv;
         if (disp.Length > 0) RecordDshVersion(disp);
         Success(T("dsh 版本：" + (string.IsNullOrWhiteSpace(nv) ? T("？（请新开终端验证）", "? (verify in a new terminal)") : nv),
@@ -158,7 +158,7 @@ partial class Program
     static void Start()
     {
         Banner();
-        string dsh = LocateDsh();
+        string dsh = Platform.Shell.WhichDsh();
         if (dsh == null)
         {
             Error(T("未找到 dsh。请先选择【1 安装 / 修复 dsh】。", "dsh not found. Choose【Install / Repair dsh】first."));
@@ -207,7 +207,7 @@ partial class Program
     /// 输出 START_OK / START_FAIL &lt;原因&gt;；已在运行时同样 START_OK（幂等）。不 Pause、不读输入。</summary>
     static void StartBg()
     {
-        string dsh = LocateDsh();
+        string dsh = Platform.Shell.WhichDsh();
         if (dsh == null) { Console.WriteLine("START_FAIL " + T("未找到 dsh", "dsh not found")); return; }
         if (ProbeService() != ServiceState.Down) { Console.WriteLine("START_OK"); return; }   // 已在运行（含启动中）→ 幂等成功
         try
@@ -243,7 +243,7 @@ partial class Program
             Console.WriteLine("STOP_FAIL " + T("复检发现 3080 监听进程已变化（不再确认为 dsh），已拒绝停止", "re-check: listener on 3080 changed (no longer confirmed as dsh); stop refused"));
             return;
         }
-        KillProcessTree(pid);   // 进程树终止：连带杀派生的 node 子进程
+        Platform.Shell.KillTree(pid);   // 进程树终止：连带杀派生的 node 子进程
         for (int i = 0; i < 20; i++)
         {
             Thread.Sleep(250);
@@ -281,9 +281,9 @@ partial class Program
                    "npm uninstall failed ("+code+"). Run manually: npm uninstall -g @deepseek-ai/dsh"));
         }
 
-        if (LocateDsh() != null)
-            Warn(T("检测到 dsh 可能仍存在，可手动删除：" + Path.GetDirectoryName(LocateDsh()),
-                   "dsh may still exist. You can manually remove: " + Path.GetDirectoryName(LocateDsh())));
+        if (Platform.Shell.WhichDsh() != null)
+            Warn(T("检测到 dsh 可能仍存在，可手动删除：" + Path.GetDirectoryName(Platform.Shell.WhichDsh()),
+                   "dsh may still exist. You can manually remove: " + Path.GetDirectoryName(Platform.Shell.WhichDsh())));
         else
             Success(T("dsh 已卸载。", "dsh uninstalled."));
 
@@ -462,11 +462,11 @@ partial class Program
         C(ConsoleColor.Gray, "  Node.js    : "); CL(ConsoleColor.White, string.IsNullOrWhiteSpace(node) ? T("未检测到", "not found") : node);
         string npm = RunCapture("cmd.exe", "/c npm --version 2>nul");
         C(ConsoleColor.Gray, "  npm        : "); CL(ConsoleColor.White, string.IsNullOrWhiteSpace(npm) ? T("未检测到", "not found") : npm);
-        string dsh = LocateDsh();
+        string dsh = Platform.Shell.WhichDsh();
         C(ConsoleColor.Gray, "  dsh        : "); CL(ConsoleColor.White, dsh == null ? T("未安装", "not installed") : dsh + " ✓");
         if (dsh != null)
         {
-            string v = RunDshVersion();
+            string v = Platform.Shell.DshVersion();
             C(ConsoleColor.Gray, "  dsh 版本   : "); CL(ConsoleColor.White, string.IsNullOrWhiteSpace(v) ? T("（读取失败）", "(read failed)") : v);
             if (cfgCheckDshUpdate)
             {
@@ -532,7 +532,7 @@ partial class Program
             sb.AppendLine("desc    : " + (desc == null ? "(null)" : desc.Description));
             sb.AppendLine("version : " + asm.GetName().Version);
             sb.AppendLine("ui lang : " + CultureInfo.CurrentUICulture.Name);
-            sb.AppendLine("dsh installed (live): " + (LocateDsh() != null));
+            sb.AppendLine("dsh installed (live): " + (Platform.Shell.WhichDsh() != null));
 
             sb.AppendLine("port 1 (expect False): " + IsPortOpen(1, 500));
             var l = new TcpListener(IPAddress.Loopback, 0);
@@ -542,7 +542,7 @@ partial class Program
             l.Stop();
             sb.AppendLine("self-listener (expect True): " + open);
 
-            sb.AppendLine("dsh loc  : " + (LocateDsh() ?? "(null)"));
+            sb.AppendLine("dsh loc  : " + (Platform.Shell.WhichDsh() ?? "(null)"));
             sb.AppendLine("node ver : " + (RunCapture("node.exe", "--version") ?? "(empty)"));
             sb.AppendLine("state dir: " + StateDir);
             sb.AppendLine("data root: " + DataRoot());

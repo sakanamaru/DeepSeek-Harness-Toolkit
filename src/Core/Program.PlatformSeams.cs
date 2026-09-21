@@ -41,6 +41,9 @@ partial class Program
     {
         string Capture(string exe, string args);   // 捕获输出（现有 RunCapture）
         int Visible(string file, string args);     // 可见窗口（现有 RunVisible）
+        string WhichDsh();                          // 定位 dsh 可执行文件（Windows: where；Linux: PATH 扫描）
+        string DshVersion();                        // dsh --version（Linux 无需 cmd.exe 包装）
+        int KillTree(int pid);                      // 终止进程树（Windows: taskkill /T /F；Linux: kill -TERM/-KILL）
     }
 
     // ---- 桌面快捷方式 ----
@@ -100,6 +103,9 @@ partial class Program
     {
         public string Capture(string exe, string args) { return Program.RunCapture(exe, args); }
         public int Visible(string file, string args) { return Program.RunVisible(file, args); }
+        public string WhichDsh() { return Program.LocateDsh(); }
+        public string DshVersion() { return Program.RunDshVersion(); }
+        public int KillTree(int pid) { Program.KillProcessTree(pid); return 0; }
     }
 
     class WindowsShortcutService : IShortcutService

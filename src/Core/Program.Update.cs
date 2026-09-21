@@ -140,7 +140,7 @@ partial class Program
             Error(T("dsh Web 服务正在运行，请先停止再更新（菜单 2 启动界面中可停止）。", "dsh web is running. Stop it first (from the Start UI screen)."));
             Pause(); return;
         }
-        string cur = RunDshVersion();
+        string cur = Platform.Shell.DshVersion();
         if (string.IsNullOrWhiteSpace(cur))
         {
             Warn(T("未检测到已安装的 dsh。请先通过菜单 1 安装。", "No installed dsh detected. Install via menu 1 first."));
@@ -207,7 +207,7 @@ partial class Program
         int code = NpmInstallDsh(target, regs);
         if (code == 0)
         {
-            string nv = RunDshVersion();
+            string nv = Platform.Shell.DshVersion();
             // M-2：安装退出码 0 不算完，必须验证实际版本 == 目标版本（nv 为空或不等都判失败并走回滚）
             string nvClean = SanitizeLatestVersion(nv);   // 去掉 v 前缀/脏字符，非法返回 null
             bool ok = !string.IsNullOrWhiteSpace(nvClean) && CompareVersions(nvClean, target) == 0;
@@ -239,7 +239,7 @@ partial class Program
     static void UpdateInfo()
     {
         Console.WriteLine("UPDATEINFO_OK");
-        string cur = RunDshVersion();
+        string cur = Platform.Shell.DshVersion();
         Console.WriteLine("UPDATEINFO_CURRENT " + (string.IsNullOrWhiteSpace(cur) ? "none" : cur.Trim().Replace("\r", " ").Replace("\n", " ")));
         string stable = GetLatestDshVersion();
         Console.WriteLine("UPDATEINFO_LATEST_STABLE " + (stable ?? "unknown"));
@@ -449,7 +449,7 @@ partial class Program
         Info(T("正在自动回滚到 v" + cur + " ...", "Auto-rolling back to v" + cur + " ..."));
         string[] regs = new string[] { NPM_OFFICIAL, NPM_MIRROR };
         int rc = NpmInstallDsh(cur, regs);
-        string rv = rc == 0 ? RunDshVersion() : null;
+        string rv = rc == 0 ? Platform.Shell.DshVersion() : null;
         string rvClean = SanitizeLatestVersion(rv);
         bool rolledBack = rc == 0 && !string.IsNullOrWhiteSpace(rvClean) && CompareVersions(rvClean, cur) == 0;
         if (rolledBack)

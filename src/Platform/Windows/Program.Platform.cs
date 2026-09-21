@@ -218,7 +218,7 @@ partial class Program
                 var tErr = p.StandardError.ReadToEndAsync();
                 if (!p.WaitForExit(15000))
                 {
-                    KillProcessTree(p.Id);   // 进程树终止：连带杀派生 npm/node 子进程，杜绝孤儿进程
+                    Platform.Shell.KillTree(p.Id);   // 进程树终止：连带杀派生 npm/node 子进程，杜绝孤儿进程
                     p.WaitForExit();
                     LogErr("命令执行超时（15 秒），已强制结束: " + exe + " " + args);
                     return "";
@@ -255,7 +255,7 @@ partial class Program
                 DrainAndForward(p.StandardError, Console.Error);
                 if (!p.WaitForExit(10 * 60 * 1000))   // v2.1.2：10 分钟超时（原无限等待，npm/winget 挂起会卡死）
                 {
-                    KillProcessTree(p.Id);   // 进程树终止：连带杀派生 npm/node 子进程，杜绝孤儿进程
+                    Platform.Shell.KillTree(p.Id);   // 进程树终止：连带杀派生 npm/node 子进程，杜绝孤儿进程
                     p.WaitForExit();
                     LogErr("长时间操作超时（10 分钟），已强制结束: " + file + " " + args);
                     return -2;   // 超时终止
@@ -650,7 +650,7 @@ partial class Program
         string v = RunCapture("cmd.exe", "/c dsh --version 2>nul");
         if (string.IsNullOrWhiteSpace(v))
         {
-            string dsh = LocateDsh();
+            string dsh = Platform.Shell.WhichDsh();
             if (dsh != null) v = RunCapture("cmd.exe", "/c \"" + dsh + "\" --version");
         }
         return v;

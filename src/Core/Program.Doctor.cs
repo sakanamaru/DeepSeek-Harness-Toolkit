@@ -110,12 +110,12 @@ partial class Program
         items.Add(new DocItem("System", string.IsNullOrWhiteSpace(npm) ? 1 : 0, string.IsNullOrWhiteSpace(npm) ? "npm 不可用" : "npm: " + npm.Trim()));
 
         // ---- Harness ----
-        string dsh = LocateDsh();
+        string dsh = Platform.Shell.WhichDsh();
         if (dsh == null) items.Add(new DocItem("Harness", 2, "dsh 未安装（交互菜单按 1 安装）"));
         else
         {
             items.Add(new DocItem("Harness", 0, "dsh 已安装: " + SanitizeForReport(dsh)));
-            string dv = RunDshVersion();
+            string dv = Platform.Shell.DshVersion();
             if (string.IsNullOrWhiteSpace(dv)) items.Add(new DocItem("Harness", 1, "dsh --version 无输出"));
             else items.Add(new DocItem("Harness", 0, "dsh 版本: " + SanitizeForReport(dv.Trim().Replace("\r", " ").Replace("\n", " "))));
         }
