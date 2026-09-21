@@ -185,7 +185,18 @@ partial class Program
                 }
             }
             catch { return -1; }
-        }    }
+        }
+        /// <summary>node --version（Linux 下可执行名就是 node，无 .exe 后缀）。失败返回 null。</summary>
+        public string NodeVersion() { return Program.RunCapture("node", "--version"); }
+
+        /// <summary>npm --version（Linux 直接执行，无需 cmd.exe 包装）。失败返回 null。</summary>
+        public string NpmVersion() { return Program.RunCapture("npm", "--version"); }
+
+        /// <summary>npm view <pkg> versions（Linux 直接执行）。失败/离线返回 null。</summary>
+        public string NpmViewVersions() { return Program.RunCapture("npm", "view @deepseek-ai/dsh versions"); }
+
+        /// <summary>npm view <pkg> version（Linux 直接执行）。失败/离线返回 null。</summary>
+        public string NpmViewLatest() { return Program.RunCapture("npm", "view @deepseek-ai/dsh version"); }    }
 
     class LinuxShortcutService : IShortcutService
     {

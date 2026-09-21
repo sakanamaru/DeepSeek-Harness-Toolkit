@@ -458,9 +458,9 @@ partial class Program
     static void Check()
     {
         Banner();
-        string node = RunCapture("node.exe", "--version");
+        string node = Platform.Shell.NodeVersion();
         C(ConsoleColor.Gray, "  Node.js    : "); CL(ConsoleColor.White, string.IsNullOrWhiteSpace(node) ? T("未检测到", "not found") : node);
-        string npm = RunCapture("cmd.exe", "/c npm --version 2>nul");
+        string npm = Platform.Shell.NpmVersion();
         C(ConsoleColor.Gray, "  npm        : "); CL(ConsoleColor.White, string.IsNullOrWhiteSpace(npm) ? T("未检测到", "not found") : npm);
         string dsh = Platform.Shell.WhichDsh();
         C(ConsoleColor.Gray, "  dsh        : "); CL(ConsoleColor.White, dsh == null ? T("未安装", "not installed") : dsh + " ✓");
@@ -543,7 +543,7 @@ partial class Program
             sb.AppendLine("self-listener (expect True): " + open);
 
             sb.AppendLine("dsh loc  : " + (Platform.Shell.WhichDsh() ?? "(null)"));
-            sb.AppendLine("node ver : " + (RunCapture("node.exe", "--version") ?? "(empty)"));
+            sb.AppendLine("node ver : " + (Platform.Shell.NodeVersion() ?? "(empty)"));
             sb.AppendLine("state dir: " + StateDir);
             sb.AppendLine("data root: " + DataRoot());
         }
