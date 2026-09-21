@@ -69,7 +69,8 @@ Build-Variant 'C' $tC
 # 交互用例统一关闭启动更新检查（避免每次启动连 GitHub 的随机耗时/超时）
 [IO.File]::WriteAllText((Join-Path $T 'launcher.config'), ('lang=zh' + [Environment]::NewLine + 'check_update=off' + [Environment]::NewLine))
 $allowLive = ($env:DSH_TOOLKIT_INTEGRATION_ALLOW_LIVE -eq '1')   # 活体 dsh 保护：默认不碰真实 3080
-$portLive = Test-NetConnection -ComputerName 127.0.0.1 -Port 3080 -InformationLevel Quiet -WarningAction SilentlyContinue
+# 存活探测：用原生 netstat（约束语言模式下 New-Object/Test-NetConnection 都不可靠）
+$portLive = [bool](& netstat -ano 2>$null | Select-String -Pattern ':3080\s+\S+\s+LISTENING')
 $date = Get-Date -Format 'yyyyMMdd'
 $dt = Join-Path $env:USERPROFILE '.dsh_test'
 function Seed-DT { Remove-Item -LiteralPath $dt -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType File -Path (Join-Path $dt 'settings.yaml') -Force | Out-Null }
@@ -149,7 +150,7 @@ if ($portLive -and $allowLive) {
     $o = ("6`ny`ny`n$date`nyes`n0`n" | & (Join-Path $d 't.exe') 2>&1 | Out-String)
     TC '19 uninstall blocked while running' ($o.Contains('请先关闭') -or $o.Contains('Close the dsh web window first'))
 } else {
-    $o = (& $tC check 2>&1 | Out-String); TC '14 check stopped' ($o.Contains('未启动') -or $o.Contains('not started'))
+    $o = (& $tC check 2>&1 | Out-String); if ($portLive) { $results.Add('14 check stopped(needs free 3080)  SKIP') } else { TC '14 check stopped' ($o.Contains('未启动') -or $o.Contains('not started')) }
     $results.Add('13 monitor(needs 3080)              SKIP')
     $results.Add('19 uninstall-block(needs 3080)      SKIP')
 }
