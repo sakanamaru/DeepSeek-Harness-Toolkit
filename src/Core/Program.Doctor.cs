@@ -128,7 +128,7 @@ partial class Program
         }
         else
         {
-            int pid = FindPortPid(WEB_PORT);
+            int pid = Platform.Probe.FindPortPid(WEB_PORT);
             items.Add(new DocItem("Service", 0, "端口 " + WEB_PORT + " 监听中" + (pid > 0 ? "（PID " + pid + "）" : "")));
             bool isDsh = pid > 0 && ListenerIsDsh();
             string who = isDsh ? "监听进程确为 dsh" : (pid > 0 ? "监听进程不是 dsh！命令行: " + SanitizeForReport(GetProcessCommandLine(pid)) : "无法确认监听进程身份");

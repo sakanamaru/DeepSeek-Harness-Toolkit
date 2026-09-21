@@ -344,7 +344,7 @@ partial class Program
         bool ok = false;
         try
         {
-            int pid = FindPortPid(WEB_PORT);
+            int pid = Platform.Probe.FindPortPid(WEB_PORT);
             if (pid > 0)
             {
                 ok = IsDshCommandLine(GetProcessCommandLine(pid));
