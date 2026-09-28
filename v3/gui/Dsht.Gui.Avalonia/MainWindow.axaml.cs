@@ -60,6 +60,7 @@ namespace Dsht.Gui.Avalonia
         private SessionsSnapshot _data;
         private ProfilesSnapshot _profiles;
         private StatusSnapshot _status;
+        private BackupSummary _backups;
         private List<SessionRowVm> _rows = new List<SessionRowVm>();
         private int _shell = Shells.Shells.Hybrid;     // 默认：混合式（主菜单 + 子菜单）
         private int _filter = SessionsView.FilterAll;
@@ -87,6 +88,9 @@ namespace Dsht.Gui.Avalonia
         public SessionsSnapshot Data { get { return _data; } }
         public ProfilesSnapshot Profiles { get { return _profiles; } }
         public StatusSnapshot Status { get { return _status; } }
+        public BackupSummary Backups { get { return _backups; } }
+        public DoctorSummary Doctor { get { return _doctor; } }
+        private DoctorSummary _doctor;
         public int ProfilesFilter { get; set; }
         public string ProfileSearch = "";
         /// <summary>待二次确认的隔离操作（"profile|entryId"）；空=没有待确认项。写操作必须点两次。</summary>
@@ -104,6 +108,7 @@ namespace Dsht.Gui.Avalonia
             string core = ToolkitCore();
             if (core == null) { _health = "未找到工具箱核心程序（DeepSeek Harness Toolkit.exe）——健康检查需要它。"; BuildShell(); return; }
             _health = Run(core, "profilecheck");
+            _doctor = SummaryMarkers.ParseDoctor(Run(core, "doctor"));
             BuildShell();
         }
 
@@ -308,6 +313,11 @@ namespace Dsht.Gui.Avalonia
             {
                 _rawOutput = Run(cli, "status --detail");
                 _status = StatusMarkers.Parse(_rawOutput);
+                // 概览页顺带把这几样也取回来（都很快，且都是只读）
+                _profiles = ProfilesMarkers.Parse(Run(cli, "profiles"));
+                _data = SessionsMarkers.Parse(Run(cli, "sessions"));
+                _backups = SummaryMarkers.ParseBackups(Run(cli, "backup-list"));
+                if (_doctor == null) _doctor = new DoctorSummary();
                 BuildShell();
                 return;
             }
