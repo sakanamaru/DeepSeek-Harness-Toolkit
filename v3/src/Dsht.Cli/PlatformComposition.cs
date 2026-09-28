@@ -30,6 +30,12 @@ namespace Dsht.Cli
 
         /// <summary>组合服务目标：web 用真实观测；headless/acp/desktop 是**预留形态**（当前无可观测事实）。
         /// 这样"未识别形态"在 CLI 里是一等公民——不假装 Ready，也不假装"没在跑"。</summary>
+        /// <summary>为指定端口构造一个 Web 目标（stop --port 用）。
+        /// 放在这里是因为 WebTarget 就在本文件域内 —— 跨文件猜命名空间已经失败过两次，不再猜。</summary>
+        internal static IServiceTarget WebFor(int port, IPortProbe portProbe, IHttpProbe http, IProcessQuery proc)
+        {
+            return new WebTarget(portProbe, http, proc, new WebTargetOptions(port, "http://127.0.0.1:" + port, 800, 800));
+        }
         private static IServiceTarget Composite(IPortProbe port, IHttpProbe http, IProcessQuery proc)
         {
             return new CompositeServiceTarget(new IServiceTarget[]
