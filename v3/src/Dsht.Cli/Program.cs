@@ -28,8 +28,9 @@ namespace Dsht.Cli
             if (cmd == "version") { Console.WriteLine("DSHT_VERSION " + ToolkitVersion); return 0; }
             if (cmd == "config-get") return ConfigGet();
             if (cmd == "config-set") return ConfigSet(args, reg);
+            if (cmd == "bootdiag") return BootDiag(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value>");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file>");
             return 2;
         }
 
@@ -248,6 +249,85 @@ namespace Dsht.Cli
             return false;
         }
 
+
+
+        /// <summary>bootdiag：解析启动失败输出。标记逐条对齐 v2.x 的 BootDiagCli。</summary>
+        private static int BootDiag(string[] args, ServiceRegistry reg)
+        {
+            string from = Flag(args, "--from");
+            if (string.IsNullOrEmpty(from)) { Console.WriteLine("BOOTDIAG_FAIL no-input"); return 0; }
+            string text = null;
+            try { if (System.IO.File.Exists(from)) text = System.IO.File.ReadAllText(from, new System.Text.UTF8Encoding(false)); } catch { }
+            if (text == null) { Console.WriteLine("BOOTDIAG_FAIL cannot-read " + ReportSanitizer.Sanitize(from)); return 0; }
+            BootDiagResult r = BootDiagParser.Parse(text, LocateEntry(reg), FileExists);
+            if (!r.Recognized)
+            {
+                Console.WriteLine("BOOTDIAG_FAIL");
+                Console.WriteLine("BOOTDIAG_KIND unknown");
+                Console.WriteLine("BOOTDIAG_FIRST " + TextClipper.Clip(r.FirstError, 200));
+                return 0;
+            }
+            Console.WriteLine("BOOTDIAG_OK");
+            Console.WriteLine("BOOTDIAG_KIND " + r.Kind);
+            Console.WriteLine("BOOTDIAG_PLUGIN " + r.Plugin);
+            Console.WriteLine("BOOTDIAG_ENTRY " + r.Entry);
+            Console.WriteLine("BOOTDIAG_FILE " + ReportSanitizer.Sanitize(r.File));
+            Console.WriteLine("BOOTDIAG_LINE " + r.Line);
+            Console.WriteLine("BOOTDIAG_HINT " + r.Hint);
+            return 0;
+        }
+
+        /// <summary>v2.x 的 LocateEntryLine：给定文件 → 该文件；给定目录 → 目录下 yml/yaml；都不是 → 整个 profiles 目录。</summary>
+        private static Func<string, string, EntryLocation> LocateEntry(ServiceRegistry reg)
+        {
+            return delegate(string fileOrDir, string entry)
+            {
+                try
+                {
+                    if (System.IO.File.Exists(fileOrDir))
+                    {
+                        int ln = EntryLocator.FindLine(System.IO.File.ReadAllText(fileOrDir, new System.Text.UTF8Encoding(false)), entry);
+                        if (ln > 0) return new EntryLocation(fileOrDir, ln);
+                        return null;
+                    }
+                    if (System.IO.Directory.Exists(fileOrDir))
+                    {
+                        EntryLocation d = ScanDir(fileOrDir, entry);
+                        if (d != null) return d;
+                        return null;
+                    }
+                    IProfileSource src = reg.Get<IProfileSource>();
+                    ProfileCollection col = src.CollectDirectory(null, true, true);
+                    foreach (ProfileFile pf in col.Files)
+                    {
+                        int ln = EntryLocator.FindLine(pf.Text, entry);
+                        if (ln > 0) return new EntryLocation(pf.Path, ln);
+                    }
+                }
+                catch { }
+                return null;
+            };
+        }
+
+        private static EntryLocation ScanDir(string dir, string entry)
+        {
+            try
+            {
+                string[] files = System.IO.Directory.GetFiles(dir, "*.yml", System.IO.SearchOption.AllDirectories);
+                string[] files2 = System.IO.Directory.GetFiles(dir, "*.yaml", System.IO.SearchOption.AllDirectories);
+                for (int pass = 0; pass < 2; pass++)
+                {
+                    string[] cur = pass == 0 ? files : files2;
+                    foreach (string f in cur)
+                    {
+                        int ln = EntryLocator.FindLine(System.IO.File.ReadAllText(f, new System.Text.UTF8Encoding(false)), entry);
+                        if (ln > 0) return new EntryLocation(f, ln);
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
 
         private static ToolkitConfig _cfg = new ToolkitConfig();
 

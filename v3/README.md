@@ -24,7 +24,7 @@ v3/
     Dsht.Platform.Linux/    Linux 实现（ss / /proc/<pid>/cmdline / ps / PATH 扫描 / $XDG_* / $DSH_HOME）
     Dsht.Cli/               组合根（自写 ServiceRegistry，零第三方 DI）+ 命令面 + 平台装配
   tests/
-    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，137 项）
+    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，166 项）
     verify_domain_pure.ps1  领域层纯净度守卫（扫描前剥离注释）
     compare_markers.ps1     与 v2.x 的标记行契约比对（可 -Fixtures 造受控备份）
     verify_release.ps1      发布物校验（v2.x verify.ps1 等价物，含校验器自证）
@@ -74,10 +74,13 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_release.ps1 -Repo . -Bu
 | `profilecheck [--dir X] [--file Y] [--vendor] [--abs]` | `PROFILECHK_WARN` / `_TOTAL` / `_SKIPPED_VENDOR` / `_FIX` / `_OK` |
 | `backup-list [--detail]` | `BACKUP_LIST_OK` + 裸路径行 + `BACKUP_ITEM` |
 | `doctor` | `DOCTOR_OK` / `DOCTOR_WARN` / `DOCTOR_ERROR` + `[级别] 类别 描述` |
+| `config-get` | `CONFIGGET_OK` + `CONFIG <key> <value>` × 11 |
+| `config-set <key> <value>` | `CONFIGSET_OK <key>` / `CONFIGSET_FAIL <reason>` |
+| `bootdiag --from <file>` | `BOOTDIAG_OK`/`_FAIL` + `_KIND`/`_PLUGIN`/`_ENTRY`/`_FILE`/`_LINE`/`_HINT`（未识别时 `_FIRST`） |
 | `describe`（V3 独有） | 说明"考虑过哪些形态、为什么暂时观测不到" |
 | `version`（V3 独有） | `DSHT_VERSION <版本>` |
 
-比对工具当前结论：**7/7 对齐**（doctor 的 Integrity 行按规则忽略，见该脚本注释）。
+比对工具当前结论：**11/11 对齐**（doctor 的 Integrity 行按规则忽略，见该脚本注释）。
 
 ---
 
