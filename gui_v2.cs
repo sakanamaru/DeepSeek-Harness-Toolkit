@@ -285,6 +285,210 @@ static class L10N
             "This program carries the Mark of the Web: SmartScreen/AV prompts are common; verify the signature with verify.ps1.");
         Add("firstrun.title", "首次启动：完整性自检", "First run: integrity self-check");
         Add("firstrun.log", "首次启动完整性自检已完成。", "First-run integrity self-check completed.");
+        // v2.8：补两处此前硬编码在界面代码里的中文（i18n 强制测试会把这类问题挡在门外）
+        Add("about.credits", "v1 脚本协助 : SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）\nv2 重构封装 : DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）",
+            "v1 scripting: SOGR-Momono Dango (QwenPaw/DeepseekAPI-V4-Flash-0731)\nv2 refactor: DeepSeek DSH (DSH/DeepseekAPI-V4-Flash-0731)");
+        Add("app.alreadyrunning", " 已在运行。", " is already running.");
+    }
+}
+
+// ================= v2.8 呈现层基座（与核心解耦；纯逻辑，零 WinForms 依赖） =================
+// 依据 V3.0 方案 §7.3「现在就把呈现逻辑与核心隔开」：
+//   ① 任务即信号：页面之间不互相调用，改为订阅信号 → 将来换 UI 只是换订阅者，不是重做逻辑；
+//   ② 设置项卡片化：设置页由数据（SettingsCards）渲染，不再是手写的一串控件调用；
+//   ③ 可测：以下类型都不依赖 WinForms，由 tests\gui_logic_tests.cs 覆盖（含 i18n 强制检查）。
+
+/// <summary>信号种类（任务生命周期 + 状态 + 日志）。</summary>
+enum SigKind { TaskStarted, TaskOk, TaskFail, TaskTimeout, StatusChanged, LogAppended }
+
+/// <summary>一条信号。Mark 是核心输出的机器标记行（如 BACKUP_OK），Detail 供日志/提示使用。</summary>
+sealed class Sig
+{
+    public SigKind Kind;
+    public string Key = "";      // 触发它的界面动作 key（act.backup / bk.export …）
+    public string Mark = "";     // 核心标记行
+    public string Detail = "";   // 失败原因等
+    public Sig(SigKind k, string key, string mark, string detail) { Kind = k; Key = key == null ? "" : key; Mark = mark == null ? "" : mark; Detail = detail == null ? "" : detail; }
+    public override string ToString() { return Kind + ":" + Key + ":" + Mark; }
+}
+
+/// <summary>全局信号总线（同步派发）。
+/// **一个订阅者抛异常不影响其他订阅者**——GUI 里某个页面出错不能拖垮别的页面（异常收集到 Errors 供诊断/测试）。</summary>
+static class SignalBus
+{
+    static readonly List<Action<Sig>> subs = new List<Action<Sig>>();
+    static readonly List<string> errors = new List<string>();
+
+    public static int SubscriberCount { get { return subs.Count; } }
+    public static List<string> Errors { get { return errors; } }
+    public static void Subscribe(Action<Sig> h) { if (h != null) subs.Add(h); }
+    public static void Unsubscribe(Action<Sig> h) { if (h != null) subs.Remove(h); }
+    public static void Clear() { subs.Clear(); errors.Clear(); }
+
+    public static void Publish(Sig s)
+    {
+        if (s == null) return;
+        Action<Sig>[] snapshot = subs.ToArray();   // 派发期间订阅/退订不影响本轮
+        for (int i = 0; i < snapshot.Length; i++)
+        {
+            try { snapshot[i](s); }
+            catch (Exception ex) { errors.Add(s.Kind + ":" + ex.Message); }
+        }
+    }
+}
+
+/// <summary>信号 → 界面动作的路由表（纯逻辑，可单测）。动作名由 App 侧映射成真实方法调用，
+/// 这样"什么信号该刷新什么"是数据而不是散落在各处的直接调用。</summary>
+static class SigRouting
+{
+    public const string UpdateButtons = "update-buttons";
+    public const string ReloadBackups = "reload-backups";
+    public const string ToastOk = "toast-ok";
+
+    public static string[] ActionsFor(Sig s)
+    {
+        if (s == null) return new string[0];
+        List<string> a = new List<string>();
+        if (s.Kind == SigKind.TaskStarted) a.Add(UpdateButtons);
+        else if (s.Kind == SigKind.TaskOk)
+        {
+            a.Add(UpdateButtons);
+            if (s.Key == "bk.delete" || s.Key == "act.backup") a.Add(ReloadBackups);
+            if (s.Key == "act.backup" || s.Key == "act.restore" || s.Key == "bk.export" || s.Key == "bk.delete") a.Add(ToastOk);
+        }
+        else if (s.Kind == SigKind.TaskFail || s.Kind == SigKind.TaskTimeout) a.Add(UpdateButtons);
+        else if (s.Kind == SigKind.StatusChanged) a.Add(UpdateButtons);
+        return a.ToArray();
+    }
+}
+
+/// <summary>机器标记行解析：核心输出的唯一契约。
+/// v2.8 修复：旧实现的名单**漏了 BKEXPORT_OK / BKDEL_OK / CONFIGSET_OK / DRYRUN_* / DOCTOR_*** 等，
+/// 导致"导出/删除备份、保存设置"在界面上永远显示"失败"（其实已成功）。这里把已知标记行集中成一张表。</summary>
+static class Markers
+{
+    static readonly string[] Known = new string[]
+    {
+        "BACKUP_OK", "BACKUP_FAIL", "BACKUP_LIST_OK",
+        "RESTORE_OK", "RESTORE_FAIL", "RESTORE_NOT_IMPLEMENTED",
+        "STATUS_UP", "STATUS_STARTING", "STATUS_DOWN",
+        "STATUS_PID", "STATUS_START", "STATUS_UPTIME",
+        "START_OK", "START_FAIL", "STOP_OK", "STOP_FAIL",
+        "SHORTCUT_OK", "SHORTCUT_FAIL",
+        "BKEXPORT_OK", "BKEXPORT_FAIL", "BKDEL_OK", "BKDEL_FAIL",
+        "CONFIGGET_OK", "CONFIGSET_OK", "CONFIGSET_FAIL",
+        "DRYRUN_OK", "DRYRUN_FAIL",
+        "DOCTOR_OK", "DOCTOR_WARN", "DOCTOR_ERROR", "DOCTOR_REPORT", "DOCTOR_WRITE_FAIL",
+        "PROFILECHK_OK", "PROFILECHK_TOTAL", "PROFILECHK_SKIPPED_VENDOR",
+        "PROFILEPATCH_OK", "PROFILEPATCH_NOOP", "PROFILEPATCH_DRYRUN", "PROFILEPATCH_ROLLBACK", "PROFILEPATCH_FAIL",
+        "BOOTDIAG_OK", "BOOTDIAG_FAIL",
+        "IMPORT_OK", "IMPORT_FAIL",
+        "UPDATE_INFO", "DSHT_VERSION"
+    };
+
+    /// <summary>是否是已知标记行（用于从混杂进度文案的输出里挑出契约行）。</summary>
+    public static bool IsKnown(string line)
+    {
+        if (string.IsNullOrEmpty(line)) return false;
+        string t = line.Trim();
+        for (int i = 0; i < Known.Length; i++)
+            if (t.StartsWith(Known[i], StringComparison.Ordinal)) return true;
+        return false;
+    }
+
+    /// <summary>完整输出 → 第一条已知标记行（逐行 Trim 后前缀匹配）；找不到返回空串。</summary>
+    public static string Find(string all)
+    {
+        if (string.IsNullOrEmpty(all)) return "";
+        string[] lines = all.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string t = lines[i].Trim();
+            if (IsKnown(t)) return t;
+        }
+        return "";
+    }
+
+    /// <summary>标记行是否代表成功：STATUS_UP / STATUS_STARTING / 含 "_OK"。</summary>
+    public static bool IsOk(string mark)
+    {
+        if (string.IsNullOrEmpty(mark)) return false;
+        if (mark.StartsWith("STATUS_UP", StringComparison.Ordinal)) return true;
+        if (mark.StartsWith("STATUS_STARTING", StringComparison.Ordinal)) return true;
+        return mark.IndexOf("_OK", StringComparison.Ordinal) >= 0;
+    }
+
+    /// <summary>已知标记行总数（测试用：防止有人误删表项）。</summary>
+    public static int KnownCount { get { return Known.Length; } }
+}
+
+// ---------------- 设置项卡片模型（设置页由数据渲染） ----------------
+
+/// <summary>设置项控件形态。</summary>
+enum SetKind { Combo, Text }
+
+/// <summary>一个设置项：配置键 + 文案键 + 控件形态 + 取值（Combo 用）。</summary>
+sealed class SetItem
+{
+    public string ConfigKey;   // 与核心 config-get/config-set 的键一致
+    public string LabelKey;    // L10N 键
+    public SetKind Kind;
+    public string[] Options;   // Combo
+    public int Width;          // Text
+    public SetItem(string configKey, string labelKey, SetKind kind, string[] options, int width)
+    {
+        ConfigKey = configKey; LabelKey = labelKey; Kind = kind;
+        Options = options == null ? new string[0] : options; Width = width;
+    }
+}
+
+/// <summary>一张设置卡片：标题 + 若干设置项。</summary>
+sealed class SetCard
+{
+    public string TitleKey;
+    public SetItem[] Items;
+    public SetCard(string titleKey, SetItem[] items) { TitleKey = titleKey; Items = items == null ? new SetItem[0] : items; }
+}
+
+/// <summary>设置页的数据源（卡片顺序 = 界面顺序）。改设置项只改这里，不碰布局代码。</summary>
+static class SettingsCards
+{
+    public static SetCard[] Default()
+    {
+        return new SetCard[]
+        {
+            new SetCard("settings.g.harness", new SetItem[]
+            {
+                new SetItem("host", "settings.host", SetKind.Combo, new string[] { "127.0.0.1", "localhost" }, 0),
+                new SetItem("ws", "settings.ws", SetKind.Text, null, 360)
+            }),
+            new SetCard("settings.g.backup", new SetItem[]
+            {
+                new SetItem("keep_backups", "settings.keep", SetKind.Text, null, 80)
+            }),
+            new SetCard("settings.g.update", new SetItem[]
+            {
+                new SetItem("check_update", "settings.chkupd", SetKind.Combo, new string[] { "on", "off" }, 0),
+                new SetItem("check_dsh_update", "settings.chkdsh", SetKind.Combo, new string[] { "on", "off" }, 0),
+                new SetItem("update_channel", "settings.channel", SetKind.Combo, new string[] { "stable", "rc" }, 0)
+            }),
+            new SetCard("settings.g.toolkit", new SetItem[]
+            {
+                new SetItem("lang", "settings.lang", SetKind.Combo, new string[] { "auto", "zh", "en" }, 0),
+                new SetItem("auto_start", "settings.autostart", SetKind.Combo, new string[] { "on", "off" }, 0),
+                new SetItem("close_action", "settings.closeact", SetKind.Combo, new string[] { "ask", "tray", "exit" }, 0)
+            })
+        };
+    }
+
+    /// <summary>模型里出现的全部配置键（测试用：必须与核心 config-get 的键集合一致）。</summary>
+    public static string[] AllConfigKeys()
+    {
+        List<string> keys = new List<string>();
+        SetCard[] cards = Default();
+        for (int i = 0; i < cards.Length; i++)
+            for (int j = 0; j < cards[i].Items.Length; j++) keys.Add(cards[i].Items[j].ConfigKey);
+        return keys.ToArray();
     }
 }
 
@@ -777,6 +981,19 @@ public class App : Form
 
     public App()
     {
+        // v2.8：呈现层订阅信号（控件/页面之间不再互相直接调用；"什么信号刷新什么"见 SigRouting）。
+        // 必须在 Build() 之前注册——Build/RefreshStatus 期间就会广播 StatusChanged。
+        SignalBus.Subscribe(delegate(Sig s)
+        {
+            string[] acts = SigRouting.ActionsFor(s);
+            for (int i = 0; i < acts.Length; i++)
+            {
+                if (acts[i] == SigRouting.UpdateButtons) UpdateActionButtons();
+                else if (acts[i] == SigRouting.ReloadBackups) LoadBackupList();
+                else if (acts[i] == SigRouting.ToastOk) ShowToast(L10N._(s.Key) + " → " + L10N._("op.ok"));
+            }
+        });
+
         Text = L10N._("app.title");
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.CenterScreen;
@@ -1176,6 +1393,7 @@ public class App : Form
         string core = CoreExePath();
         if (core == null) { LogWarn(L10N._("op.coremissing")); return; }
         LogLine(string.Format(L10N._("op.running"), L10N._(key)));
+        SignalBus.Publish(new Sig(SigKind.TaskStarted, key, "", ""));   // v2.8：任务开始 → 信号
         int capTimeout = 30000;
         ThreadPool.QueueUserWorkItem(delegate(object _)
         {
@@ -1190,7 +1408,13 @@ public class App : Form
 
     void OnCaptureDone(string key, CoreRunResult r)
     {
-        if (r.TimedOut) { LogWarn(L10N._(key) + " → " + L10N._("op.timeout")); Interlocked.Exchange(ref busy, 0); UpdateActionButtons(); return; }
+        if (r.TimedOut)
+        {
+            LogWarn(L10N._(key) + " → " + L10N._("op.timeout"));
+            Interlocked.Exchange(ref busy, 0);
+            SignalBus.Publish(new Sig(SigKind.TaskTimeout, key, "", ""));
+            return;
+        }
         string line = (r.MarkLine ?? "").Trim();
         bool ok = false;
         if (key == "act.start") ok = line.StartsWith("START_OK");
@@ -1200,43 +1424,26 @@ public class App : Form
         else if (key == "act.shortcut") ok = line.StartsWith("SHORTCUT_OK");
         else if (key == "bk.export") ok = line.StartsWith("BKEXPORT_OK");
         else if (key == "bk.delete") ok = line.StartsWith("BKDEL_OK");
+        string reason = "";
         if (ok) LogLine(L10N._(key) + " → " + L10N._("op.ok") + "  (" + line + ")");
         else
         {
             // 失败原因：优先用标记行内容，否则第一行，否则全部输出
-            string reason = line;
+            reason = line;
             if (string.IsNullOrEmpty(reason)) reason = string.IsNullOrEmpty(r.FirstLine) ? "" : r.FirstLine;
             if (string.IsNullOrEmpty(reason)) reason = string.IsNullOrEmpty(r.All) ? "" : r.All;
             LogWarn(L10N._(key) + " → " + L10N._("op.fail") + (string.IsNullOrEmpty(reason) ? "" : "  (" + reason + ")"));
         }
         Interlocked.Exchange(ref busy, 0);
-        UpdateActionButtons();
-        if (ok && (key == "bk.delete" || key == "act.backup")) LoadBackupList();   // 备份列表变化后自动刷新管理页
-        // v2.7：后台捕获型操作的结果用托盘气泡反馈一次（窗口在后台/最小化时也能看到）
-        if (ok && (key == "act.backup" || key == "act.restore" || key == "bk.export" || key == "bk.delete"))
-            ShowToast(L10N._(key) + " → " + L10N._("op.ok"));
+        // v2.8：不再直接调用"更新按钮 / 刷新备份列表 / 弹托盘气泡"，改为广播一条信号，
+        // 由订阅者按 SigRouting 的路由表执行（旧代码这三件事是硬编码在这里的）。
+        SignalBus.Publish(new Sig(ok ? SigKind.TaskOk : SigKind.TaskFail, key, line, reason));
     }
 
 
     // 从完整输出中扫描机器标记行（核心可能在标记前后打印进度文案，如「正在恢复数据...」）。
-    static string FindMarker(string all)
-    {
-        if (string.IsNullOrEmpty(all)) return "";
-        string[] lines = all.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-        foreach (string ln in lines)
-        {
-            string t = ln.Trim();
-            if (t.StartsWith("BACKUP_OK") || t.StartsWith("BACKUP_FAIL") ||
-                t.StartsWith("BACKUP_LIST_OK") ||
-                t.StartsWith("RESTORE_OK") || t.StartsWith("RESTORE_FAIL") ||
-                t.StartsWith("STATUS_UP") || t.StartsWith("STATUS_STARTING") || t.StartsWith("STATUS_DOWN") ||
-                t.StartsWith("START_OK") || t.StartsWith("START_FAIL") ||
-                t.StartsWith("STOP_OK") || t.StartsWith("STOP_FAIL") ||
-                t.StartsWith("SHORTCUT_OK") || t.StartsWith("SHORTCUT_FAIL"))
-                return t;
-        }
-        return "";
-    }
+    // v2.8：名单集中到 Markers（旧实现漏了 BKEXPORT_OK / BKDEL_OK / CONFIGSET_OK / DRYRUN_* / DOCTOR_* 等）。
+    static string FindMarker(string all) { return Markers.Find(all); }
 
     string CoreExePath()
     {
@@ -1673,19 +1880,29 @@ public class App : Form
         };
 
         int y = 56;
-        AddSetGroup(p, ref y, "settings.g.harness");
-        cmbHost = AddSetCombo(p, ref y, "settings.host", new string[] { "127.0.0.1", "localhost" });
-        txtWs = AddSetText(p, ref y, "settings.ws", 360);
-        AddSetGroup(p, ref y, "settings.g.backup");
-        txtKeep = AddSetText(p, ref y, "settings.keep", 80);
-        AddSetGroup(p, ref y, "settings.g.update");
-        cmbChkUpd = AddSetCombo(p, ref y, "settings.chkupd", new string[] { "on", "off" });
-        cmbChkDshUpd = AddSetCombo(p, ref y, "settings.chkdsh", new string[] { "on", "off" });
-        cmbChannel = AddSetCombo(p, ref y, "settings.channel", new string[] { "stable", "rc" });
-        AddSetGroup(p, ref y, "settings.g.toolkit");
-        cmbLang = AddSetCombo(p, ref y, "settings.lang", new string[] { "auto", "zh", "en" });
-        cmbAutoStart = AddSetCombo(p, ref y, "settings.autostart", new string[] { "on", "off" });
-        cmbCloseAct = AddSetCombo(p, ref y, "settings.closeact", new string[] { "ask", "tray", "exit" });
+        // v2.8：设置页由数据渲染（SettingsCards）——加/改设置项只改模型，不动布局代码。
+        // 命名控件仍保留（LoadSettings/SaveSettings 直接引用），从字典里取一次即可。
+        Dictionary<string, Control> ctl = new Dictionary<string, Control>();
+        SetCard[] cards = SettingsCards.Default();
+        for (int ci = 0; ci < cards.Length; ci++)
+        {
+            AddSetGroup(p, ref y, cards[ci].TitleKey);
+            for (int ii = 0; ii < cards[ci].Items.Length; ii++)
+            {
+                SetItem it = cards[ci].Items[ii];
+                if (it.Kind == SetKind.Combo) ctl[it.ConfigKey] = AddSetCombo(p, ref y, it.LabelKey, it.Options);
+                else ctl[it.ConfigKey] = AddSetText(p, ref y, it.LabelKey, it.Width);
+            }
+        }
+        cmbHost = (ComboBox)ctl["host"];
+        txtWs = (TextBox)ctl["ws"];
+        txtKeep = (TextBox)ctl["keep_backups"];
+        cmbChkUpd = (ComboBox)ctl["check_update"];
+        cmbChkDshUpd = (ComboBox)ctl["check_dsh_update"];
+        cmbChannel = (ComboBox)ctl["update_channel"];
+        cmbLang = (ComboBox)ctl["lang"];
+        cmbAutoStart = (ComboBox)ctl["auto_start"];
+        cmbCloseAct = (ComboBox)ctl["close_action"];
 
         Label note = new RLabel();
         note.AutoSize = true;
@@ -2161,7 +2378,8 @@ public class App : Form
         Label cred = new RLabel();
         cred.SetBounds(0, 250, 620, 44);
         cred.TextAlign = ContentAlignment.TopCenter;   // 两行各自水平居中
-        cred.Text = "v1 脚本协助 : SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）\nv2 重构封装 : DeepSeek DSH（DSH/DeepseekAPI-V4-Flash-0731）";
+        cred.Text = L10N._("about.credits");
+        cred.Tag = "about.credits";
         p.Controls.Add(cred);
 
         // v2.7：验证此安装（联网比对官方 Release 的 hashes.txt；只读，不改任何文件）
@@ -2826,7 +3044,8 @@ public class App : Form
         currentKind = k;
         if (led != null) led.Set(k);
         if (lblStatusText != null) { lblStatusText.Text = StatusText(k); ApplyStatusColor(); }
-        UpdateActionButtons();
+        // v2.8：状态变化 → 信号（按钮可用性由订阅者更新，不再在这里直接调用）
+        SignalBus.Publish(new Sig(SigKind.StatusChanged, "", "", k.ToString()));
         UpdateStatusBar();
     }
 
@@ -3129,6 +3348,7 @@ public class App : Form
 
     void LogAdd(string level, string s)
     {
+        SignalBus.Publish(new Sig(SigKind.LogAppended, level, "", s));   // v2.8：日志也走信号（供将来的订阅者用）
         string[] e = new string[] { DateTime.Now.ToString("HH:mm:ss"), level, s };
         if (txtLog == null) { pendingLog.Add(e); return; }   // 日志页尚未构建 → 暂存，BuildLog 时补写
         logEntries.Add(e);
@@ -3235,7 +3455,7 @@ public static class Program
         {
             if (!createdNew)
             {
-                MessageBox.Show(L10N._("app.title") + " 已在运行。", L10N._("app.title"),
+                MessageBox.Show(L10N._("app.title") + L10N._("app.alreadyrunning"), L10N._("app.title"),
                                 MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }

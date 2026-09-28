@@ -54,6 +54,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "GUI (standalone) compile failed" }
           Remove-Item core_check.exe, gui_check.exe, gui_standalone_check.exe -ErrorAction SilentlyContinue
           Write-Output "GUI variants compile clean (/warn:4, embedded logo + core)"
+      - name: GUI logic tests (signals / markers / settings cards / i18n enforcement)
+        shell: pwsh
+        run: |
+          # 与 gui_v2.cs 同程序集编译；/main: 指定测试入口（gui_v2.cs 自带 WinForms 入口）
+          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          & $csc /nologo /target:exe /main:GuiLogicTests /out:guilogictests.exe gui_v2.cs tests\gui_logic_tests.cs /warn:4
+          if ($LASTEXITCODE -ne 0) { throw "GUI logic test build failed" }
+          .\guilogictests.exe
+          if ($LASTEXITCODE -ne 0) { throw "GUI logic tests failed" }
+          Remove-Item guilogictests.exe -ErrorAction SilentlyContinue
 
       - name: Run integration tests (stubbed matrix, no real ~/.dsh touched)
         shell: pwsh

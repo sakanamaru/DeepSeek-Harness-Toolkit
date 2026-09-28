@@ -20,7 +20,7 @@ function TC($name, $ok, $extra = '') {
 function NewDir($p) { if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force }; New-Item -ItemType Directory -Path $p -Force | Out-Null }
 
 $repoRoot = Split-Path -Parent $src
-function Get-SrcFiles { return @($src) + (Get-ChildItem (Join-Path $repoRoot 'src') -Recurse -Filter *.cs -ErrorAction SilentlyContinue | ForEach-Object FullName) }
+function Get-SrcFiles { return @($src) + (Get-ChildItem (Join-Path $repoRoot 'src') -Recurse -Filter *.cs -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName) }
 
 function Build-Variant($variant, $outExe) {
     # v2.8：源码已拆成多层，锚点可能落在任意一个文件里 —— 逐文件查找并替换，再整体编译

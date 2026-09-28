@@ -258,13 +258,19 @@ DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不
   ```
   退出码 0=全过。覆盖：路径往返（含 UNC / 中文空格）、工作区黑名单、dsh 数据目录标记、根标记严格性、备份目录校验、日志轮转、备份命名 + 保留策略、服务三态判定、版本比较 / 发布解析 / 更新探测、netstat PID 解析、Dry-Run 合并/删除计划（含恢复侧跳过规则一致性）、备份类型解析、导出 / 删除校验、回滚候选查询、配置白名单（含 `close_action` / `auto_start` 键）、状态栏 `FormatUptime`、profile 静态扫描 / `bootdiag` 输出解析 / 受控单行修复（一行计划、幂等 NOOP、备份、复扫校验与回滚）。
 
+- **GUI 逻辑测试（52 项）**：与 `gui_v2.cs` 同程序集编译，零第三方依赖；CI 每次推送都跑：
+  ```
+  "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /main:GuiLogicTests /out:guilogictests.exe gui_v2.cs tests\gui_logic_tests.cs
+  guilogictests.exe
+  ```
+  覆盖呈现层基座：标记行解析（含此前漏掉的 `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK`）、信号总线（含"一个订阅者抛异常不影响其他订阅者"）、信号→界面动作路由表（`SigRouting`）、设置卡片模型（`SettingsCards`），以及**源码级 i18n 强制检查**（`L10N._()` 用到的键必须有定义、不能有死键、中英文不能为空、**L10N 字典之外不允许出现中文字符串字面量**）。
 - **集成测试（33 个用例）**：打桩端到端矩阵（变体 A/C，真实探测 3080；覆盖保留策略、运行中禁止恢复/导入、双语断言等）：
   ```
   powershell -ExecutionPolicy Bypass -File tests\integration.ps1
   ```
   只触碰打桩数据目录 `~/.dsh_test`，**绝不接触真实 `~/.dsh`**；3080 未开启时"运行中"相关用例标记 SKIP 而非 FAIL。退出码 0=全过。
 
-- **CI**：GitHub Actions 在**每次推送到 `main`、每个 PR、以及打 `v*` 标签**时自动运行两套测试**外加三形态 GUI 编译守卫**；发布资产与 `hashes.txt`（含 GPG 签名）仅在 `v*` 标签推送或手动触发（`workflow_dispatch`）时重建。
+- **CI**：GitHub Actions 在**每次推送到 `main`、每个 PR、以及打 `v*` 标签**时自动运行三套测试**外加三形态 GUI 编译守卫**；发布资产与 `hashes.txt`（含 GPG 签名）仅在 `v*` 标签推送或手动触发（`workflow_dispatch`）时重建。
 
 ## 目录结构
 

@@ -33,6 +33,21 @@ All notable changes to **DeepSeek Harness Toolkit** (unofficial). Full release n
 > 注：阶段 1 的**分层拆分**（及阶段 2 的 net8.0 工程）已随 **v2.7.3** 一起发布——下面的记录保留为当时的过程说明，本版号只留给后续阶段。
 > Note: the stage-1 **layering split** (and stage 2's net8.0 project) already shipped with **v2.7.3** — the record below is kept as the process note of that work; this version number is reserved for later stages.
 
+### Changed / 变更（GUI 呈现层基座 · 2026-09-28）
+
+- **任务即信号**：GUI 新增全局信号总线（`SignalBus` / `Sig` / `SigRouting`）。任务开始/成功/失败/超时、服务状态变化、日志追加都广播为信号，"哪个信号刷新什么"变成一张**路由表**（`SigRouting.ActionsFor`），不再散落在各处直接调用（原来 `OnCaptureDone` 里硬编码了"更新按钮 + 刷新备份列表 + 弹托盘气泡"）；`SetStatus` 也不再直接驱动按钮可用性。
+  **Tasks as signals**: the GUI gained a global signal bus (`SignalBus` / `Sig` / `SigRouting`). "Which signal refreshes what" is now a **routing table** instead of hard-coded calls scattered around.
+- **设置项卡片化**：设置页由数据渲染（`SettingsCards.Default()`：4 张卡片 / 9 个设置项）。加设置项只改模型，不碰布局代码。
+  **Settings as cards**: the settings page renders from data (`SettingsCards.Default()`: 4 cards / 9 items).
+- **GUI 逻辑测试 + i18n 强制检查**（新文件 `tests\gui_logic_tests.cs`，52 项，零第三方依赖，CI 每次推送都跑）：标记行解析、信号总线、路由表、设置卡片模型，以及**源码级 i18n 强制检查**（`L10N._()` 用到的键必须有定义；不能有死键；中英文不能为空；**L10N 字典之外不允许出现中文字符串字面量**）。
+  **GUI logic tests + i18n enforcement** (new `tests\gui_logic_tests.cs`, 52 checks, zero third-party deps, run by CI on every push).
+
+### Fixed / 修复（GUI）
+
+- **导出/删除备份、保存设置后界面一直显示"失败"** —— 标记行名单漏了 `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK`（以及 `DRYRUN_*` / `DOCTOR_*` 等），`FindMarker` 找不到标记 → 判定为失败，托盘成功气泡也不会弹。已知标记行现在集中成一张表（`Markers`）。
+  **Export/delete backup and saving settings always reported "failed"** — the marker list was missing `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK` (and `DRYRUN_*` / `DOCTOR_*`). Known markers now live in one table (`Markers`).
+- **两处硬编码中文**：关于页署名两行、以及"已在运行。"提示在英文界面下仍是中文 → 补 `about.credits` / `app.alreadyrunning`（由 i18n 强制检查兜住）。
+  **Two hard-coded Chinese strings** (About credits, "already running") → new `about.credits` / `app.alreadyrunning` keys.
 ### Changed / 变更（重构 · 阶段 1：分层，已完成 · 2026-09-21）
 
 - **单文件核心拆成 Core / Platform / Cli 三层**（落地：`dsh_v2.cs` 4212 行 → **1344 行** + `src/**` 9 个文件共约 3050 行；提交 `ee36ac0`，CI 绿）（`dsh_v2.cs` → `dsh_v2.cs` + `src/**`）。这是**只搬不改**的重构：用 `partial class Program` 把同一个类分散到多个文件，**不改变任何调用点、签名、字符串、注释或行为**，也不引入任何依赖或 Unix 代码。

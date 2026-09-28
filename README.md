@@ -223,13 +223,19 @@ No test framework or third-party dependency is required.
   ```
   Exit code 0 = all green. Covers: path round-trips (incl. UNC / non-ASCII), workspace blacklist, dsh-data markers, root marker strictness, backup dir validation, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection, netstat PID parsing, dry-run merge/delete planning (incl. restore-side skip-rule fidelity), backup kind parsing, export / delete validation, rollback-candidate lookup, configuration whitelist (incl. the `close_action` / `auto_start` keys), status-bar uptime formatting, profile block scanning / `bootdiag` output parsing / the controlled patch path (one-line plan, idempotent NOOP, backup, verify and rollback).
 
+- **GUI logic tests (52)** — same-assembly as `gui_v2.cs`, zero third-party deps; run by CI on every push:
+  ```
+  "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /main:GuiLogicTests /out:guilogictests.exe gui_v2.cs tests\gui_logic_tests.cs
+  guilogictests.exe
+  ```
+  Covers the presentation-layer foundation: marker-line parsing (the table that used to be missing `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK`), the signal bus (`SignalBus` — incl. "one throwing subscriber must not break the others"), the signal-to-UI routing table (`SigRouting`), the settings card model (`SettingsCards`), and **source-level i18n enforcement** (every `L10N._()` key must be defined, no dead keys, no empty translations, and **no Chinese string literals outside the L10N dictionary**).
 - **Integration tests (33 cases)** — stubbed end-to-end matrix (variants A/C, real 3080 probing; retention policy, restore/import blocked while running, bilingual asserts):
   ```
   powershell -ExecutionPolicy Bypass -File tests\integration.ps1
   ```
   Touches only the stubbed data dir `~/.dsh_test` — never your real `~/.dsh`. When port 3080 is closed, "running"-related cases are SKIPped, not failed. Exit code 0 = all green.
 
-- **CI** — GitHub Actions runs both test suites **plus a three-variant GUI compile guard** on every push to `main`, every pull request, and every `v*` tag; release assets + `hashes.txt` (+ GPG signature) are rebuilt only on `v*` tag push or manual dispatch (`workflow_dispatch`).
+- **CI** — GitHub Actions runs all three test suites **plus a three-variant GUI compile guard** on every push to `main`, every pull request, and every `v*` tag; release assets + `hashes.txt` (+ GPG signature) are rebuilt only on `v*` tag push or manual dispatch (`workflow_dispatch`).
 
 ## Directory Layout
 
