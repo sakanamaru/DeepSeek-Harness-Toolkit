@@ -16,6 +16,7 @@ namespace Dsht.Gui.Avalonia.Shells
     /// <summary>五种**布局框架**（外壳），同一个程序里实时切换，方便对比挑选。
     /// ⑤ 混合式 = ① 侧栏（主菜单）+ ② 顶部标签（子菜单）；子菜单不是摆设：会话页里它直接切换排序视角。
     /// 内容构建器（KPI / 会话卡片 / 工具栏 / 说明区）被所有外壳共享 —— 换外壳不动内容，换内容不动外壳。
+    /// 所有颜色一律取自 <see cref="Palette"/>（含卡片底），四个风格才不会破。
     /// 设计方向参考了 March7thAssistant（GPL-3.0）的做法，**未复制其任何代码、图标、字体或图片资源**。</summary>
     public static class Shells
     {
@@ -24,6 +25,9 @@ namespace Dsht.Gui.Avalonia.Shells
         public const int CardGrid = 2;
         public const int MasterDetail = 3;
         public const int Hybrid = 4;
+
+        private static readonly FontFamily MonoFont = new FontFamily("Cascadia Mono,Consolas,monospace");
+        private static readonly Thickness PageMargin = new Thickness(24, 18, 24, 16);
 
         public static string Name(int id)
         {
@@ -50,138 +54,219 @@ namespace Dsht.Gui.Avalonia.Shells
             }
         }
 
-        // ---------------- ⑤ 混合式：侧栏主菜单 + 顶部子菜单 ----------------
+        // ================================================================ 基础构件
 
-        private static Control BuildHybrid(MainWindow host)
+        private static TextBlock T(string text, double size, IBrush fg)
         {
-            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("216,*") };
+            return new TextBlock { Text = text, FontSize = size, Foreground = fg };
+        }
+
+        private static TextBlock T(string text, double size, IBrush fg, FontWeight w)
+        {
+            return new TextBlock { Text = text, FontSize = size, Foreground = fg, FontWeight = w };
+        }
+
+        private static TextBlock Mono(string text, double size, IBrush fg)
+        {
+            return new TextBlock { Text = text, FontSize = size, Foreground = fg, FontFamily = MonoFont };
+        }
+
+        private static SymbolIcon Ic(Symbol s, double size, IBrush fg)
+        {
+            return new SymbolIcon { Symbol = s, IconVariant = IconVariant.Regular, FontSize = size, Foreground = fg };
+        }
+
+        /// <summary>统一卡片：12px 圆角 + 发丝描边 + 浅色风格的极浅投影（深色靠描边分层）。</summary>
+        private static Border Card(Control child, Thickness margin, Thickness padding)
+        {
+            Border b = new Border
+            {
+                Background = Palette.CardBg,
+                CornerRadius = new CornerRadius(12),
+                BorderBrush = Palette.Border,
+                BorderThickness = new Thickness(1),
+                Margin = margin,
+                Padding = padding,
+                Child = child
+            };
+            if (Palette.CardShadow.Length > 0) b.BoxShadow = BoxShadows.Parse(Palette.CardShadow);
+            return b;
+        }
+
+        private static Border Chip(string text, IBrush fg, IBrush bg)
+        {
+            return new Border
+            {
+                Background = bg,
+                CornerRadius = new CornerRadius(999),
+                Padding = new Thickness(8, 2),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = T(text, 10.5, fg, FontWeight.SemiBold)
+            };
+        }
+
+        /// <summary>圆角小方块里的图标（KPI / 卡片头部用）。</summary>
+        private static Border SoftTile(Symbol icon, IBrush fg, IBrush bg, double size, double iconSize)
+        {
+            return new Border
+            {
+                Width = size,
+                Height = size,
+                CornerRadius = new CornerRadius(9),
+                Background = bg,
+                Child = new SymbolIcon
+                {
+                    Symbol = icon,
+                    IconVariant = IconVariant.Regular,
+                    FontSize = iconSize,
+                    Foreground = fg,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            };
+        }
+
+        /// <summary>比例条：自适应容器宽度（星号列），两端圆角。pct &lt; 0 视为未知 → 空条。</summary>
+        private static Control Meter(double pct, IBrush brush, double h)
+        {
+            if (pct < 0) pct = 0;
+            if (pct > 100) pct = 100;
+            int p = (int)Math.Round(pct);
+            Grid g = new Grid { Height = h, ColumnDefinitions = new ColumnDefinitions(p.ToString() + "*," + (100 - p) + "*") };
+            Border track = new Border { Background = Palette.BarTrack, CornerRadius = new CornerRadius(h / 2) };
+            Grid.SetColumnSpan(track, 2);
+            g.Children.Add(track);
+            if (p > 0)
+            {
+                Border fill = new Border { Background = brush, CornerRadius = new CornerRadius(h / 2) };
+                Grid.SetColumn(fill, 0);
+                g.Children.Add(fill);
+            }
+            return g;
+        }
+
+        private static void Hover(Border b, IBrush normal, IBrush hover)
+        {
+            b.PointerEntered += delegate { b.Background = hover; };
+            b.PointerExited += delegate { b.Background = normal; };
+        }
+
+        private static void Hover(Button b, IBrush normal, IBrush hover)
+        {
+            b.PointerEntered += delegate { b.Background = hover; };
+            b.PointerExited += delegate { b.Background = normal; };
+        }
+
+        private static Button GhostButton(Control content, Action act, bool bordered)
+        {
+            Button b = new Button
+            {
+                Content = content,
+                Background = bordered ? Palette.CardBg : Brushes.Transparent,
+                BorderBrush = bordered ? Palette.Border : Brushes.Transparent,
+                BorderThickness = new Thickness(bordered ? 1 : 0),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(12, 7)
+            };
+            IBrush normal = bordered ? Palette.CardBg : Brushes.Transparent;
+            Hover(b, normal, Palette.CardHover);
+            b.Click += delegate { act(); };
+            return b;
+        }
+
+        private static Button PrimaryButton(string text, Action act)
+        {
+            Button b = new Button
+            {
+                Content = T(text, 12.5, Palette.OnAccent, FontWeight.SemiBold),
+                Background = Palette.Accent,
+                BorderThickness = new Thickness(0),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(14, 7)
+            };
+            Hover(b, Palette.Accent, Palette.AccentHover);
+            b.Click += delegate { act(); };
+            return b;
+        }
+
+        /// <summary>segmented 切换器：凹陷底 + 选中项浮起为卡片色。</summary>
+        private static Control Segmented(string[] items, int active, Action<int> pick)
+        {
+            StackPanel inner = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
+            for (int i = 0; i < items.Length; i++)
+            {
+                int idx = i;
+                bool act = idx == active;
+                Button b = new Button
+                {
+                    Content = T(items[i], 12, act ? Palette.Text : Palette.TextDim, act ? FontWeight.SemiBold : FontWeight.Normal),
+                    Background = act ? Palette.CardBg : Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
+                    CornerRadius = new CornerRadius(7),
+                    Padding = new Thickness(12, 5)
+                };
+                b.Click += delegate { pick(idx); };
+                inner.Children.Add(b);
+            }
+            return new Border
+            {
+                Background = Palette.InsetBg,
+                BorderBrush = Palette.Border,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(9),
+                Padding = new Thickness(3),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Child = inner
+            };
+        }
+
+        /// <summary>写操作的两次确认按钮（隔离/恢复）：第一次点击只是变成确认文案，第二次才真执行。</summary>
+        private static Button ConfirmButton(string key, string idleText, string confirmText, MainWindow host, Action confirmed)
+        {
+            bool pending = host.PendingPatch == key;
+            Button b = new Button
+            {
+                Content = T(pending ? confirmText : idleText, 11.5, pending ? Palette.Bad : Palette.TextDim, pending ? FontWeight.SemiBold : FontWeight.Normal),
+                Background = pending ? Palette.BadSoft : Brushes.Transparent,
+                BorderBrush = pending ? Palette.Bad : Palette.BorderStrong,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(7),
+                Padding = new Thickness(9, 3)
+            };
+            b.Click += delegate
+            {
+                if (host.PendingPatch == key)
+                {
+                    host.PendingPatch = "";
+                    confirmed();
+                }
+                else
+                {
+                    host.PendingPatch = key;
+                    host.Rebuild();
+                }
+            };
+            return b;
+        }
+
+        // ================================================================ 外壳
+
+        // ---------------- ① 侧栏式 ----------------
+
+        private static Control BuildSidebar(MainWindow host)
+        {
+            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("232,*") };
             Border side = new Border
             {
-                Background = Brushes.White,
+                Background = Palette.SidebarBg,
                 BorderBrush = Palette.Border,
                 BorderThickness = new Thickness(0, 0, 1, 0),
                 Child = new ScrollViewer { Content = MainMenu(host) }
             };
             Grid.SetColumn(side, 0);
 
-            Grid right = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto") };
-            Control subs = SubTabs(host);
-            Grid.SetRow(subs, 0);
-            Control head = Header(host);
-            Grid.SetRow(head, 1);
-            Control body = SectionBody(host);
-            Grid.SetRow(body, 2);
-            Control foot = Footer(host);
-            Grid.SetRow(foot, 3);
-            right.Children.Add(subs); right.Children.Add(head); right.Children.Add(body); right.Children.Add(foot);
-            Grid.SetColumn(right, 1);
-
-            g.Children.Add(side); g.Children.Add(right);
-            return g;
-        }
-
-        /// <summary>导航行：图标 + 文字（FluentIcons，替代之前的 Unicode 字形）。</summary>
-        private static Control NavRow(Symbol icon, string text, IBrush fg)
-        {
-            StackPanel s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-            s.Children.Add(new SymbolIcon { Symbol = icon, IconVariant = IconVariant.Regular, FontSize = 16, Foreground = fg, VerticalAlignment = VerticalAlignment.Center });
-            s.Children.Add(new TextBlock { Text = text, Foreground = fg, FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
-            return s;
-        }
-
-        private static Button FilterChip(string text, int mode, MainWindow host)
-        {
-            Button b = new Button { Content = text, Background = host.ProfilesFilter == mode ? Palette.AccentSoft : Brushes.Transparent, Foreground = host.ProfilesFilter == mode ? Palette.Accent : Palette.Text };
-            b.Click += delegate { host.SetProfilesFilter(mode); };
-            return b;
-        }
-
-        private static Button JumpButton(string text, int section, MainWindow host)
-        {
-            Button b = new Button { Content = text };
-            b.Click += delegate { host.SetMainSection(section); };
-            return b;
-        }
-
-        private static Control MainMenu(MainWindow host)
-        {
-            StackPanel s = new StackPanel { Margin = new Thickness(10, 14, 10, 14), Spacing = 2 };
-            s.Children.Add(new TextBlock { Text = "主菜单", Foreground = Palette.TextFaint, FontSize = 11, Margin = new Thickness(10, 4, 0, 6) });
-            s.Children.Add(NavRow(Symbol.AppsList, "全部功能", Palette.TextFaint));
-            for (int i = 0; i < MainWindow.NavItems.Length; i++)
-            {
-                int idx = i;
-                bool active = host.MainSection == i;
-                Button b = new Button
-                {
-                    Content = NavRow(MainWindow.NavIcons[i], MainWindow.NavItems[i], active ? Palette.Accent : Palette.Text),
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                    HorizontalContentAlignment = HorizontalAlignment.Left,
-                    Background = active ? Palette.AccentSoft : Brushes.Transparent,
-                    Foreground = active ? Palette.Accent : Palette.Text,
-                    BorderThickness = new Thickness(0),
-                    CornerRadius = new CornerRadius(6),
-                    Padding = new Thickness(10, 8),
-                    FontWeight = active ? FontWeight.SemiBold : FontWeight.Normal
-                };
-                b.Click += delegate { host.SetMainSection(idx); };
-                s.Children.Add(b);
-            }
-            return s;
-        }
-
-        private static Control SubTabs(MainWindow host)
-        {
-            StackPanel s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(16, 10, 16, 0) };
-            string[] subs = host.SubTabs;
-            for (int i = 0; i < subs.Length; i++)
-            {
-                int idx = i;
-                bool active = host.SubTab == i;
-                StackPanel inner = new StackPanel { Spacing = 6 };
-                inner.Children.Add(new TextBlock
-                {
-                    Text = subs[i],
-                    FontSize = 13,
-                    Foreground = active ? Palette.Accent : Palette.TextDim,
-                    FontWeight = active ? FontWeight.SemiBold : FontWeight.Normal
-                });
-                inner.Children.Add(new Border { Height = 2, Background = active ? Palette.Accent : Brushes.Transparent, CornerRadius = new CornerRadius(1) });
-                Button b = new Button
-                {
-                    Content = inner,
-                    Background = Brushes.White,
-                    BorderThickness = new Thickness(0),
-                    CornerRadius = new CornerRadius(0),
-                    Padding = new Thickness(10, 6, 10, 0)
-                };
-                b.Click += delegate { host.SetSubTab(idx); };
-                s.Children.Add(b);
-            }
-            return new Border
-            {
-                Background = Brushes.White,
-                BorderBrush = Palette.Border,
-                BorderThickness = new Thickness(0, 0, 0, 1),
-                Child = s
-            };
-        }
-
-        // ---------------- ① 侧栏式 ----------------
-
-        private static Control BuildSidebar(MainWindow host)
-        {
-            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("216,*") };
-            Border side = new Border
-            {
-                Background = Brushes.White,
-                BorderBrush = Palette.Border,
-                BorderThickness = new Thickness(0, 0, 1, 0),
-                Child = MainMenu(host)
-            };
-            Grid.SetColumn(side, 0);
             Grid body = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
-            Control title = Header(host);
+            Control title = PageHeader(host);
             Grid.SetRow(title, 0);
             Control content = SectionBody(host);
             Grid.SetRow(content, 1);
@@ -198,13 +283,11 @@ namespace Dsht.Gui.Avalonia.Shells
         private static Control BuildTopTabs(MainWindow host)
         {
             Grid g = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*") };
-            Control tabs = SubTabs(host);
+            Border tabs = new Border { Margin = new Thickness(24, 14, 24, 0), Child = Segmented(host.SubTabs, host.SubTab, delegate(int i) { host.SetSubTab(i); }) };
             Grid.SetRow(tabs, 0);
-            Control title = Header(host);
+            Control title = PageHeader(host);
             Grid.SetRow(title, 1);
-            Control content = host.IsSessionsSection
-                ? (Control)new ScrollViewer { Content = ContentColumn(host), Margin = new Thickness(20, 0, 20, 12) }
-                : TextPane(host);
+            Control content = SectionBody(host);
             Grid.SetRow(content, 2);
             g.Children.Add(tabs); g.Children.Add(title); g.Children.Add(content);
             return g;
@@ -214,28 +297,26 @@ namespace Dsht.Gui.Avalonia.Shells
 
         private static Control BuildCardGrid(MainWindow host)
         {
-            Grid g = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*") };
-            Control nav = SubTabs(host);
-            Grid.SetRow(nav, 0);
-            StackPanel head = new StackPanel { Margin = new Thickness(20, 14, 20, 6), Spacing = 4 };
-            head.Children.Add(new TextBlock { Text = host.PageTitle, FontSize = 24, FontWeight = FontWeight.Bold, Foreground = Palette.Text });
-            head.Children.Add(new TextBlock { Text = host.SubtitleText, Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap });
-            Grid.SetRow(head, 1);
-            StackPanel body = new StackPanel { Margin = new Thickness(20, 0, 20, 12), Spacing = 14 };
+            Grid g = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
+            Border tabs = new Border { Margin = new Thickness(24, 14, 24, 0), Child = Segmented(host.SubTabs, host.SubTab, delegate(int i) { host.SetSubTab(i); }) };
+            Grid.SetRow(tabs, 0);
+
+            StackPanel body = new StackPanel { Margin = PageMargin, Spacing = 14 };
+            body.Children.Add(PageHeader(host, false));
             if (host.IsSessionsSection)
             {
                 body.Children.Add(KpiStrip(host));
-                body.Children.Add(SectionTitle("会话明细（卡片网格）"));
+                body.Children.Add(T("会话明细", 14, Palette.Text, FontWeight.SemiBold));
                 body.Children.Add(CardGridBody(host));
             }
             else
             {
-                body.Children.Add(TextPane(host));
+                body.Children.Add(SectionInner(host));
             }
             body.Children.Add(Explain());
             Control scroll = new ScrollViewer { Content = body };
-            Grid.SetRow(scroll, 2);
-            g.Children.Add(nav); g.Children.Add(head); g.Children.Add(scroll);
+            Grid.SetRow(scroll, 1);
+            g.Children.Add(tabs); g.Children.Add(scroll);
             return g;
         }
 
@@ -244,36 +325,130 @@ namespace Dsht.Gui.Avalonia.Shells
         private static Control BuildMasterDetail(MainWindow host)
         {
             Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("300,*") };
-            StackPanel left = new StackPanel { Margin = new Thickness(14), Spacing = 8 };
-            left.Children.Add(SectionTitle("会话列表"));
-            left.Children.Add(MiniFilter(host));
-            left.Children.Add(host.IsSessionsSection ? MasterList(host) : TextPane(host));
+
+            StackPanel left = new StackPanel { Margin = new Thickness(14), Spacing = 10 };
+            left.Children.Add(T(host.IsSessionsSection ? "会话列表" : "页面", 13, Palette.Text, FontWeight.SemiBold));
+            if (host.IsSessionsSection)
+            {
+                left.Children.Add(Segmented(new string[] { "全部", "非空", "运行中" }, host.Filter, delegate(int i) { host.SetFilter(i); }));
+                left.Children.Add(MasterList(host));
+            }
+            else
+            {
+                for (int i = 0; i < MainWindow.NavItems.Length; i++) left.Children.Add(NavItem(host, i));
+            }
             Border leftCard = new Border
             {
-                Background = Brushes.White,
+                Background = Palette.SidebarBg,
                 BorderBrush = Palette.Border,
                 BorderThickness = new Thickness(0, 0, 1, 0),
                 Child = new ScrollViewer { Content = left }
             };
             Grid.SetColumn(leftCard, 0);
 
-            StackPanel right = new StackPanel { Margin = new Thickness(20, 16, 20, 12), Spacing = 12 };
-            right.Children.Add(new TextBlock { Text = host.PageTitle, FontSize = 24, FontWeight = FontWeight.Bold, Foreground = Palette.Text });
-            right.Children.Add(host.IsSessionsSection ? DetailCard(host) : SectionBody(host));
-            right.Children.Add(Explain());
+            StackPanel right = new StackPanel { Margin = PageMargin, Spacing = 12 };
+            right.Children.Add(PageHeader(host, false));
+            right.Children.Add(host.IsSessionsSection ? DetailCard(host) : SectionInner(host));
+            if (host.IsSessionsSection) right.Children.Add(Explain());
             Control rightScroll = new ScrollViewer { Content = right };
             Grid.SetColumn(rightScroll, 1);
             g.Children.Add(leftCard); g.Children.Add(rightScroll);
             return g;
         }
 
-        // ---------------- 共享片段 ----------------
+        // ---------------- ⑤ 混合式：侧栏主菜单 + 顶部子菜单 ----------------
 
-        private static Control Header(MainWindow host)
+        private static Control BuildHybrid(MainWindow host)
         {
-            StackPanel s = new StackPanel { Margin = new Thickness(20, 16, 20, 8), Spacing = 4 };
-            s.Children.Add(new TextBlock { Text = host.PageTitle, FontSize = 24, FontWeight = FontWeight.Bold, Foreground = Palette.Text });
-            s.Children.Add(new TextBlock { Text = host.SubtitleText, Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("232,*") };
+            Border side = new Border
+            {
+                Background = Palette.SidebarBg,
+                BorderBrush = Palette.Border,
+                BorderThickness = new Thickness(0, 0, 1, 0),
+                Child = new ScrollViewer { Content = MainMenu(host) }
+            };
+            Grid.SetColumn(side, 0);
+
+            Grid right = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto") };
+            Border subs = new Border
+            {
+                BorderBrush = Palette.Border,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(24, 10, 24, 10),
+                Child = Segmented(host.SubTabs, host.SubTab, delegate(int i) { host.SetSubTab(i); })
+            };
+            Grid.SetRow(subs, 0);
+            Control head = PageHeader(host);
+            Grid.SetRow(head, 1);
+            Control body = SectionBody(host);
+            Grid.SetRow(body, 2);
+            Control foot = Footer(host);
+            Grid.SetRow(foot, 3);
+            right.Children.Add(subs); right.Children.Add(head); right.Children.Add(body); right.Children.Add(foot);
+            Grid.SetColumn(right, 1);
+
+            g.Children.Add(side); g.Children.Add(right);
+            return g;
+        }
+
+        // ================================================================ 共享片段
+
+        private static Control NavItem(MainWindow host, int idx)
+        {
+            bool active = host.MainSection == idx;
+            Grid row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*") };
+            Border bar = new Border
+            {
+                Width = 3,
+                Height = 16,
+                CornerRadius = new CornerRadius(2),
+                Background = active ? Palette.Accent : Brushes.Transparent,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(bar, 0);
+            SymbolIcon ic = Ic(MainWindow.NavIcons[idx], 15, active ? Palette.Accent : Palette.TextDim);
+            ic.Margin = new Thickness(9, 0, 0, 0);
+            ic.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(ic, 1);
+            TextBlock tb = T(MainWindow.NavItems[idx], 13, active ? Palette.Accent : Palette.Text);
+            tb.FontWeight = active ? FontWeight.SemiBold : FontWeight.Normal;
+            tb.Margin = new Thickness(10, 0, 0, 0);
+            tb.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(tb, 2);
+            row.Children.Add(bar); row.Children.Add(ic); row.Children.Add(tb);
+
+            Button b = new Button
+            {
+                Content = row,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Background = active ? Palette.AccentSoft : Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(10, 9)
+            };
+            if (!active) Hover(b, Brushes.Transparent, Palette.CardHover);
+            b.Click += delegate { host.SetMainSection(idx); };
+            return b;
+        }
+
+        private static Control MainMenu(MainWindow host)
+        {
+            StackPanel s = new StackPanel { Margin = new Thickness(12, 16, 12, 12), Spacing = 2 };
+            s.Children.Add(new TextBlock { Text = "导航", Foreground = Palette.TextFaint, FontSize = 11, Margin = new Thickness(12, 0, 0, 8) });
+            for (int i = 0; i < MainWindow.NavItems.Length; i++) s.Children.Add(NavItem(host, i));
+            return s;
+        }
+
+        private static Control PageHeader(MainWindow host) { return PageHeader(host, true); }
+
+        private static Control PageHeader(MainWindow host, bool withMargin)
+        {
+            StackPanel s = new StackPanel { Spacing = 4 };
+            if (withMargin) s.Margin = new Thickness(24, 18, 24, 12);
+            s.Children.Add(T(host.PageTitle, 20, Palette.Text, FontWeight.SemiBold));
+            s.Children.Add(new TextBlock { Text = host.SubtitleText, Foreground = Palette.TextDim, FontSize = 12.5, TextWrapping = TextWrapping.Wrap });
             return s;
         }
 
@@ -281,78 +456,431 @@ namespace Dsht.Gui.Avalonia.Shells
         {
             return new Border
             {
-                Background = Brushes.White,
+                Background = Palette.SidebarBg,
                 BorderBrush = Palette.Border,
                 BorderThickness = new Thickness(0, 1, 0, 0),
-                Padding = new Thickness(20, 6),
+                Padding = new Thickness(24, 7),
                 Child = new TextBlock { Text = host.SourceText, Foreground = Palette.TextFaint, FontSize = 11, TextWrapping = TextWrapping.Wrap }
             };
         }
 
-        private static Control TextPane(MainWindow host)
+        /// <summary>原始标记行：头部（图标+标题+说明）+ 凹陷等宽文本区（限高内滚）。</summary>
+        private static Control RawCard(MainWindow host, string title, string caption)
         {
+            StackPanel s = new StackPanel { Spacing = 10 };
+            Grid head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+            SymbolIcon ic = Ic(Symbol.Code, 15, Palette.TextDim);
+            ic.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(ic, 0);
+            TextBlock t = T(title, 13, Palette.Text, FontWeight.SemiBold);
+            t.Margin = new Thickness(8, 0, 0, 0);
+            t.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(t, 1);
+            TextBlock cap = T(caption, 11, Palette.TextFaint);
+            cap.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(cap, 2);
+            head.Children.Add(ic); head.Children.Add(t); head.Children.Add(cap);
+            s.Children.Add(head);
+
             TextBox box = new TextBox
             {
                 IsReadOnly = true,
                 AcceptsReturn = true,
                 TextWrapping = TextWrapping.NoWrap,
                 Text = host.RawOutput,
-                FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"),
+                FontFamily = MonoFont,
+                FontSize = 11.5,
+                Foreground = Palette.TextDim,
                 Background = Brushes.Transparent,
-                BorderThickness = new Thickness(0),
-                Margin = new Thickness(16, 10, 16, 10)
+                BorderThickness = new Thickness(0)
             };
-            return new Border
+            s.Children.Add(new Border
             {
-                Background = Brushes.White,
+                Background = Palette.InsetBg,
                 CornerRadius = new CornerRadius(8),
-                BorderBrush = Palette.Border,
-                BorderThickness = new Thickness(1),
-                Margin = new Thickness(20, 0, 20, 12),
+                Padding = new Thickness(12, 10),
+                MaxHeight = 460,
                 Child = new ScrollViewer { Content = box }
-            };
+            });
+            return Card(s, new Thickness(0), new Thickness(16, 14));
         }
 
-        /// <summary>按当前主菜单项选内容：会话页=面板，形态页=profile 卡片，其余=标记行原文。</summary>
+        private static Control TextPane(MainWindow host)
+        {
+            return new Border { Margin = PageMargin, Child = RawCard(host, "原始输出", "CLI 标记行原文") };
+        }
+
+        /// <summary>按当前主菜单项选内容（带外层滚动）：会话页=面板，形态页=profile 卡片，状态页=图形化概览，其余=标记行原文。</summary>
         private static Control SectionBody(MainWindow host)
         {
-            if (host.IsSessionsSection) return new ScrollViewer { Content = ContentColumn(host) };
-            if (host.MainSection == 2) return new ScrollViewer { Content = ProfilesContent(host) };
-            if (host.MainSection == 0) return new ScrollViewer { Content = StatusContent(host) };
-            return TextPane(host);
+            return new ScrollViewer { Content = SectionInner(host) };
         }
 
-        /// <summary>形态与插件页：每个 profile 一张卡（形态徽章 + 组合包/插件清单）。</summary>
-        /// <summary>状态页（图形化）：大状态徽章 + PID/启动时间/运行时长三张卡 + 依据说明。</summary>
+        /// <summary>同 <see cref="SectionBody"/> 但不自带滚动（供已经有滚动容器的外壳用）。</summary>
+        private static Control SectionInner(MainWindow host)
+        {
+            if (host.IsSessionsSection) return SessionsContent(host);
+            if (host.MainSection == 2) return ProfilesContent(host);
+            if (host.MainSection == 0) return StatusContent(host);
+            return new Border { Margin = PageMargin, Child = RawCard(host, "原始输出", "CLI 标记行原文") };
+        }
+
+        // ================================================================ 会话与 Token
+
+        private static Control SessionsContent(MainWindow host)
+        {
+            StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
+            if (host.Data == null || !host.Data.Ok)
+            {
+                string msg = host.Data == null
+                    ? (string.IsNullOrEmpty(host.RawOutput) ? "读不到会话数据。" : host.RawOutput)
+                    : (string.IsNullOrEmpty(host.Data.FailReason) ? "没有可显示的会话。" : host.Data.FailReason);
+                StackPanel err = new StackPanel { Spacing = 8 };
+                Grid eh = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+                SymbolIcon wic = Ic(Symbol.Warning, 16, Palette.Warn);
+                wic.VerticalAlignment = VerticalAlignment.Center;
+                Grid.SetColumn(wic, 0);
+                TextBlock et = T("会话数据不可用", 13.5, Palette.Text, FontWeight.SemiBold);
+                et.Margin = new Thickness(8, 0, 0, 0);
+                et.VerticalAlignment = VerticalAlignment.Center;
+                Grid.SetColumn(et, 1);
+                eh.Children.Add(wic); eh.Children.Add(et);
+                err.Children.Add(eh);
+                err.Children.Add(new TextBlock { Text = msg, Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+                s.Children.Add(Card(err, new Thickness(0), new Thickness(18, 16)));
+                return s;
+            }
+            s.Children.Add(KpiStrip(host));
+            s.Children.Add(Toolbar(host));
+            s.Children.Add(new TextBlock { Text = host.FocusText, Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+            s.Children.Add(SessionList(host));
+            s.Children.Add(Explain());
+            return s;
+        }
+
+        private static Control KpiStrip(MainWindow host)
+        {
+            SessionsSnapshot d = host.Data;
+            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
+            g.Children.Add(KpiCard(Symbol.ChatMultiple, "会话总数", d == null ? "—" : d.Count.ToString(),
+                "非空 " + (d == null ? "—" : d.NonBlank.ToString()) + " · 运行中 " + (d == null ? "—" : d.Live.ToString()), Palette.Text, 0, -1));
+            g.Children.Add(KpiCard(Symbol.Database, "缓存命中率（越高越省钱）", PctText(d == null ? -1 : d.TotalHitPercent),
+                "缓存读 " + (d == null ? "—" : SessionRow.Human(d.TotalCacheRead)), Palette.Good, 1, d == null ? -1 : d.TotalHitPercent));
+            g.Children.Add(KpiCard(Symbol.Gauge, "解码速度（生成 token 的速度）", TpsText(d == null ? -1 : d.TotalDecodeTps),
+                "tok/s，按合计加权", Palette.Accent, 2, -1));
+            g.Children.Add(KpiCard(Symbol.DataUsage, "累计 token", d == null ? "—" : SessionRow.Human(d.TotalIn),
+                "输出 " + (d == null ? "—" : SessionRow.Human(d.TotalOut)) + " · 输入含缓存读", Palette.Text, 3, -1));
+            return g;
+        }
+
+        private static Control KpiCard(Symbol icon, string title, string value, string sub, IBrush valueBrush, int col, double barPercent)
+        {
+            StackPanel s = new StackPanel();
+            Grid head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+            Border tile = SoftTile(icon, Palette.Accent, Palette.AccentSoft, 30, 15);
+            Grid.SetColumn(tile, 0);
+            TextBlock label = new TextBlock { Text = title, Foreground = Palette.TextDim, FontSize = 11.5, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
+            Grid.SetColumn(label, 1);
+            head.Children.Add(tile); head.Children.Add(label);
+            s.Children.Add(head);
+            s.Children.Add(new TextBlock { Text = value, FontSize = 24, FontWeight = FontWeight.SemiBold, Foreground = valueBrush, Margin = new Thickness(0, 8, 0, 0) });
+            s.Children.Add(new TextBlock { Text = sub, Foreground = Palette.TextFaint, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) });
+            if (barPercent >= 0)
+            {
+                int level = barPercent >= 90 ? 3 : (barPercent >= 70 ? 2 : 1);
+                Border slot = new Border { Margin = new Thickness(0, 8, 0, 0), Child = Meter(barPercent, Palette.HitBrush(level), 4) };
+                s.Children.Add(slot);
+            }
+            Border card = Card(s, new Thickness(0, 0, col == 3 ? 0 : 12, 0), new Thickness(16, 14));
+            Grid.SetColumn(card, col);
+            return card;
+        }
+
+        private static Control Toolbar(MainWindow host)
+        {
+            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+            Control filters = Segmented(new string[] { "全部", "非空", "运行中" }, host.Filter, delegate(int i) { host.SetFilter(i); });
+            Grid.SetColumn(filters, 0);
+
+            StackPanel sorts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(14, 0, 0, 0), HorizontalAlignment = HorizontalAlignment.Right };
+            TextBlock sl = T("排序", 12, Palette.TextDim);
+            sl.VerticalAlignment = VerticalAlignment.Center;
+            sorts.Children.Add(sl);
+            ComboBox box = new ComboBox { MinWidth = 180, SelectedIndex = host.SortMode, FontSize = 12.5 };
+            box.Items.Add("最后活动（新→旧）");
+            box.Items.Add("输入 token（多→少）");
+            box.Items.Add("缓存命中率（低→高）");
+            box.Items.Add("上下文压力（高→低）");
+            box.Items.Add("解码速度（快→慢）");
+            box.SelectionChanged += delegate { host.SortMode = box.SelectedIndex; host.Rerender(); };
+            sorts.Children.Add(box);
+            Grid.SetColumn(sorts, 1);
+
+            StackPanel rc = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            SymbolIcon ric = Ic(Symbol.ArrowClockwise, 14, Palette.TextDim);
+            ric.VerticalAlignment = VerticalAlignment.Center;
+            rc.Children.Add(ric);
+            TextBlock rt = T("刷新", 12.5, Palette.Text);
+            rt.VerticalAlignment = VerticalAlignment.Center;
+            rc.Children.Add(rt);
+            Button refresh = GhostButton(rc, delegate { host.Refresh(); }, true);
+            Grid.SetColumn(refresh, 2);
+
+            g.Children.Add(filters); g.Children.Add(sorts); g.Children.Add(refresh);
+            return g;
+        }
+
+        /// <summary>按当前风格选会话列表形态：C=紧凑行（密度优先），D=大条形卡片，其余=标准卡片。</summary>
+        private static Control SessionList(MainWindow host)
+        {
+            if (Palette.Compact)
+            {
+                ItemsControl list = new ItemsControl();
+                list.ItemsSource = host.Rows;
+                list.ItemTemplate = new FuncDataTemplate<SessionRowVm>(delegate(SessionRowVm vm, INameScope ns) { return SessionRowCompact(vm); });
+                Border card = Card(list, new Thickness(0), new Thickness(0));
+                card.ClipToBounds = true;
+                return card;
+            }
+            ItemsControl cards = new ItemsControl();
+            cards.ItemsSource = host.Rows;
+            cards.ItemTemplate = new FuncDataTemplate<SessionRowVm>(delegate(SessionRowVm vm, INameScope ns)
+            {
+                return Palette.StyleKind == 3 ? SessionCardDash(vm) : SessionCard(vm);
+            });
+            return cards;
+        }
+
+        /// <summary>标准会话卡片：状态点 + 标题/元信息 + 三个指标块（标签+数值+比例条）。</summary>
+        private static Control SessionCard(SessionRowVm vm)
+        {
+            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,170,170,170") };
+
+            Ellipse dot = new Ellipse { Width = 9, Height = 9, Fill = vm.StatusBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+            ToolTip.SetTip(dot, vm.StatusText);
+            Grid.SetColumn(dot, 0);
+
+            StackPanel mid = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+            mid.Children.Add(new TextBlock { Text = vm.TitleText, Foreground = Palette.Text, FontSize = 13.5, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+            mid.Children.Add(new TextBlock { Text = vm.ShortId + " · " + vm.MetaText, Foreground = Palette.TextDim, FontSize = 11.5, Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
+            mid.Children.Add(new TextBlock { Text = vm.DecodeLine, Foreground = Palette.TextFaint, FontSize = 11, Margin = new Thickness(0, 2, 0, 0) });
+            Grid.SetColumn(mid, 1);
+
+            Control m1 = Metric("输入 token", vm.InText, vm.TokenBar, Palette.Text);
+            Control m2 = Metric("缓存命中", vm.HitText, vm.HitBar, vm.HitBrush);
+            Control m3 = Metric("上下文压力", vm.CtxText, vm.CtxBar, vm.CtxBrush);
+            Grid.SetColumn(m1, 2); Grid.SetColumn(m2, 3); Grid.SetColumn(m3, 4);
+            g.Children.Add(dot); g.Children.Add(mid); g.Children.Add(m1); g.Children.Add(m2); g.Children.Add(m3);
+
+            Border card = Card(g, new Thickness(0, 0, 0, 8), new Thickness(16, 13));
+            Hover(card, Palette.CardBg, Palette.CardHover);
+            return card;
+        }
+
+        private static Control Metric(string label, string value, double pct, IBrush brush)
+        {
+            StackPanel s = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
+            Grid top = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            TextBlock l = T(label, 10.5, Palette.TextFaint);
+            Grid.SetColumn(l, 0);
+            TextBlock v = T(value, 12, brush, FontWeight.SemiBold);
+            Grid.SetColumn(v, 1);
+            top.Children.Add(l); top.Children.Add(v);
+            s.Children.Add(top);
+            s.Children.Add(new Border { Margin = new Thickness(0, 5, 0, 0), Child = Meter(pct, brush, 4) });
+            return s;
+        }
+
+        /// <summary>C · 深色紧凑：单行会话（发卡线分隔，信息密度优先，无条形）。</summary>
+        private static Control SessionRowCompact(SessionRowVm vm)
+        {
+            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("86,*,110,110,120,120"), VerticalAlignment = VerticalAlignment.Center };
+            TextBlock id = Mono(vm.ShortId, 11, Palette.TextFaint);
+            id.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(id, 0);
+            TextBlock title = new TextBlock { Text = vm.TitleText, FontSize = 12, Foreground = Palette.Text, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(title, 1);
+            TextBlock turns = new TextBlock { Text = vm.MetaText, FontSize = 11, Foreground = Palette.TextDim, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(turns, 2);
+            TextBlock tin = new TextBlock { Text = vm.InText, FontSize = 12, Foreground = Palette.Text, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(tin, 3);
+            TextBlock hit = new TextBlock { Text = vm.HitText, FontSize = 12, Foreground = vm.HitBrush, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(hit, 4);
+            TextBlock dec = new TextBlock { Text = vm.DecodeText, FontSize = 12, Foreground = Palette.TextDim, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(dec, 5);
+            g.Children.Add(id); g.Children.Add(title); g.Children.Add(turns); g.Children.Add(tin); g.Children.Add(hit); g.Children.Add(dec);
+            Border row = new Border
+            {
+                Background = Brushes.Transparent,
+                BorderBrush = Palette.Border,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(14, 7),
+                Child = g
+            };
+            Hover(row, Brushes.Transparent, Palette.CardHover);
+            return row;
+        }
+
+        /// <summary>D · 浅色仪表盘：把可视化放大 —— 标题行 + 三行大比例条。</summary>
+        private static Control SessionCardDash(SessionRowVm vm)
+        {
+            StackPanel s = new StackPanel { Spacing = 8 };
+            Grid head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+            Ellipse dot = new Ellipse { Width = 9, Height = 9, Fill = vm.StatusBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+            Grid.SetColumn(dot, 0);
+            TextBlock title = new TextBlock { Text = vm.TitleText, FontSize = 13.5, FontWeight = FontWeight.SemiBold, Foreground = Palette.Text, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(title, 1);
+            TextBlock st = T(vm.StatusText, 11, Palette.TextDim);
+            st.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(st, 2);
+            head.Children.Add(dot); head.Children.Add(title); head.Children.Add(st);
+            s.Children.Add(head);
+            s.Children.Add(new TextBlock { Text = vm.ShortId + " · " + vm.MetaText + " · " + vm.DecodeLine, FontSize = 11, Foreground = Palette.TextFaint, TextTrimming = TextTrimming.CharacterEllipsis });
+            s.Children.Add(DashMeter("输入 token", vm.InText, vm.TokenBar, vm.TokenBrush));
+            s.Children.Add(DashMeter("缓存命中", vm.HitText, vm.HitBar, vm.HitBrush));
+            s.Children.Add(DashMeter("上下文压力", vm.CtxText, vm.CtxBar, vm.CtxBrush));
+            Border card = Card(s, new Thickness(0, 0, 0, 10), new Thickness(18, 14));
+            Hover(card, Palette.CardBg, Palette.CardHover);
+            return card;
+        }
+
+        private static Control DashMeter(string label, string value, double pct, IBrush brush)
+        {
+            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("92,*,76") };
+            TextBlock l = T(label, 11, Palette.TextDim);
+            l.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(l, 0);
+            Border m = new Border { VerticalAlignment = VerticalAlignment.Center, Child = Meter(pct, brush, 7) };
+            Grid.SetColumn(m, 1);
+            TextBlock v = T(value, 11.5, brush, FontWeight.SemiBold);
+            v.HorizontalAlignment = HorizontalAlignment.Right;
+            Grid.SetColumn(v, 2);
+            g.Children.Add(l); g.Children.Add(m); g.Children.Add(v);
+            return g;
+        }
+
+        private static Control CardGridBody(MainWindow host)
+        {
+            WrapPanel wrap = new WrapPanel { Orientation = Orientation.Horizontal };
+            for (int i = 0; i < host.Rows.Count; i++)
+            {
+                Border card = (Border)SessionCardDash(host.Rows[i]);
+                card.Margin = new Thickness(0, 0, 12, 12);
+                card.Width = 340;
+                wrap.Children.Add(card);
+            }
+            return wrap;
+        }
+
+        // ================================================================ 主从式明细
+
+        private static Control MasterList(MainWindow host)
+        {
+            ListBox box = new ListBox { ItemsSource = host.Rows, SelectedIndex = host.Rows.Count > 0 ? 0 : -1, Background = Brushes.Transparent, BorderThickness = new Thickness(0) };
+            box.ItemTemplate = new FuncDataTemplate<SessionRowVm>(delegate(SessionRowVm vm, INameScope ns)
+            {
+                StackPanel s = new StackPanel { Spacing = 3 };
+                Grid row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+                Ellipse dot = new Ellipse { Width = 8, Height = 8, Fill = vm.StatusBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+                Grid.SetColumn(dot, 0);
+                TextBlock title = new TextBlock { Text = vm.TitleText, FontSize = 12.5, Foreground = Palette.Text, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(title, 1);
+                row.Children.Add(dot); row.Children.Add(title);
+                s.Children.Add(row);
+                s.Children.Add(new TextBlock { Text = vm.ShortId + " · " + vm.HitText + " 命中", FontSize = 11, Foreground = Palette.TextDim, Margin = new Thickness(16, 0, 0, 0) });
+                return s;
+            });
+            box.SelectionChanged += delegate { host.ShowDetail(box.SelectedItem as SessionRowVm); };
+            host.ShowDetail(host.Rows.Count > 0 ? host.Rows[0] : null);
+            return box;
+        }
+
+        private static Control DetailCard(MainWindow host)
+        {
+            StackPanel s = new StackPanel { Spacing = 12 };
+            host.DetailHost = s;
+            s.Children.Add(T("（左侧选一个会话）", 12, Palette.TextFaint));
+            return Card(s, new Thickness(0), new Thickness(18, 16));
+        }
+
+        public static void FillDetail(StackPanel host, SessionRowVm vm)
+        {
+            if (host == null) return;
+            host.Children.Clear();
+            if (vm == null)
+            {
+                host.Children.Add(T("（左侧选一个会话）", 12, Palette.TextFaint));
+                return;
+            }
+            host.Children.Add(Mono(vm.ShortId, 20, Palette.Text));
+            StackPanel meta = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            meta.Children.Add(Chip(vm.StatusText, vm.StatusBrush, Palette.SoftOf(vm.StatusBrush)));
+            TextBlock mt = T(vm.MetaText, 12, Palette.TextDim);
+            mt.VerticalAlignment = VerticalAlignment.Center;
+            meta.Children.Add(mt);
+            host.Children.Add(meta);
+            host.Children.Add(new Border { Height = 1, Background = Palette.Border, Margin = new Thickness(0, 4, 0, 4) });
+            host.Children.Add(KpiRow("输入 token", vm.InText, vm.TokenBar, vm.TokenBrush));
+            host.Children.Add(KpiRow("缓存命中率", vm.HitText, vm.HitBar, vm.HitBrush));
+            host.Children.Add(KpiRow("上下文压力", vm.CtxText, vm.CtxBar, vm.CtxBrush));
+            host.Children.Add(new Border { Height = 1, Background = Palette.Border, Margin = new Thickness(0, 4, 0, 4) });
+            host.Children.Add(T("解码速度 " + vm.DecodeText + "　首 token " + vm.TtftText, 12, Palette.TextDim));
+            host.Children.Add(T("缓存读 " + vm.CacheReadText, 11, Palette.TextFaint));
+        }
+
+        private static Control KpiRow(string label, string value, double percent, IBrush brush)
+        {
+            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("96,110,*") };
+            TextBlock l = T(label, 12, Palette.TextDim);
+            l.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(l, 0);
+            TextBlock v = T(value, 14, brush, FontWeight.SemiBold);
+            v.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(v, 1);
+            Border m = new Border { VerticalAlignment = VerticalAlignment.Center, Child = Meter(percent, brush, 6) };
+            Grid.SetColumn(m, 2);
+            g.Children.Add(l); g.Children.Add(v); g.Children.Add(m);
+            return g;
+        }
+
+        // ================================================================ 状态（概览）
+
         private static Control StatusContent(MainWindow host)
         {
             StatusSnapshot st = host.Status;
-            StackPanel s = new StackPanel { Margin = new Thickness(20, 0, 20, 12), Spacing = 12 };
+            StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
             if (st == null || !st.Ok)
             {
-                s.Children.Add(Card(new TextBlock { Text = "读不到状态（CLI 未返回 STATUS_* 标记）。", Foreground = Palette.TextDim, FontSize = 12 }, new Thickness(0), new Thickness(16, 14)));
+                s.Children.Add(Card(new TextBlock { Text = "读不到状态（CLI 未返回 STATUS_* 标记）。", Foreground = Palette.TextDim, FontSize = 12 }, new Thickness(0), new Thickness(18, 16)));
                 return s;
             }
+
+            // —— 状态 hero ——
             IBrush stateBrush = st.State == 0 ? Palette.Good : (st.State == 1 ? Palette.Warn : Palette.Bad);
-            StackPanel hero = new StackPanel { Spacing = 6 };
-            StackPanel head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-            head.Children.Add(new Ellipse { Width = 16, Height = 16, Fill = stateBrush, VerticalAlignment = VerticalAlignment.Center });
-            head.Children.Add(new TextBlock { Text = st.StateText, FontSize = 34, FontWeight = FontWeight.Bold, Foreground = stateBrush, VerticalAlignment = VerticalAlignment.Center });
-            hero.Children.Add(head);
-            hero.Children.Add(new TextBlock
+            Grid hero = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+            Grid halo = new Grid { Width = 44, Height = 44, VerticalAlignment = VerticalAlignment.Center };
+            halo.Children.Add(new Ellipse { Width = 44, Height = 44, Fill = Palette.SoftOf(stateBrush) });
+            halo.Children.Add(new Ellipse { Width = 14, Height = 14, Fill = stateBrush, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+            Grid.SetColumn(halo, 0);
+            StackPanel ht = new StackPanel { Margin = new Thickness(14, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Spacing = 4 };
+            ht.Children.Add(T(st.StateText, 26, stateBrush, FontWeight.SemiBold));
+            ht.Children.Add(new TextBlock
             {
                 Text = "依据只来自可观测事实：本地端口是否监听 + 进程是否存在。dsh 换了形态（例如 headless 没有端口）时，这里会如实显示未运行，而不是假装就绪。",
                 Foreground = Palette.TextDim,
                 FontSize = 12,
                 TextWrapping = TextWrapping.Wrap
             });
+            Grid.SetColumn(ht, 1);
+            hero.Children.Add(halo); hero.Children.Add(ht);
             s.Children.Add(Card(hero, new Thickness(0), new Thickness(18, 16)));
 
-            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") };
-            g.Children.Add(BigStat("进程 PID", string.IsNullOrEmpty(st.Pid) ? "—" : st.Pid, "运行 dsh 的进程号", -1, Palette.Text, 0));
-            g.Children.Add(BigStat("启动时间", string.IsNullOrEmpty(st.Start) ? "—" : st.Start, "dsh 启动的时刻", -1, Palette.Text, 1));
-            g.Children.Add(BigStat("已运行", string.IsNullOrEmpty(st.Uptime) ? "—" : st.Uptime, "从启动到现在", -1, Palette.Accent, 2));
-            s.Children.Add(g);
+            // —— 运行时事实 ——
+            Grid facts = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") };
+            facts.Children.Add(StatCard(Symbol.NumberSymbol, "进程 PID", string.IsNullOrEmpty(st.Pid) ? "—" : st.Pid, "运行 dsh 的进程号", Palette.Text, -1, 0));
+            facts.Children.Add(StatCard(Symbol.Calendar, "启动时间", string.IsNullOrEmpty(st.Start) ? "—" : st.Start, "dsh 启动的时刻", Palette.Text, -1, 1));
+            facts.Children.Add(StatCard(Symbol.Clock, "已运行", string.IsNullOrEmpty(st.Uptime) ? "—" : st.Uptime, "从启动到现在", Palette.Accent, -1, 2));
+            s.Children.Add(facts);
 
             // —— 总览指标（把其它页的要点也摆到这里，省得来回点）——
             ProfilesSnapshot pf = host.Profiles;
@@ -366,43 +894,102 @@ namespace Dsht.Gui.Avalonia.Shells
                 formText = pf.Profiles[0].FormText;
             }
             Grid row1 = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
-            row1.Children.Add(BigStat("当前形态", formText, "来自 profile 的 dsh.profile.bundles", -1, Palette.Text, 0));
-            row1.Children.Add(BigStat("profile / 插件", (pf == null ? "—" : pf.Count.ToString()) + " / " + thirdCount, bundleCount + " 个组合包（含官方）", -1, Palette.Text, 1));
-            row1.Children.Add(BigStat("会话", se == null ? "—" : se.Count.ToString(), "非空 " + (se == null ? "—" : se.NonBlank.ToString()) + " · 运行中 " + (se == null ? "—" : se.Live.ToString()), -1, Palette.Text, 2));
-            row1.Children.Add(BigStat("累计输入 token", se == null ? "—" : SessionRow.Human(se.TotalIn), "输出 " + (se == null ? "—" : SessionRow.Human(se.TotalOut)), -1, Palette.Text, 3));
+            row1.Children.Add(StatCard(Symbol.Box, "当前形态", formText, "来自 profile 的 dsh.profile.bundles", Palette.Text, -1, 0));
+            row1.Children.Add(StatCard(Symbol.PuzzlePiece, "profile / 插件", (pf == null ? "—" : pf.Count.ToString()) + " / " + thirdCount, bundleCount + " 个组合包（含官方）", Palette.Text, -1, 1));
+            row1.Children.Add(StatCard(Symbol.ChatMultiple, "会话", se == null ? "—" : se.Count.ToString(), "非空 " + (se == null ? "—" : se.NonBlank.ToString()) + " · 运行中 " + (se == null ? "—" : se.Live.ToString()), Palette.Text, -1, 2));
+            row1.Children.Add(StatCard(Symbol.DataUsage, "累计输入 token", se == null ? "—" : SessionRow.Human(se.TotalIn), "输出 " + (se == null ? "—" : SessionRow.Human(se.TotalOut)), Palette.Text, -1, 3));
             s.Children.Add(row1);
 
             Grid row2 = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
-            row2.Children.Add(BigStat("缓存命中率", se == null ? "—" : PctText(se.TotalHitPercent), "越高越省钱", se == null ? -1 : se.TotalHitPercent, Palette.Good, 0));
-            row2.Children.Add(BigStat("解码速度", se == null ? "—" : TpsText(se.TotalDecodeTps), "tok/s（按合计加权）", -1, Palette.Accent, 1));
-            row2.Children.Add(BigStat("备份", bk == null || !bk.Ok ? "—" : bk.Count.ToString(), "份（backup-list）", -1, Palette.Text, 2));
-            row2.Children.Add(BigStat("体检", dc == null || !dc.Ok ? "未运行" : dc.Headline, "点下面按钮运行 doctor", -1, dc != null && dc.Error > 0 ? Palette.Bad : (dc != null && dc.Warn > 0 ? Palette.Warn : Palette.Good), 3));
+            row2.Children.Add(StatCard(Symbol.Database, "缓存命中率", se == null ? "—" : PctText(se.TotalHitPercent), "越高越省钱", Palette.Good, se == null ? -1 : se.TotalHitPercent, 0));
+            row2.Children.Add(StatCard(Symbol.Gauge, "解码速度", se == null ? "—" : TpsText(se.TotalDecodeTps), "tok/s（按合计加权）", Palette.Accent, -1, 1));
+            row2.Children.Add(StatCard(Symbol.Archive, "备份", bk == null || !bk.Ok ? "—" : bk.Count.ToString(), "份（backup-list）", Palette.Text, -1, 2));
+            row2.Children.Add(StatCard(Symbol.Stethoscope, "体检", dc == null || !dc.Ok ? "未运行" : dc.Headline, "点下面按钮运行 doctor", dc != null && dc.Error > 0 ? Palette.Bad : (dc != null && dc.Warn > 0 ? Palette.Warn : Palette.Good), -1, 3));
             s.Children.Add(row2);
 
             // —— 快捷入口 ——
-            StackPanel jumps = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            jumps.Children.Add(new TextBlock { Text = "快捷入口", FontSize = 12, Foreground = Palette.TextDim, VerticalAlignment = VerticalAlignment.Center });
-            jumps.Children.Add(JumpButton("会话与 Token", 1, host));
-            jumps.Children.Add(JumpButton("形态与插件", 2, host));
-            jumps.Children.Add(JumpButton("备份", 3, host));
-            jumps.Children.Add(JumpButton("体检", 4, host));
-            jumps.Children.Add(JumpButton("配置", 5, host));
+            Grid jumps = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*,*") };
+            int[] targets = new int[] { 1, 2, 3, 4, 5 };
+            for (int i = 0; i < targets.Length; i++)
+            {
+                Control jc = JumpCard(host, targets[i], i == targets.Length - 1);
+                Grid.SetColumn(jc, i);
+                jumps.Children.Add(jc);
+            }
             s.Children.Add(jumps);
+
             if (st.Extras.Count > 0)
             {
-                StackPanel ex = new StackPanel { Spacing = 4 };
-                ex.Children.Add(new TextBlock { Text = "CLI 还报告了这些（未识别的标记原样展示）", FontSize = 12, Foreground = Palette.TextDim });
+                StackPanel ex = new StackPanel { Spacing = 6 };
+                ex.Children.Add(T("CLI 还报告了这些（未识别的标记原样展示）", 12, Palette.TextDim));
                 for (int i = 0; i < st.Extras.Count; i++)
-                    ex.Children.Add(new TextBlock { Text = st.Extras[i].Key + "　" + st.Extras[i].Value, FontSize = 12, Foreground = Palette.Text });
+                    ex.Children.Add(Mono(st.Extras[i].Key + "  " + st.Extras[i].Value, 11.5, Palette.Text));
                 s.Children.Add(Card(ex, new Thickness(0), new Thickness(16, 14)));
             }
-            s.Children.Add(Card(new TextBlock { Text = host.RawOutput, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"), FontSize = 11, Foreground = Palette.TextFaint, TextWrapping = TextWrapping.Wrap }, new Thickness(0), new Thickness(16, 12)));
+            s.Children.Add(RawCard(host, "原始标记行", "status --detail 的 CLI 输出原文"));
             return s;
         }
+
+        private static Control StatCard(Symbol icon, string label, string value, string sub, IBrush valueBrush, double pct, int col)
+        {
+            StackPanel s = new StackPanel();
+            Grid head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+            Border tile = SoftTile(icon, Palette.Accent, Palette.AccentSoft, 30, 15);
+            Grid.SetColumn(tile, 0);
+            TextBlock l = new TextBlock { Text = label, FontSize = 11.5, Foreground = Palette.TextDim, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0), TextWrapping = TextWrapping.Wrap };
+            Grid.SetColumn(l, 1);
+            head.Children.Add(tile); head.Children.Add(l);
+            s.Children.Add(head);
+            s.Children.Add(new TextBlock { Text = value, FontSize = 22, FontWeight = FontWeight.SemiBold, Foreground = valueBrush, Margin = new Thickness(0, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
+            s.Children.Add(new TextBlock { Text = sub, FontSize = 11, Foreground = Palette.TextFaint, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap });
+            if (pct >= 0)
+            {
+                int level = pct >= 90 ? 3 : (pct >= 70 ? 2 : 1);
+                s.Children.Add(new Border { Margin = new Thickness(0, 8, 0, 0), Child = Meter(pct, Palette.HitBrush(level), 4) });
+            }
+            Border card = Card(s, new Thickness(0, 0, 0, 0), new Thickness(16, 14));
+            card.Margin = new Thickness(0);
+            Grid.SetColumn(card, col);
+            return card;
+        }
+
+        private static Control JumpCard(MainWindow host, int section, bool last)
+        {
+            Grid row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+            Border tile = SoftTile(MainWindow.NavIcons[section], Palette.Accent, Palette.AccentSoft, 32, 16);
+            Grid.SetColumn(tile, 0);
+            TextBlock label = T(MainWindow.NavItems[section], 13, Palette.Text, FontWeight.SemiBold);
+            label.Margin = new Thickness(10, 0, 0, 0);
+            label.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(label, 1);
+            SymbolIcon chev = Ic(Symbol.ChevronRight, 13, Palette.TextFaint);
+            chev.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(chev, 2);
+            row.Children.Add(tile); row.Children.Add(label); row.Children.Add(chev);
+
+            Button b = new Button
+            {
+                Content = row,
+                Background = Palette.CardBg,
+                BorderBrush = Palette.Border,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(12),
+                Padding = new Thickness(14, 12),
+                HorizontalContentAlignment = HorizontalAlignment.Left
+            };
+            Hover(b, Palette.CardBg, Palette.CardHover);
+            b.Click += delegate { host.SetMainSection(section); };
+            Border wrap = new Border { Margin = new Thickness(0, 0, last ? 0 : 12, 0), CornerRadius = new CornerRadius(12), Child = b };
+            if (Palette.CardShadow.Length > 0) wrap.BoxShadow = BoxShadows.Parse(Palette.CardShadow);
+            return wrap;
+        }
+
+        // ================================================================ 形态与插件
+
         private static Control ProfilesContent(MainWindow host)
         {
             ProfilesSnapshot d = host.Profiles;
-            StackPanel s = new StackPanel { Margin = new Thickness(20, 0, 20, 12), Spacing = 10 };
+            StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 12 };
             if (d == null || !d.Ok)
             {
                 s.Children.Add(Card(new TextBlock
@@ -411,7 +998,7 @@ namespace Dsht.Gui.Avalonia.Shells
                     Foreground = Palette.TextDim,
                     FontSize = 12,
                     TextWrapping = TextWrapping.Wrap
-                }, new Thickness(0), new Thickness(16, 14)));
+                }, new Thickness(0), new Thickness(18, 16)));
                 return s;
             }
             int totalBundles = 0; int totalThird = 0;
@@ -421,381 +1008,229 @@ namespace Dsht.Gui.Avalonia.Shells
                 Text = d.Count + " 个 profile · " + totalBundles + " 个组合包 · 其中第三方插件 " + totalThird + " 个（数据来自各 profile 的 package.json 里 dsh.profile.bundles）",
                 Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap
             });
-            StackPanel tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            tools.Children.Add(FilterChip("全部", 0, host));
-            tools.Children.Add(FilterChip("只看第三方", 1, host));
-            tools.Children.Add(FilterChip("只看官方", 2, host));
-            TextBox search = new TextBox { Watermark = "搜索 profile 或插件 id…", Width = 240, Text = host.ProfileSearch };
-            search.TextChanged += delegate { host.SetProfileSearch(search.Text); };
-            tools.Children.Add(search);
-            s.Children.Add(tools);
-            StackPanel health = new StackPanel { Spacing = 6 };
-            StackPanel hrow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            Button hb = new Button { Content = "运行健康检查（profilecheck）" };
-            hb.Click += delegate { host.LoadHealth(); };
-            hrow.Children.Add(hb);
-            hrow.Children.Add(new TextBlock { Text = "检查 profile 的语法/重复 id/缺字段，并给出处方", FontSize = 11, Foreground = Palette.TextFaint, VerticalAlignment = VerticalAlignment.Center });
-            health.Children.Add(hrow);
-            if (!string.IsNullOrEmpty(host.Health))
-                health.Children.Add(new TextBlock { Text = host.Health, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"), FontSize = 11, Foreground = Palette.TextDim, TextWrapping = TextWrapping.Wrap });
-            s.Children.Add(Card(health, new Thickness(0), new Thickness(16, 14)));
-            for (int i = 0; i < d.Profiles.Count; i++)
+
+            // —— 工具行：过滤 + 搜索（搜索框就地刷新下面的卡片列表，不重建整页，避免输入框丢焦点）——
+            Grid tools = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+            Control chips = Segmented(new string[] { "全部", "只看第三方", "只看官方" }, host.ProfilesFilter, delegate(int i) { host.SetProfilesFilter(i); });
+            Grid.SetColumn(chips, 0);
+            TextBox search = new TextBox
             {
-                ProfileCard p = d.Profiles[i];
-                StackPanel card = new StackPanel { Spacing = 8 };
-                StackPanel head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-                head.Children.Add(new TextBlock { Text = p.Name, FontSize = 17, FontWeight = FontWeight.Bold, Foreground = Palette.Text, VerticalAlignment = VerticalAlignment.Center });
-                head.Children.Add(new Border
-                {
-                    Background = Palette.FormBrush(p.FormKind),
-                    CornerRadius = new CornerRadius(9),
-                    Padding = new Thickness(9, 3),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Child = new TextBlock { Text = p.FormText, Foreground = Brushes.White, FontSize = 11 }
-                });
-                head.Children.Add(new TextBlock { Text = p.CountText, Foreground = Palette.TextDim, FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
-                card.Children.Add(head);
-                if (p.Disabled.Count > 0)
-                {
-                    StackPanel dis = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-                    dis.Children.Add(new TextBlock { Text = "已隔离：" + string.Join("、", p.Disabled.ToArray()), FontSize = 12, Foreground = Palette.Warn, VerticalAlignment = VerticalAlignment.Center });
-                    for (int k = 0; k < p.Disabled.Count; k++)
-                    {
-                        string id = p.Disabled[k];
-                        Button back = new Button { Content = "恢复 " + id, FontSize = 11, Padding = new Thickness(8, 2) };
-                        back.Click += delegate { host.PatchEntry(p.Name, id, false); };
-                        dis.Children.Add(back);
-                    }
-                    card.Children.Add(dis);
-                }
-                for (int b = 0; b < p.Items.Count; b++)
-                {
-                    BundleItem it = p.Items[b];
-                    StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-                    row.Children.Add(new Border
-                    {
-                        Background = it.Official ? Palette.AccentSoft : Palette.WarnSoft,
-                        CornerRadius = new CornerRadius(4),
-                        Padding = new Thickness(6, 1),
-                        Child = new TextBlock { Text = it.KindText, FontSize = 10, Foreground = it.Official ? Palette.Accent : Palette.Warn }
-                    });
-                    row.Children.Add(new TextBlock { Text = it.Id, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"), FontSize = 12, Foreground = Palette.Text, VerticalAlignment = VerticalAlignment.Center });
-                    card.Children.Add(row);
-                }
-                s.Children.Add(Card(card, new Thickness(0), new Thickness(16, 14)));
-            }
+                Watermark = "搜索 profile 或插件 id…",
+                Width = 260,
+                Text = host.ProfileSearch,
+                Background = Palette.InsetBg,
+                BorderBrush = Palette.Border,
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(10, 6),
+                FontSize = 12.5,
+                Foreground = Palette.Text
+            };
+            Grid.SetColumn(search, 2);
+            tools.Children.Add(chips); tools.Children.Add(search);
+            s.Children.Add(tools);
+
+            s.Children.Add(HealthCard(host));
+
+            StackPanel cardHost = new StackPanel { Spacing = 12 };
+            search.TextChanged += delegate
+            {
+                host.ProfileSearch = search.Text == null ? "" : search.Text;
+                RebuildProfileCards(cardHost, host);
+            };
+            RebuildProfileCards(cardHost, host);
+            s.Children.Add(cardHost);
+
             s.Children.Add(Card(new StackPanel
             {
                 Spacing = 6,
                 Children =
                 {
-                    new TextBlock { Text = "这一页怎么读？", FontSize = 14, FontWeight = FontWeight.Bold, Foreground = Palette.Text },
+                    T("这一页怎么读？", 13.5, Palette.Text, FontWeight.SemiBold),
                     Line("• 形态来自每个 profile 的 package.json 里 dsh.profile.bundles：启用 dsh-web-app = Web，dsh-headless = Headless（没有端口），dsh-acp-app = ACP。"),
                     Line("• 这是**配置形态**，不是运行形态 —— 「dsh 在跑」仍然由端口/进程等运行时事实判断（状态页看）。"),
                     Line("• 官方 = @deepseek-ai/* 的组合包；第三方 = 你自己加的插件（例如 dsh-web-search-tavily）。")
                 }
-            }, new Thickness(0), new Thickness(16, 14)));
-            return s;
-        }
-        private static Control ContentColumn(MainWindow host)
-        {
-            StackPanel s = new StackPanel { Margin = new Thickness(20, 0, 20, 12), Spacing = 12 };
-            s.Children.Add(KpiStrip(host));
-            s.Children.Add(Toolbar(host));
-            s.Children.Add(FocusLine(host));
-            s.Children.Add(SessionCardList(host));
-            s.Children.Add(Explain());
+            }, new Thickness(0), new Thickness(18, 16)));
             return s;
         }
 
-        private static Control FocusLine(MainWindow host)
-        {
-            return new TextBlock { Text = host.FocusText, Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap };
-        }
-
-        private static Control SectionTitle(string text)
-        {
-            return new TextBlock { Text = text, FontSize = 15, FontWeight = FontWeight.Bold, Foreground = Palette.Text, Margin = new Thickness(0, 2, 0, 2) };
-        }
-
-        private static Border Card(Control child, Thickness margin, Thickness padding)
-        {
-            return new Border
-            {
-                Background = Brushes.White,
-                CornerRadius = new CornerRadius(8),
-                BorderBrush = Palette.Border,
-                BorderThickness = new Thickness(1),
-                Padding = padding,
-                Margin = margin,
-                Child = child
-            };
-        }
-
-        private static Control KpiStrip(MainWindow host)
-        {
-            SessionsSnapshot d = host.Data;
-            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
-            g.Children.Add(KpiCard("会话总数", d == null ? "—" : d.Count.ToString(), "非空 " + (d == null ? "—" : d.NonBlank.ToString()) + "　运行中 " + (d == null ? "—" : d.Live.ToString()), Palette.Text, 0, -1));
-            g.Children.Add(KpiCard("缓存命中率（越高越省钱）", PctText(d == null ? -1 : d.TotalHitPercent), "缓存读 " + (d == null ? "—" : SessionRow.Human(d.TotalCacheRead)), Palette.Good, 1, d == null ? -1 : d.TotalHitPercent));
-            g.Children.Add(KpiCard("解码速度（生成 token 的速度）", TpsText(d == null ? -1 : d.TotalDecodeTps), "tok/s，按合计加权", Palette.Accent, 2, -1));
-            g.Children.Add(KpiCard("累计 token", d == null ? "—" : SessionRow.Human(d.TotalIn), "输出 " + (d == null ? "—" : SessionRow.Human(d.TotalOut)) + "　输入含缓存读", Palette.Text, 3, -1));
-            return g;
-        }
-
-        private static Control KpiCard(string title, string value, string sub, IBrush valueBrush, int col, double barPercent)
-        {
-            StackPanel s = new StackPanel { Spacing = 2 };
-            s.Children.Add(new TextBlock { Text = title, Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap });
-            s.Children.Add(new TextBlock { Text = value, FontSize = 26, FontWeight = FontWeight.Bold, Foreground = valueBrush });
-            s.Children.Add(new TextBlock { Text = sub, Foreground = Palette.TextFaint, FontSize = 11, TextWrapping = TextWrapping.Wrap });
-            if (barPercent >= 0)
-            {
-                double w = barPercent > 100 ? 100 : barPercent;
-                int level = barPercent >= 90 ? 3 : (barPercent >= 70 ? 2 : 1);
-                Border fill = new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = Palette.HitBrush(level), HorizontalAlignment = HorizontalAlignment.Left, Width = w * 1.5 };
-                s.Children.Add(new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = Palette.BarTrack, Margin = new Thickness(0, 6, 0, 0), Child = fill });
-            }
-            Border card = Card(s, new Thickness(0, 0, col == 3 ? 0 : 12, 0), new Thickness(14, 12));
-            Grid.SetColumn(card, col);
-            return card;
-        }
-
-        private static Control Toolbar(MainWindow host)
-        {
-            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
-            StackPanel filters = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-            filters.Children.Add(FilterButton("全部", 0, host));
-            filters.Children.Add(FilterButton("非空", 1, host));
-            filters.Children.Add(FilterButton("运行中", 2, host));
-            Grid.SetColumn(filters, 0);
-            StackPanel sorts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(14, 0, 0, 0) };
-            sorts.Children.Add(new TextBlock { Text = "排序", Foreground = Palette.TextDim, FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
-            ComboBox box = new ComboBox { MinWidth = 170, SelectedIndex = host.SortMode };
-            box.Items.Add("最后活动（新→旧）");
-            box.Items.Add("输入 token（多→少）");
-            box.Items.Add("缓存命中率（低→高）");
-            box.Items.Add("上下文压力（高→低）");
-            box.Items.Add("解码速度（快→慢）");
-            box.SelectionChanged += delegate { host.SortMode = box.SelectedIndex; host.Rerender(); };
-            sorts.Children.Add(box);
-            Grid.SetColumn(sorts, 1);
-            Button refresh = new Button { Content = "⟳ 刷新" };
-            refresh.Click += delegate { host.Refresh(); };
-            Grid.SetColumn(refresh, 2);
-            g.Children.Add(filters); g.Children.Add(sorts); g.Children.Add(refresh);
-            return g;
-        }
-
-        private static Button FilterButton(string text, int mode, MainWindow host)
-        {
-            Button b = new Button { Content = text };
-            b.Click += delegate { host.SetFilter(mode); };
-            return b;
-        }
-
-        private static Control MiniFilter(MainWindow host)
-        {
-            StackPanel s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-            s.Children.Add(FilterButton("全部", 0, host));
-            s.Children.Add(FilterButton("非空", 1, host));
-            s.Children.Add(FilterButton("运行中", 2, host));
-            return s;
-        }
-
-        /// <summary>C · 深色紧凑：单行会话（信息密度优先，无条形）。</summary>
-        private static Control SessionCardCompact(SessionRowVm vm)
-        {
-            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("86,*,110,110,120,120"), VerticalAlignment = VerticalAlignment.Center };
-            TextBlock id = new TextBlock { Text = vm.ShortId, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"), FontSize = 11, Foreground = Palette.TextFaint, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(id, 0);
-            TextBlock title = new TextBlock { Text = vm.TitleText, FontSize = 12, Foreground = Palette.Text, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(title, 1);
-            TextBlock turns = new TextBlock { Text = vm.MetaText, FontSize = 11, Foreground = Palette.TextDim, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(turns, 2);
-            TextBlock tin = new TextBlock { Text = vm.InText, FontSize = 12, Foreground = Palette.Text, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(tin, 3);
-            TextBlock hit = new TextBlock { Text = vm.HitText, FontSize = 12, Foreground = vm.HitBrush, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(hit, 4);
-            TextBlock dec = new TextBlock { Text = vm.DecodeText, FontSize = 12, Foreground = Palette.TextDim, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(dec, 5);
-            g.Children.Add(id); g.Children.Add(title); g.Children.Add(turns); g.Children.Add(tin); g.Children.Add(hit); g.Children.Add(dec);
-            return new Border { Background = Palette.CardBg, CornerRadius = new CornerRadius(4), Padding = new Thickness(10, 4), Margin = new Thickness(0, 0, 0, 3), Child = g };
-        }
-
-        /// <summary>D · 浅色仪表盘：大数字 + 大条形（把可视化放大，弱化表格感）。</summary>
-        private static Control DashboardBody(MainWindow host)
-        {
-            SessionsSnapshot d = host.Data;
-            StackPanel s = new StackPanel { Spacing = 14 };
-            Grid wall = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") };
-            wall.Children.Add(BigStat("缓存命中率", PctText(d == null ? -1 : d.TotalHitPercent), "越高越省钱", d == null ? -1 : d.TotalHitPercent, Palette.Good, 0));
-            wall.Children.Add(BigStat("解码速度", TpsText(d == null ? -1 : d.TotalDecodeTps), "tok/s（按合计加权）", -1, Palette.Accent, 1));
-            wall.Children.Add(BigStat("累计输入 token", d == null ? "—" : SessionRow.Human(d.TotalIn), "含缓存读", -1, Palette.Text, 2));
-            s.Children.Add(wall);
-            for (int i = 0; i < host.Rows.Count && i < 12; i++)
-            {
-                SessionRowVm vm = host.Rows[i];
-                StackPanel card = new StackPanel { Spacing = 6 };
-                card.Children.Add(new TextBlock { Text = vm.TitleText, FontSize = 13, FontWeight = FontWeight.SemiBold, Foreground = Palette.Text, TextTrimming = TextTrimming.CharacterEllipsis });
-                card.Children.Add(new TextBlock { Text = vm.ShortId + "　" + vm.MetaText, FontSize = 11, Foreground = Palette.TextFaint });
-                card.Children.Add(BigBar("输入 token " + vm.InText, vm.TokenBar, vm.TokenBrush));
-                card.Children.Add(BigBar("缓存命中 " + vm.HitText, vm.HitBar, vm.HitBrush));
-                card.Children.Add(BigBar("上下文压力 " + vm.CtxText, vm.CtxBar, vm.CtxBrush));
-                s.Children.Add(Card(card, new Thickness(0), new Thickness(16, 12)));
-            }
-            return s;
-        }
-
-        private static Control BigStat(string label, string value, string sub, double percent, IBrush brush, int col)
-        {
-            StackPanel s = new StackPanel { Spacing = 4 };
-            s.Children.Add(new TextBlock { Text = label, FontSize = 12, Foreground = Palette.TextDim });
-            s.Children.Add(new TextBlock { Text = value, FontSize = 40, FontWeight = FontWeight.Bold, Foreground = brush });
-            s.Children.Add(new TextBlock { Text = sub, FontSize = 11, Foreground = Palette.TextFaint });
-            if (percent >= 0)
-            {
-                double w = percent > 100 ? 100 : percent;
-                int level = percent >= 90 ? 3 : (percent >= 70 ? 2 : 1);
-                Border fill = new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = Palette.HitBrush(level), HorizontalAlignment = HorizontalAlignment.Left, Width = w * 3.2 };
-                s.Children.Add(new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = Palette.BarTrack, Margin = new Thickness(0, 4, 0, 0), Child = fill });
-            }
-            Border card = Card(s, new Thickness(0, 0, col == 2 ? 0 : 12, 0), new Thickness(18, 16));
-            Grid.SetColumn(card, col);
-            return card;
-        }
-
-        private static Control BigBar(string label, double percent, IBrush brush)
-        {
-            StackPanel s = new StackPanel { Spacing = 3 };
-            s.Children.Add(new TextBlock { Text = label, FontSize = 11, Foreground = Palette.TextDim });
-            double w = percent < 0 ? 0 : (percent > 100 ? 100 : percent);
-            Border fill = new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = brush, HorizontalAlignment = HorizontalAlignment.Left, Width = w * 5.0 };
-            s.Children.Add(new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = Palette.BarTrack, Child = fill });
-            return s;
-        }
-        private static Control SessionCardList(MainWindow host)
-        {
-            ItemsControl list = new ItemsControl();
-            list.ItemsSource = host.Rows;
-            list.ItemTemplate = new FuncDataTemplate<SessionRowVm>(delegate(SessionRowVm vm, INameScope ns) { return Palette.Compact ? SessionCardCompact(vm) : SessionCard(vm); });
-            return list;
-        }
-
-        private static Control CardGridBody(MainWindow host)
-        {
-            WrapPanel wrap = new WrapPanel { Orientation = Orientation.Horizontal };
-            for (int i = 0; i < host.Rows.Count; i++)
-            {
-                Border card = (Border)SessionCard(host.Rows[i]);
-                card.Margin = new Thickness(0, 0, 12, 12);
-                card.Width = 380;
-                wrap.Children.Add(card);
-            }
-            return wrap;
-        }
-
-        private static Control SessionCard(SessionRowVm vm)
-        {
-            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("86,*,150,150,120"), VerticalAlignment = VerticalAlignment.Center };
-            StackPanel id = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
-            id.Children.Add(new TextBlock { Text = vm.ShortId, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"), Foreground = Palette.Text, FontSize = 12 });
-            StackPanel st = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-            st.Children.Add(new Ellipse { Width = 8, Height = 8, Fill = vm.StatusBrush, VerticalAlignment = VerticalAlignment.Center });
-            st.Children.Add(new TextBlock { Text = vm.StatusText, Foreground = Palette.TextDim, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
-            id.Children.Add(st);
-            Grid.SetColumn(id, 0);
-            StackPanel mid = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
-            mid.Children.Add(new TextBlock { Text = vm.TitleText, Foreground = Palette.Text, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 300 });
-            mid.Children.Add(new TextBlock { Text = vm.MetaText, Foreground = Palette.TextDim, FontSize = 11 });
-            mid.Children.Add(new TextBlock { Text = vm.DecodeLine, Foreground = Palette.TextFaint, FontSize = 11 });
-            Grid.SetColumn(mid, 1);
-            Control b1 = Bar("输入 token", vm.InText, vm.TokenBar, vm.TokenBrush);
-            Control b2 = Bar("缓存命中", vm.HitText, vm.HitBar, vm.HitBrush);
-            Control b3 = Bar("上下文压力", vm.CtxText, vm.CtxBar, vm.CtxBrush);
-            Grid.SetColumn(b1, 2); Grid.SetColumn(b2, 3); Grid.SetColumn(b3, 4);
-            g.Children.Add(id); g.Children.Add(mid); g.Children.Add(b1); g.Children.Add(b2); g.Children.Add(b3);
-            return Card(g, new Thickness(0, 0, 0, 6), new Thickness(14, 10));
-        }
-
-        private static Control Bar(string label, string value, double percent, IBrush brush)
-        {
-            StackPanel s = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
-            s.Children.Add(new TextBlock { Text = label, Foreground = Palette.TextFaint, FontSize = 10 });
-            s.Children.Add(new TextBlock { Text = value, Foreground = Palette.Text, FontSize = 12 });
-            double w = percent < 0 ? 0 : (percent > 100 ? 100 : percent);
-            Border fill = new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = brush, HorizontalAlignment = HorizontalAlignment.Left, Width = w * 1.2 };
-            s.Children.Add(new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = Palette.BarTrack, Child = fill });
-            return s;
-        }
-
-        private static Control MasterList(MainWindow host)
-        {
-            ListBox box = new ListBox { ItemsSource = host.Rows, SelectedIndex = host.Rows.Count > 0 ? 0 : -1, Background = Brushes.Transparent, BorderThickness = new Thickness(0) };
-            box.ItemTemplate = new FuncDataTemplate<SessionRowVm>(delegate(SessionRowVm vm, INameScope ns)
-            {
-                StackPanel s = new StackPanel { Spacing = 2 };
-                s.Children.Add(new TextBlock { Text = vm.ShortId, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"), FontSize = 12, Foreground = Palette.Text });
-                s.Children.Add(new TextBlock { Text = vm.StatusText + "　" + vm.HitText + " 命中", FontSize = 11, Foreground = Palette.TextDim });
-                return s;
-            });
-            box.SelectionChanged += delegate { host.ShowDetail(box.SelectedItem as SessionRowVm); };
-            host.ShowDetail(host.Rows.Count > 0 ? host.Rows[0] : null);
-            return box;
-        }
-
-        private static Control DetailCard(MainWindow host)
+        private static Control HealthCard(MainWindow host)
         {
             StackPanel s = new StackPanel { Spacing = 10 };
-            host.DetailHost = s;
-            s.Children.Add(new TextBlock { Text = "（左侧选一个会话）", Foreground = Palette.TextFaint, FontSize = 12 });
-            return Card(s, new Thickness(0), new Thickness(16, 14));
-        }
-
-        public static void FillDetail(StackPanel host, SessionRowVm vm)
-        {
-            if (host == null) return;
-            host.Children.Clear();
-            if (vm == null)
+            Grid head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+            Border tile = SoftTile(Symbol.Stethoscope, Palette.Accent, Palette.AccentSoft, 34, 17);
+            Grid.SetColumn(tile, 0);
+            StackPanel tt = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
+            tt.Children.Add(T("健康检查 · profilecheck", 13.5, Palette.Text, FontWeight.SemiBold));
+            tt.Children.Add(T("检查 profile 的语法 / 重复 id / 缺字段，并给出处方", 11.5, Palette.TextFaint));
+            Grid.SetColumn(tt, 1);
+            Button run = PrimaryButton("运行检查", delegate { host.LoadHealth(); });
+            run.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(run, 2);
+            head.Children.Add(tile); head.Children.Add(tt); head.Children.Add(run);
+            s.Children.Add(head);
+            if (!string.IsNullOrEmpty(host.Health))
             {
-                host.Children.Add(new TextBlock { Text = "（左侧选一个会话）", Foreground = Palette.TextFaint, FontSize = 12 });
-                return;
+                s.Children.Add(new Border
+                {
+                    Background = Palette.InsetBg,
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(12, 10),
+                    MaxHeight = 320,
+                    Child = new ScrollViewer
+                    {
+                        Content = new TextBlock { Text = host.Health, FontFamily = MonoFont, FontSize = 11.5, Foreground = Palette.TextDim, TextWrapping = TextWrapping.Wrap }
+                    }
+                });
             }
-            host.Children.Add(new TextBlock { Text = vm.ShortId, FontSize = 20, FontWeight = FontWeight.Bold, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"), Foreground = Palette.Text });
-            host.Children.Add(new TextBlock { Text = vm.StatusText + "　" + vm.MetaText, Foreground = Palette.TextDim, FontSize = 12 });
-            host.Children.Add(KpiRow("输入 token", vm.InText, vm.TokenBar, vm.TokenBrush));
-            host.Children.Add(KpiRow("缓存命中率", vm.HitText, vm.HitBar, vm.HitBrush));
-            host.Children.Add(KpiRow("上下文压力", vm.CtxText, vm.CtxBar, vm.CtxBrush));
-            host.Children.Add(new TextBlock { Text = "解码速度 " + vm.DecodeText + "　首 token " + vm.TtftText, Foreground = Palette.TextDim, FontSize = 12 });
-            host.Children.Add(new TextBlock { Text = "缓存读 " + vm.CacheReadText, Foreground = Palette.TextFaint, FontSize = 11 });
+            return Card(s, new Thickness(0), new Thickness(18, 16));
         }
 
-        private static Control KpiRow(string label, string value, double percent, IBrush brush)
+        /// <summary>按过滤 + 搜索条件重画 profile 卡片（只换列表，不动整页）。</summary>
+        private static void RebuildProfileCards(StackPanel cardHost, MainWindow host)
         {
-            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("120,120,*") };
-            TextBlock l = new TextBlock { Text = label, Foreground = Palette.TextDim, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(l, 0);
-            TextBlock v = new TextBlock { Text = value, Foreground = Palette.Text, FontSize = 14, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(v, 1);
-            double w = percent < 0 ? 0 : (percent > 100 ? 100 : percent);
-            Border fill = new Border { Height = 8, CornerRadius = new CornerRadius(4), Background = brush, HorizontalAlignment = HorizontalAlignment.Left, Width = w * 2.2 };
-            Border track = new Border { Height = 8, CornerRadius = new CornerRadius(4), Background = Palette.BarTrack, Child = fill, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(track, 2);
-            g.Children.Add(l); g.Children.Add(v); g.Children.Add(track);
-            return g;
+            cardHost.Children.Clear();
+            ProfilesSnapshot d = host.Profiles;
+            if (d == null || !d.Ok) return;
+            string q = (host.ProfileSearch ?? "").Trim();
+            int shown = 0;
+            for (int i = 0; i < d.Profiles.Count; i++)
+            {
+                ProfileCard p = d.Profiles[i];
+                bool nameHit = q.Length > 0 && p.Name.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0;
+                List<BundleItem> items = MatchBundles(p, host.ProfilesFilter, nameHit ? "" : q);
+                if (host.ProfilesFilter == 1 && p.ThirdParty == 0) continue;
+                if (q.Length > 0 && !nameHit && items.Count == 0) continue;
+                cardHost.Children.Add(ProfileCard(host, p, items, q));
+                shown++;
+            }
+            if (shown == 0)
+            {
+                cardHost.Children.Add(Card(T("没有匹配的 profile —— 换个关键词或过滤条件试试。", 12, Palette.TextDim), new Thickness(0), new Thickness(18, 16)));
+            }
         }
+
+        /// <summary>过滤 bundle 列表：1=只看第三方 2=只看官方；搜索词只保留 id 命中的条目。</summary>
+        private static List<BundleItem> MatchBundles(ProfileCard p, int filter, string q)
+        {
+            List<BundleItem> r = new List<BundleItem>();
+            for (int i = 0; i < p.Items.Count; i++)
+            {
+                BundleItem it = p.Items[i];
+                if (filter == 1 && it.Official) continue;
+                if (filter == 2 && !it.Official) continue;
+                if (q.Length > 0 && it.Id.IndexOf(q, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                r.Add(it);
+            }
+            return r;
+        }
+
+        private static Control ProfileCard(MainWindow host, ProfileCard p, List<BundleItem> items, string q)
+        {
+            StackPanel card = new StackPanel { Spacing = 10 };
+
+            StackPanel head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            head.Children.Add(new TextBlock { Text = p.Name, FontSize = 15, FontWeight = FontWeight.SemiBold, Foreground = Palette.Text, VerticalAlignment = VerticalAlignment.Center });
+            IBrush fb = Palette.FormBrush(p.FormKind);
+            head.Children.Add(Chip(p.FormText, Palette.OnAccent, fb));
+            TextBlock cnt = T(p.CountText, 12, Palette.TextDim);
+            cnt.VerticalAlignment = VerticalAlignment.Center;
+            head.Children.Add(cnt);
+            card.Children.Add(head);
+
+            if (p.Disabled.Count > 0)
+            {
+                StackPanel dis = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+                SymbolIcon wic = Ic(Symbol.Warning, 13, Palette.Warn);
+                wic.VerticalAlignment = VerticalAlignment.Center;
+                dis.Children.Add(wic);
+                TextBlock dt = T(p.DisabledText, 12, Palette.Warn);
+                dt.VerticalAlignment = VerticalAlignment.Center;
+                dis.Children.Add(dt);
+                card.Children.Add(dis);
+            }
+
+            if (items.Count == 0)
+            {
+                card.Children.Add(T("该条件下没有可显示的条目。", 11.5, Palette.TextFaint));
+            }
+            for (int b = 0; b < items.Count; b++)
+            {
+                BundleItem it = items[b];
+                bool disabled = p.Disabled.Contains(it.Id);
+                Grid row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto,Auto") };
+                Border kind = Chip(it.KindText, it.Official ? Palette.Accent : Palette.Warn, it.Official ? Palette.AccentSoft : Palette.WarnSoft);
+                Grid.SetColumn(kind, 0);
+                StackPanel idv = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+                idv.Children.Add(Mono(it.Id, 12, disabled ? Palette.TextFaint : Palette.Text));
+                if (it.VersionText.Length > 0) idv.Children.Add(T(it.VersionText, 11, Palette.TextFaint));
+                if (disabled) idv.Children.Add(Chip("已隔离", Palette.Warn, Palette.WarnSoft));
+                Grid.SetColumn(idv, 1);
+                row.Children.Add(kind); row.Children.Add(idv);
+
+                string folder = host.BundleFolder(p.Name, it.Id);
+                if (folder.Length > 0)
+                {
+                    Button open = GhostButton(Ic(Symbol.FolderOpen, 13, Palette.TextDim), delegate { host.OpenFolder(folder); }, false);
+                    open.Padding = new Thickness(6, 3);
+                    ToolTip.SetTip(open, "在文件管理器中打开插件目录");
+                    Grid.SetColumn(open, 2);
+                    row.Children.Add(open);
+                }
+
+                string key = p.Name + "|" + it.Id;
+                Button act = disabled
+                    ? ConfirmButton(key, "恢复", "再点一次确认恢复", host, delegate { host.PatchEntry(p.Name, it.Id, false); host.Refresh(); })
+                    : ConfirmButton(key, "隔离", "再点一次确认隔离", host, delegate { host.PatchEntry(p.Name, it.Id, true); host.Refresh(); });
+                act.Margin = new Thickness(6, 0, 0, 0);
+                Grid.SetColumn(act, 3);
+                row.Children.Add(act);
+                card.Children.Add(row);
+            }
+
+            // DISABLED 里存在、但 bundle 清单里没有的 id（例如条目已被删除但补丁还在）—— 也要能恢复
+            for (int k = 0; k < p.Disabled.Count; k++)
+            {
+                string id = p.Disabled[k];
+                bool listed = false;
+                for (int b = 0; b < p.Items.Count; b++) if (p.Items[b].Id == id) { listed = true; break; }
+                if (listed) continue;
+                if (q.Length > 0 && id.IndexOf(q, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                row.Children.Add(Chip("已隔离", Palette.Warn, Palette.WarnSoft));
+                TextBlock idt = Mono(id, 12, Palette.TextFaint);
+                idt.VerticalAlignment = VerticalAlignment.Center;
+                row.Children.Add(idt);
+                string rkey = p.Name + "|" + id;
+                row.Children.Add(ConfirmButton(rkey, "恢复", "再点一次确认恢复", host, delegate { host.PatchEntry(p.Name, id, false); host.Refresh(); }));
+                card.Children.Add(row);
+            }
+
+            return Card(card, new Thickness(0), new Thickness(18, 16));
+        }
+
+        // ================================================================ 说明区
 
         private static Control Explain()
         {
-            StackPanel s = new StackPanel { Spacing = 6 };
-            s.Children.Add(new TextBlock { Text = "这些数字怎么读？", FontSize = 14, FontWeight = FontWeight.Bold, Foreground = Palette.Text });
+            StackPanel s = new StackPanel { Spacing = 8 };
+            Grid head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+            SymbolIcon ic = Ic(Symbol.Info, 15, Palette.TextDim);
+            ic.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(ic, 0);
+            TextBlock t = T("这些数字怎么读？", 13.5, Palette.Text, FontWeight.SemiBold);
+            t.Margin = new Thickness(8, 0, 0, 0);
+            t.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(t, 1);
+            head.Children.Add(ic); head.Children.Add(t);
+            s.Children.Add(head);
             s.Children.Add(Line("• 缓存命中率 = 命中缓存的输入 token ÷ 全部输入 token。命中缓存的部分计费更低，所以这个数字越高越省钱；低于 70% 会标成琥珀/红色。"));
             s.Children.Add(Line("• 解码速度 = dsh 投影里的 decodeTokens ÷ decodeMs，即模型生成 token 的速率（tok/s）。它反映生成快慢，不含排队与工具耗时。"));
             s.Children.Add(Line("• 首 token = dsh 投影里的 ttftMs 原值（多步累计），超过 1 秒按秒显示；它是等待第一个字输出的累计时间。"));
             s.Children.Add(Line("• 上下文压力 = 已占用上下文 ÷ 模型窗口。越接近 100% 越可能触发压缩，80% 以上标红提醒。"));
             s.Children.Add(Line("• 输入 token 的条形是相对最长的那条会话画的，用来横向对比，不是绝对刻度。"));
             s.Children.Add(Line("• 显示 unknown 表示 dsh 投影里没有这个字段（例如空会话没有命中率）—— 我们不会用 0 冒充它。"));
-            return Card(s, new Thickness(0), new Thickness(16, 14));
+            return Card(s, new Thickness(0), new Thickness(18, 16));
         }
 
         private static Control Line(string text)

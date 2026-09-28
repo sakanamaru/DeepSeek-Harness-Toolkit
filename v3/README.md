@@ -155,6 +155,11 @@ interface IServiceTarget { AppKind Kind; bool IsAvailable(); ServiceReport Probe
 
 ## 6. 门槛③（Win/Linux 双跑）—— **已变绿**（2026-09-28）
 
+> **2026-09-28 追加：真机 Ubuntu 证据（VMware VM）** —— 契约测试 **296/296**；隔离 DSH_HOME 生效；
+> `backup` 真实写盘 → `BACKUP_LIST_OK 1`（补了 `settings.yaml` 后按有效性规则计入）→ `restore --dry-run` 报 `DRYRUN_OK`（含合并语义）；
+> `doctor` 报 `[OK] System Linux: …` —— 并据此修掉了硬编码的 "Windows" 标签（提交 `8044fbb`）。
+> 也就是说：门槛③ 不再只有 CI runner 的证据，**真机 Linux 也跑通了完整读写链路**。
+
 CI run **36385480118**（分支 `v3-linux`）：`V3 contracts (windows-latest)` 与 `V3 contracts (ubuntu-latest)` 各 **220/220**，
 外加 `unit + integration tests` 绿。也就是说 V3 契约测试现在**在真实 Linux 上跑过**，不再只是"编译过"。
 （此后又加了 16 项 `doctor --report` 契约测试（236/236）与 16 项工作区判定/解析契约测试（252/252）；每次推送 v3-linux 都会再跑一次 CI。）
