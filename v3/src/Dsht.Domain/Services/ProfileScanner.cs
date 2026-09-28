@@ -118,7 +118,8 @@ namespace Dsht.Domain.Services
             return list;
         }
 
-        private static bool TryEntryStart(string line, out int indent, out string body, out bool dashForm)
+        /// <summary>是否是条目起始行（供 EntryLocator 复用）。</summary>
+        public static bool TryEntryStart(string line, out int indent, out string body, out bool dashForm)
         {
             indent = 0; body = ""; dashForm = false;
             if (line == null) return false;

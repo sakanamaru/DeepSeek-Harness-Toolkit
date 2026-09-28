@@ -45,6 +45,8 @@ static class ContractTests
     }
 
     static bool NoFile(string p) { return false; }
+    static bool ExistsTrue(string p) { return true; }
+    static EntryLocation Loc7(string path, string entry) { return new EntryLocation("C:\\x\\y.yml", 7); }
     static bool AnyFile(string p) { return true; }
 
     static int Main()
@@ -335,6 +337,33 @@ static class ContractTests
         Check("校验：ws 走注入的规范化", ConfigValidator.Validate("ws", "a<b", canon) == "bad-value" && ConfigValidator.Validate("ws", "C:\\ok", canon) == null);
         ToolkitConfig ap = ConfigValidator.ApplyTo(new ToolkitConfig(), "keep_backups", "2", canon);
         Check("应用：keep_backups 夹到 3", ap.KeepBackups == 3);
+        Console.WriteLine("[15] bootdiag（启动失败堆栈解析，逐条对齐 v2.x）");
+        string frag2;
+        Check("file:/// URL → 路径 + 片段", Dsht.Domain.Services.FileUrlConverter.ToPath("file:///C:/a/b.yml#ent", out frag2) == "C:\\a\\b.yml" && frag2 == "ent");
+        Check("URL 解码 %20", Dsht.Domain.Services.FileUrlConverter.ToPath("file:///C:/a%20b/c.yml", out frag2) == "C:\\a b\\c.yml");
+        Check("空 URL → 空", Dsht.Domain.Services.FileUrlConverter.ToPath(null, out frag2) == "" && frag2 == "");
+
+        string yml = "insert:\n  - id: subagent-acp-kimi\n    name: '@deepseek-ai/dsh-subagent-acp'\n";
+        Check("EntryLocator 命中行号", Dsht.Domain.Services.EntryLocator.FindLine(yml, "subagent-acp-kimi") == 2);
+        Check("EntryLocator 未命中 → 0", Dsht.Domain.Services.EntryLocator.FindLine(yml, "nope") == 0);
+
+        string fail = "Error: plugin tree failed to load\n  failed to apply loader entry include (cordis:include)\n  failed to apply loader entry subagent-acp-kimi (@deepseek-ai/dsh-subagent-acp)\n  provider \"kimi\" cannot enforce maxDepth\n  at file:///C:/x/y.yml#subagent-acp-kimi\n  set maxDepth: 'provider-managed'\n";
+        BootDiagResult br = Dsht.Domain.Services.BootDiagParser.Parse(fail, Loc7, ExistsTrue);
+        Check("识别 + Kind=maxDepth-missing", br.Recognized && br.Kind == "maxDepth-missing");
+        Check("取带 @ 的包名（最内层）", br.Plugin == "@deepseek-ai/dsh-subagent-acp" && br.Entry == "subagent-acp-kimi");
+        Check("Hint 取自输出", br.Hint == "set maxDepth: 'provider-managed'");
+        Check("FILE/LINE 来自定位结果", br.File == "C:\\x\\y.yml" && br.Line == 7);
+
+        string unknown = "some random crash\nError: boom\n";
+        BootDiagResult bu = Dsht.Domain.Services.BootDiagParser.Parse(unknown, null, null);
+        Check("未识别 → Recognized=false 且 KIND unknown", !bu.Recognized && bu.Kind == "unknown");
+        Check("未识别时 FirstError 被首个 Error 行覆盖（与 v2.x 两阶段行为一致）", bu.FirstError == "Error: boom");
+
+        string pkgOnly = "plugin tree failed to load\n  failed to apply loader entry e1 (plain-plugin)\n";
+        BootDiagResult bp = Dsht.Domain.Services.BootDiagParser.Parse(pkgOnly, null, null);
+        Check("无 @ 包名 → 退回最后一个匹配", bp.Recognized && bp.Plugin == "plain-plugin" && bp.Entry == "e1");
+        Check("无 set maxDepth → 默认提示", bp.Hint == "set maxDepth: 'provider-managed'");
+        Check("TextClipper 短串不变", Dsht.Domain.Services.TextClipper.Clip("abc", 200) == "abc");
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;

@@ -30,6 +30,22 @@ if ($Fixtures) {
         $created.Add($d)
     }
     Write-Host ("  [fixtures] 已造 {0} 个受控备份" -f $created.Count)
+    $fixture = Join-Path $env:TEMP 'dsht_bootdiag_fixture.txt'
+    $profileYml = Join-Path $env:USERPROFILE '.dsh\profiles\web\cordis.patch.yml'
+    $nl = [Environment]::NewLine
+    $bdl = @(
+        'Error: plugin tree failed to load',
+        '  failed to apply loader entry include (cordis:include)',
+        '  failed to apply loader entry subagent-acp-kimi (@deepseek-ai/dsh-subagent-acp)',
+        '  provider cannot enforce maxDepth',
+        '  at file:///' + ($profileYml -replace '\\', '/') + '#subagent-acp-kimi',
+        "  set maxDepth: 'provider-managed'"
+    )
+    [System.IO.File]::WriteAllText($fixture, ($bdl -join $nl) + $nl, (New-Object System.Text.UTF8Encoding($false)))
+    $created.Add($fixture)
+    $unk = Join-Path $env:TEMP 'dsht_bootdiag_unknown.txt'
+    [System.IO.File]::WriteAllText($unk, ('some random crash' + [Environment]::NewLine + 'Error: boom' + [Environment]::NewLine), (New-Object System.Text.UTF8Encoding($false)))
+    $created.Add($unk)
 }
 
 $cases = @(
@@ -40,6 +56,9 @@ $cases = @(
     @{ name = 'backup-list';          args = @('backup-list'); full = $true },
     @{ name = 'backup-list --detail'; args = @('backup-list','--detail'); full = $true },
     # doctor：Integrity 行依赖 exe 身份（v2.x 的 exe 名在 hashes.txt 里、本地构建哈希不匹配 → ERROR；V3 临时 exe 名不在清单 → 跳过校验）。正式发布时 V3 用同名 exe，该类别行为一致。
+    @{ name = 'bootdiag (no input)';   args = @('bootdiag'); full = $true },
+    @{ name = 'bootdiag (fixture)';    args = @('bootdiag','--from',(Join-Path $env:TEMP 'dsht_bootdiag_fixture.txt')); full = $true },
+    @{ name = 'bootdiag (unrecognised)'; args = @('bootdiag','--from',(Join-Path $env:TEMP 'dsht_bootdiag_unknown.txt')); full = $true },
     @{ name = 'config-get';          args = @('config-get'); full = $true },
     @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity '; ignoreSummary = $true }
 )
