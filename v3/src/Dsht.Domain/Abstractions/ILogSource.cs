@@ -6,5 +6,9 @@ namespace Dsht.Domain.Abstractions
     {
         /// <summary>日志全文（状态目录/logs/launcher.log）；不存在或读不到返回 null。</summary>
         string ReadLog();
+
+        /// <summary>追加一条操作日志（yyyy-MM-dd HH:mm:ss LEVEL message ✓，与经典版同格式）。
+        /// **尽力而为** ✓：日志写不进去绝不能导致主操作失败 ✓。</summary>
+        void Append(string level, string message);
     }
 }
