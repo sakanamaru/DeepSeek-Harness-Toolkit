@@ -522,7 +522,23 @@ namespace Dsht.Cli
                 }
                 Console.WriteLine(verb + "_NODE_OK " + nv + T("（免 sudo，装在 ~/.local/node）", " (no sudo, installed under ~/.local/node)"));
             }
-            string latest = NpmVersionGuard.Normalize(tc.NpmViewLatest());
+            // --list: print the available versions verbatim (the classic line could do this; V3 could not).
+            if (Has(args, "--list"))
+            {
+                string vers = tc.NpmViewVersions();
+                if (string.IsNullOrEmpty(vers)) Console.WriteLine(verb + "_LIST_FAIL " + T("拿不到版本列表（离线或 npm 不可用）", "could not list versions (offline or npm unavailable)"));
+                else Console.WriteLine(verb + "_VERSIONS " + vers.Replace(Environment.NewLine, " ").Trim());
+                return 0;
+            }
+            // --version: install one explicit version (still whitelisted - it is pasted into a command line).
+            string wantVersion = NpmVersionGuard.Normalize(FlagOf(args, "--version"));
+            if (wantVersion.Length > 0 && !NpmVersionGuard.IsSafe(wantVersion))
+            {
+                Console.WriteLine(verb + "_FAIL " + T("指定的版本号未通过白名单：", "the requested version failed the whitelist: ") + wantVersion);
+                Console.WriteLine(verb + "_OBSERVED " + (installed.Length > 0 ? installed : "not-installed"));
+                return 0;
+            }
+            string latest = wantVersion.Length > 0 ? wantVersion : NpmVersionGuard.Normalize(tc.NpmViewLatest());
             if (!NpmVersionGuard.IsSafe(latest))
             {
                 Console.WriteLine(verb + "_FAIL " + T("拿不到可信的最新版本（离线，或 npm 返回值未通过白名单）", "no trustworthy latest version (offline, or the npm value failed the whitelist)"));
@@ -554,7 +570,10 @@ namespace Dsht.Cli
             }
             int code = tc.NpmInstallGlobal(target, registry);
             string after = reg.Get<IToolchainQuery>().DshVersion();
-            if (!string.IsNullOrEmpty(after))
+            // Success means the OBSERVED version is the one we asked for. "dsh is installed" is NOT enough:
+            // when the install fails the old version is still there, so that test reported a false OK.
+            bool reachedTarget = !string.IsNullOrEmpty(after) && (after == latest || after.IndexOf(latest, StringComparison.Ordinal) >= 0);
+            if (reachedTarget)
             {
                 Console.WriteLine(verb + "_OK " + after + T("（复检已观测到 dsh）", " (dsh observed after the run)"));
                 Console.WriteLine(verb + "_OBSERVED " + after);
