@@ -24,12 +24,13 @@ namespace Dsht.Gui.Avalonia
     public partial class MainWindow : Window
     {
         /// <summary>主菜单（侧栏一级）。</summary>
-        public static readonly string[] NavItems = new string[] { "看板", "会话与 Token", "形态与插件", "备份", "体检", "配置", "说明" };
+        public static readonly string[] NavItems = new string[] { "概览", "看板", "会话与 Token", "形态与插件", "备份", "体检", "设置", "说明" };
         /// <summary>主菜单图标（FluentIcons，编译期检查）。</summary>
         public static readonly FluentIcons.Common.Symbol[] NavIcons = new FluentIcons.Common.Symbol[]
         {
-            FluentIcons.Common.Symbol.Home, FluentIcons.Common.Symbol.ChartMultiple, FluentIcons.Common.Symbol.PuzzlePiece,
-            FluentIcons.Common.Symbol.Archive, FluentIcons.Common.Symbol.Shield, FluentIcons.Common.Symbol.Settings, FluentIcons.Common.Symbol.Question
+            FluentIcons.Common.Symbol.Home, FluentIcons.Common.Symbol.DataBarVertical, FluentIcons.Common.Symbol.ChatMultiple,
+            FluentIcons.Common.Symbol.PuzzlePiece, FluentIcons.Common.Symbol.Archive, FluentIcons.Common.Symbol.Shield,
+            FluentIcons.Common.Symbol.Settings, FluentIcons.Common.Symbol.Question
         };
         private static readonly string[][] NavCli = new string[][]
         {
@@ -43,7 +44,8 @@ namespace Dsht.Gui.Avalonia
         };
         private static readonly string[][] NavSubs = new string[][]
         {
-            new string[] { "概览", "详细状态" },
+            new string[] { "概览", "原始输出" },
+            new string[] { "指标", "图表" },
             new string[] { "会话列表", "统计" },
             new string[] { "原始输出" },
             new string[] { "原始输出" },
@@ -66,6 +68,12 @@ namespace Dsht.Gui.Avalonia
         private ProfilesSnapshot _profiles;
         private StatusSnapshot _status;
         private BackupSummary _backups;
+        private List<BackupItem> _backupItems = new List<BackupItem>();
+        private List<ConfigItem> _config = new List<ConfigItem>();
+        public List<BackupItem> BackupItems { get { return _backupItems; } }
+        public List<ConfigItem> Config { get { return _config; } }
+        /// <summary>待二次确认的破坏性操作（删除备份）；空=没有待确认项。</summary>
+        public string PendingDelete = "";
         private List<SessionRowVm> _rows = new List<SessionRowVm>();
         private int _shell = Shells.Shells.Hybrid;     // 默认：混合式（主菜单 + 子菜单）
         private int _filter = SessionsView.FilterAll;
@@ -154,6 +162,35 @@ namespace Dsht.Gui.Avalonia
         {
             for (int i = 0; i < _windowButtons.Count; i++)
                 _windowButtons[i].Foreground = i == _windowButtons.Count - 1 ? Palette.TextDim : Palette.TextDim;
+        }
+        // ---------------- 备份 / 设置 的操作（都走 CLI，异步，不阻塞界面） ----------------
+
+        public void CreateBackup() { RunCliAction("backup", "立即备份"); }
+
+        public void ExportBackup(string name) { RunCliAction("backup-export --path " + name + " --to " + Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "export"), "导出备份"); }
+
+        public void DeleteBackup(string name) { RunCliAction("backup-delete --path " + name, "删除备份"); }
+
+        public void DryRunRestore(string name) { RunCliAction("restore --dry-run --path " + name, "恢复预览"); }
+
+        /// <summary>应用恢复。**只在隔离数据根里允许**（CLI 自己的准入闸门会拒绝其它情况，界面把它的话原样显示）。</summary>
+        public void ApplyRestore(string name) { RunCliAction("restore --path " + name + " --apply", "应用恢复"); }
+
+        public void SetConfig(string key, string value) { RunCliAction("config-set " + key + " " + value, "保存设置 " + key); }
+
+        private void RunCliAction(string args, string label)
+        {
+            _actionLog = "已发起" + label + "…";
+            BuildShell();
+            _ = RunCliActionAsync(args, label);
+        }
+
+        private async System.Threading.Tasks.Task RunCliActionAsync(string args, string label)
+        {
+            string cli = CliPath();
+            string outp = cli == null ? "未找到工具箱 CLI。" : await System.Threading.Tasks.Task.Run(delegate { return Run(cli, args); });
+            _actionLog = label + "结果：" + Environment.NewLine + outp.Trim();
+            Refresh();
         }
         /// <summary>看板上的操作日志（一键启动/停止的结果，原样展示给用户）。</summary>
         private string _actionLog = "";
@@ -392,7 +429,9 @@ namespace Dsht.Gui.Avalonia
         }
         public int MainSection { get { return _mainSection; } }
         public int SubTab { get { return _subTab; } }
-        public bool IsSessionsSection { get { return _mainSection == 1; } }
+        public bool IsSessionsSection { get { return _mainSection == 2; } }
+        /// <summary>概览与看板都需要 status/profiles/sessions 这批数据。</summary>
+        public bool IsOverviewLike { get { return _mainSection <= 1; } }
         public string RawOutput { get { return _rawOutput; } }
         public string[] SubTabs { get { return NavSubs[_mainSection]; } }
 
@@ -511,7 +550,9 @@ namespace Dsht.Gui.Avalonia
             body.Content = Shells.Shells.Build(_shell, this);
         }
 
-        public void Refresh()
+        public void Refresh() { _ = RefreshAsync(); }   // 异步：CLI 调用不占 UI 线程
+
+        private async System.Threading.Tasks.Task RefreshAsync()
         {
             string cli = CliPath();
             if (cli == null)
@@ -522,21 +563,23 @@ namespace Dsht.Gui.Avalonia
                 return;
             }
 
-            if (_mainSection == 0)
+            if (IsOverviewLike)
             {
-                _rawOutput = Run(cli, "status --detail");
+                _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "status --detail"); });
                 _status = StatusMarkers.Parse(_rawOutput);
                 // 概览页顺带把这几样也取回来（都很快，且都是只读）
-                _profiles = ProfilesMarkers.Parse(Run(cli, "profiles"));
-                _data = SessionsMarkers.Parse(Run(cli, "sessions"));
-                _backups = SummaryMarkers.ParseBackups(Run(cli, "backup-list"));
+                string pfText = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "profiles"); });
+                _profiles = ProfilesMarkers.Parse(pfText);
+                string seText = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "sessions"); });
+                _data = SessionsMarkers.Parse(seText);
+                _backups = SummaryMarkers.ParseBackups(await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "backup-list"); }));
                 if (_doctor == null) _doctor = new DoctorSummary();
                 BuildShell();
                 return;
             }
-            if (_mainSection == 2)
+            if (_mainSection == 3)
             {
-                _rawOutput = Run(cli, "profiles");
+                _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "profiles"); });
                 _profiles = ProfilesMarkers.Parse(_rawOutput);
                 for (int i = 0; i < _rawOutput.Length && _profilesRoot.Length == 0; i++) { }
                 _profilesRoot = ProfilesRootFrom(cli);
@@ -545,12 +588,12 @@ namespace Dsht.Gui.Avalonia
             }
             if (!IsSessionsSection)
             {
-                _rawOutput = Run(cli, string.Join(" ", NavCli[_mainSection]));
+                _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, string.Join(" ", NavCli[_mainSection])); });
                 BuildShell();
                 return;
             }
 
-            string text = Run(cli, "sessions");
+            string text = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "sessions"); });
             _data = SessionsMarkers.Parse(text);
             _rawOutput = text;
             if (!_data.Ok)

@@ -77,3 +77,92 @@ namespace Dsht.Gui.Avalonia.Markers
         }
     }
 }
+namespace Dsht.Gui.Avalonia.Markers
+{
+    /// <summary>一条备份（`backup-list --detail` 的 BACKUP_ITEM 行）。</summary>
+    public sealed class BackupItem
+    {
+        public string Name = "";
+        public string Kind = "Manual";
+        public long Bytes;
+        public string Time = "";
+        public string KindText { get { return Kind == "Manual" ? "手动" : (Kind == "Auto" ? "自动" : Kind); } }
+        public string SizeText { get { return SessionRow.Human(Bytes); } }
+    }
+
+    /// <summary>一个配置项（`config-get` 的 CONFIG 行）。</summary>
+    public sealed class ConfigItem
+    {
+        public string Key = "";
+        public string Value = "";
+        /// <summary>人话说明（治"这键是干什么的"）。</summary>
+        public string Desc
+        {
+            get
+            {
+                switch (Key)
+                {
+                    case "lang": return "界面语言（auto / zh / en）";
+                    case "host": return "dsh 监听地址（默认 127.0.0.1）";
+                    case "ws": return "默认工作区目录（留空=自动探测）";
+                    case "keep_backups": return "自动备份保留份数（最少 3）";
+                    case "check_update": return "启动时检查工具箱更新";
+                    case "check_dsh_update": return "启动时检查 dsh 更新";
+                    case "update_channel": return "更新通道（stable / beta）";
+                    case "close_action": return "关闭窗口时的行为";
+                    case "auto_start": return "启动时自动启动 dsh";
+                    case "dsh_versions": return "已安装的 dsh 版本（只读）";
+                    default: return "";
+                }
+            }
+        }
+        public bool ReadOnly { get { return Key == "dsh_versions"; } }
+        public bool IsSwitch { get { return Key == "check_update" || Key == "check_dsh_update" || Key == "auto_start"; } }
+    }
+
+    public static class ConfigMarkers
+    {
+        public static List<ConfigItem> Parse(string output)
+        {
+            List<ConfigItem> list = new List<ConfigItem>();
+            if (string.IsNullOrEmpty(output)) return list;
+            string[] lines = output.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i] == null ? "" : lines[i].Trim();
+                if (!line.StartsWith("CONFIG ", StringComparison.Ordinal)) continue;
+                string rest = line.Substring("CONFIG ".Length);
+                int sp = rest.IndexOf(' ');
+                ConfigItem c = new ConfigItem();
+                if (sp < 0) { c.Key = rest; }
+                else { c.Key = rest.Substring(0, sp); c.Value = rest.Substring(sp + 1).Trim(); }
+                list.Add(c);
+            }
+            return list;
+        }
+    }
+
+    public static class BackupItems
+    {
+        public static List<BackupItem> Parse(string output)
+        {
+            List<BackupItem> list = new List<BackupItem>();
+            if (string.IsNullOrEmpty(output)) return list;
+            string[] lines = output.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i] == null ? "" : lines[i].Trim();
+                if (!line.StartsWith("BACKUP_ITEM ", StringComparison.Ordinal)) continue;
+                string[] p = line.Substring("BACKUP_ITEM ".Length).Split(new char[] { ' ' }, 4);
+                if (p.Length < 1) continue;
+                BackupItem b = new BackupItem();
+                b.Name = p[0];
+                if (p.Length > 1) b.Kind = p[1];
+                long n; if (p.Length > 2 && long.TryParse(p[2], out n)) b.Bytes = n;
+                if (p.Length > 3) b.Time = p[3].Trim();
+                list.Add(b);
+            }
+            return list;
+        }
+    }
+}
