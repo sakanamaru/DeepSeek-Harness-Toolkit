@@ -80,7 +80,12 @@ $cases = @(
     # needsService：**只有服务在运行时才允许跑**——否则 v2.x 会真的把受控备份恢复进真实 ~/.dsh。
     @{ name = 'restore (latest)'; args = @('restore'); full = $true; needsService = $true },
     @{ name = 'config-get';          args = @('config-get'); full = $true },
-    @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity '; ignoreSummary = $true }
+    @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity '; ignoreSummary = $true },
+    # doctor --report：比对**报告正文**（postFile 模式）。
+    # 忽略：生成时间/Toolkit/系统三行（时间戳与版本必然不同）、自身完整性条目（v2.x 的 exe 在清单里但本地构建
+    # 哈希不匹配 → ERROR；V3 的临时 exe 名不在清单 → 跳过）、结果行（汇总数受被忽略条目影响）。
+    # 掩码：日志摘要行（两次运行之间日志会增长，且内容含时间戳）——掩码后仍能验证"该行两侧都存在且前缀一致"。
+    @{ name = 'doctor --report (body)'; args = @('doctor','--report',(Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt')); postFile = (Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt'); ignore = '^(生成时间|Toolkit|系统)\s*:|^\[(OK|WARN|ERROR)\] (自身 exe 与随包|旁无 hashes\.txt)|^结果\s*:'; mask = '共 \d+ 行；最近: .*' }
 )
 $fail = 0
 $skipped = 0
@@ -108,14 +113,16 @@ foreach ($c in $cases) {
         $rp = Join-Path $env:TEMP 'dsh_selftest.txt'
         if (Test-Path $rp) { $o2 = [System.IO.File]::ReadAllText($rp) }
     }
+    if ($c.postFile) { if (Test-Path -LiteralPath $c.postFile) { $o2 = [System.IO.File]::ReadAllText($c.postFile) } }
     $o3 = (& $v3exe @($c.args) 2>&1 | Out-String)
     if ($c.post -eq 'report') {
         $rp2 = Join-Path $env:TEMP 'dsh_selftest.txt'
         if (Test-Path $rp2) { $o3 = [System.IO.File]::ReadAllText($rp2) }
     }
+    if ($c.postFile) { if (Test-Path -LiteralPath $c.postFile) { $o3 = [System.IO.File]::ReadAllText($c.postFile) } }
     $ignored = 0
     
-    if ($c.full -or $c.post -eq 'report') {
+    if ($c.full -or $c.post -eq 'report' -or $c.postFile) {
         $m2 = @(($o2 -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
         $m3 = @(($o3 -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
         if ($c.ignore) {
@@ -171,6 +178,7 @@ foreach ($d in $created) { try { Remove-Item $d -Recurse -Force -ErrorAction Sil
 $bkRoot = Join-Path $Repo 'backup'
 if ($Fixtures -and (Test-Path $bkRoot) -and ((Get-ChildItem $bkRoot -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0)) { Remove-Item $bkRoot -Force -ErrorAction SilentlyContinue }
 Remove-Item $v3exe -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt') -Force -ErrorAction SilentlyContinue   # doctor --report 用例的产物
 
 $total = $cases.Count - $skipped
 Write-Host ("== 标记行契约：{0}/{1} 对齐{2} ==" -f ($total - $fail), $total, $(if ($skipped -gt 0) { "（另有 $skipped 项需 -Heavy）" } else { "" }))

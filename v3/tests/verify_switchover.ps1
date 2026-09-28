@@ -1,4 +1,4 @@
-# verify_switchover.ps1 —— 切换就绪度一键检查
+﻿# verify_switchover.ps1 —— 切换就绪度一键检查
 # 逐项检查 V3 切换门槛（目标定义的四项 + V3 追加的"真实写操作可验证"）+ 两条不变量（v2.x 发布链未被动过、领域层纯净度）。
 # 门槛③（Windows/Linux 双跑）在本地只能验证"CI 配置就绪"，真跑需要推送触发——脚本会如实标注。
 # 退出码：0=全部就绪；1=有未就绪项
@@ -83,6 +83,19 @@ $v2build = (& $csc /nologo /optimize+ /target:exe /warn:4 ("/out:" + $v2out) $v2
 $v2ok = (Test-Path $v2out)
 Gate 'invariant v2.x release build' $v2ok $(if ($v2ok) { ('csc 编译 ' + $v2src.Count + ' 个源文件通过（dsh_v2.cs + src/**）') } else { '编译失败：' + (($v2build -split "`r?`n" | Where-Object { $_ -match 'error ' } | Select-Object -First 2) -join ' / ') })
 Remove-Item $v2out -Force -ErrorAction SilentlyContinue
+
+# ---- 不变量：含非 ASCII 的 .ps1 必须带 UTF-8 BOM（否则 Windows PowerShell 5.1 按 ANSI 解析 → 语法错）----
+# 起因：这个坑反复出现（edit 工具会剥掉 BOM）——中文 .ps1 一旦没 BOM，`powershell -File` 会报一堆
+# 看似无关的"缺 }/缺引号"，排查成本很高。这条不变量把"忘了补 BOM"变成一次就报出来的失败。
+$bomBad = @()
+foreach ($f in @(Get-ChildItem $Repo -Recurse -Filter *.ps1 -ErrorAction SilentlyContinue)) {
+    $bytes = [System.IO.File]::ReadAllBytes($f.FullName)
+    $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 239 -and $bytes[1] -eq 187 -and $bytes[2] -eq 191)
+    $nonAscii = $false
+    foreach ($x in $bytes) { if ($x -gt 127) { $nonAscii = $true; break } }
+    if ($nonAscii -and -not $hasBom) { $bomBad += $f.FullName.Replace($Repo.TrimEnd('\') + '\', '') }
+}
+Gate 'invariant ps1 utf8 bom' ($bomBad.Count -eq 0) $(if ($bomBad.Count -eq 0) { '含非 ASCII 的 .ps1 全部带 BOM' } else { '缺 BOM：' + ($bomBad -join ', ') })
 
 # ---- 领域层纯净度 ----
 $pure = & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_domain_pure.ps1') -Repo $Repo 2>&1 | Out-String

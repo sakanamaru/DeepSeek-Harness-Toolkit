@@ -15,16 +15,18 @@ v3/
       Model/                AppKind / ServiceState / ServiceReport / DocItem / ProfileFinding /
                             IntegrityVerdict / BackupEntry / BackupKind / DirSnapshot / ProfileFile ...
       Abstractions/         IServiceTarget / IPortProbe / IHttpProbe / IProcessQuery / IFileSystemQuery /
-                            IToolchainQuery / IIntegritySource / IProfileSource / IBackupSource / IPaths
+                            IToolchainQuery / IIntegritySource / IProfileSource / IBackupSource / IPaths /
+                            IConfigSource / ILogSource
       Services/             ServiceJudge / UptimeFormatter / BackupRetention / BackupPackage /
                             ProfileScanner / ManifestParser / IntegrityJudge / DoctorSummary /
-                            SizeFormatter / ReportSanitizer / BackupAge / RestoreApplyPolicy
+                            SizeFormatter / ReportSanitizer / BackupAge / RestoreApplyPolicy /
+                            DoctorReport / ConfigSummaryBuilder / LogSummaryBuilder
       Targets/              WebTarget / UnknownTarget / ReservedTarget / CompositeServiceTarget
     Dsht.Platform.Windows/  Windows 实现（netstat / Get-CimInstance / where / taskkill / %APPDATA%）
     Dsht.Platform.Linux/    Linux 实现（ss / /proc/<pid>/cmdline / ps / PATH 扫描 / $XDG_* / $DSH_HOME）
     Dsht.Cli/               组合根（自写 ServiceRegistry，零第三方 DI）+ 命令面 + 平台装配
   tests/
-    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，220 项）
+    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，236 项）
     verify_domain_pure.ps1  领域层纯净度守卫（扫描前剥离注释）
     compare_markers.ps1     与 v2.x 的标记行契约比对（可 -Fixtures 造受控备份）
     verify_restore_apply.ps1 真实 restore 的端到端验证（隔离数据根 + --apply，含"零越界"证明）
@@ -66,14 +68,14 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_restore_apply.ps1 -Repo
 
 > 注意：`-ExecutionPolicy Bypass` 不能省——默认执行策略常禁止直接运行 `.ps1`（会报 UnauthorizedAccess）。
 
-一键就绪度（把下面四项 + 两条不变量一起跑，切换前看这一个就行）：
+一键就绪度（把下面五项 + 三条不变量一起跑，切换前看这一个就行）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File v3\tests\verify_switchover.ps1 -Repo .
-# gate1 标记行契约 20/20（含受控备份模式）  gate2 契约测试 220/220
-# gate3 Win/Linux 双跑：CI 配置就绪，真跑需推送  gate4 发布物校验（含篡改自证）
+# gate1 标记行契约 21/21（含受控备份模式）  gate2 契约测试 236/236
+# gate3 Win/Linux 双跑：已在 CI 真跑通过（run 36385480118）  gate4 发布物校验（含篡改自证）
 # gate5 真实写操作可验证 24/24（隔离根真实写盘 + 零越界）
-# 不变量：发布链未动（verify.ps1 / build_exe.cmd / 16 项清单 / csc 步骤）· 领域层纯净度
+# 不变量：发布链未动（verify.ps1 / 16 项清单 / csc 步骤）· v2.x 发布构建可编译 · 含非 ASCII 的 .ps1 都带 BOM · 领域层纯净度
 ```
 
 `dotnet`（net8.0）路径由 CI 负责：`.github/workflows/build-release.yml` 的 `v3-contracts` job
@@ -88,7 +90,7 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_switchover.ps1 -Repo .
 | `status` / `status --detail` | `STATUS_UP` / `STATUS_STARTING` / `STATUS_DOWN` + `STATUS_PID` / `STATUS_START` / `STATUS_UPTIME` |
 | `profilecheck [--dir X] [--file Y] [--vendor] [--abs]` | `PROFILECHK_WARN` / `_TOTAL` / `_SKIPPED_VENDOR` / `_FIX` / `_OK` |
 | `backup-list [--detail]` | `BACKUP_LIST_OK` + 裸路径行 + `BACKUP_ITEM` |
-| `doctor` | `DOCTOR_OK` / `DOCTOR_WARN` / `DOCTOR_ERROR` + `[级别] 类别 描述` |
+| `doctor [--report <file>]` | `DOCTOR_OK` / `DOCTOR_WARN` / `DOCTOR_ERROR` + `[级别] 类别 描述`；`--report` 另写完整诊断报告（分类小节 + 配置/日志摘要，全部脱敏）→ `DOCTOR_REPORT <路径>` / `DOCTOR_WRITE_FAIL <原因>` |
 | `restore --dry-run [--path <dir>]` | `DRYRUN_OK` + `DRYRUN_SRC` + 每个作用域 `DRYRUN_SCOPE`/`_NEW`/`_OVERWRITE`/`_KEEP`/`_BYTES` + `DRYRUN_TOTAL` + `DRYRUN_NOTE`（失败 `DRYRUN_FAIL 原因`） |
 | `config-get` | `CONFIGGET_OK` + `CONFIG <key> <value>` × 11 |
 | `config-set <key> <value>` | `CONFIGSET_OK <key>` / `CONFIGSET_FAIL <reason>` |
@@ -102,7 +104,7 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_switchover.ps1 -Repo .
 | `describe`（V3 独有） | 说明"考虑过哪些形态、为什么暂时观测不到" |
 | `version`（V3 独有） | `DSHT_VERSION <版本>` |
 
-比对工具当前结论：**20/20 对齐**（另有 1 项 `backup` 需 `-Heavy`，届时 21/21）（doctor 的 Integrity 行按规则忽略，见该脚本注释）。
+比对工具当前结论：**21/21 对齐**（另有 1 项 `backup` 需 `-Heavy`，届时 22/22）。按规则忽略的行：`doctor` 的 Integrity 条目、`doctor --report` 的报告头三行（时间戳/版本/系统）与结果行、报告里的日志摘要行（两次运行之间日志会增长）——理由都写在脚本注释里。
 
 ---
 
@@ -131,7 +133,7 @@ interface IServiceTarget { AppKind Kind; bool IsAvailable(); ServiceReport Probe
 | 项 | 现状 |
 |---|---|
 | Linux 实现 | **只到"编译过 + 纯逻辑有单测"**（ss 解析、DSH_HOME 路径解析等已验）；真机运行需 ubuntu CI job，而 CI 需推送才能触发 |
-| `doctor --report` | **未移植**（v2.x 的报告含配置/日志摘要） |
+| `doctor --report <file>` | ✅ **已移植**（2026-09-28）：报告正文与 v2.x 逐字对齐（分类小节 / 条目 / 配置摘要 / 日志摘要 / 结果行），条目与摘要都过 `ReportSanitizer`；写入用 UTF-8 **带 BOM**（与 v2.x 一致）。比对时按规则忽略报告头三行与结果行（时间戳/版本/被忽略的完整性条目），日志摘要行做掩码（内容含时间戳）——格式本身由契约测试的 `LogSummaryBuilder`/`ConfigSummaryBuilder` 覆盖 |
 | `Environment.OSVersion.VersionString` | .NET Framework 与 net8 下字符串不同 → 将来 V3 真正用 net8 发布时需要归一化 |
 | headless / acp / desktop | **预留**，无可观测事实前不实现猜测逻辑 |
 | macOS | 未开始（设计稿决策：Linux 优先，macOS 视需求后补） |
@@ -147,6 +149,7 @@ interface IServiceTarget { AppKind Kind; bool IsAvailable(); ServiceReport Probe
 
 CI run **36385480118**（分支 `v3-linux`）：`V3 contracts (windows-latest)` 与 `V3 contracts (ubuntu-latest)` 各 **220/220**，
 外加 `unit + integration tests` 绿。也就是说 V3 契约测试现在**在真实 Linux 上跑过**，不再只是"编译过"。
+（此后又加了 16 项 `doctor --report` 契约测试 → 本地 **236/236**；下次推送 v3-linux 会再跑一次 CI。）
 
 第一次真跑（run 36385248055）在**两个平台同时失败**，暴露了两个本地永远看不到的问题（本地只用 `csc` 全量编译，完全绕过 csproj）：
 
@@ -197,7 +200,7 @@ $env:DSH_HOME = "$iso\data"
 Remove-Item Env:\DSH_HOME; Remove-Item $iso -Recurse -Force
 ```
 
-实测结论（本轮）：`doctor` 显示隔离数据根（1 B）· `backup` 写出 1 个文件的备份 · **真实 `~/.dsh` 未被触碰** · 不设该变量时标记行契约仍 **20/20**（零回归）。
+实测结论（本轮）：`doctor` 显示隔离数据根（1 B）· `backup` 写出 1 个文件的备份 · **真实 `~/.dsh` 未被触碰** · 不设该变量时标记行契约仍 **21/21**（零回归）。
 
 ### 7.1 一条命令跑完全部真实 restore 验证
 
@@ -221,4 +224,4 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_restore_apply.ps1 -Repo
 `--apply` 是**人类可问责的断言**（"我确认没有 dsh 正在使用这个数据根"），而不是绕过闸门的后门：
 它无法指向默认数据根，因此**不可能**写坏你的 `~/.dsh`；同时它把"跳过闸门"这件事与观测到的事实一起打出来，不静默。
 `apply-not-isolated` 这条分支**故意不做端到端测试**——把"应当拒绝"的用例指向真实数据根，一旦判定有 bug 就会真写用户数据；
-它由纯领域契约测试覆盖（`RestoreApplyPolicy`，见 §2 的契约测试 220 项）。
+它由纯领域契约测试覆盖（`RestoreApplyPolicy`，见 §2 的契约测试 236 项）。
