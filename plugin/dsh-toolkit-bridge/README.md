@@ -79,3 +79,34 @@ node test/snapshot.test.js
 ## 许可
 
 MIT（与本仓库一致）。本插件不包含任何第三方代码，只使用 dsh 的公开插件接口。
+
+## 真机验证记录（2026-09-28，隔离 `$DSH_HOME` + 临时 profile + 端口 3999）
+
+**第一次：失败 ✗（真实缺陷，已修）**
+```
+dsh: plugin tree failed to load: failed to import loader entry toolkit-bridge (dsh-toolkit-bridge):
+Cannot find package '@deepseek-ai/schemastery' imported from .../plugin/dsh-toolkit-bridge/index.js
+```
+原因：`index.js` 里 `import z from "@deepseek-ai/schemastery"`（想按 dsh 官方插件做法声明配置 schema）——
+从**本地路径**安装时该导入从插件源码目录解析 → `ERR_MODULE_NOT_FOUND` → **dsh 启动直接失败**。
+**教训：可选插件绝不能因为一个未解析的导入就拖垮 dsh 的启动** → 已改为**零依赖**（不 import 任何 dsh 包，配置直接取 patch 行里的值，不做 schema 校验）。
+
+**第二次：通过 ✓**
+```
+index.js 语法检查 ✓ · 自测 15/15 ✓ · index.js 不再含任何 @deepseek-ai 导入 ✓
+dsh --profile bridgetest --port 3999 启动成功（3999 监听）✓ · 输出无 "plugin tree failed" ✓
+用户正在跑的 3080 实例（PID 16748）全程未被触碰 ✓
+```
+
+**仍未验证的部分（诚实说）**：**快照是否真的写出**——因为隔离根里一个会话都没有
+（`storages/session_projcache/sessions` 为空），而插件设计上**只在有会话时才写快照**
+（避免用空数据覆盖上一次的好数据）。要验证这一步，需要在这个隔离实例里**真的发一条消息**
+（打开 `http://127.0.0.1:3999` 聊一句），然后看 `<DSH_HOME>/toolkit-bridge/sessions.json`。
+
+**给你的复现命令**（隔离根已经建好并装好插件了，直接复用）：
+```bash
+export DSH_HOME=/tmp/dsht_plug_iso        # Windows: $env:DSH_HOME="$env:TEMP\dsht_plug_iso"
+dsh --profile bridgetest --port 3999
+# 浏览器打开 http://127.0.0.1:3999 发一条消息，然后：
+cat "$DSH_HOME/toolkit-bridge/sessions.json"     # 应出现快照，live 会随会话启停变化
+```
