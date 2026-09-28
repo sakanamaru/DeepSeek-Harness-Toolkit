@@ -24,7 +24,7 @@ v3/
     Dsht.Platform.Linux/    Linux 实现（ss / /proc/<pid>/cmdline / ps / PATH 扫描 / $XDG_* / $DSH_HOME）
     Dsht.Cli/               组合根（自写 ServiceRegistry，零第三方 DI）+ 命令面 + 平台装配
   tests/
-    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，166 项）
+    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，180 项）
     verify_domain_pure.ps1  领域层纯净度守卫（扫描前剥离注释）
     compare_markers.ps1     与 v2.x 的标记行契约比对（可 -Fixtures 造受控备份）
     verify_release.ps1      发布物校验（v2.x verify.ps1 等价物，含校验器自证）
@@ -74,13 +74,14 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_release.ps1 -Repo . -Bu
 | `profilecheck [--dir X] [--file Y] [--vendor] [--abs]` | `PROFILECHK_WARN` / `_TOTAL` / `_SKIPPED_VENDOR` / `_FIX` / `_OK` |
 | `backup-list [--detail]` | `BACKUP_LIST_OK` + 裸路径行 + `BACKUP_ITEM` |
 | `doctor` | `DOCTOR_OK` / `DOCTOR_WARN` / `DOCTOR_ERROR` + `[级别] 类别 描述` |
+| `restore --dry-run [--path <dir>]` | `DRYRUN_OK` + `DRYRUN_SRC` + 每个作用域 `DRYRUN_SCOPE`/`_NEW`/`_OVERWRITE`/`_KEEP`/`_BYTES` + `DRYRUN_TOTAL` + `DRYRUN_NOTE`（失败 `DRYRUN_FAIL 原因`） |
 | `config-get` | `CONFIGGET_OK` + `CONFIG <key> <value>` × 11 |
 | `config-set <key> <value>` | `CONFIGSET_OK <key>` / `CONFIGSET_FAIL <reason>` |
 | `bootdiag --from <file>` | `BOOTDIAG_OK`/`_FAIL` + `_KIND`/`_PLUGIN`/`_ENTRY`/`_FILE`/`_LINE`/`_HINT`（未识别时 `_FIRST`） |
 | `describe`（V3 独有） | 说明"考虑过哪些形态、为什么暂时观测不到" |
 | `version`（V3 独有） | `DSHT_VERSION <版本>` |
 
-比对工具当前结论：**11/11 对齐**（doctor 的 Integrity 行按规则忽略，见该脚本注释）。
+比对工具当前结论：**13/13 对齐**（doctor 的 Integrity 行按规则忽略，见该脚本注释）。
 
 ---
 
@@ -113,5 +114,5 @@ interface IServiceTarget { AppKind Kind; bool IsAvailable(); ServiceReport Probe
 | `Environment.OSVersion.VersionString` | .NET Framework 与 net8 下字符串不同 → 将来 V3 真正用 net8 发布时需要归一化 |
 | headless / acp / desktop | **预留**，无可观测事实前不实现猜测逻辑 |
 | macOS | 未开始（设计稿决策：Linux 优先，macOS 视需求后补） |
-| 命令面广度 | 已覆盖 GUI 消费的主要只读命令；`check`/`selftest`/`dryrun`/非交互 `backup`/`restore` 等尚未移植 |
+| 命令面广度 | 已覆盖 GUI 消费的主要只读命令（含 `restore --dry-run` 预览）；`check`/`selftest`/非交互真实 `backup`/`restore` 尚未移植（真实恢复**明确拒绝**而不是静默失败） |
 | GUI | Windows-only WinForms 保持不变；跨平台 GUI 只留架构能力（见设计稿 §7） |

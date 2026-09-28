@@ -9,5 +9,8 @@ namespace Dsht.Domain.Abstractions
         string StateDir { get; }
         string BackupsRoot { get; }
         string DataRoot { get; }
+
+        /// <summary>自动探测到的工作区；无则 null（V3 尚未移植工作区自动探测，诚实返回 null）。</summary>
+        string WorkspaceRoot { get; }
     }
 }

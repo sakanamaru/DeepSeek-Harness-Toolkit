@@ -32,6 +32,9 @@ namespace Dsht.Platform.Linux
             }
         }
 
+        /// <summary>工作区自动探测：V3 尚未移植（v2.x 在 Windows 上会遍历盘符与常见目录）。诚实返回 null。</summary>
+        public string WorkspaceRoot { get { return null; } }
+
         private static string ResolveStateDir()
         {
             try

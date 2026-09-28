@@ -27,14 +27,14 @@ namespace Dsht.Platform.Linux
                 foreach (string d in dirs)
                 {
                     string name = Path.GetFileName(d.TrimEnd('\\', '/'));
-                    result.Add(new BackupEntry(name, d, Snapshot(d)));
+                    result.Add(new BackupEntry(name, d, SnapshotDir(d)));
                 }
             }
             catch { }
             return result;
         }
 
-        public static DirSnapshot Snapshot(string dir)
+        public static DirSnapshot SnapshotDir(string dir)
         {
             string name = Path.GetFileName(dir.TrimEnd('\\', '/'));
             List<string> entries = new List<string>();
@@ -52,6 +52,34 @@ namespace Dsht.Platform.Linux
         public DateTime? LastWrite(string path)
         {
             try { return Directory.GetLastWriteTime(path); } catch { return null; }
+        }
+
+        public DirSnapshot Snapshot(string dir) { return SnapshotDir(dir); }
+
+        /// <summary>备份目录定位：自身有效则返回自身；否则若恰好一个 dsh-data-* 子目录且有效则返回它。</summary>
+        public string Resolve(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path)) return null;
+                DirSnapshot self = SnapshotDir(path);
+                System.Collections.Generic.List<DirSnapshot> subs = new System.Collections.Generic.List<DirSnapshot>();
+                System.Collections.Generic.List<string> subPaths = new System.Collections.Generic.List<string>();
+                if (Directory.Exists(path))
+                {
+                    foreach (string d in Directory.GetDirectories(path))
+                    {
+                        subs.Add(SnapshotDir(d));
+                        subPaths.Add(d);
+                    }
+                }
+                string name = Dsht.Domain.Services.BackupPackage.Resolve(self, subs.ToArray());
+                if (name == null) return null;
+                if (name == self.Name) return path;
+                for (int i = 0; i < subs.Count; i++) { if (subs[i].Name == name) return subPaths[i]; }
+                return null;
+            }
+            catch { return null; }
         }
     }
 }
