@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Dsht.Domain.Abstractions;
 using Dsht.Domain.Model;
 using Dsht.Domain.Services;
@@ -236,6 +237,31 @@ static class ContractTests
             && BackupPackage.KindLabel(Dsht.Domain.Model.BackupKind.PreUpdate) == "PreUpdate"
             && BackupPackage.KindLabel(Dsht.Domain.Model.BackupKind.PreWipe) == "PreWipe");
         Check("标签与 Classify 往返一致", BackupPackage.KindLabel(BackupPackage.Classify("dsh-data-x-pre-update")) == "PreUpdate");
+        Console.WriteLine("[11] doctor 领域纯函数（汇总/级别/大小/脱敏/备份天数）");
+        List<DocItem> di = new List<DocItem>();
+        Check("空列表 → DOCTOR_OK 0", DoctorSummary.Summary(di) == "DOCTOR_OK 0");
+        di.Add(new DocItem("System", 0, "x"));
+        Check("全 OK → DOCTOR_OK 0", DoctorSummary.Summary(di) == "DOCTOR_OK 0");
+        di.Add(new DocItem("Backup", 1, "y"));
+        Check("有 WARN → DOCTOR_WARN 1", DoctorSummary.Summary(di) == "DOCTOR_WARN 1");
+        di.Add(new DocItem("Harness", 2, "z"));
+        Check("有 ERROR → ERROR 优先", DoctorSummary.Summary(di) == "DOCTOR_ERROR 1");
+        Check("级别名", DoctorSummary.Level(0) == "OK" && DoctorSummary.Level(1) == "WARN" && DoctorSummary.Level(2) == "ERROR");
+
+        Check("大小：B", SizeFormatter.Human(512) == "512 B");
+        Check("大小：KB 一位小数", SizeFormatter.Human(2048) == "2.0 KB");
+        Check("大小：MB 一位小数", SizeFormatter.Human(3 * 1024L * 1024) == "3.0 MB");
+        Check("大小：GB 两位小数", SizeFormatter.Human(2 * 1024L * 1024 * 1024) == "2.00 GB");
+
+        Check("脱敏：URL token", ReportSanitizer.Sanitize("http://x/?token=abc123&b=1").IndexOf("abc123") < 0);
+        Check("脱敏：key: value", ReportSanitizer.Sanitize("api_key: sk-abcdef").IndexOf("sk-abcdef") < 0);
+        Check("脱敏：40+ 位 hex", ReportSanitizer.Sanitize("hash 0123456789abcdef0123456789abcdef01234567").IndexOf("0123456789abcdef") < 0);
+        Check("脱敏：普通文本不动", ReportSanitizer.Sanitize("dsh 已安装: C:\\npm\\dsh.cmd") == "dsh 已安装: C:\\npm\\dsh.cmd");
+
+        DateTime now = new DateTime(2026, 9, 28, 12, 0, 0);
+        Check("备份天数：3 天前", BackupAge.DaysSince("dsh-data-20260925-120000000-auto", now) == 3);
+        Check("备份天数：名字前缀不符 → null", BackupAge.DaysSince("other-20260925-120000000", now) == null);
+        Check("备份天数：时间戳非法 → null", BackupAge.DaysSince("dsh-data-notatimestamp", now) == null);
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
