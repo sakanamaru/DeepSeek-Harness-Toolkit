@@ -104,5 +104,28 @@ foreach ($c in $checks) {
   if ($code -ge $c[2]) { Write-Host ("  [OK]   " + $c[0].PadRight(22) + " 代码里 " + $code + " 处（需 >= " + $c[2] + "）") }
   else { $miss += $c[0]; Write-Host ("  [MISS] " + $c[0].PadRight(22) + " 只有 " + $code + " 处（需 >= " + $c[2] + "）") }
 }
+# ---- 自检：命令面检查表必须与代码里的命令**一一对应** ----
+# 为什么：这张表是手写的。若有人新增命令却忘了加检查，表会**慢慢过时**而没人发现。
+# 这条自检让"代码里有 N 个命令 → 表里也必须正好 N 个"，两边都不许漏。
+$inCode = New-Object System.Collections.Generic.List[string]
+foreach ($f in $files) {
+  $hits = Select-String -Path $f.FullName -Pattern 'cmd == "' -SimpleMatch -ErrorAction SilentlyContinue
+  foreach ($h in $hits) {
+    if ($h.Line.Trim() -match '^(//|/\*|\*|///)') { continue }
+    # 用 Matches 取**该行全部**命令名 ✓ —— Match 只取第一个，同一行有两个比较时会漏 ✓
+    # （对照实验发现的：把 about 那行改成 else if 形式后，about 被误报为"表里多余" ✗）
+    foreach ($m in [regex]::Matches($h.Line, 'cmd == "([a-z0-9\-]+)"')) {
+      if (-not $inCode.Contains($m.Groups[1].Value)) { $inCode.Add($m.Groups[1].Value) }
+    }
+  }
+}
+$inTable = New-Object System.Collections.Generic.List[string]
+foreach ($c in $checks) { if ($c[0] -like '命令 *') { $inTable.Add(($c[0] -replace '^命令 ', '')) } }
+$onlyCode = @($inCode | Where-Object { -not $inTable.Contains($_) })
+$onlyTable = @($inTable | Where-Object { -not $inCode.Contains($_) })
+Write-Host ("  [SELF] 命令面：代码里 " + $inCode.Count + " 个 ；检查表 " + $inTable.Count + " 个")
+if ($onlyCode.Count -gt 0) { foreach ($x in $onlyCode) { $miss += ("命令面缺检查：" + $x) }; Write-Host ("  [MISS] 代码里有但表里没有：" + ($onlyCode -join ', ')) }
+if ($onlyTable.Count -gt 0) { foreach ($x in $onlyTable) { $miss += ("命令面多余检查：" + $x) }; Write-Host ("  [MISS] 表里有但代码里没有：" + ($onlyTable -join ', ')) }
+if ($onlyCode.Count -eq 0 -and $onlyTable.Count -eq 0) { Write-Host "  [OK]   命令面一一对应 ✓" }
 if ($miss.Count -eq 0) { Write-Host ("== 修复复核：" + $checks.Count + "/" + $checks.Count + " 全部仍在代码里 =="); exit 0 }
 Write-Host ("== 修复复核：缺失 " + $miss.Count + " 项：" + ($miss -join ', ') + " =="); exit 1
