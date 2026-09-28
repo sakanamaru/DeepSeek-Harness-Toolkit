@@ -64,6 +64,8 @@ $cases = @(
     # selftest：stdout 只有 "report -> 路径"，真正的价值在报告正文 → post='report' 时比较报告内容
     # 产品标识行（title/version）在 v2.x 与 V3 之间本就不同，按规则忽略
     @{ name = 'selftest (report body)'; args = @('selftest'); post = 'report'; ignore = '^(title|version)\s+:' },
+    # check：横幅与"dsh 最新"行按规则忽略（前者是产品版本差异，后者依赖网络）
+    @{ name = 'check'; args = @('check'); full = $true; ignore = '^(=+|-+)$|^\s*(DeepSeek Harness Toolkit V|v1 脚本协助|v2 重构封装|GitHub\s|⚠|dsh 最新\s+:)' },
     @{ name = 'config-get';          args = @('config-get'); full = $true },
     @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity '; ignoreSummary = $true }
 )

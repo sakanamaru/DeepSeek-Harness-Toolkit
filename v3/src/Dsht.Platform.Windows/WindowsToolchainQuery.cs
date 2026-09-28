@@ -53,5 +53,7 @@ namespace Dsht.Platform.Windows
         }
 
         public string NpmRegistryConfig() { return WindowsShell.Capture("cmd.exe", "/c npm config get registry 2>nul"); }
+
+        public string NpmViewLatest() { return WindowsShell.Capture("cmd.exe", "/c npm view @deepseek-ai/dsh version 2>nul"); }
     }
 }
