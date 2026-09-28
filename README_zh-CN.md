@@ -15,6 +15,49 @@ DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具
 
 > ⚠️ 本项目为**非官方**工具，与 DeepSeek 官方无关。
 
+## Linux 支持（预览）
+
+V3 线今天就能在 Linux（x86-64）上跑：CLI 已完整移植，Avalonia GUI 也能编译并运行。
+这一节把 Linux 的现状写清楚，免得你踩到才发现。
+
+### Linux 上已经能用
+
+- **全部 CLI 命令**：install / update / uninstall、start / stop、status、doctor、sessions、profiles、
+  profilecheck、profilepatch、backup / backup-list / backup-export / backup-delete、restore、
+  config-get / config-set、bootdiag、check、selftest、shortcut、ui、about，以及无参数数字菜单。
+- **一键安装**：`dsh-minato install --install-node --yes` **免 sudo** 把官方 Node LTS 装到 `~/.local/node`
+  （curl / wget / python3 有哪个用哪个 ✓），再用 npm 装 dsh；Node 按你的 CPU 架构选择（x64 / arm64 / armv7l / x86）。
+- **一键启动 / 停止**：`start --yes` 脱离终端启动，**只有端口或 HTTP 探测确认后才报成功**；
+  `stop --yes` 对**整个进程组**发信号并复检。
+- **每个写操作都先打印计划、加 `--yes` 才执行**；真实恢复还要求设置 `DSH_HOME`（会规范化为绝对路径），
+  因此**永远不会写你的默认数据根**。
+- **Avalonia GUI 能在 Linux 上编译并运行**（X11，或经 XWayland 走 Wayland）。
+
+### 平台本质差异（不是缺陷）
+
+- 三个经典可执行文件（`DeepSeek Harness Toolkit.exe`、`Toolkit GUI*.exe`）与 `.lnk` 快捷方式是
+  Windows / .NET Framework 专有，**Linux 包里不含它们**。
+- `shortcut` 在 Linux 上创建的是**应用菜单项**（`~/.local/share/applications/dsh-minato.desktop`），
+  不是桌面图标。
+- `--install-node` 只在 Linux 上可用；Windows 的 Node 由安装器负责。
+
+### Linux 上的已知缺口（有跟踪，3.0 前补齐）
+
+- GUI 的「一键启动/停止」「运行检查」「隔离/恢复」按钮仍调用 Windows 专有的经典核心；
+  它们背后的 CLI 在 Linux 上已经可用，所以这是**接线**问题而非能力缺失。
+- 备份目前**不含工作区**（恢复侧已经能消费 `_workspace` 段）。
+- 暂无日志中心、更新中心、导入备份、清除数据、托盘与快捷键。
+- `keep_backups` 目前按固定值 3 生效，而不是配置里的数字。
+- 经典 v2.x 线若在 Linux 上从源码构建，`start` / `stop` / `shortcut` 三处接缝是坏的，且不认 `$DSH_HOME`；
+  Linux 上请使用 V3 CLI。
+
+### Linux 发布产物
+
+每次发布会附上 `dsh-minato-linux-x64.tar.gz`，内含两份 CLI 构建（小的 framework-dependent 与**自包含单文件**）、
+自包含 GUI、`.desktop` 入口、图标、冒烟脚本、简短说明与 sha256 清单。用
+`v3/tools/verify-linux.sh <tarball> [<tarball.sha256>]` 校验 —— 与 CI 上传前跑的是同一个脚本。
+运行时依赖：iproute2（`ss`）、`ps`，以及引导 Node 时的 `tar` 加 curl/wget/python3 之一。
+
 ## 官方下载
 
 只有本仓库的 [Releases 页面](https://github.com/sakanamaru/dsh-minato/releases) 提供官方产物——其他任何来源（网盘二次上传、"收费 / 破解 / 修改版"、其他网站或账号）均**非官方**。本项目免费开源（MIT），**任何收费售卖均未经授权**。运行前请核验：`verify.ps1` 对照 CI 生成的清单校验 SHA-256 并验证 GPG 签名，而 GitHub 构建溯源证明（attestation）是**独立的额外**溯源检查，`verify.ps1` **不会**验证它，它也不能替代 GPG 签名校验。信任模型、供应链控制与手动核验步骤见 [SECURITY.md](SECURITY.md)。

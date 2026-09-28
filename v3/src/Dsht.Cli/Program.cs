@@ -303,7 +303,7 @@ namespace Dsht.Cli
             Console.WriteLine("  sessions | config-get | config-set <key> <value>");
             Console.WriteLine("  install [--install-node] [--yes] | update [--yes] | uninstall [--yes]");
             Console.WriteLine("  start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--force] [--yes]");
-            Console.WriteLine("  backup | backup-list [--detail] | backup-export --path <备份> --to <目标> | backup-delete --path <备份> [--yes]");
+            Console.WriteLine("  backup | backup-list [--detail] | backup-export --path <备份> --to <目标> [--yes] | backup-delete --path <备份> [--yes] [--yes]");
             Console.WriteLine("  restore --path <备份> [--dry-run] [--apply] [--yes]");
             Console.WriteLine("  shortcut [--yes] | ui | 无参数 = 数字菜单");
             Console.WriteLine(T("写操作一律先打印计划，加 --yes 才执行；涉及数据根的真实恢复还要求先设置 DSH_HOME。",
@@ -1012,7 +1012,7 @@ namespace Dsht.Cli
             return delegate(string dir) { return BackupPackage.IsValidPackage(bk.Snapshot(dir)); };
         }
 
-        /// <summary>备份导出：只做校验；真实复制会写盘，V3 尚未移植 → 明确拒绝（与真实 restore 同一策略）。</summary>
+        /// <summary>备份导出：校验路径后**复制到目标目录**（会写盘 → 需要 --yes 闸门 ✓）。</summary>
         private static int BackupExport(string[] args, ServiceRegistry reg)
         {
             IBackupSource bk = reg.Get<IBackupSource>();
@@ -1021,6 +1021,7 @@ namespace Dsht.Cli
                 delegate(string p) { return fs.DirectoryExists(p); },
                 delegate(string p) { return System.IO.Path.GetFullPath(p); });
             if (reason != null) { Console.WriteLine("BKEXPORT_FAIL " + T("导出校验失败: " + reason, "export validation failed: " + reason)); return 0; }
+            if (!Has(args, "--yes")) { Console.WriteLine("BKEXPORT_PLAN " + T("将把备份复制到目标目录（会写盘）—— 确认请加 --yes", "will copy the backup to the target directory (writes to disk) - add --yes to confirm")); return 0; }
             string src = (Flag(args, "--path") ?? "").Trim().Trim('"');
             string to = (Flag(args, "--to") ?? "").Trim().Trim('"');
             string target = bk.Export(src, System.IO.Path.GetFullPath(to));
@@ -1029,7 +1030,7 @@ namespace Dsht.Cli
             return 0;
         }
 
-        /// <summary>备份删除：只做校验；真实删除会丢数据，V3 尚未移植 → 明确拒绝。</summary>
+        /// <summary>备份删除：校验路径后**真删**（会丢数据 → 需要 --yes 闸门 ✓）。</summary>
         private static int BackupDelete(string[] args, ServiceRegistry reg)
         {
             IBackupSource bk = reg.Get<IBackupSource>();
@@ -1037,6 +1038,7 @@ namespace Dsht.Cli
             string reason = PathValidator.ValidateDeletePath(Flag(args, "--path"), bk.BackupsRoot,
                 delegate(string p) { return fs.DirectoryExists(p); });
             if (reason != null) { Console.WriteLine("BKDEL_FAIL " + T("删除校验失败: " + reason, "delete validation failed: " + reason)); return 0; }
+            if (!Has(args, "--yes")) { Console.WriteLine("BKDEL_PLAN " + T("将删除该备份目录（会丢数据）—— 确认请加 --yes", "will delete that backup directory (data loss) - add --yes to confirm")); return 0; }
             string src = (Flag(args, "--path") ?? "").Trim().Trim('"');
             try
             {
