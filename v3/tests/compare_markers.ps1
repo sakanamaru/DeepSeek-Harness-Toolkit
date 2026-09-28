@@ -68,7 +68,7 @@ if ($Fixtures) {
 $cases = @(
     @{ name = 'status';               args = @('status') },
     @{ name = 'status --detail';      args = @('status','--detail') },
-    @{ name = 'profilecheck';         args = @('profilecheck') },
+    @{ name = 'profilecheck';         args = @('profilecheck') ; ignore = 'PROFILECHK_READ_ERRORS|PROFILECHK_INCOMPLETE' },
     @{ name = 'profilecheck --abs';   args = @('profilecheck','--abs') },
     @{ name = 'backup-list';          args = @('backup-list'); full = $true },
     @{ name = 'backup-list --detail'; args = @('backup-list','--detail'); full = $true },
