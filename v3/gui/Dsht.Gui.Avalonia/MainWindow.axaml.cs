@@ -1,28 +1,37 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 using System.Text;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Dsht.Gui.Avalonia.Markers;
+using Dsht.Gui.Avalonia.Shells;
+using Dsht.Gui.Avalonia.ViewModels;
 
 namespace Dsht.Gui.Avalonia
 {
-    /// <summary>跨平台 GUI 主窗口。
-    /// 设计纪律：**GUI 只是呈现适配器** —— 它不引用核心程序集，只运行 CLI 并解析标记行；
-    /// 因此换 UI 不影响核心、换核心也不影响 UI（V3.0 方案 §7.3）。
-    /// 数据来源的诚实边界由 CLI 的标记行给出（`SESSIONS_SOURCE`），界面原样转述，不美化。</summary>
+    /// <summary>主窗口：只负责"取数据 + 切布局"，界面由 Shells 里的四个布局框架构建。
+    /// 纪律：**GUI 只是呈现适配器** —— 不引用核心程序集，只运行 CLI 并解析标记行（V3.0 方案 §7.3）。
+    /// 设计方向参考了 March7thAssistant（GPL-3.0）的做法，**未复制其任何代码、图标、字体或图片资源**。</summary>
     public partial class MainWindow : Window
     {
+        private SessionsSnapshot _data;
+        private List<SessionRowVm> _rows = new List<SessionRowVm>();
+        private int _shell;
+        private int _filter = SessionsView.FilterAll;
+        private string _failText = "";
+
+        /// <summary>主从式布局的右侧详情容器（由 Shells 注入）。</summary>
+        public StackPanel DetailHost;
+
         public MainWindow()
         {
             InitializeComponent();
-            var nav = this.FindControl<ListBox>("NavList");
-            var refresh = this.FindControl<Button>("RefreshBtn");
-            if (nav != null) nav.SelectionChanged += delegate { Refresh(); };
-            if (refresh != null) refresh.Click += delegate(object s, RoutedEventArgs e) { Refresh(); };
+            for (int i = 0; i < 4; i++) BindShell(i);
             Refresh();
         }
 
@@ -31,93 +40,115 @@ namespace Dsht.Gui.Avalonia
             AvaloniaXamlLoader.Load(this);
         }
 
-        /// <summary>按当前选中的导航项运行对应 CLI 命令：
-        /// 会话页走结构化面板，其它页面原样展示标记行（骨架阶段）。</summary>
-        private void Refresh()
+        // ---------------- 对外给 Shells 用的状态 ----------------
+
+        public SessionsSnapshot Data { get { return _data; } }
+        public List<SessionRowVm> Rows { get { return _rows; } }
+        public int SortMode { get; set; }
+
+        public string SubtitleText
         {
-            var nav = this.FindControl<ListBox>("NavList");
-            var pane = this.FindControl<Grid>("SessionsPane");
-            var output = this.FindControl<TextBox>("Output");
-            var title = this.FindControl<TextBlock>("PageTitle");
-            var status = this.FindControl<TextBlock>("StatusLine");
-            if (nav == null || output == null) return;
+            get { return "读取 dsh 自己的会话投影：token 用量、缓存命中率、解码速度、上下文压力。"; }
+        }
 
-            string args = "status --detail";
-            string label = "状态 / Status";
-            if (nav.SelectedItem is ListBoxItem item)
+        public string SourceText
+        {
+            get
             {
-                if (item.Tag is string t) args = t;
-                if (item.Content is string c) label = c;
+                if (_data == null) return "数据来源：—";
+                return _data.SourceText + "　投影目录：" + _data.Root + "　（GUI 不引用核心程序集，只解析 CLI 标记行）";
             }
-            if (title != null) title.Text = label;
+        }
 
+        public void SetFilter(int mode)
+        {
+            _filter = mode;
+            Rerender();
+        }
+
+        /// <summary>按当前过滤/排序重建行集合，然后重画当前布局。</summary>
+        public void Rerender()
+        {
+            if (_data == null || !_data.Ok) return;
+            List<SessionRow> rows = SessionsView.Filter(_data.Rows, _filter);
+            rows = SessionsView.Sort(rows, SortMode);
+            SessionsView.AttachBars(rows);
+            List<SessionRowVm> vms = new List<SessionRowVm>();
+            for (int i = 0; i < rows.Count; i++) vms.Add(new SessionRowVm(rows[i]));
+            _rows = vms;
+            BuildShell();
+        }
+
+        public void ShowDetail(SessionRowVm vm)
+        {
+            Shells.Shells.FillDetail(DetailHost, vm);
+        }
+
+        // ---------------- 数据 ----------------
+
+        private void BindShell(int id)
+        {
+            Button b = this.FindControl<Button>("Shell" + id);
+            if (b == null) return;
+            b.Click += delegate(object s, RoutedEventArgs e)
+            {
+                _shell = id;
+                BuildShell();
+            };
+        }
+
+        private void BuildShell()
+        {
+            ContentControl body = this.FindControl<ContentControl>("Body");
+            if (body == null) return;
+            TextBlock hint = this.FindControl<TextBlock>("ShellHint");
+            if (hint != null) hint.Text = "当前：" + Shells.Shells.Name(_shell) + "　（点上面的按钮实时切换，内容与数据完全相同）";
+
+            if (_data == null || !_data.Ok)
+            {
+                body.Content = new TextBox
+                {
+                    IsReadOnly = true,
+                    AcceptsReturn = true,
+                    TextWrapping = TextWrapping.Wrap,
+                    Text = string.IsNullOrEmpty(_failText) ? "正在读取…" : _failText,
+                    Margin = new Thickness(20),
+                    FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace")
+                };
+                return;
+            }
+            DetailHost = null;
+            body.Content = Shells.Shells.Build(_shell, this);
+        }
+
+        public void Refresh()
+        {
             string cli = CliPath();
             if (cli == null)
             {
-                if (pane != null) pane.IsVisible = false;
-                output.IsVisible = true;
-                output.Text = "未找到工具箱 CLI（把 dsht.exe / dsht_v3.exe 放到本 GUI 同目录，或用环境变量 DSHT_CLI 指定）。";
-                if (status != null) status.Text = "CLI: 未找到";
+                _data = null;
+                _failText = "未找到工具箱 CLI。请把 dsht.exe / dsht_v3.exe 放到本程序同目录，或设置环境变量 DSHT_CLI 指向它。";
+                BuildShell();
                 return;
             }
-
-            bool sessions = string.Equals(args.Trim(), "sessions", StringComparison.Ordinal);
-            if (pane != null) pane.IsVisible = sessions;
-            output.IsVisible = !sessions;
-
-            string text = Run(cli, args);
-            if (sessions) RenderSessions(text);
-            else output.Text = text;
-
-            if (status != null) status.Text = "CLI: " + Path.GetFileName(cli) + "  " + args;
-        }
-
-        /// <summary>把 `sessions` 的标记行渲染成面板（解析失败/无数据时**如实说明**，不显示假表格）。</summary>
-        private void RenderSessions(string cliOutput)
-        {
-            var output = this.FindControl<TextBox>("Output");
-            SessionsSnapshot snap = SessionsMarkers.Parse(cliOutput);
-            if (!snap.Ok)
+            string text = Run(cli, "sessions");
+            _data = SessionsMarkers.Parse(text);
+            if (!_data.Ok)
             {
-                var pane = this.FindControl<Grid>("SessionsPane");
-                if (pane != null) pane.IsVisible = false;
-                if (output != null)
-                {
-                    output.IsVisible = true;
-                    output.Text = string.IsNullOrEmpty(snap.FailReason)
-                        ? cliOutput
-                        : "读取会话投影失败：" + snap.FailReason + Environment.NewLine + Environment.NewLine + cliOutput;
-                }
-                return;
+                _failText = string.IsNullOrEmpty(_data.FailReason)
+                    ? text
+                    : "读取会话投影失败：" + _data.FailReason + Environment.NewLine + Environment.NewLine + text;
             }
-
-            SetText("SumSessions", "会话 " + snap.Count + "（非空 " + snap.NonBlank + "）");
-            SetText("SumLive", "运行中 " + snap.Live);
-            SetText("SumTokens", "输入 " + N(snap.TotalIn) + " · 输出 " + N(snap.TotalOut) + " · 缓存读 " + N(snap.TotalCacheRead));
-            SetText("SumHit", "缓存命中 " + Pct(snap.TotalHitPercent));
-            SetText("SumDecode", "解码 " + Tps(snap.TotalDecodeTps));
-            SetText("SessionsSource", snap.SourceText + "　投影目录：" + snap.Root);
-
-            var list = this.FindControl<ItemsControl>("SessionList");
-            if (list != null) list.ItemsSource = snap.Rows;
-        }
-
-        private void SetText(string name, string text)
-        {
-            var tb = this.FindControl<TextBlock>(name);
-            if (tb != null) tb.Text = text;
-        }
-
-        private static string N(long v) { return v.ToString("N0", CultureInfo.InvariantCulture); }
-
-        private static string Pct(double v)
-        {
-            return v < 0 ? "unknown" : v.ToString("0.0", CultureInfo.InvariantCulture) + "%";
-        }
-
-        private static string Tps(double v)
-        {
-            return v < 0 ? "unknown" : v.ToString("0.0", CultureInfo.InvariantCulture) + " tok/s";
+            else
+            {
+                _failText = "";
+                List<SessionRow> rows = SessionsView.Sort(SessionsView.Filter(_data.Rows, _filter), SortMode);
+                SessionsView.AttachBars(rows);
+                List<SessionRowVm> vms = new List<SessionRowVm>();
+                for (int i = 0; i < rows.Count; i++) vms.Add(new SessionRowVm(rows[i]));
+                _rows = vms;
+            }
+            BuildShell();
         }
 
         /// <summary>找 CLI：环境变量 DSHT_CLI → 同目录的 dsht.exe / dsht_v3.exe → v2.x 的核心 exe。</summary>
