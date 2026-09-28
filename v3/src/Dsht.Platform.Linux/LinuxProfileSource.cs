@@ -60,8 +60,9 @@ namespace Dsht.Platform.Linux
             catch { result.ReadErrors++; return; }
             for (int i = 0; i < subs.Length; i++)
             {
-                string leaf = Path.GetFileName(subs[i]);
-                if (leaf.Equals("node_modules", StringComparison.OrdinalIgnoreCase)) continue;
+                // Do NOT prune node_modules here: the v2.x counts those files as vendor-skips, and
+                // pruning them silently dropped PROFILECHK_SKIPPED_VENDOR from the output (the marker
+                // contract caught it). IsVendorPath still decides what is skipped, as before.
                 CollectInto(subs[i], found, result, depth + 1);
             }
         }
