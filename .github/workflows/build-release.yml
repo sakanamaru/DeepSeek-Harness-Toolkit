@@ -114,6 +114,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write        # artifact attestation (OIDC)
+      attestations: write    # release provenance
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2 fixed SHA
       - name: Publish V3 CLI (small, framework-dependent)
@@ -147,6 +149,13 @@ jobs:
         run: |
           chmod +x v3/tools/verify-linux.sh
           bash v3/tools/verify-linux.sh dsh-minato-linux-x64.tar.gz dsh-minato-linux-x64.tar.gz.sha256
+      - name: Attest Linux build provenance (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be  # v2.4.0, same pinned SHA as the Windows step
+        with:
+          subject-path: |
+            dsh-minato-linux-x64.tar.gz
+            dsh-minato-linux-x64.tar.gz.sha256
       - name: Upload to the release (tags only)
         if: startsWith(github.ref, 'refs/tags/')
         env:

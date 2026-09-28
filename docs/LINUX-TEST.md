@@ -1,6 +1,6 @@
-# Linux 构建与试用指引（v2.8 阶段 3 · 未验收）
+# Linux 构建与试用指引（v2.8 阶段 3 · **已在真机验收**）
 
-> 状态：**Linux 平台实现已落地但尚未在真机验收**（本机开发环境无 .NET SDK / 无 Linux）。
+> 状态：**Linux 平台实现已落地，并已在 Ubuntu 26.04 真机验收**（CLI 全部命令、一键装 Node、一键起停、备份/恢复/导出/删除、配置、快捷方式、菜单 ✓）。
 > 本文件给出在 Linux 虚拟机（VMware 等）里**从源码构建并试用**的精确步骤、预期输出，
 > 以及**已知缺口**——目的是让第一次真机测试尽量少走弯路，而不是宣称已经支持 Linux。
 
@@ -37,7 +37,7 @@ dotnet publish DeepSeekHarnessToolkit.Core.csproj -c Release -r linux-x64 \
 bin/Release/net8.0/linux-x64/publish/DeepSeek Harness Toolkit
 ```
 
-> 说明：目前**没有**发布 linux-x64 产物（CI 跨平台矩阵属阶段 4），所以第一次测试必须像上面这样从源码构建。
+> 说明：CI 的 `v3-linux` job 现在会产出并校验 `dsh-minato-linux-x64.tar.gz`（两份 CLI + 自包含 GUI + `.desktop` + 图标 + 冒烟脚本 + sha256 ✓），可用 `v3/tools/verify-linux.sh` 校验。下面从源码构建的步骤仍然适用于想自己编译的人。
 > `--self-contained false` 表示依赖系统 .NET 8 运行时；若想完全自包含（体积更大），把该参数改成 `true`。
 
 ---
@@ -78,7 +78,7 @@ chmod +x "DeepSeek Harness Toolkit"
 | 桌面快捷方式 | 写 `~/.local/share/applications/*.desktop` | Linux 没有 .lnk |
 | **工作区自动探测** | **返回 null（不猜）** | 需要手动指定：`config-set ws /path/to/workspace` |
 | 桌面/下载目录误用警告 | Windows 规则（盘符根/`%TEMP%`/注册表取下载目录） | 在 Linux 上可能失效或静默跳过；**属阶段 3 收尾项** |
-| GUI（WinForms 七页面板） | **不构建、不支持** | 见设计稿 §7：GUI 跨平台不在 v2.8 承诺内 |
+| GUI（经典 WinForms 七页） | **不构建、不支持** | 见设计稿 §7；跨平台 GUI 由 V3 的 Avalonia 面板承担（`v3/gui/Dsht.Gui.Avalonia`，可编译并运行 ✓） |
 
 ---
 
