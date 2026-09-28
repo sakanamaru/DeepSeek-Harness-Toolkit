@@ -25,12 +25,25 @@ if ($Fixtures) {
     $specs = @(
         @{ n = 'dsh-data-20990101-000000-auto';     f = @('settings.yaml','sessions') },
         @{ n = 'dsh-data-20990102-000000-pre-wipe'; f = @('credentials.yaml') },
-        @{ n = 'dsh-data-20990103-000000';          f = @('readme.txt') }   # 名字合法但内容无特征 → 应判无效
+        @{ n = 'dsh-data-20990103-000000';          f = @('readme.txt') },   # 名字合法但内容无特征 → 应判无效
+        # 带工作区（新格式：_workspace\<名字>\.dshws）→ 覆盖 dry-run 的 workspace 作用域分支。
+        # 目标 = 自动探测到的工作区根 + 工作区名（两侧同 exe 目录，所以目标一致、可比对）；
+        # 刻意**不**做旧格式（_workspace 直接放内容）用例：那时目标=工作区根本身，会去遍历一棵大树，
+        # 而两次运行之间树会变（日志/临时文件）→ 计数不稳定。
+        @{ n = 'dsh-data-20990104-000000-auto';     f = @('settings.yaml'); ws = @('proj1') }
     )
     foreach ($s in $specs) {
         $d = Join-Path $bk $s.n
         New-Item -ItemType Directory -Path $d -Force | Out-Null
         foreach ($fn in $s.f) { [System.IO.File]::WriteAllText((Join-Path $d $fn), 'x', (New-Object System.Text.UTF8Encoding($false))) }
+        if ($s.ws) {
+            foreach ($wn in $s.ws) {
+                $wd = Join-Path (Join-Path $d '_workspace') $wn
+                New-Item -ItemType Directory -Path $wd -Force | Out-Null
+                [System.IO.File]::WriteAllText((Join-Path $wd '.dshws'), '', (New-Object System.Text.UTF8Encoding($false)))
+                [System.IO.File]::WriteAllText((Join-Path $wd 'a.txt'), 'A', (New-Object System.Text.UTF8Encoding($false)))
+            }
+        }
         $created.Add($d)
     }
     Write-Host ("  [fixtures] 已造 {0} 个受控备份" -f $created.Count)
@@ -65,6 +78,9 @@ $cases = @(
     @{ name = 'bootdiag (unrecognised)'; args = @('bootdiag','--from',(Join-Path $env:TEMP 'dsht_bootdiag_unknown.txt')); full = $true },
     @{ name = 'restore --dry-run';          args = @('restore','--dry-run'); full = $true },
     @{ name = 'restore --dry-run --path';   args = @('restore','--dry-run','--path',(Join-Path $Repo 'backup\dsh-data-20990101-000000-auto')); full = $true },
+    # 工作区作用域（受控备份里带 _workspace\<名字>\.dshws）：目标 = 自动探测的工作区根 + 工作区名，
+    # 两侧 exe 同目录 → 目标一致。这条同时钉住"工作区自动探测"与"dry-run 的 workspace 分支"。
+    @{ name = 'restore --dry-run (_workspace)'; args = @('restore','--dry-run','--path',(Join-Path $Repo 'backup\dsh-data-20990104-000000-auto')); full = $true },
     # selftest：stdout 只有 "report -> 路径"，真正的价值在报告正文 → post='report' 时比较报告内容
     # 产品标识行（title/version）在 v2.x 与 V3 之间本就不同，按规则忽略
     @{ name = 'selftest (report body)'; args = @('selftest'); post = 'report'; ignore = '^(title|version)\s+:' },
