@@ -1,23 +1,23 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Dsht.Gui.Avalonia.MainWindow"
-        Title="DeepSeek Harness Toolkit（跨平台 GUI · 骨架）"
-        Width="1000" Height="680"
-        MinWidth="760" MinHeight="480">
+        Title="DeepSeek Harness Toolkit（跨平台 GUI）"
+        Width="1180" Height="720"
+        MinWidth="860" MinHeight="520">
   <Grid RowDefinitions="Auto,*,Auto">
 
-    <!-- 顶部：非官方声明（与 CLI/GUI 文案一致，README 也有） -->
+    <!-- 顶部：非官方声明（与 CLI/README 文案一致） -->
     <Border Grid.Row="0" Background="#FFF4E5" Padding="12,6">
-      <TextBlock Text="⚠ 非官方工具，由社区独立开发，与 DeepSeek 官方无关。"
+      <TextBlock Text="⚠ 非官方工具，由社区独立开发，与 DeepSeek 官方无关。只读本地状态，不联网（余额查询除外，需显式开启）。"
                  Foreground="#8A5300" TextWrapping="Wrap" />
     </Border>
 
-    <Grid Grid.Row="1" ColumnDefinitions="200,*">
-      <!-- 左：页面导航（对应 CLI 的命令；GUI 只做呈现） -->
+    <Grid Grid.Row="1" ColumnDefinitions="210,*">
+      <!-- 左：页面导航（对应 CLI 命令；GUI 只做呈现） -->
       <Border Grid.Column="0" BorderThickness="0,0,1,0" BorderBrush="#DDDDDD">
         <StackPanel Margin="8">
           <TextBlock Text="页面" FontWeight="Bold" Margin="4,4,4,8" />
-          <ListBox x:Name="NavList" SelectedIndex="0" Background="Transparent">
+          <ListBox x:Name="NavList" SelectedIndex="1" Background="Transparent">
             <ListBoxItem Content="状态 / Status" Tag="status --detail" />
             <ListBoxItem Content="会话与 Token / Sessions" Tag="sessions" />
             <ListBoxItem Content="形态与插件 / Profiles" Tag="profiles" />
@@ -29,12 +29,67 @@
         </StackPanel>
       </Border>
 
-      <!-- 右：CLI 输出（骨架阶段直接展示标记行；后续每个页面接成卡片/表格） -->
       <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto">
-        <TextBlock Grid.Row="0" x:Name="PageTitle" Margin="12,10,12,4" FontSize="15" FontWeight="Bold" Text="状态 / Status" />
+        <TextBlock Grid.Row="0" x:Name="PageTitle" Margin="12,10,12,4" FontSize="15" FontWeight="Bold" Text="会话与 Token / Sessions" />
+
+        <!-- ============ 会话 / Token 面板（结构化界面） ============ -->
+        <Grid Grid.Row="1" x:Name="SessionsPane" RowDefinitions="Auto,Auto,*,Auto" Margin="12,0,12,8">
+          <!-- 汇总条 -->
+          <Border Grid.Row="0" Background="#F2F6FF" CornerRadius="4" Padding="10,8">
+            <StackPanel Orientation="Horizontal" Spacing="18">
+              <TextBlock x:Name="SumSessions" FontWeight="Bold" Text="会话 —" />
+              <TextBlock x:Name="SumLive" Text="运行中 —" />
+              <TextBlock x:Name="SumTokens" Text="token —" />
+              <TextBlock x:Name="SumHit" Text="缓存命中 —" />
+              <TextBlock x:Name="SumDecode" Text="解码 —" />
+            </StackPanel>
+          </Border>
+
+          <!-- 表头 -->
+          <Grid Grid.Row="1" Margin="0,8,0,2" ColumnDefinitions="84,74,60,168,104,92,104,104,96,86">
+            <TextBlock Grid.Column="0" Text="会话" FontWeight="Bold" Foreground="#555555" />
+            <TextBlock Grid.Column="1" Text="状态" FontWeight="Bold" Foreground="#555555" />
+            <TextBlock Grid.Column="2" Text="轮次" FontWeight="Bold" Foreground="#555555" />
+            <TextBlock Grid.Column="3" Text="最后活动 (UTC)" FontWeight="Bold" Foreground="#555555" />
+            <TextBlock Grid.Column="4" Text="输入 token" FontWeight="Bold" Foreground="#555555" />
+            <TextBlock Grid.Column="5" Text="输出 token" FontWeight="Bold" Foreground="#555555" />
+            <TextBlock Grid.Column="6" Text="缓存命中" FontWeight="Bold" Foreground="#555555" />
+            <TextBlock Grid.Column="7" Text="解码速度" FontWeight="Bold" Foreground="#555555" />
+            <TextBlock Grid.Column="8" Text="首 token" FontWeight="Bold" Foreground="#555555" />
+            <TextBlock Grid.Column="9" Text="上下文压力" FontWeight="Bold" Foreground="#555555" />
+          </Grid>
+
+          <!-- 会话行 -->
+          <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto">
+            <ItemsControl x:Name="SessionList">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="84,74,60,168,104,92,104,104,96,86" Margin="0,1">
+                    <TextBlock Grid.Column="0" Text="{Binding ShortId}" FontFamily="Cascadia Mono,Consolas,monospace" />
+                    <TextBlock Grid.Column="1" Text="{Binding LiveText}" />
+                    <TextBlock Grid.Column="2" Text="{Binding Turns}" />
+                    <TextBlock Grid.Column="3" Text="{Binding LastText}" />
+                    <TextBlock Grid.Column="4" Text="{Binding InText}" />
+                    <TextBlock Grid.Column="5" Text="{Binding OutText}" />
+                    <TextBlock Grid.Column="6" Text="{Binding HitText}" />
+                    <TextBlock Grid.Column="7" Text="{Binding DecodeText}" />
+                    <TextBlock Grid.Column="8" Text="{Binding TtftText}" />
+                    <TextBlock Grid.Column="9" Text="{Binding CtxText}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+
+          <!-- 数据来源与诚实边界 -->
+          <TextBlock Grid.Row="3" x:Name="SessionsSource" Margin="0,8,0,0" Foreground="#666666" TextWrapping="Wrap" Text="数据来源：—" />
+        </Grid>
+
+        <!-- ============ 其它页面：原样展示标记行 ============ -->
         <TextBox Grid.Row="1" x:Name="Output" Margin="12,0,12,8" IsReadOnly="True"
                  AcceptsReturn="True" TextWrapping="NoWrap"
                  FontFamily="Cascadia Mono,Consolas,monospace" />
+
         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="12,0,12,10" Spacing="8">
           <Button x:Name="RefreshBtn" Content="刷新 / Refresh" />
           <TextBlock x:Name="StatusLine" VerticalAlignment="Center" Foreground="#666666" Text="" />
@@ -42,10 +97,10 @@
       </Grid>
     </Grid>
 
-    <!-- 底部：数据来源与诚实边界（与 CLI 的标记行一致） -->
+    <!-- 底部：架构说明 -->
     <Border Grid.Row="2" Background="#F5F5F5" Padding="12,4">
       <TextBlock x:Name="Footer" Foreground="#666666"
-                 Text="骨架阶段：数据来自工具箱 CLI 的标记行契约；界面与核心解耦（GUI 不引用核心程序集）。" />
+                 Text="数据来自工具箱 CLI 的标记行契约；GUI 不引用核心程序集（呈现层与核心解耦）。" />
     </Border>
   </Grid>
 </Window>

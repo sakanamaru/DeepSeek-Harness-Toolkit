@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    GUI 呈现层逻辑测试（**不依赖 Avalonia**：只编译 Markers/ 下的纯解析器）——
+    这样它能在无图形环境（CI、Linux 容器）里跑，和 v2.x 的 guilogictests 是一个思路。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>dsht-gui-logictests</AssemblyName>
+    <RootNamespace>Dsht.Gui.LogicTests</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\Dsht.Gui.Avalonia\Markers\*.cs" />
+  </ItemGroup>
+</Project>
