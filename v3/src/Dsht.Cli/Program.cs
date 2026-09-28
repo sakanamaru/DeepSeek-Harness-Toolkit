@@ -1123,7 +1123,7 @@ namespace Dsht.Cli
                 Console.WriteLine("STOP_FAIL " + T("拒绝执行：那是本程序自己（安全保护）", "refused: that is this program itself (safety guard)"));
                 return 0;
             }
-            if (!reg.Get<IProcessQuery>().IsDshCommandLine(r.Pid) && !Has(args, "--force"))
+            if (!reg.Get<IProcessQuery>().IsDshCommandLine(r.Pid) && Has(args, "--force")) OpLog(reg, "WARN", "stop used --force on a non-dsh listener pid " + r.Pid);
             {
                 Console.WriteLine("STOP_FAIL " + T("监听该端口的进程不是 dsh（PID ", "the process on that port is not dsh (PID ") + r.Pid + T("）；如确认要停，请加 --force", "); add --force to stop it anyway"));
                 return 0;
@@ -1810,12 +1810,12 @@ namespace Dsht.Cli
                 }
                 bkDir = pathArg.Trim().Trim('"');
                 string trunc = BackupTruncatedReason(bkDir);
-                if (trunc != null && !Has(args, "--force"))
+                if (!string.IsNullOrEmpty(trunc) && !Has(args, "--force"))
                 {
                     Console.WriteLine("RESTORE_FAIL " + trunc + T("；确认要用它恢复请加 --force", "; add --force to restore from it anyway"));
                     return 0;
                 }
-                if (trunc != null) Console.WriteLine("RESTORE_WARN " + trunc);
+                if (!string.IsNullOrEmpty(trunc)) { Console.WriteLine("RESTORE_WARN " + trunc); OpLog(reg, "WARN", "restore used --force on a truncated backup: " + bkDir); }
             }
             else
             {
@@ -1846,6 +1846,7 @@ namespace Dsht.Cli
             if (apply)
             {
                 // 跳过"运行中"闸门是人类的显式断言，但观测到的事实必须原样打出来（证据链，不静默）
+                OpLog(reg, "WARN", "restore --apply skipped the running-service gate (observed: " + sr.State + ")");
                 Console.WriteLine("RESTORE_APPLY_ACK " + T("已按 --apply 跳过「运行中」闸门；观测到的服务状态：",
                     "running-service gate skipped by --apply; observed service state: ") + sr.State + (sr.Pid > 0 ? " pid=" + sr.Pid : ""));
                 Console.WriteLine("RESTORE_APPLY_ROOT " + paths.DataRoot);
@@ -1905,12 +1906,6 @@ namespace Dsht.Cli
             else
             {
                 string p = PathValidator.ResolveBackupPath(pathArg.Trim().Trim('"'), bk.BackupsRoot);   // 裸备份名解析到备份根内 ✓
-                string trunc2 = BackupTruncatedReason(p);
-                if (trunc2 != null && !Has(args, "--force"))
-                {
-                    Console.WriteLine("DRYRUN_FAIL " + trunc2 + T("；确认要预览它请加 --force", "; add --force to preview it anyway"));
-                    return 0;
-                }
                 if (PathUtil.IsSubPath(bk.BackupsRoot, p))
                 {
                     if (!BackupPackage.IsValidPackage(bk.Snapshot(p))) { Console.WriteLine("DRYRUN_FAIL " + T("无效备份目录", "invalid backup directory")); return 0; }
