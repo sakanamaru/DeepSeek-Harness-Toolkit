@@ -159,7 +159,7 @@ namespace Dsht.Gui.Avalonia.Markers
             return r;
         }
 
-        /// <summary>排序：0=最后活动（新→旧） 1=输入 token（多→少） 2=缓存命中率（低→高，最该看的排前面） 3=上下文压力（高→低）。</summary>
+        /// <summary>排序：0=最后活动（新→旧） 1=输入 token（多→少） 2=缓存命中率（低→高，最该看的排前面） 3=上下文压力（高→低） 4=解码速度（快→慢）。</summary>
         public static List<SessionRow> Sort(List<SessionRow> rows, int mode)
         {
             List<SessionRow> r = rows == null ? new List<SessionRow>() : new List<SessionRow>(rows);
@@ -171,6 +171,7 @@ namespace Dsht.Gui.Avalonia.Markers
                     case 1: c = b.In.CompareTo(a.In); break;
                     case 2: c = Rank(a.HitPercent).CompareTo(Rank(b.HitPercent)); break;
                     case 3: c = b.CtxPercent.CompareTo(a.CtxPercent); break;
+                    case 4: c = RankDesc(b.DecodeTps).CompareTo(RankDesc(a.DecodeTps)); break;
                     default: c = string.CompareOrdinal(b.Last, a.Last); break;
                 }
                 if (c != 0) return c;
@@ -181,6 +182,9 @@ namespace Dsht.Gui.Avalonia.Markers
 
         /// <summary>未知值（-1）排在最后。</summary>
         private static double Rank(double v) { return v < 0 ? double.MaxValue : v; }
+
+        /// <summary>降序时未知值（-1）排在最后。</summary>
+        private static double RankDesc(double v) { return v < 0 ? double.MinValue : v; }
 
         /// <summary>给每行算出相对最大输入量的条形长度（0–100），用于横向对比。</summary>
         public static void AttachBars(List<SessionRow> rows)
