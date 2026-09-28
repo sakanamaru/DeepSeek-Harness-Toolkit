@@ -66,6 +66,16 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_restore_apply.ps1 -Repo
 
 > 注意：`-ExecutionPolicy Bypass` 不能省——默认执行策略常禁止直接运行 `.ps1`（会报 UnauthorizedAccess）。
 
+一键就绪度（把下面四项 + 两条不变量一起跑，切换前看这一个就行）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File v3\tests\verify_switchover.ps1 -Repo .
+# gate1 标记行契约 20/20（含受控备份模式）  gate2 契约测试 220/220
+# gate3 Win/Linux 双跑：CI 配置就绪，真跑需推送  gate4 发布物校验（含篡改自证）
+# gate5 真实写操作可验证 24/24（隔离根真实写盘 + 零越界）
+# 不变量：发布链未动（verify.ps1 / build_exe.cmd / 16 项清单 / csc 步骤）· 领域层纯净度
+```
+
 `dotnet`（net8.0）路径由 CI 负责：`.github/workflows/build-release.yml` 的 `v3-contracts` job
 在 **windows-latest + ubuntu-latest** 双平台跑 `dotnet build` + 契约测试。
 

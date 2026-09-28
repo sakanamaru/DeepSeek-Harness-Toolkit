@@ -1,5 +1,5 @@
 ﻿# verify_switchover.ps1 —— 切换就绪度一键检查
-# 逐项检查 V3 切换门槛（目标定义的四项）+ 一条不变量（v2.x 发布链未被动过）。
+# 逐项检查 V3 切换门槛（目标定义的四项 + V3 追加的"真实写操作可验证"）+ 两条不变量（v2.x 发布链未被动过、领域层纯净度）。
 # 门槛③（Windows/Linux 双跑）在本地只能验证"CI 配置就绪"，真跑需要推送触发——脚本会如实标注。
 # 退出码：0=全部就绪；1=有未就绪项
 param([string]$Repo = ".")
@@ -51,6 +51,12 @@ Gate 'gate3 win/linux dual-run' ($hasJob -and $hasUbuntu) 'CI job 配置就绪�
 # ---- 门槛④ 发布物校验（含校验器自证）----
 $rel = & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_release.ps1') -Repo $Repo -Build -SelfTest 2>&1 | Out-String
 Gate 'gate4 release verifier' ($LASTEXITCODE -eq 0) $(if ($LASTEXITCODE -eq 0) { '含篡改自证通过' } else { '校验失败' })
+
+# ---- 门槛⑤（V3 追加）真实写操作可验证：隔离数据根 + restore --apply 端到端 ----
+$ra = & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_restore_apply.ps1') -Repo $Repo 2>&1 | Out-String
+$rm = [regex]::Match($ra, '==\s*(\d+)/(\d+) passed')
+$rdet = if ($rm.Success) { $rm.Groups[1].Value + '/' + $rm.Groups[2].Value + '（隔离根真实写盘 + 零越界）' } else { '未解析到结果行' }
+Gate 'gate5 real write verifiable' ($LASTEXITCODE -eq 0) $rdet
 
 # ---- 不变量：发布与校验链未被动过 ----
 # 注意：dsh_v2.cs / src/** 的改动是**预期的**（v2.8 阶段 1–3 的拆分/接缝/Linux 实现属合法演进）；
