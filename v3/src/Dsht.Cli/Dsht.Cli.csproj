@@ -6,9 +6,15 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <AssemblyName>dsht</AssemblyName>
+    <!-- 程序集属性写在 Program.cs 里（零 SDK 的 csc 构建路径需要它们）→ 关掉 SDK 自动生成的
+         AssemblyInfo，否则 dotnet build 会报 CS0579 Duplicate 'System.Reflection.Assembly*Attribute'。 -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Dsht.Domain\Dsht.Domain.csproj" />
     <ProjectReference Include="..\Dsht.Platform.Windows\Dsht.Platform.Windows.csproj" />
+    <!-- 组合根在运行时按平台选择实现（PlatformComposition），因此两个平台实现都要引用：
+         少引用 Linux 会在 net8.0 构建时 CS0234（本地 csc 全量编译看不到这个问题）。 -->
+    <ProjectReference Include="..\Dsht.Platform.Linux\Dsht.Platform.Linux.csproj" />
   </ItemGroup>
 </Project>
