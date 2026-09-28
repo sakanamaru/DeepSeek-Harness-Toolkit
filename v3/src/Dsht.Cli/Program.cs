@@ -35,6 +35,7 @@ namespace Dsht.Cli
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
             if (cmd == "profilepatch") return ProfilePatch(args, reg);
             if (cmd == "profiles") return Profiles(reg);
+            if (cmd == "wipe") return WipeCmd(args, reg);
             if (cmd == "import") return ImportCmd(args, reg);
             if (cmd == "update-info") return UpdateInfo(reg);
             if (cmd == "log") return LogCmd(args, reg);
@@ -361,6 +362,60 @@ namespace Dsht.Cli
             Console.Write(T("将执行：", "will run: ") + what + T("　确认？(y/N) ", "  confirm? (y/N) "));
             string a = Console.ReadLine();
             return a != null && a.Trim().ToLowerInvariant() == "y";
+        }
+        /// <summary>wipe（V3 独有）：清除数据根内容 ✓ —— 卸载前的"干净清除" ✓（经典版有 ✓）。
+        /// 破坏性操作 ✗ → 多重闸门 ✓：① 先打印计划 ② 必须 --yes ③ **必须先成功做出 -pre-wipe 备份**
+        /// （没备份就不许清 ✗）④ 拒绝系统/用户级根目录 ✗ ⑤ **备份根在数据根内时拒绝** ✗（否则会连安全网一起删 ✗）。
+        /// 备份目录本身**不动** ✓；标记行：WIPE_PLAN / WIPE_REFUSED / WIPE_PRE_BACKUP / WIPE_OK / WIPE_FAIL。</summary>
+        private static int WipeCmd(string[] args, ServiceRegistry reg)
+        {
+            string data = reg.Get<IPaths>().DataRoot;
+            string backups = reg.Get<IBackupSource>().BackupsRoot;
+            string dataFull, bkFull;
+            try
+            {
+                dataFull = System.IO.Path.GetFullPath(data).TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
+                bkFull = System.IO.Path.GetFullPath(backups).TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
+            }
+            catch (Exception ex) { Console.WriteLine("WIPE_FAIL " + ex.Message); return 0; }
+            // 闸门 ④：系统/用户级根目录一律拒绝 ✗
+            string[] segs = dataFull.Split(new char[] { '/', '\\' });
+            int depth = 0;
+            for (int i = 0; i < segs.Length; i++) if (segs[i].Length > 0) depth++;
+            if (depth < 2) { Console.WriteLine("WIPE_REFUSED " + T("数据根看起来是盘根/系统根，拒绝清除: ", "the data root looks like a drive or system root, refusing: ") + dataFull); return 0; }
+            // 闸门 ⑤：备份根在数据根内 → 拒绝（会把安全网一起删 ✗）
+            if (bkFull == dataFull || bkFull.StartsWith(dataFull + System.IO.Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            { Console.WriteLine("WIPE_REFUSED " + T("备份目录位于数据根内，清除会连备份一起删除，已拒绝。请先把备份目录移出数据根。", "the backups root is inside the data root, so wiping would delete the backups too; move it out first") + " (" + bkFull + ")"); return 0; }
+            int files = 0, dirs = 0;
+            try { files = System.IO.Directory.GetFiles(dataFull, "*", System.IO.SearchOption.AllDirectories).Length; dirs = System.IO.Directory.GetDirectories(dataFull, "*", System.IO.SearchOption.AllDirectories).Length; } catch { }
+            if (!Has(args, "--yes"))
+            {
+                Console.WriteLine("WIPE_PLAN " + T("将删除数据根内的 ", "will delete ") + files + T(" 个文件、", " files and ") + dirs + T(" 个子目录：", " subdirectories in ") + dataFull);
+                Console.WriteLine("WIPE_PLAN_NOTE " + T("执行前**必须**先成功做出 -pre-wipe 备份（做不出就不清 ✗）；备份目录本身不动 ✓。确认请加 --yes", "a -pre-wipe backup MUST succeed first (no backup, no wipe); the backups root itself is untouched. Add --yes to confirm"));
+                return 0;
+            }
+            // 闸门 ③：先备份，且**必须成功** ✓✓
+            try
+            {
+                Dsht.Domain.Model.BackupResult pb = reg.Get<IBackupSource>().Create(dataFull, Dsht.Domain.Model.BackupKind.PreWipe, _cfg == null ? 3 : _cfg.KeepBackups, WorkspaceRoot(reg));
+                if (pb == null || string.IsNullOrEmpty(pb.Path)) { Console.WriteLine("WIPE_REFUSED " + T("清除前的安全备份未能创建，已拒绝执行（没备份就不清 ✗）", "the pre-wipe backup could not be created; refusing to wipe (no backup, no wipe)")); return 0; }
+                Console.WriteLine("WIPE_PRE_BACKUP " + pb.Path);
+            }
+            catch (Exception bex) { Console.WriteLine("WIPE_REFUSED " + T("清除前的安全备份失败，已拒绝执行: ", "the pre-wipe backup failed; refusing to wipe: ") + bex.Message); return 0; }
+            // 真清：只删数据根**内容** ✓
+            int removed = 0;
+            try
+            {
+                string[] fs = System.IO.Directory.GetFiles(dataFull);
+                for (int i = 0; i < fs.Length; i++) { System.IO.File.Delete(fs[i]); removed++; }
+                string[] ds = System.IO.Directory.GetDirectories(dataFull);
+                for (int i = 0; i < ds.Length; i++) { System.IO.Directory.Delete(ds[i], true); removed++; }
+                OpLog(reg, "WARN", "wipe OK " + dataFull + " (" + removed + " entries removed, backup " + files + " files)");
+                Console.WriteLine("WIPE_OK " + removed);
+                Console.WriteLine("WIPE_NOTE " + T("备份未被删除，可随时用 restore 恢复 ✓", "backups were kept; restore can bring the data back at any time"));
+            }
+            catch (Exception wex) { OpLog(reg, "ERROR", "wipe failed: " + wex.Message); Console.WriteLine("WIPE_FAIL " + wex.Message); }
+            return 0;
         }
         /// <summary>import（V3 独有）：把**外部**备份包导入本机备份根 ✓ —— 跨机迁移的关键一环 ✓。
         /// 恢复侧刻意只接受备份根内的路径（outside → 拒绝 ✓），所以外部包必须先导入 ✓。
