@@ -555,7 +555,7 @@ namespace Dsht.Gui.Avalonia.Shells
             s.Children.Add(KpiStrip(host));
             s.Children.Add(Toolbar(host));
             s.Children.Add(new TextBlock { Text = host.FocusText, Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap });
-            s.Children.Add(SessionList(host));
+            s.Children.Add(host.SubTab == 1 ? StatsBody(host) : SessionList(host));
             s.Children.Add(Explain());
             return s;
         }
@@ -847,7 +847,72 @@ namespace Dsht.Gui.Avalonia.Shells
 
         // ================================================================ 状态（概览）
 
+        /// <summary>看板（概览子菜单）：一键启动/停止 + token 消耗 / 缓存命中 / 解码速度 / 会话数。</summary>
         private static Control StatusContent(MainWindow host)
+        {
+            if (host.SubTab == 1) return StatusDetail(host);
+            StatusSnapshot st = host.Status;
+            StackPanel s = new StackPanel { Margin = new Thickness(20, 0, 20, 12), Spacing = 12 };
+
+            StackPanel hero = new StackPanel { Spacing = 10 };
+            StackPanel head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+            bool known = st != null && st.Ok;
+            bool up = known && st.State == 0;
+            IBrush stateBrush = up ? Palette.Good : (known && st.State == 1 ? Palette.Warn : Palette.Bad);
+            head.Children.Add(new Ellipse { Width = 14, Height = 14, Fill = stateBrush, VerticalAlignment = VerticalAlignment.Center });
+            head.Children.Add(T(known ? st.StateText : "未知", 26, stateBrush, FontWeight.Bold));
+            if (known && !string.IsNullOrEmpty(st.Uptime)) head.Children.Add(T("已运行 " + st.Uptime, 12, Palette.TextDim));
+            hero.Children.Add(head);
+
+            StackPanel acts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            Button start = new Button { Content = "▶  一键启动 dsh" };
+            start.Click += delegate { host.StartDsh(); };
+            acts.Children.Add(start);
+            Button stop = new Button { Content = "■  停止" };
+            stop.Click += delegate { host.StopDsh(); };
+            acts.Children.Add(stop);
+            acts.Children.Add(T("只有你点的时候才执行；启动/停止都走工具箱核心（非交互命令）", 11, Palette.TextFaint));
+            hero.Children.Add(acts);
+            s.Children.Add(Card(hero, new Thickness(0), new Thickness(18, 16)));
+
+            s.Children.Add(KpiStrip(host));
+
+            if (!string.IsNullOrEmpty(host.ActionLog))
+                s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
+            return s;
+        }
+
+        /// <summary>统计视图（会话页「统计」子菜单）：总量、命中率、速度 + 最耗 token 的会话排行。</summary>
+        private static Control StatsBody(MainWindow host)
+        {
+            SessionsSnapshot d = host.Data;
+            StackPanel s = new StackPanel { Spacing = 12 };
+            if (d == null || !d.Ok)
+            {
+                s.Children.Add(Card(T("没有可统计的会话数据。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));
+                return s;
+            }
+            StackPanel sum = new StackPanel { Spacing = 8 };
+            sum.Children.Add(T("累计输入 token", 12, Palette.TextDim));
+            sum.Children.Add(T(SessionRow.Human(d.TotalIn), 34, Palette.Text, FontWeight.Bold));
+            sum.Children.Add(T("输出 " + SessionRow.Human(d.TotalOut) + " · 缓存读 " + SessionRow.Human(d.TotalCacheRead) + " · 会话 " + d.Count + " 个（非空 " + d.NonBlank + "）", 11.5, Palette.TextFaint));
+            sum.Children.Add(Meter(d.TotalHitPercent < 0 ? 0 : d.TotalHitPercent, Palette.HitBrush(d.TotalHitPercent >= 90 ? 3 : (d.TotalHitPercent >= 70 ? 2 : 1)), 8));
+            sum.Children.Add(T("缓存命中率 " + PctText(d.TotalHitPercent) + "　解码速度 " + TpsText(d.TotalDecodeTps) + " tok/s", 12.5, Palette.TextDim));
+            s.Children.Add(Card(sum, new Thickness(0), new Thickness(18, 16)));
+
+            List<SessionRow> top = SessionsView.Sort(SessionsView.Filter(d.Rows, SessionsView.FilterAll), 1);
+            StackPanel list = new StackPanel { Spacing = 6 };
+            list.Children.Add(T("输入 token 最多的会话", 13, Palette.Text, FontWeight.Bold));
+            for (int i = 0; i < top.Count && i < 10; i++)
+            {
+                SessionRow r = top[i];
+                string name = string.IsNullOrEmpty(r.Title) ? r.ShortId : r.Title;
+                list.Children.Add(T((i + 1) + ".　" + name + "　　" + r.InText + "　命中 " + r.HitText + "　" + r.DecodeText, 12, Palette.TextDim));
+            }
+            s.Children.Add(Card(list, new Thickness(0), new Thickness(16, 14)));
+            return s;
+        }
+        private static Control StatusDetail(MainWindow host)
         {
             StatusSnapshot st = host.Status;
             StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
