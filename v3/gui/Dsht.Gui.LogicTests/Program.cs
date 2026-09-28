@@ -93,6 +93,19 @@ namespace Dsht.Gui.LogicTests
             Check("profiles：DISABLED 行归到对应 profile 且文案可读", ps.Profiles[0].Disabled.Count == 1 && ps.Profiles[0].Disabled[0] == "dsh-web-search-tavily" && ps.Profiles[0].DisabledText.Contains("已隔离 1 项"));
             Check("profiles：无版本号的条目 → 空串（不假装有版本）", ps.Profiles[0].Items[0].Version == "" && ps.Profiles[0].Items[0].VersionText == "");
             Check("profiles：DISABLED 指向不存在的 profile 时忽略（不抛）", ProfilesMarkers.Parse("PROFILES_OK 0\nDISABLED nobody x").Profiles.Count == 0);
+            List<ConfigItem> cfg = ConfigMarkers.Parse("CONFIGGET_OK\nCONFIG lang auto\nCONFIG keep_backups 10\nCONFIG ws \nCONFIG dsh_versions 1.11.0,1.10.0");
+            Check("配置：解析 4 项且空值保留", cfg.Count == 4 && cfg[0].Key == "lang" && cfg[0].Value == "auto" && cfg[2].Value == "");
+            Check("配置：说明文案与只读/开关判定", cfg[0].Desc.Contains("界面语言") && cfg[3].ReadOnly && cfg[0].IsSwitch == false && ConfigMarkers.Parse("CONFIG check_update on")[0].IsSwitch);
+            Check("配置：脏行不炸（裸 CONFIG 不算条目）", ConfigMarkers.Parse("garbage\nCONFIG\nCONFIG x").Count == 1);
+            List<BackupItem> bi = BackupItems.Parse("BACKUP_LIST_OK 2\n/path/a\nBACKUP_ITEM dsh-data-1 Manual 16 2026-09-28 19:01:30\nBACKUP_ITEM dsh-data-2 Auto 2048 2026-09-27 10:00:00");
+            Check("备份：解析 2 条（类型/大小/时间）", bi.Count == 2 && bi[0].KindText == "手动" && bi[0].Bytes == 16 && bi[1].KindText == "自动" && bi[1].Time == "2026-09-27 10:00:00");
+            Check("备份：人读大小", bi[1].SizeText == "2.0K" && bi[0].SizeText == "16");
+            DoctorSummary ds = SummaryMarkers.ParseDoctor("DOCTOR_WARN 1\n[OK] System Linux\n[WARN] System npm 不可用\n[ERROR] Harness dsh 未安装");
+            Check("体检：计数与结论（[OK] 计入通过，错误优先；夹具含 DOCTOR_WARN 标记 + [WARN] 条目 = 2）", ds.Ok && ds.Error == 1 && ds.Warn == 2 && ds.Pass == 1 && ds.Headline.Contains("1 个错误"));
+            Check("体检：条目按级别归类", ds.ErrorLines.Count == 1 && ds.WarnLines.Count == 1 && ds.ErrorLines[0].Contains("dsh 未安装"));
+            Check("体检：空输入不抛", !SummaryMarkers.ParseDoctor("").Ok && SummaryMarkers.ParseDoctor(null).Error == 0);
+            BackupSummary bs = SummaryMarkers.ParseBackups("BACKUP_LIST_OK 3\nBACKUP_ITEM dsh-data-x Manual 10 2026-09-28 19:00:00");
+            Check("备份摘要：数量与最新一条", bs.Ok && bs.Count == 3 && bs.Latest.Contains("dsh-data-x"));
             Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
             return _fail == 0 ? 0 : 1;
         }
