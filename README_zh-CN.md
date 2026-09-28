@@ -243,7 +243,7 @@ DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不
 
 或双击本目录 `build_exe.cmd`。GUI 由同规则的单文件 `gui_v2.cs` 编译（一份源码 → 附加版与集成版两种形态；集成版多一个 `/resource:<核心exe>,DSHCore.exe`）。
 
-> 上面命令里的 `src\` 通配符属于 **v2.8 阶段 1 的布局（2026-09-21 已完成）**——**move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（见「目录结构」）。**已发布的 v2.7.2** 核心仍是单文件 `dsh_v2.cs`，重编它时去掉那三个 `src\` 通配符。`csc.exe` 自身不展开通配符——需要显式文件清单时，用 `Get-ChildItem src -Recurse -Filter *.cs` 展开。
+> 上面命令里的 `src\` 通配符属于 **v2.8 阶段 1 的布局（2026-09-21 已完成）**——**move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（见「目录结构」）。**已发布的 v2.7.3** 核心即由这套分层布局编译（v2.7.2 及更早是单文件 `dsh_v2.cs`，重编它们时去掉那三个 `src\` 通配符）。`csc.exe` 自身不展开通配符——需要显式文件清单时，用 `Get-ChildItem src -Recurse -Filter *.cs` 展开。
 
 **可复现发布（源码即产物）**：每个 GitHub Release 的 exe 均由 **GitHub Actions CI** 从本仓库源码自动编译生成，并在同一流水线里重新生成 `hashes.txt` 且完成 **GPG 签名**。标签构建另会发布 **GitHub 构建溯源证明（attestation）**——这是独立的额外溯源检查，需用 `gh` 单独验证；`verify.ps1` **不**验证它，它也不能替代 GPG 签名校验。仓库自身不存放任何二进制文件。
 
@@ -251,16 +251,16 @@ DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不
 
 无需任何测试框架或第三方依赖：
 
-- **单元测试（297 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
+- **单元测试（304 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
   ```
-  "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs
+  "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs tests\unit_tests.cs
   unittests.exe
   ```
   退出码 0=全过。覆盖：路径往返（含 UNC / 中文空格）、工作区黑名单、dsh 数据目录标记、根标记严格性、备份目录校验、日志轮转、备份命名 + 保留策略、服务三态判定、版本比较 / 发布解析 / 更新探测、netstat PID 解析、Dry-Run 合并/删除计划（含恢复侧跳过规则一致性）、备份类型解析、导出 / 删除校验、回滚候选查询、配置白名单（含 `close_action` / `auto_start` 键）、状态栏 `FormatUptime`、profile 静态扫描 / `bootdiag` 输出解析 / 受控单行修复（一行计划、幂等 NOOP、备份、复扫校验与回滚）。
 
 - **集成测试（33 个用例）**：打桩端到端矩阵（变体 A/C，真实探测 3080；覆盖保留策略、运行中禁止恢复/导入、双语断言等）：
   ```
-  pwsh -NoProfile -File tests\integration.ps1
+  powershell -ExecutionPolicy Bypass -File tests\integration.ps1
   ```
   只触碰打桩数据目录 `~/.dsh_test`，**绝不接触真实 `~/.dsh`**；3080 未开启时"运行中"相关用例标记 SKIP 而非 FAIL。退出码 0=全过。
 
@@ -289,14 +289,14 @@ keys/                维护者 GPG 公钥
 SECURITY.md          安全策略、数据与网络边界声明
 CHANGELOG.md         更新日志（双语）
 hashes.txt           SHA-256 校验清单（CI 每次发布重新生成）
-tests/               单元（297）/ 集成（33）测试——无第三方依赖
+tests/               单元（304）/ 集成（33）测试——无第三方依赖
 docs/screenshots/    README 截图
 .github/workflows/   CI：push/PR 跑测试；标签/手动触发构建发布 + GPG 签名
 .dsh_launcher_root   安装标记（随包分发；误删保护）
 backup/  logs/       运行时目录（已被 .gitignore 排除，切勿提交）
 ```
 
-> **上面的 `src/` 各行是 v2.8 阶段 1 的布局（2026-09-21 已完成），不是已发布状态。** 阶段 1 是 **move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（同一程序集内的 `partial`，因此调用点、签名与行为零改动），已完成于 2026-09-21（提交 ee36ac0，CI 绿）。已发布的 **v2.7.2** 仍由单文件 `dsh_v2.cs` 编译。阶段 1 不动 `gui_v2.cs`、`tests/unit_tests.cs`、`verify.ps1`。
+> **上面的 `src/` 各行即 v2.7.3 起的发布布局。** 它来自 **move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（同一程序集内的 `partial`，因此调用点、签名与行为零改动），已完成于 2026-09-21（提交 ee36ac0，CI 绿）。已发布的 **v2.7.3** 即由这套布局编译。拆分不动 `gui_v2.cs`、`tests/unit_tests.cs`、`verify.ps1`。
 
 ## 错误日志
 
@@ -309,7 +309,7 @@ backup/  logs/       运行时目录（已被 .gitignore 排除，切勿提交�
 - **下载后先核验再运行（约 20 秒）**：
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.0 -OutDir D:\verify
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.3 -OutDir D:\verify
   ```
 
   `verify.ps1`（发布包内）自动完成：下载指定 release 的全部产物（三个版本 + `hashes.txt`）→ 对照 CI 生成的 `hashes.txt` 做 SHA-256 核验 → 用**临时隔离钥匙串**把 `hashes.txt.asc` 的签名**钉死比对维护者指纹**（不信任本机钥匙串：换任何别的钥匙签出的"好签名"都会被拒绝）→ 打印 **Release → Tag → Commit** 溯源链（tag 对象 / commit / commit 链接）。只读，不安装任何东西。带 `-Tag` 时走固定下载链接、完全不调 GitHub API（不怕匿名限速）；不带 `-Tag` 时通过 API 解析最新 release（网络受限可选传 `-Token`）。

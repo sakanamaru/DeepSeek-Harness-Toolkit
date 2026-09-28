@@ -52,6 +52,40 @@ public static class UnitTests
         }
         Check(Program.Test.PathTrim(Program.Test.PathP(@"D:\work\中文 目录\node_modules\.bin")).Equals(@"D:\work\中文 目录\node_modules\.bin", StringComparison.OrdinalIgnoreCase), "deep roundtrip (unsafe->safe->unsafe)");
 
+        // ---- v2.7.3 修复：P() 必须先把相对路径转绝对 ----
+        // 症状：`restore --dry-run --path .\backup\...` 在 v2.7.2 里谎报 DRYRUN_NEW 0
+        //（\\?\.\backup 不是合法 Win32 路径 → 遍历抛异常 → PlanMergeCore 的 catch 静默吞掉）
+        Console.WriteLine("[1b] P() on relative paths (v2.7.3 fix)");
+        string relP = Program.Test.PathP(@"backup\dsh-data-20260101-000000");
+        Check(relP.IndexOf(@"\\?\.", StringComparison.Ordinal) < 0, "relative -> not the invalid \\?\\.\\ form");
+        Check(relP.EndsWith(@"backup\dsh-data-20260101-000000", StringComparison.OrdinalIgnoreCase), "relative -> tail preserved");
+        string relBack = Program.Test.PathTrim(relP);
+        Check(relBack.Length >= 3 && relBack[1] == ':', "relative -> resolved to a rooted absolute path");
+        Check(Program.Test.PathP(@"C:\x\y") == @"\\?\C:\x\y", "absolute unchanged");
+        Check(Program.Test.PathP(@"\\nas\share\team") == @"\\?\UNC\nas\share\team", "UNC unchanged");
+        Check(Program.Test.PathP(@"\\?\C:\x") == @"\\?\C:\x", "already-prefixed unchanged");
+        {
+            string oldCwd = Environment.CurrentDirectory;
+            string relRoot = Path.Combine(Path.GetTempPath(), "dsht_relpath_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                string bkDir = Path.Combine(relRoot, "bk", "dsh-data-20260101-000000");
+                Directory.CreateDirectory(bkDir);
+                File.WriteAllText(Path.Combine(bkDir, "settings.yaml"), "x");
+                File.WriteAllText(Path.Combine(bkDir, "sessions"), "x");
+                string dstDir = Path.Combine(relRoot, "data");
+                Directory.CreateDirectory(dstDir);
+                Environment.CurrentDirectory = relRoot;
+                long[] relPlan = Program.Test.PlanMergeT(@".\bk\dsh-data-20260101-000000", dstDir, "_workspace", null);
+                Check(relPlan[0] == 2 && relPlan[1] == 0 && relPlan[2] == 0, "relative --path dry-run plan sees both files (was 0 before the fix)");
+            }
+            finally
+            {
+                Environment.CurrentDirectory = oldCwd;
+                try { Directory.Delete(relRoot, true); } catch { }
+            }
+        }
+
         // ---- LooksLikeWorkspace 黑名单 ----
         Console.WriteLine("[2] LooksLikeWorkspace blacklist");
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
