@@ -49,7 +49,7 @@ namespace Dsht.Cli
             if (cmd == "backup-export") return BackupExport(args, reg);
             if (cmd == "backup-delete") return BackupDelete(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | sessions | start [--port <n>] [--profile <name>] [--yes] | stop [--yes] | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | sessions | start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--yes] | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
             return 2;
         }
 
@@ -312,6 +312,17 @@ namespace Dsht.Cli
         private static int StopCmd(string[] args, ServiceRegistry reg)
         {
             IServiceTarget target = reg.Get<IServiceTarget>();
+            // --port：把目标临时指向指定端口。**没有这个开关时 stop 只会认默认 3080（用户的实例）**，
+            // 而 DSH_HOME 隔离不隔离端口 —— 这是踩过的坑，所以测试必须能指定端口。
+            int portArg = 0;
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i] == "--port") { int pp; if (int.TryParse(args[i + 1], out pp)) portArg = pp; }
+            }
+            if (portArg > 0)
+            {
+                target = PlatformComposition.WebFor(portArg, reg.Get<IPortProbe>(), reg.Get<IHttpProbe>(), reg.Get<IProcessQuery>());
+            }
             ServiceReport r = target.Probe();
             if (r.Pid <= 0 || r.State.ToString() == "Down")
             {
@@ -321,7 +332,7 @@ namespace Dsht.Cli
             }
             if (!Has(args, "--yes"))
             {
-                Console.WriteLine("STOP_PLAN " + T("将停止 PID ", "will stop PID ") + r.Pid + T("（端口 ", " (port ") + T("默认 3080", "default 3080") + T("）—— 这会中断正在运行的服务，需要显式确认。", ") - this interrupts a running service and needs explicit confirmation."));
+                Console.WriteLine("STOP_PLAN " + T("将停止 PID ", "will stop PID ") + r.Pid + T("（端口 ", " (port ") + (portArg > 0 ? portArg.ToString() : "3080") + T("）—— 这会中断正在运行的服务，需要显式确认。", ") - this interrupts a running service and needs explicit confirmation."));
                 Console.WriteLine("STOP_NOTE " + T("确认请加 --yes。注意：DSH_HOME 隔离不隔离端口，测试时绝不要对默认端口执行本命令。", "add --yes to confirm. Note: isolating DSH_HOME does NOT isolate the port - never run this against the default port in a test."));
                 return 0;
             }
