@@ -28,21 +28,28 @@ namespace Dsht.Platform.Windows
             {
                 string env = Environment.GetEnvironmentVariable("DSH_HOME");
                 if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
-                string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                string appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                string[] candidates = new string[]
-                {
-                    Path.Combine(home, DataDirName),
-                    Path.Combine(appdata, DataDirName),
-                    Path.Combine(local, DataDirName)
-                };
+                string[] candidates = DefaultDataRoots();
                 for (int i = 0; i < candidates.Length; i++)
                 {
                     try { if (Directory.Exists(candidates[i])) return candidates[i]; } catch { }
                 }
                 return candidates[0];
             }
+        }
+
+        /// <summary>默认数据根候选（顺序即 DataRoot 的自动探测顺序）。供 restore --apply 的隔离判定使用：
+        /// 生效数据根等于其中任何一个即视为"默认位置"，拒绝真实写入。</summary>
+        public static string[] DefaultDataRoots()
+        {
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            string appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return new string[]
+            {
+                Path.Combine(home, DataDirName),
+                Path.Combine(appdata, DataDirName),
+                Path.Combine(local, DataDirName)
+            };
         }
 
         /// <summary>工作区自动探测：V3 尚未移植（v2.x 在 Windows 上会遍历盘符与常见目录）。诚实返回 null。</summary>

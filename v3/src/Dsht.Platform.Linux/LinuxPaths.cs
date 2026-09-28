@@ -26,10 +26,16 @@ namespace Dsht.Platform.Linux
             {
                 string env = Environment.GetEnvironmentVariable("DSH_HOME");
                 if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
-                string home = Environment.GetEnvironmentVariable("HOME");
-                if (string.IsNullOrWhiteSpace(home)) home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                return Path.Combine(home, DataDirName);
+                return DefaultDataRoots()[0];
             }
+        }
+
+        /// <summary>默认数据根候选。供 restore --apply 的隔离判定使用：生效数据根等于它即视为"默认位置"，拒绝真实写入。</summary>
+        public static string[] DefaultDataRoots()
+        {
+            string home = Environment.GetEnvironmentVariable("HOME");
+            if (string.IsNullOrWhiteSpace(home)) home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return new string[] { Path.Combine(home, DataDirName) };
         }
 
         /// <summary>工作区自动探测：V3 尚未移植（v2.x 在 Windows 上会遍历盘符与常见目录）。诚实返回 null。</summary>

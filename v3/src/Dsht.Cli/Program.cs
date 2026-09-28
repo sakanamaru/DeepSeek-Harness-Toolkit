@@ -45,7 +45,7 @@ namespace Dsht.Cli
             if (cmd == "backup-export") return BackupExport(args, reg);
             if (cmd == "backup-delete") return BackupDelete(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
             return 2;
         }
 
@@ -449,8 +449,11 @@ namespace Dsht.Cli
             return 0;
         }
 
-        /// <summary>最小本地化：dryrun 的失败/说明文案在 v2.x 里走 T()，必须同语言才能比对。</summary>
-        private static string T(string zh, string en) { return (_cfg != null && _cfg.Lang == "en") ? en : zh; }
+        /// <summary>最小本地化：dryrun/restore 的失败与说明文案在 v2.x 里走 T()，必须同语言才能比对。</summary>
+        private static string T(string zh, string en) { return IsEn() ? en : zh; }
+
+        /// <summary>当前是否英文（与 v2.x 的 T() 同一判据）。</summary>
+        private static bool IsEn() { return _cfg != null && _cfg.Lang == "en"; }
 
         private static void PrintPlan(long[] p)
         {
@@ -466,11 +469,19 @@ namespace Dsht.Cli
             return MergePlanner.Plan(fs.WalkSource(src, skipTopDir, skipTopFile, topRules), fs.WalkDestination(dst));
         }
 
-        /// <summary>restore：V3 目前只移植了 --dry-run（只读预演）。真实恢复会写用户数据，尚未移植——这里**明确拒绝**而不是静默失败。</summary>
+        /// <summary>restore：真实合并恢复。顺序与 v2.x 的 NIRestoreCore 一致：
+        ///   定位/校验备份 → （--apply 准入）→ 运行中拒绝 → 恢复前自动备份 → 自身完整性闸门 → 恢复。
+        /// V3 独有：`--apply` 显式开关，且只允许写入**隔离数据根**（见 RestoreApplyPolicy）——
+        /// 生效数据根等于默认位置时直接拒绝，因此 V3 的真实恢复永远不会写进用户默认数据根。
+        /// 与 v2.x 的有意差异（更诚实）：只有真正成功才打印 RESTORE_OK（v2.x 在恢复失败时也会打印 RESTORE_OK）。</summary>
         private static int Restore(string[] args, ServiceRegistry reg)
         {
             if (Has(args, "--dry-run") || Has(args, "-dry-run")) return DryRun(args, reg);
+            bool apply = Has(args, "--apply");
             IBackupSource bk = reg.Get<IBackupSource>();
+            IPaths paths = reg.Get<IPaths>();
+            IFileSystemQuery fs = reg.Get<IFileSystemQuery>();
+            string bkDir;
             string pathArg = Flag(args, "--path");
             if (pathArg != null)
             {
@@ -482,31 +493,74 @@ namespace Dsht.Cli
                     else Console.WriteLine("RESTORE_FAIL " + T("无效备份目录", "invalid backup directory"));
                     return 0;
                 }
+                bkDir = pathArg.Trim().Trim('"');
             }
             else
             {
-                IFileSystemQuery fs2 = reg.Get<IFileSystemQuery>();
-                if (!fs2.DirectoryExists(bk.BackupsRoot)) { Console.WriteLine("RESTORE_FAIL " + T("没有备份", "no backups")); return 0; }
+                if (!fs.DirectoryExists(bk.BackupsRoot)) { Console.WriteLine("RESTORE_FAIL " + T("没有备份", "no backups")); return 0; }
                 List<BackupEntry> all = bk.ListRaw();
                 string latest = null;
                 for (int i = all.Count - 1; i >= 0; i--) { if (BackupPackage.IsValidPackage(all[i].Snapshot)) { latest = all[i].Path; break; } }
                 if (latest == null) { Console.WriteLine("RESTORE_FAIL " + T("无有效备份", "no valid backup")); return 0; }
+                bkDir = latest;
             }
+
+            // --apply 准入：真实写盘只允许发生在隔离数据根上（默认数据根永不被 V3 恢复写入）
+            string applyReason = RestoreApplyPolicy.Judge(apply, Environment.GetEnvironmentVariable("DSH_HOME"),
+                paths.DataRoot, PlatformComposition.DefaultDataRoots());
+            if (applyReason != null)
+            {
+                Console.WriteLine("RESTORE_FAIL " + RestoreApplyPolicy.Message(applyReason, !IsEn()));
+                return 0;
+            }
+
             // 安全闸门（逐条对齐 v2.x 的 NIRestoreCore）：运行中拒绝 → 恢复前自动备份
             ServiceReport sr = reg.Get<IServiceTarget>().Probe();
-            if (sr.State != ServiceState.Down)
+            if (sr.State != ServiceState.Down && !apply)
             {
                 Console.WriteLine("RESTORE_FAIL " + T("dsh 正在运行，无法恢复", "dsh is running; cannot restore"));
                 return 0;
             }
-            string dstRoot = reg.Get<IPaths>().DataRoot;
-            if (reg.Get<IFileSystemQuery>().DirectoryExists(dstRoot))
+            if (apply)
+            {
+                // 跳过"运行中"闸门是人类的显式断言，但观测到的事实必须原样打出来（证据链，不静默）
+                Console.WriteLine("RESTORE_APPLY_ACK " + T("已按 --apply 跳过「运行中」闸门；观测到的服务状态：",
+                    "running-service gate skipped by --apply; observed service state: ") + sr.State + (sr.Pid > 0 ? " pid=" + sr.Pid : ""));
+                Console.WriteLine("RESTORE_APPLY_ROOT " + paths.DataRoot);
+            }
+
+            string dstRoot = paths.DataRoot;
+            if (fs.DirectoryExists(dstRoot))
             {
                 BackupResult pre = bk.Create(dstRoot, BackupKind.PreRestore);
                 if (pre == null) { Console.WriteLine("RESTORE_FAIL " + T("恢复前自动备份失败", "pre-restore backup failed")); return 0; }
+                Console.WriteLine("RESTORE_PRE_BACKUP " + pre.Path);   // V3 追加：把回滚锚点直接给出来
             }
-            Console.WriteLine("RESTORE_NOT_IMPLEMENTED V3 尚未移植真实恢复（会写用户数据）；闸门已通过：请用 restore --dry-run 预览，或用 v2.x 执行恢复。");
+
+            if (!IntegrityGate(reg)) return 0;   // 对齐 v2.x：完整性不匹配时在写盘前拒绝
+
+            RestoreOutcome o = bk.Restore(bkDir, dstRoot, paths.WorkspaceRoot);
+            if (!o.Ok)
+            {
+                Console.WriteLine("RESTORE_FAIL " + T("恢复失败：" + (o.Error ?? ""), "restore failed: " + (o.Error ?? "")));
+                return 0;
+            }
+            Console.WriteLine("RESTORE_OK " + bkDir);
+            if (o.WorkspacesRestored > 0) Console.WriteLine("RESTORE_WS_RESTORED " + o.WorkspacesRestored);
+            if (o.WorkspacesSkipped > 0) Console.WriteLine("RESTORE_WS_SKIPPED " + o.WorkspacesSkipped);
+            if (o.WorkspacesUnrecognized > 0) Console.WriteLine("RESTORE_WS_UNRECOGNIZED " + o.WorkspacesUnrecognized);
             return 0;
+        }
+
+        /// <summary>高风险操作闸门（对齐 v2.x 的 IntegrityGate）：自身与随包 hashes.txt 不匹配即拒绝；旁无 manifest 时放行。</summary>
+        private static bool IntegrityGate(ServiceRegistry reg)
+        {
+            IIntegritySource integ = reg.Get<IIntegritySource>();
+            string expected = ManifestParser.ParseHash(integ.ReadManifest(), integ.SelfFileName());
+            if (!IntegrityJudge.ShouldBlock(IntegrityJudge.Judge(expected, integ.SelfHash()))) return true;
+            Console.WriteLine("RESTORE_FAIL " + T("自身完整性校验失败：当前程序与随包 hashes.txt 不匹配（可能被篡改）。已拒绝执行恢复，请从官方 Releases 重新下载。",
+                "self-integrity FAILED: this executable does not match the shipped hashes.txt (possible tampering); restore refused. Re-download from the official Releases."));
+            return false;
         }
 
         /// <summary>dryrun：只读合并计划。标记与文案逐条对齐 v2.x 的 NIRestoreDryRun。</summary>

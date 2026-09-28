@@ -24,6 +24,12 @@ namespace Dsht.Domain.Abstractions
         /// <summary>删除备份目录（保留策略用）；失败静默。</summary>
         void Delete(string dir);
 
+        /// <summary>把备份包**合并恢复**到目标数据根（目标端多余文件不删除），并恢复 _workspace 下的工作区。
+        /// 与 v2.x 的 RestoreFromSource 同语义：恢复模式复制失败**如实报错**（不像备份那样跳过被锁文件）；
+        /// workspaceRoot 为 null 或不存在时工作区按 v2.x 非交互语义跳过（记入 WorkspacesSkipped）。
+        /// 本方法**不做任何安全闸门**：运行中拒绝、恢复前自动备份、--apply 隔离判定都在 CLI 层。</summary>
+        RestoreOutcome Restore(string backupDir, string dataRoot, string workspaceRoot);
+
         /// <summary>读取某目录的快照（名字 + 直接子条目名），供领域层判定有效性。</summary>
         DirSnapshot Snapshot(string dir);
 

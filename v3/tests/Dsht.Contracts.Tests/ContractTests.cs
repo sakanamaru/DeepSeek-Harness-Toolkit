@@ -429,6 +429,26 @@ static class ContractTests
             Check("未设置时回退到 <home>/.dsh（与 v2.x 一致）", wdr != null && wdr.EndsWith(".dsh"));
         }
         finally { Environment.SetEnvironmentVariable("DSH_HOME", oldWinHome); }
+        Console.WriteLine("[20] restore --apply 准入（V3 独有：真实写盘只允许隔离数据根）");
+        string[] defs = new string[] { @"C:\Users\u\.dsh", @"C:\Users\u\AppData\Roaming\.dsh", @"C:\Users\u\AppData\Local\.dsh" };
+        Check("未给 --apply → 判定不介入（放行）", Dsht.Domain.Services.RestoreApplyPolicy.Judge(false, null, null, defs) == null);
+        Check("--apply + 未设 $DSH_HOME → apply-needs-dsh-home", Dsht.Domain.Services.RestoreApplyPolicy.Judge(true, null, @"D:\iso\data", defs) == Dsht.Domain.Services.RestoreApplyPolicy.NeedsDshHome);
+        Check("--apply + $DSH_HOME 空白 → apply-needs-dsh-home", Dsht.Domain.Services.RestoreApplyPolicy.Judge(true, "   ", @"D:\iso\data", defs) == Dsht.Domain.Services.RestoreApplyPolicy.NeedsDshHome);
+        Check("--apply + 数据根为空 → apply-needs-dsh-home", Dsht.Domain.Services.RestoreApplyPolicy.Judge(true, @"D:\iso\data", "  ", defs) == Dsht.Domain.Services.RestoreApplyPolicy.NeedsDshHome);
+        Check("--apply + 数据根=默认位置 → apply-not-isolated", Dsht.Domain.Services.RestoreApplyPolicy.Judge(true, @"C:\Users\u\.dsh", @"C:\Users\u\.dsh", defs) == Dsht.Domain.Services.RestoreApplyPolicy.NotIsolated);
+        Check("--apply + 默认位置（大小写/尾分隔符不敏感）→ apply-not-isolated", Dsht.Domain.Services.RestoreApplyPolicy.Judge(true, @"C:\USERS\U\.DSH\", @"c:\users\u\.dsh", defs) == Dsht.Domain.Services.RestoreApplyPolicy.NotIsolated);
+        Check("--apply + 默认位置的子目录 → 放行（不等于默认位置本身）", Dsht.Domain.Services.RestoreApplyPolicy.Judge(true, @"C:\Users\u\.dsh\sandbox", @"C:\Users\u\.dsh\sandbox", defs) == null);
+        Check("--apply + 隔离数据根 → 放行", Dsht.Domain.Services.RestoreApplyPolicy.Judge(true, @"D:\iso\data", @"D:\iso\data", defs) == null);
+        Check("--apply + 候选表为 null → 放行（无默认位置可判）", Dsht.Domain.Services.RestoreApplyPolicy.Judge(true, @"D:\iso\data", @"D:\iso\data", null) == null);
+        Check("文案：中文 needs-dsh-home 提到 DSH_HOME", Dsht.Domain.Services.RestoreApplyPolicy.Message(Dsht.Domain.Services.RestoreApplyPolicy.NeedsDshHome, true).IndexOf("DSH_HOME") >= 0);
+        Check("文案：英文 not-isolated 提到 isolated", Dsht.Domain.Services.RestoreApplyPolicy.Message(Dsht.Domain.Services.RestoreApplyPolicy.NotIsolated, false).IndexOf("isolated") >= 0);
+        Check("文案：未知原因码有兜底", Dsht.Domain.Services.RestoreApplyPolicy.Message("whatever", true).Length > 0 && Dsht.Domain.Services.RestoreApplyPolicy.Message("whatever", false).Length > 0);
+        string[] wdefs = Dsht.Platform.Windows.WindowsPaths.DefaultDataRoots();
+        bool wdefsOk = wdefs.Length == 3;
+        for (int i = 0; i < wdefs.Length; i++) if (!wdefs[i].EndsWith(".dsh")) wdefsOk = false;
+        Check("Windows 默认数据根候选：3 个且都以 .dsh 结尾", wdefsOk);
+        string[] ldefs = Dsht.Platform.Linux.LinuxPaths.DefaultDataRoots();
+        Check("Linux 默认数据根候选：至少 1 个且以 .dsh 结尾", ldefs.Length >= 1 && ldefs[0].EndsWith(".dsh"));
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
