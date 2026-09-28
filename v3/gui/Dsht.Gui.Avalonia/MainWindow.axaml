@@ -25,6 +25,7 @@
         <Button x:Name="Shell1" Content="② 顶部标签式" />
         <Button x:Name="Shell2" Content="③ 卡片网格仪表盘" />
         <Button x:Name="Shell3" Content="④ 主从式（列表+详情）" />
+        <Button x:Name="Shell4" Content="⑤ 混合式（主菜单+子菜单）" />
         <TextBlock x:Name="ShellHint" Foreground="#9CA3AF" FontSize="12" VerticalAlignment="Center" Margin="10,0,0,0" Text="" />
       </StackPanel>
     </Border>
