@@ -33,6 +33,13 @@ All notable changes to **DeepSeek Harness Toolkit** (unofficial). Full release n
 > 注：阶段 1 的**分层拆分**（及阶段 2 的 net8.0 工程）已随 **v2.7.3** 一起发布——下面的记录保留为当时的过程说明，本版号只留给后续阶段。
 > Note: the stage-1 **layering split** (and stage 2's net8.0 project) already shipped with **v2.7.3** — the record below is kept as the process note of that work; this version number is reserved for later stages.
 
+### Docs / 文档（2026-09-28）
+
+- **README 补上「插件加载失败」一节**（EN/zh）：把 `profilepatch --disable`（v2.7.2 的通用隔离处方）写进文档——此前只在发行说明里提过，README 一直缺；同时把「工具箱不是 dsh 插件（独立进程、不注入 dsh、dsh 没装也能用）」写清楚，避免被误当成插件安装。
+  **README gained a "plugin failed to load" section** (EN/zh) documenting `profilepatch --disable` (the v2.7.2 generic quarantine prescription, previously only in the release notes) and stating plainly that the toolkit is **not** a dsh plugin.
+- 仓库 description/topics 更新为**排障/数据保护**向关键词（diagnostics / troubleshooting / backup-restore / disaster-recovery / data-integrity / checksum-verification / profile / cordis）。
+  Repository description/topics now use troubleshooting and data-protection keywords.
+
 ### Changed / 变更（GUI 呈现层基座 · 2026-09-28）
 
 - **任务即信号**：GUI 新增全局信号总线（`SignalBus` / `Sig` / `SigRouting`）。任务开始/成功/失败/超时、服务状态变化、日志追加都广播为信号，"哪个信号刷新什么"变成一张**路由表**（`SigRouting.ActionsFor`），不再散落在各处直接调用（原来 `OnCaptureDone` 里硬编码了"更新按钮 + 刷新备份列表 + 弹托盘气泡"）；`SetStatus` 也不再直接驱动按钮可用性。
