@@ -9,5 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Dsht.Domain\Dsht.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Dsht.Platform.Windows\Dsht.Platform.Windows.csproj" />
+    <ProjectReference Include="..\..\src\Dsht.Platform.Linux\Dsht.Platform.Linux.csproj" />
   </ItemGroup>
 </Project>
