@@ -11,6 +11,9 @@ function Gate([string]$name, [bool]$ok, [string]$detail) {
     if ($ok) { $script:rows.Add(("  [READY] {0,-28} {1}" -f $name, $detail)) }
     else { $script:fail++; $script:rows.Add(("  [ NOT ] {0,-28} {1}" -f $name, $detail)) }
 }
+# 这个脚本会先把所有门禁跑完、最后一次性打印表格（因为每条门禁都要 csc 编译 + 跑测试），
+# 中间**没有任何输出**——先说明清楚，免得看起来像卡住。
+Write-Host "正在检查切换就绪度（约 1-3 分钟，跑完前不会输出；请勿关闭窗口）…"
 
 # ---- 门槛② 领域单测（csc 构建 + 运行契约测试）----
 $dom = @(Get-ChildItem (Join-Path $Repo 'v3\src\Dsht.Domain') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
