@@ -6,6 +6,14 @@ using Dsht.Domain.Services;
 using Dsht.Domain.Targets;
 using Dsht.Platform.Windows;
 
+using System.Reflection;
+
+[assembly: AssemblyTitle("DeepSeek Harness Toolkit V3")]
+[assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
+[assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
+[assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
+[assembly: AssemblyVersion("3.0.0.0")]
+[assembly: AssemblyFileVersion("3.0.0.0")]
 namespace Dsht.Cli
 {
     /// <summary>V3 CLI 组合根 + 命令面。每个命令的标记行都要与 v2.x 逐字一致（见 v3/tests/compare_markers.ps1）。</summary>
@@ -30,8 +38,9 @@ namespace Dsht.Cli
             if (cmd == "config-set") return ConfigSet(args, reg);
             if (cmd == "bootdiag") return BootDiag(args, reg);
             if (cmd == "restore") return Restore(args, reg);
+            if (cmd == "selftest") return SelfTest(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>]");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | selftest [<report>]");
             return 2;
         }
 
@@ -251,6 +260,57 @@ namespace Dsht.Cli
         }
 
 
+
+
+        /// <summary>selftest：写自检报告并打印 report -> 路径。内容逐条对齐 v2.x 的 Selftest。</summary>
+        private static int SelfTest(string[] args, ServiceRegistry reg)
+        {
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            sb.AppendLine("== DeepSeek Harness Toolkit selftest ==");
+            try
+            {
+                System.Reflection.Assembly asm = System.Reflection.Assembly.GetExecutingAssembly();
+                System.Reflection.AssemblyTitleAttribute title = (System.Reflection.AssemblyTitleAttribute)System.Attribute.GetCustomAttribute(asm, typeof(System.Reflection.AssemblyTitleAttribute));
+                System.Reflection.AssemblyCompanyAttribute company = (System.Reflection.AssemblyCompanyAttribute)System.Attribute.GetCustomAttribute(asm, typeof(System.Reflection.AssemblyCompanyAttribute));
+                System.Reflection.AssemblyDescriptionAttribute desc = (System.Reflection.AssemblyDescriptionAttribute)System.Attribute.GetCustomAttribute(asm, typeof(System.Reflection.AssemblyDescriptionAttribute));
+                sb.AppendLine("title   : " + (title == null ? "(null)" : title.Title));
+                sb.AppendLine("company : " + (company == null ? "(null)" : company.Company));
+                sb.AppendLine("desc    : " + (desc == null ? "(null)" : desc.Description));
+                sb.AppendLine("version : " + asm.GetName().Version);
+                sb.AppendLine("ui lang : " + System.Globalization.CultureInfo.CurrentUICulture.Name);
+
+                IToolchainQuery tc = reg.Get<IToolchainQuery>();
+                IPortProbe ports = reg.Get<IPortProbe>();
+                IPaths paths = reg.Get<IPaths>();
+                string dshLoc = tc.WhichDsh();
+                sb.AppendLine("dsh installed (live): " + (dshLoc != null));
+
+                sb.AppendLine("port 1 (expect False): " + ports.IsOpen(1, 500));
+                bool selfOpen;
+                System.Net.Sockets.TcpListener l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+                l.Start();
+                int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
+                selfOpen = ports.IsOpen(port, 500);
+                l.Stop();
+                sb.AppendLine("self-listener (expect True): " + selfOpen);
+
+                sb.AppendLine("dsh loc  : " + (dshLoc == null ? "(null)" : dshLoc));
+                string nodeVer = tc.NodeVersion();
+                sb.AppendLine("node ver : " + (string.IsNullOrEmpty(nodeVer) ? "(empty)" : nodeVer));
+                sb.AppendLine("state dir: " + paths.StateDir);
+                sb.AppendLine("data root: " + paths.DataRoot);
+            }
+            catch (Exception ex) { sb.AppendLine("EXCEPTION: " + ex); }
+
+            string report = args.Length > 1 ? args[1] : System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsh_selftest.txt");
+            try
+            {
+                System.IO.File.WriteAllText(report, sb.ToString(), new System.Text.UTF8Encoding(true));
+                Console.WriteLine("report -> " + report);
+            }
+            catch (Exception ex) { Console.WriteLine("write report failed: " + ex.Message); }
+            return 0;
+        }
 
         /// <summary>最小本地化：dryrun 的失败/说明文案在 v2.x 里走 T()，必须同语言才能比对。</summary>
         private static string T(string zh, string en) { return (_cfg != null && _cfg.Lang == "en") ? en : zh; }

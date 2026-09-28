@@ -61,15 +61,26 @@ $cases = @(
     @{ name = 'bootdiag (unrecognised)'; args = @('bootdiag','--from',(Join-Path $env:TEMP 'dsht_bootdiag_unknown.txt')); full = $true },
     @{ name = 'restore --dry-run';          args = @('restore','--dry-run'); full = $true },
     @{ name = 'restore --dry-run --path';   args = @('restore','--dry-run','--path',(Join-Path $Repo 'backup\dsh-data-20990101-000000-auto')); full = $true },
+    # selftest：stdout 只有 "report -> 路径"，真正的价值在报告正文 → post='report' 时比较报告内容
+    # 产品标识行（title/version）在 v2.x 与 V3 之间本就不同，按规则忽略
+    @{ name = 'selftest (report body)'; args = @('selftest'); post = 'report'; ignore = '^(title|version)\s+:' },
     @{ name = 'config-get';          args = @('config-get'); full = $true },
     @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity '; ignoreSummary = $true }
 )
 $fail = 0
 foreach ($c in $cases) {
     $o2 = (& $v2 @($c.args) 2>&1 | Out-String)
+    if ($c.post -eq 'report') {
+        $rp = Join-Path $env:TEMP 'dsh_selftest.txt'
+        if (Test-Path $rp) { $o2 = [System.IO.File]::ReadAllText($rp) }
+    }
     $o3 = (& $v3exe @($c.args) 2>&1 | Out-String)
+    if ($c.post -eq 'report') {
+        $rp2 = Join-Path $env:TEMP 'dsh_selftest.txt'
+        if (Test-Path $rp2) { $o3 = [System.IO.File]::ReadAllText($rp2) }
+    }
     $ignored = 0
-    if ($c.full) {
+    if ($c.full -or $c.post -eq 'report') {
         $m2 = @(($o2 -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
         $m3 = @(($o3 -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
         if ($c.ignore) {
