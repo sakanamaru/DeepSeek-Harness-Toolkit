@@ -298,7 +298,14 @@ namespace Dsht.Cli
             string reason = PathValidator.ValidateDeletePath(Flag(args, "--path"), bk.BackupsRoot,
                 delegate(string p) { return fs.DirectoryExists(p); });
             if (reason != null) { Console.WriteLine("BKDEL_FAIL " + T("删除校验失败: " + reason, "delete validation failed: " + reason)); return 0; }
-            Console.WriteLine("BKDEL_NOT_IMPLEMENTED V3 尚未移植真实删除；请用 v2.x 执行删除。");
+            string src = (Flag(args, "--path") ?? "").Trim().Trim('"');
+            try
+            {
+                bk.Delete(src);
+                if (fs.DirectoryExists(src)) { Console.WriteLine("BKDEL_FAIL " + T("删除后目录仍存在", "directory still exists after delete")); return 0; }
+                Console.WriteLine("BKDEL_OK " + System.IO.Path.GetFileName(src.TrimEnd('\\', '/')));
+            }
+            catch (Exception ex) { Console.WriteLine("BKDEL_FAIL " + ex.Message); }
             return 0;
         }
 
