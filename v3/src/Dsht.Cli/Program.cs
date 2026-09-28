@@ -1492,6 +1492,9 @@ namespace Dsht.Cli
                 Console.WriteLine(T("已跳过 " + r.SkippedNested + " 个嵌套备份目录（dsh-data-*），不复制进本次备份。",
                                     "Skipped " + r.SkippedNested + " nested backup folder(s) (dsh-data-*), not copied into this backup."));
             Console.WriteLine("BACKUP_OK " + r.Path);
+            // 不完整就说出来 ✓：读不到/复制失败的文件被计数（此前静默吞掉 ✗），备份最不能有静默缺口 ✗
+            if (r.FailedCopies > 0)
+                Console.WriteLine("BACKUP_INCOMPLETE " + r.FailedCopies + T(" 个文件/目录未能备份（权限或读取失败）—— 该备份不完整，请先解决权限再重做", " files/directories could not be backed up (permission or read failure) - this backup is INCOMPLETE; fix permissions and run it again"));
             OpLog(reg, "INFO", "backup OK " + r.Path);
             return 0;
         }
@@ -1918,6 +1921,17 @@ namespace Dsht.Cli
             if (reason != null) { Console.WriteLine("CONFIGSET_FAIL " + reason); return 0; }
             _cfg = ConfigValidator.ApplyTo(_cfg, key, val, CanonPath);
             reg.Get<IConfigSource>().WriteConfig(ConfigCodec.Serialize(_cfg));
+            // 回读校验 ✓：写盘可能静默失败（配置文件只读/被占用 ✗），实测曾报 CONFIGSET_OK 而文件根本没变 ✗✗。
+            // 判据是"配置里这个键真的等于请求值" ✓，不是"我调用过写盘" ✗。
+            string wantText = ConfigCodec.Serialize(_cfg);
+            string gotText = ConfigCodec.Serialize(ConfigCodec.Parse(reg.Get<IConfigSource>().ReadConfig(), CanonPath));
+            if (gotText != wantText)
+            {
+                Console.WriteLine("CONFIGSET_FAIL " + T("写入未生效（配置文件可能只读或被占用）—— 已回读核对，值未改变", "the write did not take effect (the config file may be read-only or locked) - read back and the value is unchanged"));
+                _cfg = ConfigCodec.Parse(gotText, CanonPath);
+                return 0;
+            }
+            _cfg = ConfigCodec.Parse(gotText, CanonPath);
             Console.WriteLine("CONFIGSET_OK " + key.Trim().ToLowerInvariant());
             return 0;
         }

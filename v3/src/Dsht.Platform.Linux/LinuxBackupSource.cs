@@ -89,7 +89,13 @@ namespace Dsht.Platform.Linux
                 string root = BackupsRoot;
                 Directory.CreateDirectory(root);
                 string dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff") + Dsht.Domain.Services.BackupPackage.Suffix(kind));
-                int skipped = CopyTree(sourceDir, dest, true);
+                _copyFailures = 0;
+            int srcFiles = 0;
+            CountTree(sourceDir, ref srcFiles);
+            int skipped = CopyTree(sourceDir, dest, true);
+            int dstFiles = 0;
+            CountTree(dest, ref dstFiles);
+            if (srcFiles - dstFiles > 0) _copyFailures += srcFiles - dstFiles;   // 源里可读、目标里没有 → 没能备份进去 ✓
                 // Package the workspace too (written as _workspace/, which the restore side reads as the
                 // legacy single-workspace layout and merges back into the workspace root). Guarded both
                 // ways so a workspace nested in the data root (or the reverse) can never recurse.
@@ -122,7 +128,7 @@ namespace Dsht.Platform.Linux
                     }
                 }
                 catch { }
-                return new BackupResult(dest, skipped);
+                return new BackupResult(dest, skipped, _copyFailures);
             }
             catch { return null; }
         }
@@ -225,6 +231,33 @@ namespace Dsht.Platform.Linux
         /// <summary>复现 v2.x 的 CopyTree（best-effort 模式）：跳过 node_modules / backup / dsh-data-* / reparse；
         /// 文件用 FileShare.ReadWrite|Delete 打开（被独占的文件才失败，正常读取中的文件可复制）；失败记数不中断。
         /// 返回被跳过的嵌套 dsh-data-* 目录数（供上层提示）。skipLocked=false 时（恢复模式）失败如实抛出。</summary>
+        /// <summary>本次备份中"读不到/复制失败"的文件或目录数 ✓（此前被静默吞掉 ✗ → 备份静默缺文件而报 OK ✗✗）。</summary>
+        private int _copyFailures;
+
+        /// <summary>数一棵树里的文件数（容错 ✓）：读不到的目录/文件计入 _copyFailures ✓ 而不是静默跳过 ✗。
+        /// 只用于"源 vs 目标"比对，判断备份是否完整 ✓；不改动任何既有方法签名 ✓。</summary>
+        private void CountTree(string dir, ref int files)
+        {
+            string[] fs;
+            try { fs = Directory.GetFiles(dir); }
+            catch { _copyFailures++; return; }
+            for (int i = 0; i < fs.Length; i++)
+            {
+                try { if ((File.GetAttributes(fs[i]) & FileAttributes.ReparsePoint) != 0) continue; files++; }
+                catch { _copyFailures++; }
+            }
+            string[] ds;
+            try { ds = Directory.GetDirectories(dir); }
+            catch { _copyFailures++; return; }
+            for (int i = 0; i < ds.Length; i++)
+            {
+                string name = Path.GetFileName(ds[i].TrimEnd('\\', '/'));
+                if (name.Equals("node_modules", StringComparison.OrdinalIgnoreCase)) continue;
+                if (name.Equals("backup", StringComparison.OrdinalIgnoreCase)) continue;
+                if (name.StartsWith("dsh-data-", StringComparison.OrdinalIgnoreCase)) continue;
+                CountTree(ds[i], ref files);
+            }
+        }
         private static int CopyTree(string src, string dst, bool skipLocked)
         {
             int skippedNested = 0;
