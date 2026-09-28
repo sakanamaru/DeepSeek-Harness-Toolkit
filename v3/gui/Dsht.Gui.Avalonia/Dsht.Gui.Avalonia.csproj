@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    V3 跨平台 GUI（Avalonia）—— **骨架**，与 v2.x 的 WinForms GUI 并行存在。
+    架构约定（V3.0 方案 §7.3/§7.5）：
+      · GUI 只是"呈现适配器"：所有逻辑在 V3 CLI 的标记行契约后面，GUI 不引用核心程序集，只调 CLI。
+      · 因此这里没有 ProjectReference —— 换 UI 不影响核心，换核心也不影响 UI。
+      · GUI 层允许第三方 UI 库（用户已批准）；Core/CLI 仍严格零第三方依赖。
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>dsht-gui</AssemblyName>
+    <RootNamespace>Dsht.Gui.Avalonia</RootNamespace>
+    <!-- Avalonia 自带 DPI 处理，不需要 Win32 清单 -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.1.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.1.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.1.3" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.1.3" />
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.1.3" Condition="'$(Configuration)' == 'Debug'" />
+  </ItemGroup>
+</Project>
