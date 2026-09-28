@@ -125,7 +125,7 @@ namespace Dsht.Platform.Windows
             catch { return null; }
         }
 
-        public BackupResult Create(string sourceDir, BackupKind kind, int keep = 3)
+        public BackupResult Create(string sourceDir, BackupKind kind, int keep = 3, string workspaceRoot = null)
         {
             try
             {
@@ -133,6 +133,22 @@ namespace Dsht.Platform.Windows
                 Directory.CreateDirectory(root);
                 string dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff") + Dsht.Domain.Services.BackupPackage.Suffix(kind));
                 int skipped = CopyTree(sourceDir, dest, true);
+                // Package the workspace too (written as _workspace/, which the restore side reads as the
+                // legacy single-workspace layout and merges back into the workspace root). Guarded both
+                // ways so a workspace nested in the data root (or the reverse) can never recurse.
+                if (!string.IsNullOrEmpty(workspaceRoot) && Directory.Exists(workspaceRoot))
+                {
+                    try
+                    {
+                        string wsFull = Dsht.Domain.Services.PathUtil.TrimTrailingSep(workspaceRoot);
+                        string dataFull = Dsht.Domain.Services.PathUtil.TrimTrailingSep(sourceDir);
+                        bool wsInsideData = Dsht.Domain.Services.PathUtil.IsSubPath(dataFull, wsFull);
+                        bool dataInsideWs = Dsht.Domain.Services.PathUtil.IsSubPath(wsFull, dataFull);
+                        if (!wsInsideData && !dataInsideWs)
+                            skipped += CopyTree(wsFull, Path.Combine(dest, "_workspace"), true);
+                    }
+                    catch { }
+                }
                 // 保留策略：只清自动类（手动永久保留）
                 try
                 {

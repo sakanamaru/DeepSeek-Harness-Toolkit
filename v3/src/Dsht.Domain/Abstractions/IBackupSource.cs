@@ -16,7 +16,7 @@ namespace Dsht.Domain.Abstractions
         /// <summary>创建一次备份（Manual/Auto/Pre*）：源目录 → 备份根/dsh-data-&lt;时间戳&gt;&lt;后缀&gt;；
         /// 复制时跳过 node_modules/backup/dsh-data-*/reparse point，被锁文件按 best-effort 跳过；
         /// 成功后执行保留策略（只清自动类）。失败返回 null。</summary>
-        BackupResult Create(string sourceDir, BackupKind kind, int keep = 3);   // keep = 保留份数（来自配置 keep_backups ✓，此前实现里硬编码 3 ✗）
+        BackupResult Create(string sourceDir, BackupKind kind, int keep = 3, string workspaceRoot = null);   // workspaceRoot：一并打包的工作区（写进 _workspace/，与恢复侧 legacy 语义对称 ✓）   // keep = 保留份数（来自配置 keep_backups ✓，此前实现里硬编码 3 ✗）
 
         /// <summary>导出备份副本到指定目录（只读源）；返回目标路径，失败返回 null。</summary>
         string Export(string src, string dstDir);
