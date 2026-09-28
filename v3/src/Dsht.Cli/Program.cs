@@ -292,9 +292,22 @@ namespace Dsht.Cli
         /// **纪律：写操作在菜单里二次确认后，才带 --yes 调用同一个命令实现** —— 闸门不绕过；
         /// 输入 EOF（管道/重定向）视为退出，绝不空转。</summary>
         /// <summary>用法行（未知命令与菜单"全部命令"共用）。</summary>
+        /// <summary>用法速查（菜单"全部命令"与未知命令共用）。
+        /// 注意：这里**绝不能调用自己** ✗ —— 之前用正则抽取内联那行时把函数体写成了 `Usage();`，
+        /// 变成无限递归 → 菜单项 12 直接栈溢出（真机扫描抓到的 ✗）。</summary>
         private static void Usage()
         {
-            Usage();
+            Console.WriteLine(T("dsh-minato 命令速查：", "dsh-minato commands:"));
+            Console.WriteLine("  status [--detail] | describe | doctor | bootdiag | check | selftest | version | about");
+            Console.WriteLine("  profiles | profilecheck [--dir <d>] [--file <yaml>] | profilepatch --profile <name> --id <entry> [--enable] [--yes]");
+            Console.WriteLine("  sessions | config-get | config-set <key> <value>");
+            Console.WriteLine("  install [--install-node] [--yes] | update [--yes] | uninstall [--yes]");
+            Console.WriteLine("  start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--force] [--yes]");
+            Console.WriteLine("  backup | backup-list [--detail] | backup-export --path <备份> --to <目标> | backup-delete --path <备份> [--yes]");
+            Console.WriteLine("  restore --path <备份> [--dry-run] [--apply] [--yes]");
+            Console.WriteLine("  shortcut [--yes] | ui | 无参数 = 数字菜单");
+            Console.WriteLine(T("写操作一律先打印计划，加 --yes 才执行；涉及数据根的真实恢复还要求先设置 DSH_HOME。",
+                                "Every write prints its plan first; add --yes to execute. A real restore also requires DSH_HOME."));
         }
 
         private static int Menu(ServiceRegistry reg)
