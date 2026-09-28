@@ -5,7 +5,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <AssemblyName>dsht</AssemblyName>
+    <AssemblyName>dsh-minato</AssemblyName>
     <!-- 程序集属性写在 Program.cs 里（零 SDK 的 csc 构建路径需要它们）→ 关掉 SDK 自动生成的
          AssemblyInfo，否则 dotnet build 会报 CS0579 Duplicate 'System.Reflection.Assembly*Attribute'。 -->
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
