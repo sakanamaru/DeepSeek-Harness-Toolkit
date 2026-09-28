@@ -101,6 +101,9 @@ jobs:
       - name: Build cross-platform GUI skeleton (Avalonia)
         shell: pwsh
         run: dotnet build v3/gui/Dsht.Gui.Avalonia/Dsht.Gui.Avalonia.csproj -c Release --nologo
+      - name: Run GUI logic tests (marker parsing)
+        shell: pwsh
+        run: dotnet run --project v3/gui/Dsht.Gui.LogicTests -c Release
   build:
     needs: test
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'   # M-8：发布/手动才构建产物；普通 push/PR 仅跑测试
