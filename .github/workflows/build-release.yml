@@ -71,6 +71,21 @@ jobs:
           .\tests\integration.ps1 -RepoRoot (Get-Location).Path
           if ($LASTEXITCODE -ne 0) { throw "integration tests failed" }
 
+  v3-contracts:
+    name: V3 contracts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Build V3 CLI (net8.0)
+        shell: pwsh
+        run: dotnet build v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release --nologo
+      - name: Run V3 contract tests
+        shell: pwsh
+        run: dotnet run --project v3/tests/Dsht.Contracts.Tests/Dsht.Contracts.Tests.csproj -c Release
   build:
     needs: test
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'   # M-8：发布/手动才构建产物；普通 push/PR 仅跑测试

@@ -63,7 +63,7 @@ namespace Dsht.Cli
             string one = Flag(args, "--file");
             bool vendor = Has(args, "--vendor");
             bool abs = Has(args, "--abs");
-            WindowsProfileSource src = new WindowsProfileSource(reg.Get<IPaths>());
+            IProfileSource src = reg.Get<IProfileSource>();
             List<ProfileFinding> fs = new List<ProfileFinding>();
             int files = 0, skipped = 0;
             if (!string.IsNullOrEmpty(one))
@@ -241,26 +241,9 @@ namespace Dsht.Cli
             return false;
         }
 
-        /// <summary>组合根：装配平台实现 → 领域服务。形态识别只用可观测事实。</summary>
+        /// <summary>组合根：交给 PlatformComposition 按平台装配（单 exe，运行时判定）。</summary>
         private static ServiceRegistry Compose()
         {
-            WindowsHttpProbe http = new WindowsHttpProbe();
-            WindowsPortProbe port = new WindowsPortProbe();
-            WindowsProcessQuery proc = new WindowsProcessQuery(http, WebUrl, 800);
-
-            WindowsPaths paths = new WindowsPaths();
-            ServiceRegistry reg = new ServiceRegistry();
-            reg.Add<IPortProbe>(port);
-            reg.Add<IHttpProbe>(http);
-            reg.Add<IProcessQuery>(proc);
-            reg.Add<IPaths>(paths);
-            reg.Add<IToolchainQuery>(new WindowsToolchainQuery());
-            reg.Add<IFileSystemQuery>(new WindowsFileSystemQuery());
-            reg.Add<IIntegritySource>(new WindowsIntegritySource());
-            reg.Add<IProfileSource>(new WindowsProfileSource(paths));
-            reg.Add<IBackupSource>(new WindowsBackupSource(paths));
-            reg.Add<IServiceTarget>(new WebTarget(port, http, proc, new WebTargetOptions(WebPort, WebUrl, 800, 800)));
-            return reg;
-        }
-    }
+            return PlatformComposition.Compose();
+        }    }
 }

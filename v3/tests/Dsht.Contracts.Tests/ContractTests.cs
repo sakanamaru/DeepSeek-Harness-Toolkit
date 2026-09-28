@@ -264,6 +264,28 @@ static class ContractTests
         Check("备份天数：3 天前", BackupAge.DaysSince("dsh-data-20260925-120000000-auto", now) == 3);
         Check("备份天数：名字前缀不符 → null", BackupAge.DaysSince("other-20260925-120000000", now) == null);
         Check("备份天数：时间戳非法 → null", BackupAge.DaysSince("dsh-data-notatimestamp", now) == null);
+        Console.WriteLine("[12] Linux 平台侧纯逻辑（ss 解析 / 路径解析）");
+        string ss = "State  Recv-Q Send-Q Local Address:Port Peer Address:Port Process\n" +
+                    "LISTEN 0      511          127.0.0.1:3080      0.0.0.0:*    users:((\"node\",pid=4242,fd=22))\n" +
+                    "LISTEN 0      511              [::]:3080         [::]:*    users:((\"node\",pid=4242,fd=23))\n";
+        Check("ss 解析命中 pid", Dsht.Platform.Linux.LinuxProcessQuery.ParseSsOutput(ss, 3080) == 4242);
+        Check("ss 解析：端口不符 → 0", Dsht.Platform.Linux.LinuxProcessQuery.ParseSsOutput(ss, 9999) == 0);
+        Check("ss 解析：空输入 → 0", Dsht.Platform.Linux.LinuxProcessQuery.ParseSsOutput("", 3080) == 0);
+        Check("ss 解析：无 pid= → 0", Dsht.Platform.Linux.LinuxProcessQuery.ParseSsOutput("LISTEN 0 511 127.0.0.1:3080 0.0.0.0:*", 3080) == 0);
+        Check("Linux 命令行判定（含 dsh）", Dsht.Platform.Linux.LinuxProcessQuery.IsDshCommandLineText("node /usr/lib/node_modules/@deepseek-ai/dsh/lib/bin.js"));
+        Check("Linux 命令行判定（无关进程）", !Dsht.Platform.Linux.LinuxProcessQuery.IsDshCommandLineText("nginx: worker process"));
+
+        string oldDshHome = Environment.GetEnvironmentVariable("DSH_HOME");
+        try
+        {
+            Environment.SetEnvironmentVariable("DSH_HOME", "/tmp/dsh-home-probe");
+            Check("Linux DataRoot 优先取 DSH_HOME", new Dsht.Platform.Linux.LinuxPaths().DataRoot == "/tmp/dsh-home-probe");
+            Environment.SetEnvironmentVariable("DSH_HOME", null);
+            string ldr2 = new Dsht.Platform.Linux.LinuxPaths().DataRoot;
+            Check("Linux DataRoot 回退到 <home>/.dsh", ldr2 != null && ldr2.EndsWith(".dsh"));
+            Check("Linux BackupsRoot = StateDir/backup", new Dsht.Platform.Linux.LinuxPaths().BackupsRoot.EndsWith("backup"));
+        }
+        finally { Environment.SetEnvironmentVariable("DSH_HOME", oldDshHome); }
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
