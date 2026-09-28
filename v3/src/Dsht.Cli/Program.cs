@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Dsht.Domain.Abstractions;
 using Dsht.Domain.Model;
 using Dsht.Domain.Services;
@@ -7,7 +8,7 @@ using Dsht.Platform.Windows;
 
 namespace Dsht.Cli
 {
-    /// <summary>V3 CLI 组合根 + 命令面（第一步只做 status，用于与 v2.x 对标记行契约）。</summary>
+    /// <summary>V3 CLI 组合根 + 命令面。每个命令的标记行都要与 v2.x 逐字一致（见 v3/tests/compare_markers.ps1）。</summary>
     public static class Program
     {
         private const int WebPort = 3080;
@@ -17,39 +18,92 @@ namespace Dsht.Cli
         {
             ServiceRegistry reg = Compose();
             string cmd = args.Length > 0 ? args[0] : "";
-            bool detail = false;
-            for (int i = 1; i < args.Length; i++) { if (args[i] == "--detail") detail = true; }
 
-            if (cmd == "status")
-            {
-                IServiceTarget target = reg.Get<IServiceTarget>();
-                ServiceReport r = target.Probe();
-                Console.WriteLine(r.StatusMarker);
-                if (detail)
-                {
-                    Console.WriteLine("STATUS_PID " + (r.Pid > 0 ? r.Pid.ToString() : "0"));
-                    bool haveStart = false;
-                    DateTime start = DateTime.MinValue;
-                    if (r.Pid > 0)
-                    {
-                        DateTime? s = reg.Get<IProcessQuery>().StartTime(r.Pid);
-                        if (s.HasValue) { start = s.Value; haveStart = true; }
-                    }
-                    Console.WriteLine("STATUS_START " + (haveStart ? start.ToString("yyyy-MM-dd HH:mm:ss") : ""));
-                    Console.WriteLine("STATUS_UPTIME " + (haveStart ? UptimeFormatter.Format(DateTime.Now - start) : ""));
-                }
-                return 0;
-            }
-            if (cmd == "describe")
-            {
-                IServiceTarget target = reg.Get<IServiceTarget>();
-                Console.WriteLine(target.Describe());
-                ServiceReport r = target.Probe();
-                Console.WriteLine("basis: " + r.Basis);
-                return 0;
-            }
-            Console.WriteLine("usage: dsht status [--detail] | describe");
+            if (cmd == "status") return Status(reg, Has(args, "--detail"));
+            if (cmd == "describe") return Describe(reg);
+            if (cmd == "profilecheck") return ProfileCheck(args);
+
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [--dir X] [--file Y] [--vendor] [--abs]");
             return 2;
+        }
+
+        /// <summary>服务三态 + detail 三行。逐条对齐 v2.x 的 StatusCli。</summary>
+        private static int Status(ServiceRegistry reg, bool detail)
+        {
+            ServiceReport r = reg.Get<IServiceTarget>().Probe();
+            Console.WriteLine(r.StatusMarker);
+            if (!detail) return 0;
+            Console.WriteLine("STATUS_PID " + (r.Pid > 0 ? r.Pid.ToString() : "0"));
+            bool haveStart = false;
+            DateTime start = DateTime.MinValue;
+            if (r.Pid > 0)
+            {
+                DateTime? s = reg.Get<IProcessQuery>().StartTime(r.Pid);
+                if (s.HasValue) { start = s.Value; haveStart = true; }
+            }
+            Console.WriteLine("STATUS_START " + (haveStart ? start.ToString("yyyy-MM-dd HH:mm:ss") : ""));
+            Console.WriteLine("STATUS_UPTIME " + (haveStart ? UptimeFormatter.Format(DateTime.Now - start) : ""));
+            return 0;
+        }
+
+        private static int Describe(ServiceRegistry reg)
+        {
+            IServiceTarget target = reg.Get<IServiceTarget>();
+            Console.WriteLine(target.Describe());
+            Console.WriteLine("basis: " + target.Probe().Basis);
+            return 0;
+        }
+
+        /// <summary>profilecheck：标记行逐条对齐 v2.x 的 ProfileCheckCli。</summary>
+        private static int ProfileCheck(string[] args)
+        {
+            string dir = Flag(args, "--dir");
+            string one = Flag(args, "--file");
+            bool vendor = Has(args, "--vendor");
+            bool abs = Has(args, "--abs");
+            WindowsProfileSource src = new WindowsProfileSource();
+            List<ProfileFinding> fs = new List<ProfileFinding>();
+            int files = 0, skipped = 0;
+            if (!string.IsNullOrEmpty(one))
+            {
+                ProfileFile pf = src.ReadSingle(one, abs);
+                if (pf != null) { files = 1; fs.AddRange(ProfileScanner.Scan(pf.Text, pf.Label, FileExists)); }
+            }
+            else
+            {
+                ProfileCollection col = src.CollectDirectory(dir, vendor, abs);
+                skipped = col.SkippedVendor;
+                foreach (ProfileFile pf in col.Files)
+                {
+                    files++;
+                    fs.AddRange(ProfileScanner.Scan(pf.Text, pf.Label, FileExists));
+                }
+            }
+            foreach (ProfileFinding f in fs)
+                Console.WriteLine("PROFILECHK_WARN " + f.File + " " + f.Line + " " + f.Id + " " + f.Missing + " " + f.Hint);
+            Console.WriteLine("PROFILECHK_TOTAL " + fs.Count + " " + files);
+            if (skipped > 0) Console.WriteLine("PROFILECHK_SKIPPED_VENDOR " + skipped);
+            if (abs)
+            {
+                foreach (ProfileFinding f in fs)
+                    if (f.Missing == "maxDepth") Console.WriteLine("PROFILECHK_FIX " + f.File + "|" + f.Line + "|" + f.Id + "|" + f.Missing);
+            }
+            if (fs.Count == 0) Console.WriteLine("PROFILECHK_OK");
+            return 0;
+        }
+
+        private static bool FileExists(string p) { try { return System.IO.File.Exists(p); } catch { return false; } }
+
+        private static string Flag(string[] args, string name)
+        {
+            for (int i = 0; i + 1 < args.Length; i++) if (args[i] == name) return args[i + 1];
+            return null;
+        }
+
+        private static bool Has(string[] args, string name)
+        {
+            for (int i = 0; i < args.Length; i++) if (args[i] == name) return true;
+            return false;
         }
 
         /// <summary>组合根：装配平台实现 → 领域服务。形态识别只用可观测事实。</summary>
@@ -63,6 +117,7 @@ namespace Dsht.Cli
             reg.Add<IPortProbe>(port);
             reg.Add<IHttpProbe>(http);
             reg.Add<IProcessQuery>(proc);
+            reg.Add<IProfileSource>(new WindowsProfileSource());
             reg.Add<IServiceTarget>(new WebTarget(port, http, proc, new WebTargetOptions(WebPort, WebUrl, 800, 800)));
             return reg;
         }

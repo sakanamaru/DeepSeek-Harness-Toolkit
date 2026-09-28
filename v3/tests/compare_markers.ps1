@@ -16,14 +16,16 @@ if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: V3 编译失败"; exit 2 }
 # 待比对命令：V3 尚未实现的命令会如实报"未对齐"
 $cases = @(
     @{ name = 'status';          args = @('status') },
-    @{ name = 'status --detail'; args = @('status','--detail') }
+    @{ name = 'status --detail'; args = @('status','--detail') },
+    @{ name = 'profilecheck'; args = @('profilecheck') },
+    @{ name = 'profilecheck --abs'; args = @('profilecheck','--abs') }
 )
 $fail = 0
 foreach ($c in $cases) {
     $o2 = (& $v2 @($c.args) 2>&1 | Out-String)
     $o3 = (& $v3exe @($c.args) 2>&1 | Out-String)
-    $m2 = @(($o2 -split "`r?`n") | Where-Object { $_ -match '^STATUS_[A-Z]+' } | ForEach-Object { $_.Trim() })
-    $m3 = @(($o3 -split "`r?`n") | Where-Object { $_ -match '^STATUS_[A-Z]+' } | ForEach-Object { $_.Trim() })
+    $m2 = @(($o2 -split "`r?`n") | Where-Object { $_ -match '^(STATUS|PROFILECHK|DOCTOR|BACKUP|DRYRUN)_[A-Z0-9_]+' } | ForEach-Object { $_.Trim() })
+    $m3 = @(($o3 -split "`r?`n") | Where-Object { $_ -match '^(STATUS|PROFILECHK|DOCTOR|BACKUP|DRYRUN)_[A-Z0-9_]+' } | ForEach-Object { $_.Trim() })
     $same = (($m2 -join '|') -eq ($m3 -join '|'))
     if ($same) { Write-Host ("  {0,-16} PASS  [{1}]" -f $c.name, ($m2 -join ' ')) }
     else {
