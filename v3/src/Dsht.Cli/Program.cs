@@ -174,6 +174,7 @@ namespace Dsht.Cli
             {
                 SessionStat s = list[i];
                 Console.WriteLine("SESSION " + s.Id
+                    + " title=" + MarkerText.Encode(s.Title)
                     + " created=" + (string.IsNullOrEmpty(s.CreatedAt) ? "unknown" : s.CreatedAt)
                     + " last=" + (string.IsNullOrEmpty(s.LastPromptAt) ? "unknown" : s.LastPromptAt)
                     + " turns=" + s.Turns

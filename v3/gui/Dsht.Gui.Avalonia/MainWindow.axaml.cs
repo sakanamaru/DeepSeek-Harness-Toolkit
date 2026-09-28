@@ -52,6 +52,7 @@ namespace Dsht.Gui.Avalonia
         };
 
         private SessionsSnapshot _data;
+        private ProfilesSnapshot _profiles;
         private List<SessionRowVm> _rows = new List<SessionRowVm>();
         private int _shell = Shells.Shells.Hybrid;     // 默认：混合式（主菜单 + 子菜单）
         private int _filter = SessionsView.FilterAll;
@@ -76,6 +77,7 @@ namespace Dsht.Gui.Avalonia
         // ---------------- 给 Shells 用的状态 ----------------
 
         public SessionsSnapshot Data { get { return _data; } }
+        public ProfilesSnapshot Profiles { get { return _profiles; } }
         public List<SessionRowVm> Rows { get { return _rows; } }
         public int SortMode { get; set; }
         public int MainSection { get { return _mainSection; } }
@@ -204,6 +206,13 @@ namespace Dsht.Gui.Avalonia
                 return;
             }
 
+            if (_mainSection == 2)
+            {
+                _rawOutput = Run(cli, "profiles");
+                _profiles = ProfilesMarkers.Parse(_rawOutput);
+                BuildShell();
+                return;
+            }
             if (!IsSessionsSection)
             {
                 _rawOutput = Run(cli, string.Join(" ", NavCli[_mainSection]));
