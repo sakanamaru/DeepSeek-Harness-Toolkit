@@ -8,5 +8,8 @@ namespace Dsht.Domain.Abstractions
         string WhichDsh();          // null = 未安装
         string DshVersion();
         string NpmRegistryConfig(); // npm config get registry（空 = 未配置，调用方回退官方源）
+
+        /// <summary>npm view @deepseek-ai/dsh version（最新版本串；离线/失败返回空）。</summary>
+        string NpmViewLatest();
     }
 }

@@ -37,6 +37,8 @@ namespace Dsht.Platform.Linux
 
         public string NpmRegistryConfig() { return Capture("npm", "config get registry"); }
 
+        public string NpmViewLatest() { return Capture("npm", "view @deepseek-ai/dsh version"); }
+
         private static string Capture(string exe, string args)
         {
             try

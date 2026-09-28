@@ -20,10 +20,11 @@ namespace Dsht.Cli
     public static class Program
     {
         private const int WebPort = 3080;
-        private const string WebUrl = "http://127.0.0.1:3080/";
+        private const string WebUrl = "http://127.0.0.1:3080";
 
         public static int Main(string[] args)
         {
+            try { Console.OutputEncoding = new System.Text.UTF8Encoding(false); } catch { }
             ServiceRegistry reg = Compose();
             _cfg = LoadConfig(reg);
             string cmd = args.Length > 0 ? args[0] : "";
@@ -39,8 +40,9 @@ namespace Dsht.Cli
             if (cmd == "bootdiag") return BootDiag(args, reg);
             if (cmd == "restore") return Restore(args, reg);
             if (cmd == "selftest") return SelfTest(args, reg);
+            if (cmd == "check") return Check(reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | selftest [<report>]");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | selftest [<report>] | check");
             return 2;
         }
 
@@ -261,6 +263,73 @@ namespace Dsht.Cli
 
 
 
+
+
+        private const string GithubHandle = "github.com/sakanamaru";
+
+        /// <summary>命令输出净化：去首尾空白，空串 → null（v2.x 的捕获不带尾换行）。</summary>
+        private static string TrimOrNull(string s)
+        {
+            if (s == null) return null;
+            string t = s.Trim();
+            return t.Length == 0 ? null : t;
+        }
+
+        /// <summary>横幅：与 v2.x 同构（版本行按产品版本不同，比对时忽略）。</summary>
+        private static void Banner()
+        {
+            Console.WriteLine("==============================================");
+            Console.WriteLine("  DeepSeek Harness Toolkit V" + ToolkitVersion);
+            Console.WriteLine("==============================================");
+            Console.WriteLine("  v1 脚本协助 : SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
+            Console.WriteLine("  v2 重构封装 : DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
+            Console.WriteLine("  GitHub    : @sakanamaru  https://" + GithubHandle);
+            Console.WriteLine("----------------------------------------------");
+            Console.WriteLine("  " + T("⚠ 非官方工具，由社区独立开发，与 DeepSeek 官方无关。", "⚠ Unofficial community tool, not affiliated with DeepSeek."));
+        }
+
+        private static void Pause()
+        {
+            Console.WriteLine();
+            Console.WriteLine(T("  按任意键继续...", "  Press any key to continue..."));
+            try { Console.ReadKey(true); } catch { }
+            Console.WriteLine();
+        }
+
+        /// <summary>check：安装/版本/更新/服务/语言一览（GUI 检查页数据源）。逐条对齐 v2.x 的 Check()。</summary>
+        private static int Check(ServiceRegistry reg)
+        {
+            IToolchainQuery tc = reg.Get<IToolchainQuery>();
+            Banner();
+            string node = TrimOrNull(tc.NodeVersion());
+            Console.WriteLine("  Node.js    : " + (string.IsNullOrWhiteSpace(node) ? T("未检测到", "not found") : node));
+            string npm = TrimOrNull(tc.NpmVersion());
+            Console.WriteLine("  npm        : " + (string.IsNullOrWhiteSpace(npm) ? T("未检测到", "not found") : npm));
+            string dsh = tc.WhichDsh();
+            Console.WriteLine("  dsh        : " + (dsh == null ? T("未安装", "not installed") : dsh + " ✓"));
+            if (dsh != null)
+            {
+                string v = TrimOrNull(tc.DshVersion());
+                Console.WriteLine("  dsh 版本   : " + (string.IsNullOrWhiteSpace(v) ? T("（读取失败）", "(read failed)") : v));
+                if (_cfg.CheckDshUpdate)
+                {
+                    string latest = VersionComparer.SanitizeLatest(tc.NpmViewLatest());
+                    string line;
+                    if (string.IsNullOrEmpty(latest)) line = T("（离线，未获取）", "(offline, n/a)");
+                    else if (string.IsNullOrWhiteSpace(v) || VersionComparer.Compare(v, latest) < 0)
+                        line = latest + (string.IsNullOrWhiteSpace(v) ? "" : T("（当前 " + v + "，有更新）", " (current " + v + ", update available)"));
+                    else line = latest + T("（已是最新）", " (up to date)");
+                    Console.WriteLine("  dsh 最新   : " + line);
+                }
+            }
+            ServiceReport sr = reg.Get<IServiceTarget>().Probe();
+            string ws = sr.State == ServiceState.Ready ? WebUrl + " " + T("已在运行", "running")
+                : (sr.State == ServiceState.Listening ? T("启动中（端口已开，服务未就绪）", "starting (port open, not ready)") : T("未启动", "not started"));
+            Console.WriteLine("  Web 服务   : " + ws);
+            Console.WriteLine("  UI 语言    : " + (_cfg.Lang == "auto" ? T("跟随系统", "follow system") : (_cfg.Lang == "zh" ? "简体中文" : "English")));
+            Pause();
+            return 0;
+        }
 
         /// <summary>selftest：写自检报告并打印 report -> 路径。内容逐条对齐 v2.x 的 Selftest。</summary>
         private static int SelfTest(string[] args, ServiceRegistry reg)

@@ -13,7 +13,7 @@ namespace Dsht.Cli
     internal static class PlatformComposition
     {
         internal const int WebPort = 3080;
-        internal const string WebUrl = "http://127.0.0.1:3080/";
+        internal const string WebUrl = "http://127.0.0.1:3080";
 
         public static bool IsWindows()
         {
