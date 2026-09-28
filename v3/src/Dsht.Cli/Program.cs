@@ -33,7 +33,7 @@ namespace Dsht.Cli
             if (cmd == "describe") return Describe(reg);
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
             if (cmd == "backup-list") return BackupList(args, reg);
-            if (cmd == "doctor") return Doctor(reg);
+            if (cmd == "doctor") return Doctor(args, reg);
             if (cmd == "version") { Console.WriteLine("DSHT_VERSION " + ToolkitVersion); return 0; }
             if (cmd == "config-get") return ConfigGet();
             if (cmd == "config-set") return ConfigSet(args, reg);
@@ -45,7 +45,7 @@ namespace Dsht.Cli
             if (cmd == "backup-export") return BackupExport(args, reg);
             if (cmd == "backup-delete") return BackupDelete(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
             return 2;
         }
 
@@ -145,14 +145,32 @@ namespace Dsht.Cli
 
 
         /// <summary>doctor：七类体检。首行 DOCTOR_OK|WARN|ERROR n，其后每行 [级别] 类别 描述。逐条对齐 v2.x。
-        /// 注：--report 尚未移植（v2.x 的报告含配置/日志摘要，属后续工作）。</summary>
-        private static int Doctor(ServiceRegistry reg)
+        /// 可选 `--report &lt;file&gt;`：写完整诊断报告（含配置/日志摘要，全部脱敏）→ `DOCTOR_REPORT &lt;路径&gt;`；
+        /// 写失败 → `DOCTOR_WRITE_FAIL &lt;原因&gt;`。全程只读（与 v2.x 一致，报告用 UTF-8 **带 BOM** 写）。</summary>
+        private static int Doctor(string[] args, ServiceRegistry reg)
         {
             List<DocItem> items = new List<DocItem>();
             DoctorCollect(reg, items);
-            Console.WriteLine(DoctorSummary.Summary(items));
+            string summary = DoctorSummary.Summary(items);
+            Console.WriteLine(summary);
             foreach (DocItem it in items)
                 Console.WriteLine("[" + DoctorSummary.Level(it.Level) + "] " + it.Cat + " " + it.Text);
+
+            string report = Flag(args, "--report");
+            if (report == null) report = Flag(args, "-report");
+            if (report != null)
+            {
+                string text = DoctorReport.Build(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), ToolkitVersion,
+                    Environment.OSVersion.VersionString, items,
+                    ConfigSummaryBuilder.Build(reg.Get<IConfigSource>().ReadConfig()),
+                    LogSummaryBuilder.Build(reg.Get<ILogSource>().ReadLog()), summary);
+                try
+                {
+                    System.IO.File.WriteAllText(report, text, new System.Text.UTF8Encoding(true));
+                    Console.WriteLine("DOCTOR_REPORT " + report);
+                }
+                catch (Exception ex) { Console.WriteLine("DOCTOR_WRITE_FAIL " + ex.Message); }
+            }
             return 0;
         }
 

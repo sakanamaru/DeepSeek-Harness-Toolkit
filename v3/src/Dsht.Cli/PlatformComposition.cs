@@ -60,6 +60,7 @@ namespace Dsht.Cli
                 reg.Add<IProfileSource>(new WindowsProfileSource(paths));
                 reg.Add<IBackupSource>(new WindowsBackupSource(paths));
                 reg.Add<IConfigSource>(new WindowsConfigSource(paths));
+                reg.Add<ILogSource>(new WindowsLogSource(paths));
                 reg.Add<IServiceTarget>(Composite(port, http, proc));
             }
             else
@@ -78,6 +79,7 @@ namespace Dsht.Cli
                 reg.Add<IProfileSource>(new LinuxProfileSource(paths));
                 reg.Add<IBackupSource>(new LinuxBackupSource(paths));
                 reg.Add<IConfigSource>(new LinuxConfigSource(paths));
+                reg.Add<ILogSource>(new LinuxLogSource(paths));
                 reg.Add<IServiceTarget>(Composite(port, http, proc));
             }
             return reg;
