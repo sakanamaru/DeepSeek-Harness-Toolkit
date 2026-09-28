@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- V3 底层重构 · 领域层：纯逻辑，零 IO、零平台、零第三方依赖。
+       纪律（由 v3/tests/verify_domain_pure.ps1 守卫）：
+         · 不得引用 System.IO / System.Net / System.Diagnostics / Console / System.Windows.Forms 等
+         · 不得出现平台分支（RuntimeInformation / OSVersion / Environment.SpecialFolder）
+       这样领域逻辑可以 100% 单测，且能被任何平台的实现复用。 -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+</Project>
