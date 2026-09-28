@@ -598,7 +598,22 @@ namespace Dsht.Cli
             }
             IServiceControl ctl = reg.Get<IServiceControl>();
             string err;
-            bool ok = ctl.StopTree(r.Pid, out err);
+            // ---- 安全闸门（真机复盘后加的）：绝不对可疑 PID 下手 ----
+            if (r.Pid <= 1)
+            {
+                Console.WriteLine("STOP_FAIL " + T("拒绝执行：观测到的 PID ", "refused: observed PID ") + r.Pid + T(" 不可能是 dsh（安全保护）", " cannot be dsh (safety guard)"));
+                return 0;
+            }
+            if (r.Pid == System.Diagnostics.Process.GetCurrentProcess().Id)
+            {
+                Console.WriteLine("STOP_FAIL " + T("拒绝执行：那是本程序自己（安全保护）", "refused: that is this program itself (safety guard)"));
+                return 0;
+            }
+            if (!reg.Get<IProcessQuery>().IsDshCommandLine(r.Pid) && !Has(args, "--force"))
+            {
+                Console.WriteLine("STOP_FAIL " + T("监听该端口的进程不是 dsh（PID ", "the process on that port is not dsh (PID ") + r.Pid + T("）；如确认要停，请加 --force", "); add --force to stop it anyway"));
+                return 0;
+            }            bool ok = ctl.StopTree(r.Pid, out err);
             ServiceReport after = target.Probe();
             string st = after.State.ToString();
             if (ServiceControlPolicy.AfterStop(st) == StopOutcome.Stopped)

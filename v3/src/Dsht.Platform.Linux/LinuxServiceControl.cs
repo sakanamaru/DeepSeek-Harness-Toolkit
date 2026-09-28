@@ -12,13 +12,20 @@ namespace Dsht.Platform.Linux
             pid = 0; error = "";
             try
             {
-                ProcessStartInfo psi = new ProcessStartInfo(fileName, arguments);
+                // setsid：新会话，彻底脱离调用方（真机 ssh 测试发现：不脱离时子进程占住 ssh 通道 ✗
+                // → "Connection closed by remote host"；在脚本/CI 里同样会把管道占住导致挂起 ✗）
+                ProcessStartInfo psi = new ProcessStartInfo("setsid", fileName + " " + arguments);
                 psi.UseShellExecute = false;
                 psi.CreateNoWindow = true;
+                // 不继承调用方 stdio；并后台抽干，避免管道写满把子进程卡住 ✗
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
                 if (!string.IsNullOrEmpty(workingDirectory)) psi.WorkingDirectory = workingDirectory;
                 Process p = Process.Start(psi);
                 if (p == null) { error = "Process.Start 返回 null"; return false; }
-                pid = p.Id;
+                System.Threading.Tasks.Task.Run(delegate { try { p.StandardOutput.ReadToEnd(); } catch { } });
+                System.Threading.Tasks.Task.Run(delegate { try { p.StandardError.ReadToEnd(); } catch { } });
+                pid = p.Id;   // setsid 通常直接 exec 目标程序 → PID 即目标；即便不是，stop 也是按端口观测取 PID ✓
                 return true;
             }
             catch (Exception ex) { error = ex.Message; return false; }
@@ -27,7 +34,7 @@ namespace Dsht.Platform.Linux
         public bool Stop(int pid, out string error)
         {
             error = "";
-            if (pid <= 0) { error = "PID 无效"; return false; }
+            if (pid <= 1) { error = "PID " + pid + " 被安全保护拒绝（不可能是目标进程）"; return false; }
             try
             {
                 using (Process k = Process.Start(new ProcessStartInfo("kill", "-TERM " + pid) { UseShellExecute = false, CreateNoWindow = true }))
