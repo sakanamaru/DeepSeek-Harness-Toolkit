@@ -1,6 +1,6 @@
 /**
  * 零依赖自测（只用 node 内置 assert / fs / os / path）。
- * 运行：node test/snapshot.test.js   （在 plugin/dsh-toolkit-bridge 目录下）
+ * 运行：node test/snapshot.test.js   （在 plugin/dsh-shio-bridge 目录下）
  * 覆盖：纯函数 buildSnapshot 的字段映射与两种投影形状、防御式 collectSessions、
  *       原子写、defaultOutFile 的 DSH_HOME 语义、apply 的首帧写入与 enabled:false。
  * 注意：这里**不验证真实 dsh 的 ctx 形状**（那需要跑一次 dsh）——本测试只保证我们自己的逻辑与契约。
@@ -23,7 +23,7 @@ function check(name, fn) {
 	}
 }
 
-console.log("== dsh-toolkit-bridge 自测（零依赖）==");
+console.log("== dsh-shio-bridge 自测（零依赖）==");
 
 // ---- buildSnapshot：字段映射 ----
 const bare = {
@@ -90,11 +90,11 @@ check("null/空列表 → 空 sessions", () => {
 // ---- defaultOutFile ----
 check("defaultOutFile 跟随 DSH_HOME", () => {
 	const p = defaultOutFile({ DSH_HOME: path.join("X:", "iso", "home") });
-	assert.equal(p, path.join("X:", "iso", "home", "toolkit-bridge", "sessions.json"));
+	assert.equal(p, path.join("X:", "iso", "home", "shio-bridge", "sessions.json"));
 });
 check("defaultOutFile：DSH_HOME 为空 → 退回主目录 .dsh", () => {
 	const p = defaultOutFile({ DSH_HOME: "   " });
-	assert.ok(p.endsWith(path.join(".dsh", "toolkit-bridge", "sessions.json")));
+	assert.ok(p.endsWith(path.join(".dsh", "shio-bridge", "sessions.json")));
 });
 
 // ---- 原子写 ----

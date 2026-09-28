@@ -1,4 +1,4 @@
-# dsh-toolkit-bridge（可选 · 只读桥接插件）
+# dsh-shio-bridge（可选 · 只读桥接插件）
 
 > ⚠️ 这是 **dsh 侧的可选插件**，不是工具箱本体。工具箱本体是**独立进程**（不注入 dsh、dsh 没装也能用）；
 > 装了这个插件，工具箱的「会话 / token 面板」能多拿到**实时**信息（尤其是"**当前有几个会话在运行**"）。
@@ -11,7 +11,7 @@
 - `ctx.sessions` / `ctx.sessionQuery.listSessions()` → 会话清单，**含 `live` 标记**（这就是"正在运行"的可观测事实）
 - `ctx.sessionProjections.snapshot(session)` → 每个会话的 `tokenUsage` / `sessionStats` / `contextPressure` / `sessionListMetadata` / `title`
 
-写到：`<DSH_HOME>/toolkit-bridge/sessions.json`（格式见下）。
+写到：`<DSH_HOME>/shio-bridge/sessions.json`（格式见下）。
 
 **它不做什么**（硬约束）：
 - ❌ 不发模型请求（不消耗 token、不碰 API）
@@ -24,16 +24,16 @@
 
 ```bash
 # 从本地目录安装（把 <repo> 换成本仓库路径）
-dsh plugin --profile web add "<repo>/plugin/dsh-toolkit-bridge"
+dsh plugin --profile web add "<repo>/plugin/dsh-shio-bridge"
 
 # 卸载：还原 cordis.patch.yml 里那一行
-dsh plugin --profile web remove dsh-toolkit-bridge
+dsh plugin --profile web remove dsh-shio-bridge
 ```
 
 也可以用工具箱自己的**手动隔离处方**把这一行关掉（不删包）：
 
 ```powershell
-DeepSeek Harness Toolkit.exe profilepatch --disable toolkit-bridge --yes
+DeepSeek Harness Toolkit.exe profilepatch --disable shio-bridge --yes
 ```
 
 ## 快照格式（v2，工具箱侧 `SessionStats.ParseSnapshot` 按此解析）
@@ -61,7 +61,7 @@ DeepSeek Harness Toolkit.exe profilepatch --disable toolkit-bridge --yes
 ## 自测（零依赖，不需要 dsh）
 
 ```bash
-cd plugin/dsh-toolkit-bridge
+cd plugin/dsh-shio-bridge
 node test/snapshot.test.js
 ```
 
@@ -73,7 +73,7 @@ node test/snapshot.test.js
   （`ctx.sessions.list()` / `ctx.sessionQuery.listSessions()` / `ctx.sessionProjections.snapshot(session)`），
   **尚未在真实 dsh 上跑过**——所有取值都做了防御（服务缺失或形状不同 → 跳过该字段，绝不猜）。
 - 真实 dsh 上的验证方式：在**隔离的 `$DSH_HOME` + 从模板新建的临时 profile** 里装它跑一次，
-  然后看 `<DSH_HOME>/toolkit-bridge/sessions.json` 是否出现、`live` 是否随会话启停变化。
+  然后看 `<DSH_HOME>/shio-bridge/sessions.json` 是否出现、`live` 是否随会话启停变化。
 - 它**不是**工具箱的必需组件；没有它，面板的数据来自磁盘投影（`storages/session_projcache/`）。
 
 ## 许可
@@ -84,8 +84,8 @@ MIT（与本仓库一致）。本插件不包含任何第三方代码，只使�
 
 **第一次：失败 ✗（真实缺陷，已修）**
 ```
-dsh: plugin tree failed to load: failed to import loader entry toolkit-bridge (dsh-toolkit-bridge):
-Cannot find package '@deepseek-ai/schemastery' imported from .../plugin/dsh-toolkit-bridge/index.js
+dsh: plugin tree failed to load: failed to import loader entry shio-bridge (dsh-shio-bridge):
+Cannot find package '@deepseek-ai/schemastery' imported from .../plugin/dsh-shio-bridge/index.js
 ```
 原因：`index.js` 里 `import z from "@deepseek-ai/schemastery"`（想按 dsh 官方插件做法声明配置 schema）——
 从**本地路径**安装时该导入从插件源码目录解析 → `ERR_MODULE_NOT_FOUND` → **dsh 启动直接失败**。
@@ -101,12 +101,12 @@ dsh --profile bridgetest --port 3999 启动成功（3999 监听）✓ · 输出�
 **仍未验证的部分（诚实说）**：**快照是否真的写出**——因为隔离根里一个会话都没有
 （`storages/session_projcache/sessions` 为空），而插件设计上**只在有会话时才写快照**
 （避免用空数据覆盖上一次的好数据）。要验证这一步，需要在这个隔离实例里**真的发一条消息**
-（打开 `http://127.0.0.1:3999` 聊一句），然后看 `<DSH_HOME>/toolkit-bridge/sessions.json`。
+（打开 `http://127.0.0.1:3999` 聊一句），然后看 `<DSH_HOME>/shio-bridge/sessions.json`。
 
 **给你的复现命令**（隔离根已经建好并装好插件了，直接复用）：
 ```bash
 export DSH_HOME=/tmp/dsht_plug_iso        # Windows: $env:DSH_HOME="$env:TEMP\dsht_plug_iso"
 dsh --profile bridgetest --port 3999
 # 浏览器打开 http://127.0.0.1:3999 发一条消息，然后：
-cat "$DSH_HOME/toolkit-bridge/sessions.json"     # 应出现快照，live 会随会话启停变化
+cat "$DSH_HOME/shio-bridge/sessions.json"     # 应出现快照，live 会随会话启停变化
 ```

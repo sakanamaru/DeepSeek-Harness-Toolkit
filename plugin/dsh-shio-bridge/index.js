@@ -1,5 +1,5 @@
 /**
- * dsh-toolkit-bridge —— cordis 插件入口。
+ * dsh-shio-bridge —— cordis 插件入口。
  *
  * **零依赖**：本文件只 import 同目录的 snapshot.js，不 import 任何 dsh 包。
  *
@@ -23,7 +23,7 @@ import { apply, buildSnapshot, collectSessions, defaultOutFile, writeSnapshot, S
 export { apply, buildSnapshot, collectSessions, defaultOutFile, writeSnapshot, SNAPSHOT_FORMAT_VERSION };
 
 /** cordis 插件名（与 cordis.patch.yml 里的 id 对应）。 */
-export const name = "toolkit-bridge";
+export const name = "shio-bridge";
 
 /** 依赖的 ctx 服务：会话注册表 + 会话投影注册表（cordis DI 会等它们就绪）。 */
 export const inject = ["sessions", "sessionProjections"];

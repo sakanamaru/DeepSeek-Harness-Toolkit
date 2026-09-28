@@ -1,6 +1,6 @@
 # Security Policy
 
-DeepSeek Harness Toolkit is an **unofficial** Windows toolbox for DeepSeek Harness (dsh).
+dsh-shio is an **unofficial** Windows toolbox for DeepSeek Harness (dsh).
 It handles your dsh data directory (typically `~/.dsh`), files stored inside it, and can
 delete data — so treat it as a data-management tool, not just a launcher.
 
@@ -33,7 +33,7 @@ Controls in force (anti-tampering / anti-poisoning):
   in GitHub Secrets, never in the repository).
 - **Build provenance attestation (an independent extra control)** — tag builds publish GitHub
   artifact attestations; verify with
-  `gh attestation verify <file> --repo sakanamaru/DeepSeek-Harness-Toolkit`. This is a
+  `gh attestation verify <file> --repo sakanamaru/dsh-shio`. This is a
   **separate** check layered on top of `verify.ps1`: `verify.ps1` does **not** verify
   attestations, and the attestation does **not** replace the GPG signature check. Neither
   covers the other — see [What the built-in integrity checks prove](#what-the-built-in-integrity-checks-prove-and-do-not-prove).
@@ -104,7 +104,7 @@ If you discover a security issue — especially anything involving:
 
 please **report it privately** instead of opening a public issue:
 
-- Use GitHub's private report flow: https://github.com/sakanamaru/DeepSeek-Harness-Toolkit/security/advisories/new
+- Use GitHub's private report flow: https://github.com/sakanamaru/dsh-shio/security/advisories/new
 - Or contact the maintainer: https://github.com/sakanamaru
 
 Please include:
