@@ -319,7 +319,7 @@ namespace Dsht.Cli
             Console.WriteLine("  install [--install-node] [--version <v>] [--list] [--yes] | update [--version <v>] [--list] [--yes] | uninstall [--yes]");
             Console.WriteLine("  update-info（只读：当前/最新/来源/状态/回滚候选 ✓）");
             Console.WriteLine("  start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--force] [--yes]");
-            Console.WriteLine("  backup | backup-list [--detail] | backup-export --path <备份> --to <目标> [--yes] | backup-delete --path <备份> [--yes] [--yes]");
+            Console.WriteLine("  backup | backup-list [--detail] [--verify] | backup-export --path <备份> --to <目标> [--yes] | backup-delete --path <备份> [--yes] [--yes]");
             Console.WriteLine("  restore --path <备份> [--dry-run] [--apply] [--yes]");
             Console.WriteLine("  import --path <外部备份包> [--yes] | wipe [--yes] | verify-install [--manifest <f>] [--file <f>] [--url <u>]");
             Console.WriteLine("  shortcut [--yes] | ui | 无参数 = 数字菜单");
@@ -1189,8 +1189,47 @@ namespace Dsht.Cli
         }
 
         /// <summary>backup-list：标记行与裸路径行逐条对齐 v2.x 的 NIBackupList。</summary>
+        /// <summary>备份完成性核对 ✓（`backup-list --verify`）：读每个包的**同级完成标记** &lt;包&gt;.manifest ✓。
+        /// 标记**最后写** ✓ → 缺失即"备份未完成"（中断可被精确识别 ✓✓）；存在则核对文件数是否与标记一致 ✓（截断可被发现 ✓）。
+        /// 这是**新增开关** ✓，不在标记行契约的比对用例里 ✓ → 不影响 gate1 ✓。</summary>
+        private static int BackupVerify(ServiceRegistry reg)
+        {
+            IBackupSource bk = reg.Get<IBackupSource>();
+            List<BackupEntry> all = bk.ListRaw();
+            int complete = 0, incomplete = 0, mismatch = 0;
+            for (int i = 0; i < all.Count; i++)
+            {
+                string name = System.IO.Path.GetFileName(all[i].Path.TrimEnd('\\', '/'));
+                string mf = all[i].Path + ".manifest";
+                if (!System.IO.File.Exists(mf))
+                {
+                    incomplete++;
+                    Console.WriteLine("BACKUP_VERIFY " + name + " incomplete " + T("未完成（无完成标记 —— 备份可能被中断）", "incomplete (no completion marker - the backup may have been interrupted)"));
+                    continue;
+                }
+                int want = -1;
+                try
+                {
+                    string[] ls = System.IO.File.ReadAllLines(mf);
+                    for (int k = 0; k < ls.Length; k++) { if (ls[k].StartsWith("files=", StringComparison.Ordinal)) int.TryParse(ls[k].Substring(6).Trim(), out want); }
+                }
+                catch { }
+                int have = 0;
+                try { have = System.IO.Directory.GetFiles(all[i].Path, "*", System.IO.SearchOption.AllDirectories).Length; } catch { }
+                if (want < 0) { mismatch++; Console.WriteLine("BACKUP_VERIFY " + name + " unreadable " + T("标记无法解析", "marker unparsable")); }
+                else if (want != have)
+                {
+                    mismatch++;
+                    Console.WriteLine("BACKUP_VERIFY " + name + " mismatch " + T("标记 ", "marker ") + want + T(" 个文件，实际 ", " files, actual ") + have + T(" 个 —— 该备份不完整，不要依赖它", " - this backup is incomplete, do not rely on it"));
+                }
+                else { complete++; Console.WriteLine("BACKUP_VERIFY " + name + " complete " + have); }
+            }
+            Console.WriteLine("BACKUP_VERIFY_TOTAL " + all.Count + " complete=" + complete + " incomplete=" + incomplete + " mismatch=" + mismatch);
+            return 0;
+        }
         private static int BackupList(string[] args, ServiceRegistry reg)
         {
+            if (Has(args, "--verify")) return BackupVerify(reg);
             bool detail = Has(args, "--detail");
             IBackupSource src = reg.Get<IBackupSource>();
             List<BackupEntry> all = src.ListRaw();
