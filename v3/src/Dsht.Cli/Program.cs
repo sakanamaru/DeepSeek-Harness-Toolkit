@@ -529,7 +529,7 @@ namespace Dsht.Cli
             {
                 Dsht.Domain.Model.BackupResult pb = reg.Get<IBackupSource>().Create(dataFull, Dsht.Domain.Model.BackupKind.PreWipe, _cfg == null ? 3 : _cfg.KeepBackups, WorkspaceRoot(reg));
                 if (pb == null || string.IsNullOrEmpty(pb.Path)) { Console.WriteLine("WIPE_REFUSED " + T("清除前的安全备份未能创建，已拒绝执行（没备份就不清 ✗）", "the pre-wipe backup could not be created; refusing to wipe (no backup, no wipe)")); return 0; }
-                Console.WriteLine("WIPE_PRE_BACKUP " + pb.Path);
+                AddContentHashToMarker(pb.Path);   // 回滚锚点也要能自证完整 ✓✓
             }
             catch (Exception bex) { Console.WriteLine("WIPE_REFUSED " + T("清除前的安全备份失败，已拒绝执行: ", "the pre-wipe backup failed; refusing to wipe: ") + bex.Message); return 0; }
             // 真清：只删数据根**内容** ✓
@@ -583,7 +583,7 @@ namespace Dsht.Cli
             try
             {
                 Dsht.Domain.Model.BackupResult pb = bk.Create(reg.Get<IPaths>().DataRoot, Dsht.Domain.Model.BackupKind.PreImport, _cfg == null ? 3 : _cfg.KeepBackups, WorkspaceRoot(reg));
-                if (pb != null && !string.IsNullOrEmpty(pb.Path)) Console.WriteLine("IMPORT_PRE_BACKUP " + pb.Path);
+                if (pb != null && !string.IsNullOrEmpty(pb.Path)) { Console.WriteLine("IMPORT_PRE_BACKUP " + pb.Path); AddContentHashToMarker(pb.Path); }   // 回滚锚点也要能自证完整 ✓✓
             }
             catch (Exception bex) { Console.WriteLine("IMPORT_PRE_BACKUP_FAILED " + bex.Message); }
             // 2) 复制外部包进备份根（源包不动 ✓）；名字带 -imported 便于识别（Classify 视作手动类 ✓ 不会被自动清理 ✓）
@@ -927,7 +927,7 @@ namespace Dsht.Cli
                 {
                     Dsht.Domain.Abstractions.IBackupSource bks = reg.Get<Dsht.Domain.Abstractions.IBackupSource>();
                     Dsht.Domain.Model.BackupResult pb = bks.Create(reg.Get<Dsht.Domain.Abstractions.IPaths>().DataRoot, Dsht.Domain.Model.BackupKind.PreUpdate, _cfg == null ? 3 : _cfg.KeepBackups, WorkspaceRoot(reg));
-                    if (pb != null && !string.IsNullOrEmpty(pb.Path)) Console.WriteLine(verb + "_PRE_BACKUP " + pb.Path);
+                    if (pb != null && !string.IsNullOrEmpty(pb.Path)) { Console.WriteLine(verb + "_PRE_BACKUP " + pb.Path); AddContentHashToMarker(pb.Path); }   // 回滚锚点也要能自证完整 ✓✓
                     // Record the version we are about to replace, NEXT TO the package (a file inside it would
                     // be restored into the data root). This is what makes a rollback candidate knowable.
                     if (pb != null && !string.IsNullOrEmpty(pb.Path))
@@ -1856,7 +1856,7 @@ namespace Dsht.Cli
             {
                 BackupResult pre = bk.Create(dstRoot, BackupKind.PreRestore, _cfg == null ? 3 : _cfg.KeepBackups, WorkspaceRoot(reg));
                 if (pre == null) { Console.WriteLine("RESTORE_FAIL " + T("恢复前自动备份失败", "pre-restore backup failed")); return 0; }
-                Console.WriteLine("RESTORE_PRE_BACKUP " + pre.Path);   // V3 追加：把回滚锚点直接给出来
+                AddContentHashToMarker(pre.Path);   // 回滚锚点也要能自证完整 ✓✓（恢复前自动备份 ✓）
             }
 
             if (!IntegrityGate(reg)) return 0;   // 对齐 v2.x：完整性不匹配时在写盘前拒绝
