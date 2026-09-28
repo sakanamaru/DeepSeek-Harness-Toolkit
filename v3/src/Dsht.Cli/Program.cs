@@ -1256,7 +1256,15 @@ namespace Dsht.Cli
                 if (string.IsNullOrEmpty(h)) return;
                 string cur = System.IO.File.ReadAllText(mf);
                 if (cur.IndexOf("sha256=", StringComparison.Ordinal) >= 0) return;
-                System.IO.File.AppendAllText(mf, "sha256=" + h + "\n");
+                // 全部拷完后**重算并改写 files=** ✓✓ —— 平台写标记时只算了数据根 ✓，之后又拷进了工作区 ✗
+                // → 不更新的话包会**自报"不完整"** ✗✗（上一版的真 bug ✓）
+                try
+                {
+                    int nowFiles = System.IO.Directory.GetFiles(pkgPath, "*", System.IO.SearchOption.AllDirectories).Length;
+                    cur = System.Text.RegularExpressions.Regex.Replace(cur, @"(?m)^files=\d+", "files=" + nowFiles);
+                }
+                catch { }
+                System.IO.File.WriteAllText(mf, cur.TrimEnd('\n', '\r') + "\n" + "sha256=" + h + "\n");
             }
             catch { }
         }
@@ -1568,9 +1576,60 @@ namespace Dsht.Cli
         /// （**不回退自动探测**，避免误备份/误恢复）；未配置 → 用平台自动探测（Windows：exe 上两级 + 合理性判定；
         /// Linux：**当前工作目录**（B2 修复后的事实 ✓；此处原写"诚实返回 null" ✗ 已过时 ✓ —— 那是修 cwd 基准之前的行为 ✗）。
         /// dry-run 与真实恢复都走这里，保证两处目标一致。</summary>
+        /// <summary>解析 `ws=` 里的**多个工作区**（`;` 分隔 ✓ —— 不用 `:` 因为 Windows 路径含 `:` ✗✓）。
+        /// 单个路径（无 `;`）→ 返回一个元素 ✓ 完全向后兼容 ✓✓。</summary>
+        private static string[] ConfiguredWorkspaces()
+        {
+            string raw = _cfg == null || _cfg.Workspace == null ? "" : _cfg.Workspace;
+            if (raw.Trim().Length == 0) return new string[0];
+            string[] parts = raw.Split(';');
+            List<string> outp = new List<string>();
+            for (int i = 0; i < parts.Length; i++) { string s = parts[i].Trim().Trim('"'); if (s.Length > 0) outp.Add(s); }
+            return outp.ToArray();
+        }
+
+        /// <summary>把**全部**工作区打包成新格式 `_workspace/&lt;名称&gt;/.dshws` ✓✓（仅当 ≥2 个 ✓）。
+        /// **前置约束** ✗✓：≥2 个时平台侧一个都不打包 ✓（`WorkspaceRoot` 返回 null ✓）→
+        /// 包里**只有一种格式** ✓ —— 上一版就是因为两种格式混在一个包里 ✗ 才回滚的 ✓。
+        /// 返回实际打包数 ✓（0 = 没做 ✓）。</summary>
+        private static int PackageAllWorkspaces(string pkgDir, ServiceRegistry reg)
+        {
+            try
+            {
+                string[] all = ConfiguredWorkspaces();
+                if (all.Length < 2) return 0;                       // 单个 → 平台侧按旧式扁平打包 ✓
+                string wsRoot = System.IO.Path.Combine(pkgDir, "_workspace");
+                try { System.IO.Directory.CreateDirectory(wsRoot); } catch { return 0; }
+                string dataFull = Dsht.Domain.Services.PathUtil.TrimTrailingSep(reg.Get<IPaths>().DataRoot);
+                int done = 0;
+                for (int i = 0; i < all.Length; i++)
+                {
+                    string full;
+                    try { full = System.IO.Path.GetFullPath(all[i]); } catch { continue; }
+                    if (!System.IO.Directory.Exists(full)) continue;
+                    string f = Dsht.Domain.Services.PathUtil.TrimTrailingSep(full);
+                    if (Dsht.Domain.Services.PathUtil.IsSubPath(dataFull, f)) continue;   // 与平台侧同一套护栏 ✓
+                    if (Dsht.Domain.Services.PathUtil.IsSubPath(f, dataFull)) continue;
+                    string name = System.IO.Path.GetFileName(f);
+                    if (string.IsNullOrEmpty(name)) continue;
+                    string target = System.IO.Path.Combine(wsRoot, name);
+                    if (System.IO.Directory.Exists(target)) continue;                     // 不覆盖 ✓
+                    CopyDirDeep(f, target, 0);
+                    System.IO.File.WriteAllText(System.IO.Path.Combine(target, ".dshws"),
+                        "dsh-minato workspace marker\nsource=" + f + "\n");
+                    done++;
+                }
+                return done;
+            }
+            catch { return 0; }
+        }
         private static string WorkspaceRoot(ServiceRegistry reg)
         {
-            return WorkspaceResolver.Resolve(_cfg == null ? null : _cfg.Workspace, reg.Get<IPaths>().WorkspaceRoot,
+            // **≥2 个工作区时传 null** ✓✓ —— 让平台侧一个都不打包 ✓（避免两代格式混在一个包里 ✗），
+            // 同时**保留自动探测** ✓ → 恢复侧的目标仍然正确 ✓（各工作区落到当前项目目录下的 <名称>/ ✓）
+            string[] _wss = ConfiguredWorkspaces();
+            string _wsCfg = _wss.Length >= 2 ? null : (_cfg == null ? null : _cfg.Workspace);
+            return WorkspaceResolver.Resolve(_wsCfg, reg.Get<IPaths>().WorkspaceRoot,
                 delegate(string p) { return System.IO.Path.GetFullPath(p); },
                 delegate(string p) { return System.IO.Directory.Exists(p); });
         }
@@ -1643,6 +1702,8 @@ namespace Dsht.Cli
                 Console.WriteLine(T("已跳过 " + r.SkippedNested + " 个嵌套备份目录（dsh-data-*），不复制进本次备份。",
                                     "Skipped " + r.SkippedNested + " nested backup folder(s) (dsh-data-*), not copied into this backup."));
             Console.WriteLine("BACKUP_OK " + r.Path);
+            int _wsDone = PackageAllWorkspaces(r.Path, reg);
+            if (_wsDone > 0) Console.WriteLine("BACKUP_WORKSPACES " + _wsDone + T(" 个工作区已打包（新格式 _workspace/<名称>/.dshws ✓）", " workspaces packaged (new layout _workspace/<name>/.dshws)"));
             AddContentHashToMarker(r.Path);   // 标记补内容哈希 ✓（能发现"计数对但内容残" ✗✓）
             // 不完整就说出来 ✓：读不到/复制失败的文件被计数（此前静默吞掉 ✗），备份最不能有静默缺口 ✗
             if (r.FailedCopies > 0)
