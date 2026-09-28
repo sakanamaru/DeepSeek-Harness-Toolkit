@@ -20,7 +20,7 @@ $dn = "$env:USERPROFILE\.dotnet\dotnet.exe"
 
 # 自己发布一个免 SDK 的自包含包（方便肉眼验收）
 & $dn publish v3\gui\Dsht.Gui.Avalonia\Dsht.Gui.Avalonia.csproj -c Release -r win-x64 --self-contained true -o <输出目录>
-# 记得把 dsht_v3.exe（CLI）和 dsh-shio.exe（核心，供 profilepatch/profilecheck）放到同目录
+# 记得把 dsht_v3.exe（CLI）和 dsh-minato.exe（核心，供 profilepatch/profilecheck）放到同目录
 ```
 
 ## 2. 文件地图
