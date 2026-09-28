@@ -54,7 +54,48 @@ namespace Dsht.Platform.Linux
         }
 
         /// <summary>工作区自动探测：V3 尚未移植（v2.x 在 Windows 上会遍历盘符与常见目录）。诚实返回 null。</summary>
-        public string WorkspaceRoot { get { return null; } }
+                /// <summary>Auto-detected workspace root: the current directory, but only when WorkspaceJudge
+        /// considers it plausible. This used to return null, which made workspace backup/restore
+        /// unavailable on Linux (platform-seam audit). The forbidden roots are the Linux
+        /// equivalents; the Windows list (users, $recycle.bin, ...) would accept /etc or /usr.
+        /// An explicit ws= setting always wins and is not judged.</summary>
+        public string WorkspaceRoot
+        {
+            get
+            {
+                try
+                {
+                    string cwd = System.IO.Directory.GetCurrentDirectory();
+                    if (string.IsNullOrEmpty(cwd)) return null;
+                    string full;
+                    try { full = System.IO.Path.GetFullPath(cwd); } catch { return null; }
+                    if (!Dsht.Domain.Services.WorkspaceJudge.LooksLike(full, ForbiddenWorkspaceRoots())) return null;
+                    // The home directory itself is not a workspace (it would back up everything).
+                    string home = Environment.GetEnvironmentVariable("HOME");
+                    if (!string.IsNullOrEmpty(home))
+                    {
+                        string h;
+                        try { h = System.IO.Path.GetFullPath(home).TrimEnd(System.IO.Path.DirectorySeparatorChar); } catch { h = ""; }
+                        if (h.Length > 0 && full.TrimEnd(System.IO.Path.DirectorySeparatorChar) == h) return null;
+                    }
+                    string data = DataRoot;
+                    if (!string.IsNullOrEmpty(data) && full.TrimEnd(Path.DirectorySeparatorChar) == data.TrimEnd(Path.DirectorySeparatorChar)) return null;
+                    return full;
+                }
+                catch { return null; }
+            }
+        }
+
+        /// <summary>Linux forbidden roots: the system directories plus /home, /tmp and friends.
+        /// A project under /home is fine; /home itself is not.</summary>
+        internal static string[] ForbiddenWorkspaceRoots()
+        {
+            // Note: /home itself is NOT listed - WorkspaceJudge treats a forbidden root as covering its
+            // whole subtree, and on Linux a project normally lives under the home directory. The home
+            // directory ITSELF is rejected separately below (exact match).
+            return new string[] { "/", "/etc", "/usr", "/var", "/bin", "/sbin", "/lib", "/lib64",
+                "/boot", "/proc", "/sys", "/dev", "/run", "/root", "/tmp", "/opt", "/srv", "/media", "/mnt" };
+        }
 
         private static string ResolveStateDir()
         {

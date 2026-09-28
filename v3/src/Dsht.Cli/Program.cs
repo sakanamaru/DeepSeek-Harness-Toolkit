@@ -1350,7 +1350,9 @@ namespace Dsht.Cli
                     {
                         if (!fs.FileExists(System.IO.Path.Combine(subs[i], ".dshws"))) continue;
                         string name = System.IO.Path.GetFileName(subs[i]);
-                        string target = System.IO.Path.Combine(WorkspaceRoot(reg) == null ? dst : WorkspaceRoot(reg), name);
+                        string wsRoot = WorkspaceRoot(reg);
+                        if (wsRoot == null) { Console.WriteLine("DRYRUN_SCOPE workspace " + name + " skipped (unknown workspace root)"); continue; }
+                        string target = System.IO.Path.Combine(wsRoot, name);
                         long[] wp = PlanMerge(reg, subs[i], target, null, ".dshws", false);
                         Console.WriteLine("DRYRUN_SCOPE workspace " + name + " " + target);
                         PrintPlan(wp);
@@ -1359,9 +1361,11 @@ namespace Dsht.Cli
                 }
                 else
                 {
-                    string target = WorkspaceRoot(reg) == null ? dst : WorkspaceRoot(reg);
+                    string wsRoot2 = WorkspaceRoot(reg);
+                    string target = wsRoot2 == null ? "" : wsRoot2;
+                    if (wsRoot2 == null) Console.WriteLine("DRYRUN_SCOPE workspace-legacy skipped (unknown workspace root)");
+                    else Console.WriteLine("DRYRUN_SCOPE workspace-legacy " + target);
                     long[] wp = PlanMerge(reg, wsSrc, target, null, null, true);
-                    Console.WriteLine("DRYRUN_SCOPE workspace-legacy " + target);
                     PrintPlan(wp);
                     tn += wp[0]; to += wp[1]; tk += wp[2]; tb += wp[3];
                 }
