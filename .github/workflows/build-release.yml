@@ -6,6 +6,7 @@ on:
       - 'v*'
     branches:
       - main          # M-8：main 推送跑测试 job（build/release job 仅 tag/手动触发）
+      - 'v3*'         # V3 平行树分支：推送即跑测试 + v3-contracts（Win/Linux 契约测试，切换门槛③）
   pull_request:       # M-8：PR 也跑测试 job
   workflow_dispatch:
     inputs:
