@@ -12,6 +12,10 @@
 #    · 要求**最少处数**（不是"≥1 就算"）
 #
 #  退出码：0 = 全部在；1 = 有缺失
+#
+#  运行环境：需要 PowerShell 7（`pwsh`）。**实测：原版 Ubuntu 26.04 上没有 pwsh** ✗ ——
+#            所以在纯 Linux 环境里这个脚本跑不了，只能在 CI 的 Windows job 或装了 pwsh
+#            的机器上跑。脚本本身只做**纯文本匹配**（平台无关），限制纯粹来自运行环境。
 # ============================================================================
 param([string]$Repo = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
 $ErrorActionPreference = 'Stop'
