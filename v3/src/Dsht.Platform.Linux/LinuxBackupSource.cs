@@ -113,7 +113,17 @@ namespace Dsht.Platform.Linux
 
         public void Delete(string dir)
         {
-            try { if (!string.IsNullOrEmpty(dir)) Directory.Delete(dir, true); } catch { }
+            if (string.IsNullOrEmpty(dir)) return;
+            try
+            {
+                // 先清只读属性再删（对齐 v2.x 的 ClearReadOnlyRecursive 意图：只读文件不该阻碍删除）
+                foreach (string f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+                {
+                    try { File.SetAttributes(f, FileAttributes.Normal); } catch { }
+                }
+                Directory.Delete(dir, true);
+            }
+            catch { }
         }
 
         /// <summary>复现 v2.x 的 CopyTree（best-effort 模式）：跳过 node_modules / backup / dsh-data-* / reparse；
