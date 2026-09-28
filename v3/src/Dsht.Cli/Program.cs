@@ -538,6 +538,20 @@ namespace Dsht.Cli
                 Console.WriteLine(verb + "_OBSERVED " + (installed.Length > 0 ? installed : "not-installed"));
                 return 0;
             }
+            // Safety net for updates: take a -pre-update data backup BEFORE touching npm, so a broken
+            // new version cannot cost the user their data. The classic v2.x line had this and V3 did
+            // not (BackupKind.PreUpdate existed but nothing ever created one).
+            if (update && !string.IsNullOrEmpty(installed))
+            {
+                try
+                {
+                    Dsht.Domain.Abstractions.IBackupSource bks = reg.Get<Dsht.Domain.Abstractions.IBackupSource>();
+                    Dsht.Domain.Model.BackupResult pb = bks.Create(reg.Get<Dsht.Domain.Abstractions.IPaths>().DataRoot, Dsht.Domain.Model.BackupKind.PreUpdate, _cfg == null ? 3 : _cfg.KeepBackups, WorkspaceRoot(reg));
+                    if (pb != null && !string.IsNullOrEmpty(pb.Path)) Console.WriteLine(verb + "_PRE_BACKUP " + pb.Path);
+                    else Console.WriteLine(verb + "_PRE_BACKUP_FAILED " + T("更新前备份未能创建（数据根不可读？）", "pre-update backup could not be created (data root unreadable?)"));
+                }
+                catch (Exception bex) { Console.WriteLine(verb + "_PRE_BACKUP_FAILED " + bex.Message); }
+            }
             int code = tc.NpmInstallGlobal(target, registry);
             string after = reg.Get<IToolchainQuery>().DshVersion();
             if (!string.IsNullOrEmpty(after))
@@ -545,6 +559,20 @@ namespace Dsht.Cli
                 Console.WriteLine(verb + "_OK " + after + T("（复检已观测到 dsh）", " (dsh observed after the run)"));
                 Console.WriteLine(verb + "_OBSERVED " + after);
                 return 0;
+            }
+            // Roll back to the version we recorded before the update, then re-check by observation.
+            if (update && !string.IsNullOrEmpty(installed))
+            {
+                Console.WriteLine(verb + "_ROLLBACK_TRY " + installed);
+                int rc = tc.NpmInstallGlobal("@deepseek-ai/dsh@" + installed, registry);
+                string back = reg.Get<IToolchainQuery>().DshVersion();
+                if (!string.IsNullOrEmpty(back) && back.IndexOf(installed, StringComparison.Ordinal) >= 0)
+                {
+                    Console.WriteLine(verb + "_ROLLBACK_OK " + back);
+                    Console.WriteLine(verb + "_OBSERVED " + back);
+                    return 0;
+                }
+                Console.WriteLine(verb + "_ROLLBACK_FAILED " + T("回滚后仍未观测到旧版本；请手动执行 npm install -g @deepseek-ai/dsh@", "old version still not observed after rollback; run npm install -g @deepseek-ai/dsh@") + installed + T("（npm 退出码 ", " (npm exit code ") + rc + "）");
             }
             Console.WriteLine(verb + "_FAIL " + T("npm 退出码 ", "npm exit code ") + code + T("，且复检仍未观测到 dsh", ", and dsh is still not observed"));
             Console.WriteLine(verb + "_OBSERVED not-installed");
