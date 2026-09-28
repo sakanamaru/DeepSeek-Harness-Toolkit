@@ -588,7 +588,7 @@ namespace Dsht.Cli
             }
             catch (Exception bex) { Console.WriteLine("IMPORT_PRE_BACKUP_FAILED " + bex.Message); }
             // 2) 复制外部包进备份根（源包不动 ✓）；名字带 -imported 便于识别（Classify 视作手动类 ✓ 不会被自动清理 ✓）
-            string dest = System.IO.Path.Combine(rootFull, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff") + "-imported");
+            string dest = System.IO.Path.Combine(rootFull, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff") + "-" + System.Diagnostics.Process.GetCurrentProcess().Id + "-imported");
             try
             {
                 int files = CopyDirDeep(srcFull, dest, 0);
