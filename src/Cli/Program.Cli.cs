@@ -562,7 +562,7 @@ partial class Program
         try { AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false); } catch { }
         Platform.Init();   // v2.8：按平台选择实现（Windows 上无变化）
         try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-        try { Console.Title = "DeepSeek Harness Toolkit V2.7.2"; } catch { }
+        try { Console.Title = "DeepSeek Harness Toolkit V2.7.3"; } catch { }
         // v2.7：显式启用 TLS 1.2。.NET Framework 4.x 的 SecurityProtocol 默认只含 Ssl3|Tls，
         // 访问 GitHub HTTPS（更新检查 / 完整性校验）会直接抛"未能创建 SSL/TLS 安全通道"。
         // 只做 |= 追加，不动系统默认值；失败静默（老系统上最差退化为原行为）。
