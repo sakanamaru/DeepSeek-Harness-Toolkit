@@ -89,6 +89,13 @@ namespace Dsht.Gui.Avalonia.Shells
             return s;
         }
 
+        private static Button FilterChip(string text, int mode, MainWindow host)
+        {
+            Button b = new Button { Content = text, Background = host.ProfilesFilter == mode ? Palette.AccentSoft : Brushes.Transparent, Foreground = host.ProfilesFilter == mode ? Palette.Accent : Palette.Text };
+            b.Click += delegate { host.SetProfilesFilter(mode); };
+            return b;
+        }
+
         private static Control MainMenu(MainWindow host)
         {
             StackPanel s = new StackPanel { Margin = new Thickness(10, 14, 10, 14), Spacing = 2 };
@@ -304,10 +311,53 @@ namespace Dsht.Gui.Avalonia.Shells
         {
             if (host.IsSessionsSection) return new ScrollViewer { Content = ContentColumn(host) };
             if (host.MainSection == 2) return new ScrollViewer { Content = ProfilesContent(host) };
+            if (host.MainSection == 0) return new ScrollViewer { Content = StatusContent(host) };
             return TextPane(host);
         }
 
         /// <summary>形态与插件页：每个 profile 一张卡（形态徽章 + 组合包/插件清单）。</summary>
+        /// <summary>状态页（图形化）：大状态徽章 + PID/启动时间/运行时长三张卡 + 依据说明。</summary>
+        private static Control StatusContent(MainWindow host)
+        {
+            StatusSnapshot st = host.Status;
+            StackPanel s = new StackPanel { Margin = new Thickness(20, 0, 20, 12), Spacing = 12 };
+            if (st == null || !st.Ok)
+            {
+                s.Children.Add(Card(new TextBlock { Text = "读不到状态（CLI 未返回 STATUS_* 标记）。", Foreground = Palette.TextDim, FontSize = 12 }, new Thickness(0), new Thickness(16, 14)));
+                return s;
+            }
+            IBrush stateBrush = st.State == 0 ? Palette.Good : (st.State == 1 ? Palette.Warn : Palette.Bad);
+            StackPanel hero = new StackPanel { Spacing = 6 };
+            StackPanel head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+            head.Children.Add(new Ellipse { Width = 16, Height = 16, Fill = stateBrush, VerticalAlignment = VerticalAlignment.Center });
+            head.Children.Add(new TextBlock { Text = st.StateText, FontSize = 34, FontWeight = FontWeight.Bold, Foreground = stateBrush, VerticalAlignment = VerticalAlignment.Center });
+            hero.Children.Add(head);
+            hero.Children.Add(new TextBlock
+            {
+                Text = "依据只来自可观测事实：本地端口是否监听 + 进程是否存在。dsh 换了形态（例如 headless 没有端口）时，这里会如实显示未运行，而不是假装就绪。",
+                Foreground = Palette.TextDim,
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap
+            });
+            s.Children.Add(Card(hero, new Thickness(0), new Thickness(18, 16)));
+
+            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") };
+            g.Children.Add(BigStat("进程 PID", string.IsNullOrEmpty(st.Pid) ? "—" : st.Pid, "运行 dsh 的进程号", -1, Palette.Text, 0));
+            g.Children.Add(BigStat("启动时间", string.IsNullOrEmpty(st.Start) ? "—" : st.Start, "dsh 启动的时刻", -1, Palette.Text, 1));
+            g.Children.Add(BigStat("已运行", string.IsNullOrEmpty(st.Uptime) ? "—" : st.Uptime, "从启动到现在", -1, Palette.Accent, 2));
+            s.Children.Add(g);
+
+            if (st.Extras.Count > 0)
+            {
+                StackPanel ex = new StackPanel { Spacing = 4 };
+                ex.Children.Add(new TextBlock { Text = "CLI 还报告了这些（未识别的标记原样展示）", FontSize = 12, Foreground = Palette.TextDim });
+                for (int i = 0; i < st.Extras.Count; i++)
+                    ex.Children.Add(new TextBlock { Text = st.Extras[i].Key + "　" + st.Extras[i].Value, FontSize = 12, Foreground = Palette.Text });
+                s.Children.Add(Card(ex, new Thickness(0), new Thickness(16, 14)));
+            }
+            s.Children.Add(Card(new TextBlock { Text = host.RawOutput, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"), FontSize = 11, Foreground = Palette.TextFaint, TextWrapping = TextWrapping.Wrap }, new Thickness(0), new Thickness(16, 12)));
+            return s;
+        }
         private static Control ProfilesContent(MainWindow host)
         {
             ProfilesSnapshot d = host.Profiles;
@@ -323,7 +373,21 @@ namespace Dsht.Gui.Avalonia.Shells
                 }, new Thickness(0), new Thickness(16, 14)));
                 return s;
             }
-            s.Children.Add(new TextBlock { Text = "共 " + d.Count + " 个 profile（形态来自各 profile 的 package.json 里 dsh.profile.bundles）", Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+            int totalBundles = 0; int totalThird = 0;
+            for (int i = 0; i < d.Profiles.Count; i++) { totalBundles += d.Profiles[i].Bundles; totalThird += d.Profiles[i].ThirdParty; }
+            s.Children.Add(new TextBlock
+            {
+                Text = d.Count + " 个 profile · " + totalBundles + " 个组合包 · 其中第三方插件 " + totalThird + " 个（数据来自各 profile 的 package.json 里 dsh.profile.bundles）",
+                Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap
+            });
+            StackPanel tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            tools.Children.Add(FilterChip("全部", 0, host));
+            tools.Children.Add(FilterChip("只看第三方", 1, host));
+            tools.Children.Add(FilterChip("只看官方", 2, host));
+            TextBox search = new TextBox { Watermark = "搜索 profile 或插件 id…", Width = 240, Text = host.ProfileSearch };
+            search.TextChanged += delegate { host.SetProfileSearch(search.Text); };
+            tools.Children.Add(search);
+            s.Children.Add(tools);
             for (int i = 0; i < d.Profiles.Count; i++)
             {
                 ProfileCard p = d.Profiles[i];
