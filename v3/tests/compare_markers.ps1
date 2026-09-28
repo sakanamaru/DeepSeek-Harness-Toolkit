@@ -38,21 +38,37 @@ $cases = @(
     @{ name = 'profilecheck';         args = @('profilecheck') },
     @{ name = 'profilecheck --abs';   args = @('profilecheck','--abs') },
     @{ name = 'backup-list';          args = @('backup-list'); full = $true },
-    @{ name = 'backup-list --detail'; args = @('backup-list','--detail'); full = $true }
+    @{ name = 'backup-list --detail'; args = @('backup-list','--detail'); full = $true },
+    # doctor：Integrity 行依赖 exe 身份（v2.x 的 exe 名在 hashes.txt 里、本地构建哈希不匹配 → ERROR；V3 临时 exe 名不在清单 → 跳过校验）。正式发布时 V3 用同名 exe，该类别行为一致。
+    @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity '; ignoreSummary = $true }
 )
 $fail = 0
 foreach ($c in $cases) {
     $o2 = (& $v2 @($c.args) 2>&1 | Out-String)
     $o3 = (& $v3exe @($c.args) 2>&1 | Out-String)
+    $ignored = 0
     if ($c.full) {
         $m2 = @(($o2 -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
         $m3 = @(($o3 -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+        if ($c.ignore) {
+            $before = $m2.Count
+            $m2 = @($m2 | Where-Object { $_ -notmatch $c.ignore })
+            $m3 = @($m3 | Where-Object { $_ -notmatch $c.ignore })
+            $ignored = $before - $m2.Count
+        }
+        if ($c.ignoreSummary) {
+            # 汇总行（DOCTOR_* n）会因被忽略的条目而不同 → 只作 INFO；汇总逻辑本身有单测覆盖
+            $s2 = $m2[0]; $s3 = $m3[0]
+            $m2 = @($m2 | Select-Object -Skip 1)
+            $m3 = @($m3 | Select-Object -Skip 1)
+            Write-Host ("      [info] 汇总: v2.x=$s2 / V3=$s3（差异源于被忽略条目；汇总逻辑由契约测试覆盖）")
+        }
     } else {
         $m2 = @(($o2 -split "`r?`n") | Where-Object { $_ -match '^(STATUS|PROFILECHK|DOCTOR|BACKUP|DRYRUN)_[A-Z0-9_]+' } | ForEach-Object { $_.Trim() })
         $m3 = @(($o3 -split "`r?`n") | Where-Object { $_ -match '^(STATUS|PROFILECHK|DOCTOR|BACKUP|DRYRUN)_[A-Z0-9_]+' } | ForEach-Object { $_.Trim() })
     }
     if ((($m2 -join '|') -eq ($m3 -join '|'))) {
-        Write-Host ("  {0,-18} PASS  [{1} 行]" -f $c.name, $m2.Count)
+        Write-Host ("  {0,-18} PASS  [{1} 行{2}]" -f $c.name, $m2.Count, $(if ($ignored -gt 0) { "，按规则忽略 $ignored 行" } else { "" }))
     } else {
         $fail++
         Write-Host ("  {0,-18} FAIL" -f $c.name) -ForegroundColor Red

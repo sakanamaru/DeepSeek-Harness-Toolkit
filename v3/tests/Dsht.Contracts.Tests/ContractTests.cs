@@ -17,6 +17,7 @@ sealed class FakeHttp : IHttpProbe
     public bool Ready;
     public bool Throw;
     public bool IsReady(string url, int timeoutMs) { if (Throw) throw new Exception("boom"); return Ready; }
+    public bool Responds(string url, int timeoutMs) { return Ready; }
 }
 sealed class FakeProc : IProcessQuery
 {
@@ -26,6 +27,7 @@ sealed class FakeProc : IProcessQuery
     public int PidListeningOn(int port) { if (Throw) throw new Exception("boom"); return Pid; }
     public bool IsDshCommandLine(int pid) { return IsDsh; }
     public System.DateTime? StartTime(int pid) { return pid > 0 ? new System.DateTime(2026, 9, 28, 11, 53, 14) : (System.DateTime?)null; }
+    public string CommandLine(int pid) { return ""; }
 }
 
 static class ContractTests
