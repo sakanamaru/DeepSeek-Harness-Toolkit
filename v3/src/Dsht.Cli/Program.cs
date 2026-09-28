@@ -29,8 +29,9 @@ namespace Dsht.Cli
             if (cmd == "config-get") return ConfigGet();
             if (cmd == "config-set") return ConfigSet(args, reg);
             if (cmd == "bootdiag") return BootDiag(args, reg);
+            if (cmd == "restore") return Restore(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file>");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>]");
             return 2;
         }
 
@@ -251,6 +252,103 @@ namespace Dsht.Cli
 
 
 
+        /// <summary>最小本地化：dryrun 的失败/说明文案在 v2.x 里走 T()，必须同语言才能比对。</summary>
+        private static string T(string zh, string en) { return (_cfg != null && _cfg.Lang == "en") ? en : zh; }
+
+        private static void PrintPlan(long[] p)
+        {
+            Console.WriteLine("DRYRUN_NEW " + p[0]);
+            Console.WriteLine("DRYRUN_OVERWRITE " + p[1]);
+            Console.WriteLine("DRYRUN_KEEP " + p[2]);
+            Console.WriteLine("DRYRUN_BYTES " + p[3]);
+        }
+
+        private static long[] PlanMerge(ServiceRegistry reg, string src, string dst, string skipTopDir, string skipTopFile, bool topRules)
+        {
+            IFileSystemQuery fs = reg.Get<IFileSystemQuery>();
+            return MergePlanner.Plan(fs.WalkSource(src, skipTopDir, skipTopFile, topRules), fs.WalkDestination(dst));
+        }
+
+        /// <summary>restore：V3 目前只移植了 --dry-run（只读预演）。真实恢复会写用户数据，尚未移植——这里**明确拒绝**而不是静默失败。</summary>
+        private static int Restore(string[] args, ServiceRegistry reg)
+        {
+            if (Has(args, "--dry-run") || Has(args, "-dry-run")) return DryRun(args, reg);
+            Console.WriteLine("RESTORE_NOT_IMPLEMENTED V3 尚未移植真实恢复；请用 restore --dry-run 预览，或用 v2.x 执行恢复。");
+            return 0;
+        }
+
+        /// <summary>dryrun：只读合并计划。标记与文案逐条对齐 v2.x 的 NIRestoreDryRun。</summary>
+        private static int DryRun(string[] args, ServiceRegistry reg)
+        {
+            string pathArg = Flag(args, "--path");
+            IBackupSource bk = reg.Get<IBackupSource>();
+            IPaths paths = reg.Get<IPaths>();
+            IFileSystemQuery fs = reg.Get<IFileSystemQuery>();
+            string bkDir = null;
+
+            if (string.IsNullOrWhiteSpace(pathArg))
+            {
+                List<BackupEntry> all = bk.ListRaw();
+                for (int i = all.Count - 1; i >= 0; i--) { if (BackupPackage.IsValidPackage(all[i].Snapshot)) { bkDir = all[i].Path; break; } }
+                if (bkDir == null) { Console.WriteLine("DRYRUN_FAIL " + T("无有效备份", "no valid backup")); return 0; }
+            }
+            else
+            {
+                string p = pathArg.Trim().Trim('"');
+                if (PathUtil.IsSubPath(bk.BackupsRoot, p))
+                {
+                    if (!BackupPackage.IsValidPackage(bk.Snapshot(p))) { Console.WriteLine("DRYRUN_FAIL " + T("无效备份目录", "invalid backup directory")); return 0; }
+                    bkDir = p;
+                }
+                else
+                {
+                    string resolved = bk.Resolve(p);
+                    if (resolved == null) { Console.WriteLine("DRYRUN_FAIL " + T("不是有效备份包", "not a valid backup package")); return 0; }
+                    bkDir = resolved;
+                }
+            }
+
+            Console.WriteLine("DRYRUN_OK");
+            Console.WriteLine("DRYRUN_SRC " + bkDir);
+            long tn = 0, to = 0, tk = 0, tb = 0;
+            string dst = paths.DataRoot;
+            long[] dp = PlanMerge(reg, bkDir, dst, "_workspace", null, false);
+            Console.WriteLine("DRYRUN_SCOPE data " + dst);
+            PrintPlan(dp);
+            tn += dp[0]; to += dp[1]; tk += dp[2]; tb += dp[3];
+
+            string wsSrc = System.IO.Path.Combine(bkDir, "_workspace");
+            if (fs.DirectoryExists(wsSrc))
+            {
+                string[] subs = fs.ListDirectories(wsSrc);
+                bool anyNew = false;
+                for (int i = 0; i < subs.Length; i++) { if (fs.FileExists(System.IO.Path.Combine(subs[i], ".dshws"))) { anyNew = true; break; } }
+                if (anyNew)
+                {
+                    for (int i = 0; i < subs.Length; i++)
+                    {
+                        if (!fs.FileExists(System.IO.Path.Combine(subs[i], ".dshws"))) continue;
+                        string name = System.IO.Path.GetFileName(subs[i]);
+                        string target = System.IO.Path.Combine(paths.WorkspaceRoot == null ? dst : paths.WorkspaceRoot, name);
+                        long[] wp = PlanMerge(reg, subs[i], target, null, ".dshws", false);
+                        Console.WriteLine("DRYRUN_SCOPE workspace " + name + " " + target);
+                        PrintPlan(wp);
+                        tn += wp[0]; to += wp[1]; tk += wp[2]; tb += wp[3];
+                    }
+                }
+                else
+                {
+                    string target = paths.WorkspaceRoot == null ? dst : paths.WorkspaceRoot;
+                    long[] wp = PlanMerge(reg, wsSrc, target, null, null, true);
+                    Console.WriteLine("DRYRUN_SCOPE workspace-legacy " + target);
+                    PrintPlan(wp);
+                    tn += wp[0]; to += wp[1]; tk += wp[2]; tb += wp[3];
+                }
+            }
+            Console.WriteLine("DRYRUN_TOTAL " + tn + " " + to + " " + tk + " " + tb);
+            Console.WriteLine("DRYRUN_NOTE " + T("合并语义：仅目标端存在的文件不会被删除；交互恢复时每个工作区可自定义目标或跳过。", "Merge semantics: destination-only files are NOT deleted; interactive restore allows per-workspace custom target or skip."));
+            return 0;
+        }
         /// <summary>bootdiag：解析启动失败输出。标记逐条对齐 v2.x 的 BootDiagCli。</summary>
         private static int BootDiag(string[] args, ServiceRegistry reg)
         {

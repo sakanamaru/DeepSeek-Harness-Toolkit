@@ -13,6 +13,12 @@ namespace Dsht.Domain.Abstractions
         /// <summary>列出备份根下 dsh-data-* 直接子目录，按名字升序（旧 → 新），与 v2.x 排序一致。</summary>
         List<BackupEntry> ListRaw();
 
+        /// <summary>读取某目录的快照（名字 + 直接子条目名），供领域层判定有效性。</summary>
+        DirSnapshot Snapshot(string dir);
+
+        /// <summary>备份目录定位（下探一层）：返回可用备份目录的完整路径；无法定位返回 null。</summary>
+        string Resolve(string path);
+
         /// <summary>目录总字节数（递归累加文件长度，跳过读不到的项）。</summary>
         long DirSize(string path);
 
