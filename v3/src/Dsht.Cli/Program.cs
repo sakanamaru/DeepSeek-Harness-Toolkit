@@ -163,8 +163,11 @@ namespace Dsht.Cli
                 return 0;
             }
             SessionTotals tot = SessionStats.Aggregate(list);
+            int liveCount = 0;
+            for (int i = 0; i < list.Count; i++) if (list[i].Live) liveCount++;
             Console.WriteLine("SESSIONS_OK " + list.Count);
             Console.WriteLine("SESSIONS_NONBLANK " + tot.NonBlankCount);
+            Console.WriteLine("SESSIONS_LIVE " + liveCount);   // 只在有插件快照时可能 > 0（磁盘投影没有"在跑"这个事实）
             Console.WriteLine("SESSIONS_SOURCE " + source);
             Console.WriteLine("SESSIONS_ROOT " + src.SessionsDir);
             for (int i = 0; i < list.Count; i++)
@@ -182,7 +185,8 @@ namespace Dsht.Cli
                     + " decode=" + Num1(SessionStats.DecodeTokensPerSec(s))
                     + " ttft=" + (s.TtftMs > 0 ? s.TtftMs.ToString(System.Globalization.CultureInfo.InvariantCulture) : "unknown")
                     + " ctx=" + Num1(SessionStats.ContextPressurePercent(s))
-                    + " blank=" + (s.Blank ? "1" : "0"));
+                    + " blank=" + (s.Blank ? "1" : "0")
+                    + " live=" + (s.Live ? "1" : "0"));
             }
             Console.WriteLine("SESSIONS_TOTAL in=" + (tot.UncachedInputTokens + tot.CacheReadTokens)
                 + " out=" + tot.OutputTokens
