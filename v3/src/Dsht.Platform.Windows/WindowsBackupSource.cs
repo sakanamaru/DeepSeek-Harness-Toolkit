@@ -193,8 +193,8 @@ namespace Dsht.Platform.Windows
                 string src = Dsht.Domain.Services.PathUtil.TrimTrailingSep(backupDir);
                 string dst = Dsht.Domain.Services.PathUtil.TrimTrailingSep(dataRoot);
                 Directory.CreateDirectory(dst);
-                string[] dirs;
-                try { dirs = Directory.GetDirectories(src); } catch { dirs = new string[0]; }
+                // 读不到备份包内容时**必须失败**：静默当成"空包"会打印 RESTORE_OK 却一个文件都没恢复
+                string[] dirs = Directory.GetDirectories(src);
                 foreach (string d in dirs)
                 {
                     string name = Path.GetFileName(d.TrimEnd('\\', '/'));
@@ -202,8 +202,7 @@ namespace Dsht.Platform.Windows
                     CopyTree(d, Path.Combine(dst, name), false);
                     o.TopDirs++;
                 }
-                string[] files;
-                try { files = Directory.GetFiles(src); } catch { files = new string[0]; }
+                string[] files = Directory.GetFiles(src);
                 foreach (string f in files)
                 {
                     File.Copy(f, Path.Combine(dst, Path.GetFileName(f)), true);
@@ -220,8 +219,7 @@ namespace Dsht.Platform.Windows
         /// <summary>工作区恢复：新格式（子目录含 .dshws 标记）逐个恢复；否则整个 _workspace 视为一个工作区。</summary>
         private static void RestoreWorkspaces(string wsRoot, string workspaceRoot, RestoreOutcome o)
         {
-            string[] subs;
-            try { subs = Directory.GetDirectories(wsRoot); } catch { subs = new string[0]; }
+            string[] subs = Directory.GetDirectories(wsRoot);   // 读不到 → 交给外层 catch（不静默跳过）
             bool anyNew = false;
             for (int i = 0; i < subs.Length; i++) { if (File.Exists(Path.Combine(subs[i], ".dshws"))) { anyNew = true; break; } }
             if (anyNew)
