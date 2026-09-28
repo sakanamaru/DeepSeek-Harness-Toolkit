@@ -579,6 +579,24 @@ static class ContractTests
         Check("停止后：观测到 Down → Stopped", Dsht.Domain.Services.ServiceControlPolicy.AfterStop("Down") == Dsht.Domain.Services.StopOutcome.Stopped);
         Check("停止后：仍能观测到 → StillListening（不谎报已停）", Dsht.Domain.Services.ServiceControlPolicy.AfterStop("Ready") == Dsht.Domain.Services.StopOutcome.StillListening);
         Check("IsRunning：大小写敏感（状态名是契约，不做宽松匹配）", Dsht.Domain.Services.ServiceControlPolicy.IsRunning("ready") == false && Dsht.Domain.Services.ServiceControlPolicy.IsRunning("Ready"));
+        Console.WriteLine("[26] profilepatch 编辑计划（纯函数；语义对齐 v2.x）");
+        string y1 = "insert:\n  - id: a\n    config:\n      x: 1\n";
+        Dsht.Domain.Services.PatchPlan pd = Dsht.Domain.Services.PatchPlanner.PlanDisable(y1, "a");
+        Check("禁用：计划有效且追加顶层行", pd.Valid && !pd.Noop && pd.NewText.Contains("- id: a") && pd.NewText.Contains("disabled: true"));
+        Check("禁用：行号 = 末尾之后", pd.Line == 5);
+        Check("禁用：写回后 HasDisabled 为真（自证）", Dsht.Domain.Services.PatchPlanner.HasDisabled(pd.NewText, "a"));
+        Check("禁用：幂等（已禁用 → Noop）", Dsht.Domain.Services.PatchPlanner.PlanDisable(pd.NewText, "a").Noop);
+        Check("禁用：条目不存在 → entry-not-found（不写无效补丁）", Dsht.Domain.Services.PatchPlanner.PlanDisable(y1, "nope").Reason == "entry-not-found");
+        Check("禁用：空 id → empty-id", Dsht.Domain.Services.PatchPlanner.PlanDisable(y1, "  ").Reason == "empty-id");
+        Check("禁用：保留原换行风格（CRLF 文件不混入 LF）", Dsht.Domain.Services.PatchPlanner.PlanDisable("insert:\r\n  - id: a\r\n", "a").NewText.Contains("\r\n- id: a\r\n"));
+        Check("禁用：文件末尾无换行时先补一个", Dsht.Domain.Services.PatchPlanner.PlanDisable("- id: a", "a").NewText.StartsWith("- id: a\n- id: a"));
+        Dsht.Domain.Services.PatchPlan pe = Dsht.Domain.Services.PatchPlanner.PlanEnable(pd.NewText, "a");
+        Check("恢复：把该行的 disabled 改成 false（不删行）", pe.Valid && !pe.Noop && pe.NewText.Contains("disabled: false") && pe.NewText.Contains("- id: a"));
+        Check("恢复：改完不再算禁用（往返一致）", !Dsht.Domain.Services.PatchPlanner.HasDisabled(pe.NewText, "a"));
+        Check("恢复：未禁用 → Noop(not-disabled)", Dsht.Domain.Services.PatchPlanner.PlanEnable(y1, "a").Reason == "not-disabled");
+        Check("恢复：条目不存在 → entry-not-found", Dsht.Domain.Services.PatchPlanner.PlanEnable(y1, "nope").Reason == "entry-not-found");
+        Check("恢复：不误伤别的条目的 disabled 行", Dsht.Domain.Services.PatchPlanner.PlanEnable("- id: a\n  disabled: true\n- id: b\n  disabled: true\n", "a").NewText.Contains("- id: b\n  disabled: true"));
+        Check("HasDisabled：只有属于该 id 的 disabled 才算", Dsht.Domain.Services.PatchPlanner.HasDisabled("- id: a\n- id: b\n  disabled: true\n", "a") == false && Dsht.Domain.Services.PatchPlanner.HasDisabled("- id: a\n- id: b\n  disabled: true\n", "b"));
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
     }
