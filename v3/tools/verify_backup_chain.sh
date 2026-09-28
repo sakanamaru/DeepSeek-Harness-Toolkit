@@ -28,7 +28,7 @@ BIN="$WORK/bin"; mkdir -p "$BIN"; cp "$CLI" "$BIN/dsh-minato"; chmod +x "$BIN/ds
 CLI="$BIN/dsh-minato"
 BKROOT="$BIN/backup"
 A="$WORK/a"; mkdir -p "$A/storages"; printf 'ALPHA\n' > "$A/storages/a.txt"; printf 'BETA\n' > "$A/storages/b.txt"
-cleanup(){ rm -rf "$WORK" 2>/dev/null; }
+cleanup(){ rm -rf "$WORK" "${MT:-/nonexistent}" 2>/dev/null; }
 trap cleanup EXIT
 
 echo "== 备份可信链验证 =="
@@ -94,7 +94,9 @@ N=$(find "$MP/_workspace" -name '.dshws' 2>/dev/null | wc -l)
 [ "$N" -eq 2 ] && ok "多工作区：两个 .dshws 标记 ✓" || bad "多工作区标记数 $N ≠ 2 ✗"
 FLAT=$(find "$MP/_workspace" -maxdepth 1 -type f 2>/dev/null | wc -l)
 [ "$FLAT" -eq 0 ] && ok "包内只有一种格式（无扁平残留 ✓）" || bad "包内混格式（顶层文件 $FLAT）✗✗"
-MT="$WORK/mt"; mkdir -p "$MT"
+# 恢复目标必须在**产品接受的位置** ✓ —— /tmp 被产品排除（#19 ✓ 我第一次就踩了这个 ✗）
+# 用 $HOME 下的普通子目录 ✓（第 75 轮实测：$HOME 的子目录**被接受** ✓）
+MT="$HOME/vbc-tg-$$"; rm -rf "$MT"; mkdir -p "$MT"
 MR=$(cd "$MT" && DSH_HOME="$WORK/md" $T $CLI restore --path "$MP" --apply --yes 2>&1 | tr -d '\r')
 echo "$MR" | grep -q 'UNRECOGNIZED' && bad "恢复报 UNRECOGNIZED ✗" || ok "恢复无 UNRECOGNIZED ✓"
 [ -f "$MT/one.txt" ] && [ -f "$MT/two.txt" ] && ok "多工作区内容都恢复 ✓✓" || bad "多工作区恢复不全 ✗"
