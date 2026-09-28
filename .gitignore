@@ -14,3 +14,12 @@ Toolkit GUI.exe
 # .NET SDK 工程产物（v2.8 阶段 2）
 bin/
 obj/
+
+# 本地构建产物（仓库不存二进制；发布物由 CI 从源码构建）
+/DeepSeek Harness Toolkit.exe
+/Toolkit GUI.exe
+/Toolkit GUI Standalone.exe
+/dsht_v3.exe
+/dsht_v3_contract.exe
+/unittests.exe
+/guilogictests.exe
