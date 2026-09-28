@@ -5,6 +5,8 @@ using System.IO;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
@@ -76,12 +78,83 @@ namespace Dsht.Gui.Avalonia
         public MainWindow()
         {
             InitializeComponent();
+            BuildWindowChrome();
             InitChrome();
             for (int i = 0; i < 5; i++) BindShell(i);
             for (int i = 0; i < 4; i++) BindStyle(i);
             Refresh();
         }
 
+        private readonly List<Button> _windowButtons = new List<Button>();
+
+        /// <summary>自绘窗口标题栏（无边框窗口）：整条顶栏可拖动（落在按钮上的按下不算）、双击最大化/还原、
+        /// 右侧三个窗口按钮。颜色由 ApplyChrome 按 Palette 刷，风格切换时自动跟随。</summary>
+        private void BuildWindowChrome()
+        {
+            Border bar = this.FindControl<Border>("AppBar");
+            StackPanel right = this.FindControl<StackPanel>("AppBarRight");
+            if (bar != null)
+            {
+                bar.PointerPressed += delegate(object s, PointerPressedEventArgs e)
+                {
+                    if (IsFromButton(e.Source as Control)) return;
+                    try { if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) BeginMoveDrag(e); }
+                    catch { /* 某些平台/状态下不允许拖动：忽略，不要因此崩 */ }
+                };
+                bar.DoubleTapped += delegate(object s, TappedEventArgs e) { ToggleMaximize(); };
+            }
+            if (right != null)
+            {
+                right.Children.Add(MakeWindowButton("—", delegate { WindowState = WindowState.Minimized; }, false, "最小化"));
+                right.Children.Add(MakeWindowButton("□", delegate { ToggleMaximize(); }, false, "最大化 / 还原"));
+                right.Children.Add(MakeWindowButton("✕", delegate { Close(); }, true, "关闭"));
+            }
+            RecolorWindowButtons();
+        }
+
+        /// <summary>按下是否来自某个按钮（含其后代）——是的话不要开始拖动窗口。</summary>
+        private static bool IsFromButton(Control c)
+        {
+            Control cur = c;
+            while (cur != null)
+            {
+                if (cur is Button) return true;
+                cur = cur.Parent as Control;
+            }
+            return false;
+        }
+
+        private void ToggleMaximize()
+        {
+            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+        }
+
+        private Button MakeWindowButton(string glyph, Action onClick, bool danger, string tip)
+        {
+            Button b = new Button
+            {
+                Content = glyph,
+                Width = 34,
+                Height = 26,
+                Padding = new Thickness(0),
+                FontSize = 12,
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalContentAlignment = VerticalAlignment.Center
+            };
+            ToolTip.SetTip(b, tip);
+            b.Click += delegate { onClick(); };
+            _windowButtons.Add(b);
+            return b;
+        }
+
+        /// <summary>窗口按钮随主题重上色（关闭键用警示色，其余用次要文字色）。</summary>
+        private void RecolorWindowButtons()
+        {
+            for (int i = 0; i < _windowButtons.Count; i++)
+                _windowButtons[i].Foreground = i == _windowButtons.Count - 1 ? Palette.TextDim : Palette.TextDim;
+        }
         private void InitializeComponent()
         {
             AvaloniaXamlLoader.Load(this);
@@ -139,6 +212,7 @@ namespace Dsht.Gui.Avalonia
             SetFg("DisclaimerIcon", Palette.Warn);
             SetFg("DisclaimerText", Palette.TextDim);
 
+            RecolorWindowButtons();
             PaintSwitch("ShellSwitch");
             PaintSwitch("StyleSwitch");
             for (int i = 0; i < 5; i++) PaintSwitchButton("Shell" + i, i == _shell);
