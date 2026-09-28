@@ -67,7 +67,7 @@ namespace Dsht.Gui.Avalonia.Shells
             Grid.SetRow(subs, 0);
             Control head = Header(host);
             Grid.SetRow(head, 1);
-            Control body = host.IsSessionsSection ? (Control)new ScrollViewer { Content = ContentColumn(host) } : TextPane(host);
+            Control body = SectionBody(host);
             Grid.SetRow(body, 2);
             Control foot = Footer(host);
             Grid.SetRow(foot, 3);
@@ -157,7 +157,7 @@ namespace Dsht.Gui.Avalonia.Shells
             Grid body = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
             Control title = Header(host);
             Grid.SetRow(title, 0);
-            Control content = host.IsSessionsSection ? (Control)new ScrollViewer { Content = ContentColumn(host) } : TextPane(host);
+            Control content = SectionBody(host);
             Grid.SetRow(content, 1);
             Control foot = Footer(host);
             Grid.SetRow(foot, 2);
@@ -233,7 +233,7 @@ namespace Dsht.Gui.Avalonia.Shells
 
             StackPanel right = new StackPanel { Margin = new Thickness(20, 16, 20, 12), Spacing = 12 };
             right.Children.Add(new TextBlock { Text = host.PageTitle, FontSize = 24, FontWeight = FontWeight.Bold, Foreground = Palette.Text });
-            right.Children.Add(host.IsSessionsSection ? DetailCard(host) : TextPane(host));
+            right.Children.Add(host.IsSessionsSection ? DetailCard(host) : SectionBody(host));
             right.Children.Add(Explain());
             Control rightScroll = new ScrollViewer { Content = right };
             Grid.SetColumn(rightScroll, 1);
@@ -287,6 +287,76 @@ namespace Dsht.Gui.Avalonia.Shells
             };
         }
 
+        /// <summary>按当前主菜单项选内容：会话页=面板，形态页=profile 卡片，其余=标记行原文。</summary>
+        private static Control SectionBody(MainWindow host)
+        {
+            if (host.IsSessionsSection) return new ScrollViewer { Content = ContentColumn(host) };
+            if (host.MainSection == 2) return new ScrollViewer { Content = ProfilesContent(host) };
+            return TextPane(host);
+        }
+
+        /// <summary>形态与插件页：每个 profile 一张卡（形态徽章 + 组合包/插件清单）。</summary>
+        private static Control ProfilesContent(MainWindow host)
+        {
+            ProfilesSnapshot d = host.Profiles;
+            StackPanel s = new StackPanel { Margin = new Thickness(20, 0, 20, 12), Spacing = 10 };
+            if (d == null || !d.Ok)
+            {
+                s.Children.Add(Card(new TextBlock
+                {
+                    Text = d == null ? "正在读取…" : (string.IsNullOrEmpty(d.FailReason) ? "没有可显示的 profile 信息。" : d.FailReason),
+                    Foreground = Palette.TextDim,
+                    FontSize = 12,
+                    TextWrapping = TextWrapping.Wrap
+                }, new Thickness(0), new Thickness(16, 14)));
+                return s;
+            }
+            s.Children.Add(new TextBlock { Text = "共 " + d.Count + " 个 profile（形态来自各 profile 的 package.json 里 dsh.profile.bundles）", Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+            for (int i = 0; i < d.Profiles.Count; i++)
+            {
+                ProfileCard p = d.Profiles[i];
+                StackPanel card = new StackPanel { Spacing = 8 };
+                StackPanel head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+                head.Children.Add(new TextBlock { Text = p.Name, FontSize = 17, FontWeight = FontWeight.Bold, Foreground = Palette.Text, VerticalAlignment = VerticalAlignment.Center });
+                head.Children.Add(new Border
+                {
+                    Background = Palette.FormBrush(p.FormKind),
+                    CornerRadius = new CornerRadius(9),
+                    Padding = new Thickness(9, 3),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Child = new TextBlock { Text = p.FormText, Foreground = Brushes.White, FontSize = 11 }
+                });
+                head.Children.Add(new TextBlock { Text = p.CountText, Foreground = Palette.TextDim, FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
+                card.Children.Add(head);
+                for (int b = 0; b < p.Items.Count; b++)
+                {
+                    BundleItem it = p.Items[b];
+                    StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                    row.Children.Add(new Border
+                    {
+                        Background = it.Official ? Palette.AccentSoft : Palette.WarnSoft,
+                        CornerRadius = new CornerRadius(4),
+                        Padding = new Thickness(6, 1),
+                        Child = new TextBlock { Text = it.KindText, FontSize = 10, Foreground = it.Official ? Palette.Accent : Palette.Warn }
+                    });
+                    row.Children.Add(new TextBlock { Text = it.Id, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"), FontSize = 12, Foreground = Palette.Text, VerticalAlignment = VerticalAlignment.Center });
+                    card.Children.Add(row);
+                }
+                s.Children.Add(Card(card, new Thickness(0), new Thickness(16, 14)));
+            }
+            s.Children.Add(Card(new StackPanel
+            {
+                Spacing = 6,
+                Children =
+                {
+                    new TextBlock { Text = "这一页怎么读？", FontSize = 14, FontWeight = FontWeight.Bold, Foreground = Palette.Text },
+                    Line("• 形态来自每个 profile 的 package.json 里 dsh.profile.bundles：启用 dsh-web-app = Web，dsh-headless = Headless（没有端口），dsh-acp-app = ACP。"),
+                    Line("• 这是**配置形态**，不是运行形态 —— 「dsh 在跑」仍然由端口/进程等运行时事实判断（状态页看）。"),
+                    Line("• 官方 = @deepseek-ai/* 的组合包；第三方 = 你自己加的插件（例如 dsh-web-search-tavily）。")
+                }
+            }, new Thickness(0), new Thickness(16, 14)));
+            return s;
+        }
         private static Control ContentColumn(MainWindow host)
         {
             StackPanel s = new StackPanel { Margin = new Thickness(20, 0, 20, 12), Spacing = 12 };
@@ -416,7 +486,7 @@ namespace Dsht.Gui.Avalonia.Shells
 
         private static Control SessionCard(SessionRowVm vm)
         {
-            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("90,*,150,150,120"), VerticalAlignment = VerticalAlignment.Center };
+            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("86,*,150,150,120"), VerticalAlignment = VerticalAlignment.Center };
             StackPanel id = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
             id.Children.Add(new TextBlock { Text = vm.ShortId, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"), Foreground = Palette.Text, FontSize = 12 });
             StackPanel st = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
@@ -425,7 +495,8 @@ namespace Dsht.Gui.Avalonia.Shells
             id.Children.Add(st);
             Grid.SetColumn(id, 0);
             StackPanel mid = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
-            mid.Children.Add(new TextBlock { Text = vm.MetaText, Foreground = Palette.TextDim, FontSize = 12 });
+            mid.Children.Add(new TextBlock { Text = vm.TitleText, Foreground = Palette.Text, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 300 });
+            mid.Children.Add(new TextBlock { Text = vm.MetaText, Foreground = Palette.TextDim, FontSize = 11 });
             mid.Children.Add(new TextBlock { Text = vm.DecodeLine, Foreground = Palette.TextFaint, FontSize = 11 });
             Grid.SetColumn(mid, 1);
             Control b1 = Bar("输入 token", vm.InText, vm.TokenBar, vm.TokenBrush);

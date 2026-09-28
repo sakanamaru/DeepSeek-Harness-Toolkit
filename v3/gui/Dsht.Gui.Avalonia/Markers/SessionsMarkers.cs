@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 
 namespace Dsht.Gui.Avalonia.Markers
 {
@@ -8,6 +9,7 @@ namespace Dsht.Gui.Avalonia.Markers
     public sealed class SessionRow
     {
         public string Id = "";
+        public string Title = "";          // dsh 自己生成的会话标题（可能为空）
         public string Created = "";        // "unknown" → 空串
         public string Last = "";           // 同上
         public long Turns;
@@ -26,6 +28,9 @@ namespace Dsht.Gui.Avalonia.Markers
         public int TokenBar;
 
         public string ShortId { get { return Id.Length > 8 ? Id.Substring(0, 8) : Id; } }
+
+        /// <summary>标题（空则给一个人话兜底，不留空白让人猜）。</summary>
+        public string TitleText { get { return string.IsNullOrEmpty(Title) ? "（未命名会话）" : Title; } }
 
         /// <summary>状态语义：0=运行中 1=已结束 2=空会话（颜色由界面层决定）。</summary>
         public int StatusKind { get { return Live ? 0 : (Blank ? 2 : 1); } }
@@ -255,6 +260,7 @@ namespace Dsht.Gui.Avalonia.Markers
             if (sp < 0) { r.Id = rest; return r; }
             r.Id = rest.Substring(0, sp);
             Dictionary<string, string> kv = Pairs(rest.Substring(sp + 1));
+            r.Title = Decode(Clean(Get(kv, "title")));
             r.Created = Clean(Get(kv, "created"));
             r.Last = Clean(Get(kv, "last"));
             r.Turns = Num(Get(kv, "turns"), 0);
@@ -274,6 +280,23 @@ namespace Dsht.Gui.Avalonia.Markers
         private static string Tail(string line, string marker)
         {
             return line.Length > marker.Length ? line.Substring(marker.Length) : "";
+        }
+
+        /// <summary>标记行自由文本解码（与 CLI 侧 MarkerText.Encode 对称；`-`/空 → 空串）。</summary>
+        public static string Decode(string text)
+        {
+            if (string.IsNullOrEmpty(text) || text == "-") return "";
+            StringBuilder sb = new StringBuilder(text.Length);
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (c != '%' || i + 2 >= text.Length) { sb.Append(c); continue; }
+                int code;
+                if (!int.TryParse(text.Substring(i + 1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out code)) { sb.Append(c); continue; }
+                sb.Append((char)code);
+                i += 2;
+            }
+            return sb.ToString();
         }
 
         /// <summary>"unknown" → 空串（界面显示 unknown 由文本属性负责）。</summary>

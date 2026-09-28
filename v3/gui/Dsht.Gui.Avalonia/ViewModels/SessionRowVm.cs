@@ -22,6 +22,11 @@ namespace Dsht.Gui.Avalonia.ViewModels
         public static readonly IBrush Idle = new SolidColorBrush(Color.Parse("#9CA3AF"));        // 已结束
         public static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#D1D5DB"));       // 空会话
         public static readonly IBrush BarTrack = new SolidColorBrush(Color.Parse("#EEF0F3"));
+        public static readonly IBrush WarnSoft = new SolidColorBrush(Color.Parse("#FEF3C7"));
+        public static readonly IBrush FormAcp = new SolidColorBrush(Color.Parse("#8B5CF6"));
+
+        /// <summary>形态徽章颜色：web=蓝 headless=灰 acp=紫 未知/无法解析=琥珀。</summary>
+        public static IBrush FormBrush(int kind) { return kind == 0 ? Accent : (kind == 1 ? Idle : (kind == 2 ? FormAcp : Warn)); }
 
         /// <summary>缓存命中率（越高越好）：高=绿 中=琥珀 低=红 未知=灰。</summary>
         public static IBrush HitBrush(int level) { return level >= 3 ? Good : (level == 2 ? Warn : (level == 1 ? Bad : Muted)); }
@@ -42,6 +47,7 @@ namespace Dsht.Gui.Avalonia.ViewModels
         public SessionRowVm(SessionRow row) { Row = row; }
 
         public string ShortId { get { return Row.ShortId; } }
+        public string TitleText { get { return Row.TitleText; } }
         public string StatusText { get { return Row.LiveText; } }
         public IBrush StatusBrush { get { return Palette.StatusBrush(Row.StatusKind); } }
         public string MetaText
