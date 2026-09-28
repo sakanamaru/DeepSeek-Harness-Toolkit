@@ -71,7 +71,7 @@ GUI **更新**页只读可视化整幅更新图景：当前 dsh 版本、最新�
 
 GUI **设置**页把工具箱自身配置（`launcher.config`，仍是明文 `key=value`）分成四组：**Harness**（Web 主机 / 工作区路径）、**备份**（自动备份保留份数，≥3）、**更新**（启动更新检查 / dsh 更新检测 / 更新通道）、**工具箱**（界面语言 / 菜单倒计时自动启动 / 关闭主窗口时）。**保存只提交你真正改动过的键**，越界值由核心侧白名单拒绝——打错字不会悄悄写坏配置。无界面对应命令：`config-get`（读全部键）、`config-set <键> <值>`（白名单写入）。
 
-### dsh 起不来怎么办——从报错到那一行处方
+### dsh 起不来 / 插件加载失败怎么办——从报错到那一行处方
 
 真实故障（2026-09-15）：`dsh web` 启动失败，报
 
@@ -101,9 +101,20 @@ DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <条目> --set maxD
 DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed --yes
 ```
 
+**不止 `maxDepth`：任何坏插件都能先隔离掉。** 上面那行处方让插件**继续可用**；当坏插件身份不明、或你只想先让 dsh 起来时，可以往补丁文件**末尾追加**一个顶层条目把这一行关掉（**只追加**，不改动你 profile 里任何已有字符）：
+
+```powershell
+DeepSeek Harness Toolkit.exe profilepatch --disable <条目 id>          # 预览（PROFILEPATCH_DRYRUN，零写入）
+DeepSeek Harness Toolkit.exe profilepatch --disable <条目 id> --yes    # 先备份 → 追加 → 复检 → 失败逐字节回滚
+```
+
+`disabled: true` 是 **dsh 自己补丁层的一等字段**（`@deepseek-ai/cordis-plugin-include` 的 `PatchOptions.disabled`），dsh 自己关遥测行就用它——所以这是"关掉那一行"的正统写法，不是重写你的 profile。它**只做手动操作、绝不自动执行**，幂等（已隔离 → `PROFILEPATCH_NOOP`），id 走字符集白名单（`[A-Za-z0-9._@/-]`，防 YAML 注入），复检失败则逐字节回滚。
+
 GUI 里对应体检页的**配置自检**按钮：运行 `profilecheck`，发现可修风险时弹框确认，确认后经 `profilepatch` 先备份再修复，随后复扫。
 
 **诚实边界：从「正在失败的启动」里自动发现问题——做不到。** 工具看不到你那次崩溃，需要你二选一：主动跑一次 `profilecheck`（对 `~/.dsh/profiles/**/*.yaml|*.yml` 的静态只读扫描），或把启动失败输出存成文件后跑 `bootdiag --from <文件>`（它绝不猜：识别不了就报 `BOOTDIAG_KIND unknown` + 第一条错误行）。写入路径必须显式 `--yes`，永远先备份、只加这一行、复扫校验、失败自动回滚；全程不碰凭据、不联网、默认不改 `node_modules` 下的任何文件。维护者本机实测：7 个 profile 文件中查出 1 处真实遗留问题（`subagent-acp-kimi` 缺 `maxDepth`），同时跳过 `node_modules` 下 563 个包内文件；`bootdiag` 把真实捕获堆栈解析为 `@deepseek-ai/dsh-tool-subagent` / `tool-subagent-kimi` / `cordis.patch.yml` 第 20 行；`profilepatch` 在副本上只加了一行，第二次运行报 NOOP。
+
+**本工具在插件生态里的位置。** 工具箱**不是** dsh 插件：它是一个独立 Windows 可执行程序，不注入 dsh、不跑在 dsh 的插件树里、dsh 没装也能用。它读的是 dsh 插件层读的**同一批 profile 文件**（写入必须显式 `--yes`），这正是它为什么能诊断并隔离"dsh 自己都起不来"的那个插件。
 
 ### 日志中心——筛选、搜索、导出
 
