@@ -1,5 +1,5 @@
 /**
- * dsh-toolkit-bridge —— **纯逻辑**部分（零依赖：只用 node 内置模块，**不 import 任何 dsh 包**）。
+ * dsh-shio-bridge —— **纯逻辑**部分（零依赖：只用 node 内置模块，**不 import 任何 dsh 包**）。
  *
  * 这样拆分的原因与 C# 侧"领域层 / 平台层"一致：把不依赖宿主的逻辑单独放，就能用普通 `node` 直接自测，
  * 不需要装 dsh、也不需要它的 peer 依赖（`@deepseek-ai/schemastery` 由宿主提供，只在 index.js 里用）。
@@ -10,14 +10,14 @@ import path from "node:path";
 /** 快照格式版本（工具箱侧 Dsht.Domain.Services.SessionStats.SnapshotFormatVersion 必须一致）。 */
 export const SNAPSHOT_FORMAT_VERSION = 2;
 
-/** 默认快照路径：<DSH_HOME>/toolkit-bridge/sessions.json（DSH_HOME 未设则退回 ~/.dsh）。 */
+/** 默认快照路径：<DSH_HOME>/shio-bridge/sessions.json（DSH_HOME 未设则退回 ~/.dsh）。 */
 export function defaultOutFile(env) {
 	const home = (env && env.DSH_HOME) || "";
 	const base =
 		home && home.trim().length > 0
 			? home.trim()
 			: path.join(process.env.HOME || process.env.USERPROFILE || ".", ".dsh");
-	return path.join(base, "toolkit-bridge", "sessions.json");
+	return path.join(base, "shio-bridge", "sessions.json");
 }
 
 /** 取投影单元的值：注册表快照给的是值本身，磁盘投影是 { ver, seq, val } —— 两种形状都认。 */

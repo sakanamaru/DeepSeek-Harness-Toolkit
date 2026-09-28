@@ -980,7 +980,8 @@ namespace Dsht.Gui.Avalonia.Shells
         private static Control BackupContent(MainWindow host)
         {
             StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
-            List<BackupItem> items = host.BackupItems;
+            // 直接从 CLI 原文解析（不依赖外层装配，少一处可能失联的接线）
+            List<BackupItem> items = BackupItems.Parse(host.RawOutput);
 
             StackPanel bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             Button mk = new Button { Content = "＋ 立即备份" };
@@ -1040,7 +1041,8 @@ namespace Dsht.Gui.Avalonia.Shells
         private static Control SettingsContent(MainWindow host)
         {
             StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 12 };
-            List<ConfigItem> items = host.Config;
+            // 直接从 CLI 原文解析（同上）
+            List<ConfigItem> items = ConfigMarkers.Parse(host.RawOutput);
             if (items.Count == 0)
             {
                 s.Children.Add(Card(T("没有读到配置项（CLI 未返回 CONFIG 行）。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));

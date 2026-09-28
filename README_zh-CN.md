@@ -1,10 +1,10 @@
-# DeepSeek Harness Toolkit
+# dsh-shio
 
 <div align="center">
 
 **[English](README.md) · [简体中文](README_zh-CN.md)**
 
-<img src="logo.png" alt="DeepSeek Harness Toolkit" width="220"/>
+<img src="logo.png" alt="dsh-shio" width="220"/>
 
 **DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具——双击即用，无需终端。**
 
@@ -17,7 +17,7 @@ DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具
 
 ## 官方下载
 
-只有本仓库的 [Releases 页面](https://github.com/sakanamaru/DeepSeek-Harness-Toolkit/releases) 提供官方产物——其他任何来源（网盘二次上传、"收费 / 破解 / 修改版"、其他网站或账号）均**非官方**。本项目免费开源（MIT），**任何收费售卖均未经授权**。运行前请核验：`verify.ps1` 对照 CI 生成的清单校验 SHA-256 并验证 GPG 签名，而 GitHub 构建溯源证明（attestation）是**独立的额外**溯源检查，`verify.ps1` **不会**验证它，它也不能替代 GPG 签名校验。信任模型、供应链控制与手动核验步骤见 [SECURITY.md](SECURITY.md)。
+只有本仓库的 [Releases 页面](https://github.com/sakanamaru/dsh-shio/releases) 提供官方产物——其他任何来源（网盘二次上传、"收费 / 破解 / 修改版"、其他网站或账号）均**非官方**。本项目免费开源（MIT），**任何收费售卖均未经授权**。运行前请核验：`verify.ps1` 对照 CI 生成的清单校验 SHA-256 并验证 GPG 签名，而 GitHub 构建溯源证明（attestation）是**独立的额外**溯源检查，`verify.ps1` **不会**验证它，它也不能替代 GPG 签名校验。信任模型、供应链控制与手动核验步骤见 [SECURITY.md](SECURITY.md)。
 
 ## 界面截图
 
@@ -90,22 +90,22 @@ plugin tree failed to load: … provider "kimi" cannot enforce maxDepth (no dept
 
 ```powershell
 # 1) 主动预检（只读）：哪些 profile 条目会让 dsh 起不来？
-DeepSeek Harness Toolkit.exe profilecheck              # 别名：pc
-DeepSeek Harness Toolkit.exe profilecheck --vendor     # 连 node_modules 一起扫（默认跳过）
+dsh-shio.exe profilecheck              # 别名：pc
+dsh-shio.exe profilecheck --vendor     # 连 node_modules 一起扫（默认跳过）
 
 # 2) 已经起不来了？把启动输出存成文本文件，然后：
-DeepSeek Harness Toolkit.exe bootdiag --from captured.txt    # 别名：bdiag
+dsh-shio.exe bootdiag --from captured.txt    # 别名：bdiag
 
 # 3) 处方——先预览，确认后再落盘（先备份 → 复扫校验 → 失败自动回滚）：
-DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed
-DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed --yes
+dsh-shio.exe profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed
+dsh-shio.exe profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed --yes
 ```
 
 **不止 `maxDepth`：任何坏插件都能先隔离掉。** 上面那行处方让插件**继续可用**；当坏插件身份不明、或你只想先让 dsh 起来时，可以往补丁文件**末尾追加**一个顶层条目把这一行关掉（**只追加**，不改动你 profile 里任何已有字符）：
 
 ```powershell
-DeepSeek Harness Toolkit.exe profilepatch --disable <条目 id>          # 预览（PROFILEPATCH_DRYRUN，零写入）
-DeepSeek Harness Toolkit.exe profilepatch --disable <条目 id> --yes    # 先备份 → 追加 → 复检 → 失败逐字节回滚
+dsh-shio.exe profilepatch --disable <条目 id>          # 预览（PROFILEPATCH_DRYRUN，零写入）
+dsh-shio.exe profilepatch --disable <条目 id> --yes    # 先备份 → 追加 → 复检 → 失败逐字节回滚
 ```
 
 `disabled: true` 是 **dsh 自己补丁层的一等字段**（`@deepseek-ai/cordis-plugin-include` 的 `PatchOptions.disabled`），dsh 自己关遥测行就用它——所以这是"关掉那一行"的正统写法，不是重写你的 profile。它**只做手动操作、绝不自动执行**，幂等（已隔离 → `PROFILEPATCH_NOOP`），id 走字符集白名单（`[A-Za-z0-9._@/-]`，防 YAML 注入），复检失败则逐字节回滚。
@@ -185,7 +185,7 @@ dsh web
 
 | 版本 | 文件 | 解压/运行方式 | 适合谁 |
 |---|---|---|---|
-| **A. 命令行核心** | `DeepSeek Harness Toolkit.exe` | 完整解压后双击运行 | 熟悉终端、要脚本/自动化的人 |
+| **A. 命令行核心** | `dsh-shio.exe` | 完整解压后双击运行 | 熟悉终端、要脚本/自动化的人 |
 | **B. GUI 附加版** | `Toolkit GUI.exe` + 核心同目录 | **必须完整解压**——GUI 依赖同目录的核心 exe；单独拷 GUI 会提示「未找到核心程序（CLI）」 | 想用图形界面、与核心一起部署的人 |
 | **C. GUI 单文件集成版** | `Toolkit GUI Standalone.exe` | **单文件独立运行**——内嵌核心，首次启动自动解出到同目录 | 想「一个 exe 搞定一切」的人 |
 
@@ -217,11 +217,11 @@ dsh web
 
 ## 使用
 
-双击 `DeepSeek Harness Toolkit.exe` 即可；或命令行：
+双击 `dsh-shio.exe` 即可；或命令行：
 
 ```
-DeepSeek Harness Toolkit.exe install|start|uninstall|update|check|about|help
-DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不来时的诊断与修复（见下）
+dsh-shio.exe install|start|uninstall|update|check|about|help
+dsh-shio.exe profilecheck|bootdiag|profilepatch     # dsh 起不来时的诊断与修复（见下）
 ```
 
 无参数启动为交互菜单：dsh 已安装时首次运行 5 秒倒计时自动启动（可按键接管），之后每次打开也自动启动 Web 界面；
@@ -235,7 +235,7 @@ DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不
 
 | 现象 | 解决 |
 | --- | --- |
-| GUI 提示「未找到核心程序（CLI）」 | B 附加版必须与 `DeepSeek Harness Toolkit.exe` **同目录**——请完整解压发布包，或改用 C 单文件集成版 |
+| GUI 提示「未找到核心程序（CLI）」 | B 附加版必须与 `dsh-shio.exe` **同目录**——请完整解压发布包，或改用 C 单文件集成版 |
 | `stop` 提示「3080 被其他程序占用，已拒绝停止」 | 监听 3080 的进程不是 dsh（如其他开发服务器）。本工具**不会误杀他人程序**；若确要关闭它，请自行结束该进程 |
 | dsh 起不来（`plugin tree failed to load`、`cannot enforce maxDepth`） | 跑 `profilecheck`（或把启动输出存成文件后跑 `bootdiag --from <文件>`），再用 `profilepatch … --yes` 补那一行处方；也可直接用 GUI **体检 → 配置自检**——详见上文「dsh 起不来怎么办」 |
 | 打开 Web 界面 403 / 空白 | 菜单选 **7 访问入口**，切换 `127.0.0.1` ↔ `localhost`（浏览器把两者当不同站点，旧缓存会导致异常） |
@@ -249,7 +249,7 @@ DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不
 需要 Windows 自带的 .NET Framework 4.x（Win10 / Win11 默认已安装）：
 
 ```
-"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico "/out:DeepSeek Harness Toolkit.exe" dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs /warn:4
+"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico "/out:dsh-shio.exe" dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs /warn:4
 ```
 
 或双击本目录 `build_exe.cmd`。GUI 由同规则的单文件 `gui_v2.cs` 编译（一份源码 → 附加版与集成版两种形态；集成版多一个 `/resource:<核心exe>,DSHCore.exe`）。
@@ -334,7 +334,7 @@ backup/  logs/       运行时目录（已被 .gitignore 排除，切勿提交�
 - **GPG 签名**：`hashes.txt` 由维护者私钥签名（`hashes.txt.asc`），公钥 `keys/sakanamaru-gpg.asc`，指纹：
   `A2F67D170B5BE4845612642C240979232B4E4CE4`
 - **GitHub 构建溯源证明（attestation）——独立的额外检查**：标签构建另会发布 GitHub 构建溯源证明，可用
-  `gh attestation verify <文件> --repo sakanamaru/DeepSeek-Harness-Toolkit` 单独验证。`verify.ps1`
+  `gh attestation verify <文件> --repo sakanamaru/dsh-shio` 单独验证。`verify.ps1`
   **不**验证 attestation，attestation 也**不**能替代 GPG 签名校验——两者相互独立，任选其一即可（都做更好）。
 - **程序自带完整性检查能证明什么、不能证明什么**：GUI 的「验证此安装」、启动/首次启动一致性检查与体检
   `Integrity` 类都只是把文件与**紧挨着它的** `hashes.txt` 比对——若有人同时替换 exe **和**该清单即可通过，
