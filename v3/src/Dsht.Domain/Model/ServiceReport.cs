@@ -25,7 +25,7 @@ namespace Dsht.Domain.Model
             get
             {
                 if (State == ServiceState.Ready) return "STATUS_UP";
-                if (State == ServiceState.Starting) return "STATUS_STARTING";
+                if (State == ServiceState.Listening) return "STATUS_STARTING";
                 return "STATUS_DOWN";
             }
         }
