@@ -1209,6 +1209,68 @@ namespace Dsht.Cli
         /// <summary>恢复前的**完成性核对** ✓：只在"完成标记**存在**且对不上"时返回原因 ✓。
         /// 标记缺失时**不拦** ✓（老包没有标记 ✓，拦了会破坏兼容 ✓）；对不上则说明包被截断 ✓ → 恢复会缺内容 ✓。
         /// 用 --force 可越过 ✓（与 stop 的闸门同一风格 ✓）。</summary>
+        /// <summary>备份包的**内容哈希** ✓：排序后的 `相对路径|大小|文件SHA256` 逐行拼接再取 SHA256 ✓。
+        /// 用于发现"计数对得上但内容残了"的情况 ✗（例如复制被中断在文件中间 ✓）—— 明文计数发现不了它 ✗✓。
+        /// 只做读取 ✓ 不改动包 ✓。</summary>
+        private static string PackageContentHash(string pkgDir)
+        {
+            try
+            {
+                string root = System.IO.Path.GetFullPath(pkgDir).TrimEnd('\\', '/');
+                List<string> lines = new List<string>();
+                string[] files = System.IO.Directory.GetFiles(root, "*", System.IO.SearchOption.AllDirectories);
+                for (int i = 0; i < files.Length; i++)
+                {
+                    string rel = files[i].Substring(root.Length).TrimStart('\\', '/').Replace('\\', '/');
+                    long len = 0;
+                    try { len = new System.IO.FileInfo(files[i]).Length; } catch { }
+                    string h = "";
+                    try { h = Sha256Of(files[i]); } catch { h = "unreadable"; }
+                    lines.Add(rel + "|" + len + "|" + h);
+                }
+                lines.Sort(StringComparer.Ordinal);
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                for (int i = 0; i < lines.Count; i++) sb.Append(lines[i]).Append('\n');
+                byte[] raw = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+                using (System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create())
+                {
+                    byte[] d = sha.ComputeHash(raw);
+                    System.Text.StringBuilder hex = new System.Text.StringBuilder(d.Length * 2);
+                    for (int i = 0; i < d.Length; i++) hex.Append(d[i].ToString("x2"));
+                    return hex.ToString();
+                }
+            }
+            catch { return null; }
+        }
+
+        /// <summary>给备份包的完成标记补上内容哈希 ✓（标记由平台侧最后写出 ✓，这里追加一行 ✓ 不改平台实现 ✓）。</summary>
+        private static void AddContentHashToMarker(string pkgPath)
+        {
+            try
+            {
+                string mf = pkgPath + ".manifest";
+                if (!System.IO.File.Exists(mf)) return;
+                string h = PackageContentHash(pkgPath);
+                if (string.IsNullOrEmpty(h)) return;
+                string cur = System.IO.File.ReadAllText(mf);
+                if (cur.IndexOf("sha256=", StringComparison.Ordinal) >= 0) return;
+                System.IO.File.AppendAllText(mf, "sha256=" + h + "\n");
+            }
+            catch { }
+        }
+
+        /// <summary>从标记里取内容哈希（没有则 null ✓）。</summary>
+        private static string MarkerHash(string markerPath)
+        {
+            try
+            {
+                string[] ls = System.IO.File.ReadAllLines(markerPath);
+                for (int i = 0; i < ls.Length; i++)
+                    if (ls[i].StartsWith("sha256=", StringComparison.Ordinal)) return ls[i].Substring(7).Trim();
+            }
+            catch { }
+            return null;
+        }
         private static string BackupTruncatedReason(string pkgDir)
         {
             try
@@ -1221,6 +1283,12 @@ namespace Dsht.Cli
                 if (want < 0) return null;
                 int have = 0;
                 try { have = System.IO.Directory.GetFiles(pkgDir, "*", System.IO.SearchOption.AllDirectories).Length; } catch { return null; }
+                string mh2 = MarkerHash(mf);
+                if (mh2 != null)
+                {
+                    string act2 = PackageContentHash(pkgDir);
+                    if (act2 != mh2) return T("该备份内容与完成标记不符（哈希不一致）—— 内容已被改动或损坏", "this backup does not match its completion marker (hash mismatch) - the content has been altered or corrupted");
+                }
                 if (have >= want) return null;
                 return T("该备份不完整（完成标记 ", "this backup is incomplete (marker says ") + want + T(" 个文件，实际 ", " files, actual ") + have + T(" 个）—— 恢复出来的数据会缺内容", " files) - a restore would come back with content missing");
             }
@@ -1250,6 +1318,13 @@ namespace Dsht.Cli
                 catch { }
                 int have = 0;
                 try { have = System.IO.Directory.GetFiles(all[i].Path, "*", System.IO.SearchOption.AllDirectories).Length; } catch { }
+                // 有内容哈希就**以哈希为准** ✓（能发现"计数对得上但内容残了" ✗✓）；没有则退回计数比对 ✓
+                string mh = MarkerHash(mf);
+                if (mh != null)
+                {
+                    string actual = PackageContentHash(all[i].Path);
+                    if (actual != mh) { mismatch++; Console.WriteLine("BACKUP_VERIFY " + name + " mismatch " + T("内容哈希与标记不符 —— 备份内容已被改动或损坏，不要依赖它", "content hash differs from the marker - the backup has been altered or corrupted, do not rely on it")); continue; }
+                }
                 if (want < 0) { mismatch++; Console.WriteLine("BACKUP_VERIFY " + name + " unreadable " + T("标记无法解析", "marker unparsable")); }
                 else if (want != have)
                 {
@@ -1565,6 +1640,7 @@ namespace Dsht.Cli
                 Console.WriteLine(T("已跳过 " + r.SkippedNested + " 个嵌套备份目录（dsh-data-*），不复制进本次备份。",
                                     "Skipped " + r.SkippedNested + " nested backup folder(s) (dsh-data-*), not copied into this backup."));
             Console.WriteLine("BACKUP_OK " + r.Path);
+            AddContentHashToMarker(r.Path);   // 标记补内容哈希 ✓（能发现"计数对但内容残" ✗✓）
             // 不完整就说出来 ✓：读不到/复制失败的文件被计数（此前静默吞掉 ✗），备份最不能有静默缺口 ✗
             if (r.FailedCopies > 0)
                 Console.WriteLine("BACKUP_INCOMPLETE " + r.FailedCopies + T(" 个文件/目录未能备份（权限或读取失败）—— 该备份不完整，请先解决权限再重做", " files/directories could not be backed up (permission or read failure) - this backup is INCOMPLETE; fix permissions and run it again"));
