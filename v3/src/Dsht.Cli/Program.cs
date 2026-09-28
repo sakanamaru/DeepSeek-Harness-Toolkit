@@ -42,8 +42,10 @@ namespace Dsht.Cli
             if (cmd == "selftest") return SelfTest(args, reg);
             if (cmd == "check") return Check(reg);
             if (cmd == "backup") return Backup(reg);
+            if (cmd == "backup-export") return BackupExport(args, reg);
+            if (cmd == "backup-delete") return BackupDelete(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | selftest [<report>] | check | backup");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
             return 2;
         }
 
@@ -267,6 +269,39 @@ namespace Dsht.Cli
 
 
 
+
+        /// <summary>有效备份目录判定（注入给领域校验器）。</summary>
+        private static Func<string, bool> IsValidBackupDirFn(ServiceRegistry reg)
+        {
+            IBackupSource bk = reg.Get<IBackupSource>();
+            return delegate(string dir) { return BackupPackage.IsValidPackage(bk.Snapshot(dir)); };
+        }
+
+        /// <summary>备份导出：只做校验；真实复制会写盘，V3 尚未移植 → 明确拒绝（与真实 restore 同一策略）。</summary>
+        private static int BackupExport(string[] args, ServiceRegistry reg)
+        {
+            IBackupSource bk = reg.Get<IBackupSource>();
+            IFileSystemQuery fs = reg.Get<IFileSystemQuery>();
+            string reason = PathValidator.ValidateExport(Flag(args, "--path"), Flag(args, "--to"), bk.BackupsRoot,
+                delegate(string p) { return fs.DirectoryExists(p); },
+                delegate(string p) { return System.IO.Path.GetFullPath(p); });
+            if (reason != null) { Console.WriteLine("BKEXPORT_FAIL " + T("导出校验失败: " + reason, "export validation failed: " + reason)); return 0; }
+            Console.WriteLine("BKEXPORT_NOT_IMPLEMENTED V3 尚未移植真实导出；请用 v2.x 执行导出。");
+            return 0;
+        }
+
+        /// <summary>备份删除：只做校验；真实删除会丢数据，V3 尚未移植 → 明确拒绝。</summary>
+        private static int BackupDelete(string[] args, ServiceRegistry reg)
+        {
+            IBackupSource bk = reg.Get<IBackupSource>();
+            IFileSystemQuery fs = reg.Get<IFileSystemQuery>();
+            string reason = PathValidator.ValidateDeletePath(Flag(args, "--path"), bk.BackupsRoot,
+                delegate(string p) { return fs.DirectoryExists(p); });
+            if (reason != null) { Console.WriteLine("BKDEL_FAIL " + T("删除校验失败: " + reason, "delete validation failed: " + reason)); return 0; }
+            Console.WriteLine("BKDEL_NOT_IMPLEMENTED V3 尚未移植真实删除；请用 v2.x 执行删除。");
+            return 0;
+        }
+
         /// <summary>backup：非交互备份（手动类）。标记逐条对齐 v2.x 的 NIBackup。</summary>
         private static int Backup(ServiceRegistry reg)
         {
@@ -424,7 +459,29 @@ namespace Dsht.Cli
         private static int Restore(string[] args, ServiceRegistry reg)
         {
             if (Has(args, "--dry-run") || Has(args, "-dry-run")) return DryRun(args, reg);
-            Console.WriteLine("RESTORE_NOT_IMPLEMENTED V3 尚未移植真实恢复；请用 restore --dry-run 预览，或用 v2.x 执行恢复。");
+            IBackupSource bk = reg.Get<IBackupSource>();
+            string pathArg = Flag(args, "--path");
+            if (pathArg != null)
+            {
+                string reason = PathValidator.ValidateRestorePath(pathArg, bk.BackupsRoot, IsValidBackupDirFn(reg));
+                if (reason != null)
+                {
+                    if (reason == "no-path") Console.WriteLine("RESTORE_FAIL " + T("未指定备份目录", "no backup specified"));
+                    else if (reason == "outside") Console.WriteLine("RESTORE_FAIL " + T("备份目录不在备份根内", "backup dir is outside the backups root"));
+                    else Console.WriteLine("RESTORE_FAIL " + T("无效备份目录", "invalid backup directory"));
+                    return 0;
+                }
+            }
+            else
+            {
+                IFileSystemQuery fs2 = reg.Get<IFileSystemQuery>();
+                if (!fs2.DirectoryExists(bk.BackupsRoot)) { Console.WriteLine("RESTORE_FAIL " + T("没有备份", "no backups")); return 0; }
+                List<BackupEntry> all = bk.ListRaw();
+                string latest = null;
+                for (int i = all.Count - 1; i >= 0; i--) { if (BackupPackage.IsValidPackage(all[i].Snapshot)) { latest = all[i].Path; break; } }
+                if (latest == null) { Console.WriteLine("RESTORE_FAIL " + T("无有效备份", "no valid backup")); return 0; }
+            }
+            Console.WriteLine("RESTORE_NOT_IMPLEMENTED V3 尚未移植真实恢复（会写用户数据）；请用 restore --dry-run 预览，或用 v2.x 执行恢复。");
             return 0;
         }
 
