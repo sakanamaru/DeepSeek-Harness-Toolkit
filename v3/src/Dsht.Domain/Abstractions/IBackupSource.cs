@@ -18,6 +18,9 @@ namespace Dsht.Domain.Abstractions
         /// 成功后执行保留策略（只清自动类）。失败返回 null。</summary>
         BackupResult Create(string sourceDir, BackupKind kind);
 
+        /// <summary>导出备份副本到指定目录（只读源）；返回目标路径，失败返回 null。</summary>
+        string Export(string src, string dstDir);
+
         /// <summary>删除备份目录（保留策略用）；失败静默。</summary>
         void Delete(string dir);
 

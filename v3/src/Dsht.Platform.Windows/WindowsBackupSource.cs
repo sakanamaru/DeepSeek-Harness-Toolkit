@@ -154,6 +154,19 @@ namespace Dsht.Platform.Windows
             catch { return null; }
         }
 
+        /// <summary>导出备份副本：复制到 dstDir/&lt;源目录名&gt;（只读源；best-effort 复制）。返回目标路径；失败返回 null。</summary>
+        public string Export(string src, string dstDir)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(src) || string.IsNullOrEmpty(dstDir)) return null;
+                Directory.CreateDirectory(dstDir);
+                string target = Path.Combine(dstDir, Path.GetFileName(src.TrimEnd('\\', '/')));
+                CopyTree(src, target, true);
+                return target;
+            }
+            catch { return null; }
+        }
         public void Delete(string dir)
         {
             if (string.IsNullOrEmpty(dir)) return;
