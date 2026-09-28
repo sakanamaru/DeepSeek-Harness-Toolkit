@@ -41,8 +41,9 @@ namespace Dsht.Cli
             if (cmd == "restore") return Restore(args, reg);
             if (cmd == "selftest") return SelfTest(args, reg);
             if (cmd == "check") return Check(reg);
+            if (cmd == "backup") return Backup(reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | selftest [<report>] | check");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | selftest [<report>] | check | backup");
             return 2;
         }
 
@@ -264,6 +265,27 @@ namespace Dsht.Cli
 
 
 
+
+
+        /// <summary>backup：非交互备份（手动类）。标记逐条对齐 v2.x 的 NIBackup。</summary>
+        private static int Backup(ServiceRegistry reg)
+        {
+            IPaths paths = reg.Get<IPaths>();
+            IBackupSource bk = reg.Get<IBackupSource>();
+            string src = paths.DataRoot;
+            if (!reg.Get<IFileSystemQuery>().DirectoryExists(src))
+            {
+                Console.WriteLine("BACKUP_FAIL " + T("数据目录不存在：" + src, "data dir not found: " + src));
+                return 0;
+            }
+            BackupResult r = bk.Create(src, BackupKind.Manual);
+            if (r == null) { Console.WriteLine("BACKUP_FAIL " + T("备份失败（见 launcher.log）", "backup failed (see launcher.log)")); return 0; }
+            if (r.SkippedNested > 0)
+                Console.WriteLine(T("已跳过 " + r.SkippedNested + " 个嵌套备份目录（dsh-data-*），不复制进本次备份。",
+                                    "Skipped " + r.SkippedNested + " nested backup folder(s) (dsh-data-*), not copied into this backup."));
+            Console.WriteLine("BACKUP_OK " + r.Path);
+            return 0;
+        }
 
         private const string GithubHandle = "github.com/sakanamaru";
 

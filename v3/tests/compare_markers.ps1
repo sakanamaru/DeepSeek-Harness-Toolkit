@@ -3,7 +3,7 @@
 # -Fixtures：临时造 3 个受控备份（覆盖 backup-list --detail 分支与有效性过滤），跑完即清理。
 # 关键：V3 exe 必须与 v2.x exe **同目录**——因为两者都把状态目录解析为 exe 所在目录（备份根 = 状态目录/backup）。
 # 退出码：0=全部对齐；1=有差异；2=环境不足（缺 v2.x exe 或 csc）
-param([string]$Repo = ".", [switch]$Fixtures)
+param([string]$Repo = ".", [switch]$Fixtures, [switch]$Heavy)
 $ErrorActionPreference = "Stop"
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path $csc)) { Write-Host "SKIP: 找不到 csc（需 Windows + .NET Framework 4.x）"; exit 2 }
@@ -66,11 +66,20 @@ $cases = @(
     @{ name = 'selftest (report body)'; args = @('selftest'); post = 'report'; ignore = '^(title|version)\s+:' },
     # check：横幅与"dsh 最新"行按规则忽略（前者是产品版本差异，后者依赖网络）
     @{ name = 'check'; args = @('check'); full = $true; ignore = '^(=+|-+)$|^\s*(DeepSeek Harness Toolkit V|v1 脚本协助|v2 重构封装|GitHub\s|⚠|dsh 最新\s+:)' },
+    # backup：真实写盘（每次约 400MB）→ 用 -Heavy 按需开启；目录名含时间戳，比对时归一化
+    @{ name = 'backup (heavy)'; args = @('backup'); full = $true; heavy = $true; mask = 'dsh-data-\d{8}-\d{9,}' },
     @{ name = 'config-get';          args = @('config-get'); full = $true },
     @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity '; ignoreSummary = $true }
 )
 $fail = 0
+$skipped = 0
+# 备份状态只在循环前捕获一次（否则后续用例会误判"原本就存在"）
+$bkRoot2 = Join-Path $Repo 'backup'
+$bkExisted = Test-Path $bkRoot2
+$bkBefore = @()
+if ($bkExisted) { $bkBefore = @(Get-ChildItem $bkRoot2 -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) }
 foreach ($c in $cases) {
+    if ($c.heavy -and -not $Heavy) { Write-Host ("  {0,-18} SKIP  （需 -Heavy）" -f $c.name); $script:skipped++; continue }
     $o2 = (& $v2 @($c.args) 2>&1 | Out-String)
     if ($c.post -eq 'report') {
         $rp = Join-Path $env:TEMP 'dsh_selftest.txt'
@@ -82,6 +91,7 @@ foreach ($c in $cases) {
         if (Test-Path $rp2) { $o3 = [System.IO.File]::ReadAllText($rp2) }
     }
     $ignored = 0
+    
     if ($c.full -or $c.post -eq 'report') {
         $m2 = @(($o2 -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
         $m3 = @(($o3 -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
@@ -102,6 +112,10 @@ foreach ($c in $cases) {
         $m2 = @(($o2 -split "`r?`n") | Where-Object { $_ -match '^(STATUS|PROFILECHK|DOCTOR|BACKUP|DRYRUN)_[A-Z0-9_]+' } | ForEach-Object { $_.Trim() })
         $m3 = @(($o3 -split "`r?`n") | Where-Object { $_ -match '^(STATUS|PROFILECHK|DOCTOR|BACKUP|DRYRUN)_[A-Z0-9_]+' } | ForEach-Object { $_.Trim() })
     }
+    if ($c.mask) {
+        $m2 = @($m2 | ForEach-Object { [regex]::Replace($_, $c.mask, 'dsh-data-TS') })
+        $m3 = @($m3 | ForEach-Object { [regex]::Replace($_, $c.mask, 'dsh-data-TS') })
+    }
     if ((($m2 -join '|') -eq ($m3 -join '|'))) {
         Write-Host ("  {0,-18} PASS  [{1} 行{2}]" -f $c.name, $m2.Count, $(if ($ignored -gt 0) { "，按规则忽略 $ignored 行" } else { "" }))
     } else {
@@ -112,12 +126,21 @@ foreach ($c in $cases) {
     }
 }
 
-# 清理：受控备份 + 临时 exe（只删本次创建的）
+# 清理：受控备份 + 本次 backup 用例新建的备份 + 临时 exe
+if ($Heavy -and (Test-Path $bkRoot2)) {
+    if (-not $bkExisted) { Remove-Item $bkRoot2 -Recurse -Force -ErrorAction SilentlyContinue }
+    else {
+        foreach ($d in @(Get-ChildItem $bkRoot2 -Directory -ErrorAction SilentlyContinue)) {
+            if ($bkBefore -notcontains $d.Name) { Remove-Item $d.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    }
+}
 foreach ($d in $created) { try { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue } catch { } }
 $bkRoot = Join-Path $Repo 'backup'
 if ($Fixtures -and (Test-Path $bkRoot) -and ((Get-ChildItem $bkRoot -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0)) { Remove-Item $bkRoot -Force -ErrorAction SilentlyContinue }
 Remove-Item $v3exe -Force -ErrorAction SilentlyContinue
 
-Write-Host ("== 标记行契约：{0}/{1} 对齐 ==" -f ($cases.Count - $fail), $cases.Count)
+$total = $cases.Count - $skipped
+Write-Host ("== 标记行契约：{0}/{1} 对齐{2} ==" -f ($total - $fail), $total, $(if ($skipped -gt 0) { "（另有 $skipped 项需 -Heavy）" } else { "" }))
 if ($fail -gt 0) { exit 1 }
 exit 0

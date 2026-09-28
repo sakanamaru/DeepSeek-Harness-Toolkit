@@ -75,6 +75,17 @@ namespace Dsht.Domain.Services
             return BackupKind.Manual;
         }
 
+        /// <summary>目录名后缀。逐字对齐 v2.x 的 BackupSuffix（Manual 无后缀）。</summary>
+        public static string Suffix(BackupKind k)
+        {
+            if (k == BackupKind.Auto) return "-auto";
+            if (k == BackupKind.PreRestore) return "-pre-restore";
+            if (k == BackupKind.PreImport) return "-pre-import";
+            if (k == BackupKind.PreWipe) return "-pre-wipe";
+            if (k == BackupKind.PreUpdate) return "-pre-update";
+            return "";
+        }
+
         /// <summary>类型显示标签。逐字对齐 v2.x 的 BackupKindName（英文、不本地化）。</summary>
         public static string KindLabel(BackupKind k)
         {
