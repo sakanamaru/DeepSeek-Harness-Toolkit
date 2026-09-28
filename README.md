@@ -15,6 +15,26 @@ Install, start, monitor and uninstall the dsh Web UI, with data backup / restore
 
 > ⚠️ This project is **unofficial** and is not affiliated with DeepSeek.
 
+## Guarantees you can rely on
+
+This is a tool that touches your data, so its promises should be checkable rather than taken on faith. These
+four were each verified on real machines, on Windows and on Linux, and the method is stated so you can repeat
+it.
+
+- **A restore never deletes files that only exist on your side.** Merging overwrites same-named files and
+  adds new ones; anything the backup does not contain is left alone. The dry run prints the counts it will
+  add, overwrite and keep, and the real run matches that preview.
+- **Session statistics never read your conversation content.** They read only dsh's own metadata projections.
+  Verified by making the conversation files unreadable: the statistics still worked, so the content cannot
+  have been read.
+- **Uninstalling removes the program, not your data.** `uninstall` removes the dsh package and leaves the
+  data directory and every backup untouched, and it says so in the plan before doing anything.
+- **A backup can prove it is complete.** Each backup carries a completion marker written last, with a content
+  hash, so an interrupted backup is detectable, altered content is detectable, and restoring from a broken
+  backup is refused unless you pass `--force`.
+
+Anything not on this list is not a guarantee. In particular, packages written before the completion marker
+existed have no marker and are reported as unknown rather than assumed good.
 ## Linux support (preview)
 
 The V3 line runs on Linux (x86-64) today: the CLI is fully ported, and the Avalonia GUI builds and runs.
