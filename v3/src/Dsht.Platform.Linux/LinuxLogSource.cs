@@ -19,5 +19,16 @@ namespace Dsht.Platform.Linux
             try { return File.Exists(LogPath) ? File.ReadAllText(LogPath) : null; }
             catch { return null; }
         }
+        /// <summary>追加一条操作日志（尽力而为 ✓：日志失败不影响主操作 —— 这是唯一合理的静默点 ✓）。</summary>
+        public void Append(string level, string message)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(LogPath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                File.AppendAllText(LogPath, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + level + " " + message + Environment.NewLine);
+            }
+            catch { }
+        }
     }
 }

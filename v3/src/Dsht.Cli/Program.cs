@@ -362,6 +362,11 @@ namespace Dsht.Cli
         /// <summary>log（V3 独有）：查看/筛选/导出操作日志 —— 经典版「日志中心」的 CLI 对应物 ✓。
         /// 用法：log [--lines &lt;n&gt;] [--level info|warn|error] [--grep &lt;text&gt;] [--export &lt;file&gt; [--yes]]
         /// 标记行：LOG_OK &lt;n&gt; / LOG_LINE &lt;原文&gt; / LOG_EMPTY / LOG_EXPORT &lt;路径&gt; &lt;n&gt; / LOG_FAIL &lt;原因&gt;。</summary>
+        /// <summary>记一条操作日志（尽力而为 ✓）。读取侧见 LogCmd ✓。</summary>
+        private static void OpLog(ServiceRegistry reg, string level, string message)
+        {
+            try { reg.Get<ILogSource>().Append(level, message); } catch { }
+        }
         private static int LogCmd(string[] args, ServiceRegistry reg)
         {
             string text = reg.Get<ILogSource>().ReadLog();
@@ -672,6 +677,7 @@ namespace Dsht.Cli
             if (string.IsNullOrEmpty(after) && string.IsNullOrEmpty(tc.WhichDsh()))
             {
                 Console.WriteLine("UNINSTALL_OK");
+            OpLog(reg, "INFO", "uninstall OK");
                 Console.WriteLine("UNINSTALL_OBSERVED not-installed");
                 return 0;
             }
@@ -689,6 +695,7 @@ namespace Dsht.Cli
             if (ServiceControlPolicy.BeforeStart(st, before.Pid) == StartDecision.AlreadyRunning)
             {
                 Console.WriteLine("START_OK " + (before.Pid > 0 ? before.Pid.ToString() : "0"));
+            OpLog(reg, "INFO", "start OK (already running)");
                 Console.WriteLine("START_OBSERVED " + st.ToLowerInvariant() + " " + T("（观测到已在运行，未重复启动）", "(already running; not started again)"));
                 return 0;
             }
@@ -739,6 +746,7 @@ namespace Dsht.Cli
                 if (ServiceControlPolicy.AfterLaunch(s2, now.Pid, pid) == StartOutcome.Started)
                 {
                     Console.WriteLine("START_OK " + (now.Pid > 0 ? now.Pid.ToString() : pid.ToString()));
+            OpLog(reg, "INFO", "start OK");
                     Console.WriteLine("START_OBSERVED " + s2.ToLowerInvariant());
                     return 0;
                 }
@@ -807,6 +815,7 @@ namespace Dsht.Cli
             if (ServiceControlPolicy.AfterStop(st) == StopOutcome.Stopped)
             {
                 Console.WriteLine("STOP_OK " + r.Pid);
+            OpLog(reg, "INFO", "stop OK pid " + r.Pid);
                 Console.WriteLine("STOP_OBSERVED down");
                 return 0;
             }
@@ -1079,6 +1088,7 @@ namespace Dsht.Cli
                 return 0;
             }
             Console.WriteLine("PROFILEPATCH_OK " + profile + "/cordis.patch.yml:" + plan.Line);
+            OpLog(reg, "INFO", "profilepatch OK " + profile + " line " + plan.Line);
             return 0;
         }
 
@@ -1172,6 +1182,7 @@ namespace Dsht.Cli
                 Console.WriteLine(T("已跳过 " + r.SkippedNested + " 个嵌套备份目录（dsh-data-*），不复制进本次备份。",
                                     "Skipped " + r.SkippedNested + " nested backup folder(s) (dsh-data-*), not copied into this backup."));
             Console.WriteLine("BACKUP_OK " + r.Path);
+            OpLog(reg, "INFO", "backup OK " + r.Path);
             return 0;
         }
 
@@ -1388,6 +1399,7 @@ namespace Dsht.Cli
                 return 0;
             }
             Console.WriteLine("RESTORE_OK " + bkDir);
+            OpLog(reg, "INFO", "restore OK " + bkDir);
             if (o.WorkspacesRestored > 0) Console.WriteLine("RESTORE_WS_RESTORED " + o.WorkspacesRestored);
             if (o.WorkspacesSkipped > 0) Console.WriteLine("RESTORE_WS_SKIPPED " + o.WorkspacesSkipped);
             if (o.WorkspacesUnrecognized > 0) Console.WriteLine("RESTORE_WS_UNRECOGNIZED " + o.WorkspacesUnrecognized);
