@@ -34,6 +34,9 @@ namespace Dsht.Cli
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
             if (cmd == "profilepatch") return ProfilePatch(args, reg);
             if (cmd == "profiles") return Profiles(reg);
+            if (cmd == "install") return InstallLike(args, reg, false);
+            if (cmd == "update") return InstallLike(args, reg, true);
+            if (cmd == "uninstall") return UninstallCmd(args, reg);
             if (cmd == "start") return StartCmd(args, reg);
             if (cmd == "stop") return StopCmd(args, reg);
             if (cmd == "sessions") return Sessions(reg);
@@ -50,7 +53,7 @@ namespace Dsht.Cli
             if (cmd == "backup-export") return BackupExport(args, reg);
             if (cmd == "backup-delete") return BackupDelete(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | profilepatch --profile <name> --id <entry> [--enable] [--yes] | sessions | start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--yes] | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | profilepatch --profile <name> --id <entry> [--enable] [--yes] | sessions | install [--yes] | update [--yes] | uninstall [--yes] | start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--yes] | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
             return 2;
         }
 
@@ -260,6 +263,84 @@ namespace Dsht.Cli
             }
             if (port <= 0 || port == WebPort) return reg.Get<IServiceTarget>();
             return PlatformComposition.WebFor(port, reg.Get<IPortProbe>(), reg.Get<IHttpProbe>(), reg.Get<IProcessQuery>());
+        }
+        /// <summary>install / update（V3 独有）：装或升级 dsh。**只用可观测事实判定结果**：
+        /// 先看 WhichDsh/DshVersion（是否已装）→ 打印计划 → `--yes` 闸门 → npm → **再复检**。
+        /// 标记行：`INSTALL_PLAN/_DRYRUN/_SKIP/_OK/_FAIL` 或 `UPDATE_*`，并始终补一行 `*_OBSERVED &lt;版本|not-installed&gt;`。</summary>
+        private static int InstallLike(string[] args, ServiceRegistry reg, bool update)
+        {
+            IToolchainQuery tc = reg.Get<IToolchainQuery>();
+            string verb = update ? "UPDATE" : "INSTALL";
+            string which = tc.WhichDsh();
+            string installed = tc.DshVersion();
+            bool isInstalled = !string.IsNullOrEmpty(which) || !string.IsNullOrEmpty(installed);
+
+            if (isInstalled && !update)
+            {
+                Console.WriteLine(verb + "_SKIP " + T("已经装了 dsh ", "dsh is already installed ") + (installed.Length > 0 ? installed : "?") + T("（升级请用 update）", " (use update to upgrade)"));
+                Console.WriteLine(verb + "_OBSERVED " + (installed.Length > 0 ? installed : "installed"));
+                return 0;
+            }
+
+            string latest = NpmVersionGuard.Normalize(tc.NpmViewLatest());
+            if (!NpmVersionGuard.IsSafe(latest))
+            {
+                Console.WriteLine(verb + "_FAIL " + T("拿不到可信的最新版本（离线，或 npm 返回值未通过白名单）", "no trustworthy latest version (offline, or the npm value failed the whitelist)"));
+                Console.WriteLine(verb + "_OBSERVED " + (installed.Length > 0 ? installed : "not-installed"));
+                return 0;
+            }
+            string target = "@deepseek-ai/dsh@" + latest;
+            string registry = tc.NpmRegistryConfig();
+            Console.WriteLine(verb + "_PLAN " + T("将执行：npm install -g ", "will run: npm install -g ") + target + (string.IsNullOrEmpty(registry) ? "" : " --registry " + registry));
+            if (!Has(args, "--yes"))
+            {
+                Console.WriteLine(verb + "_DRYRUN " + T("（确认请加 --yes；这会真的改动全局 npm 包）", "(add --yes to confirm; this really changes global npm packages)"));
+                Console.WriteLine(verb + "_OBSERVED " + (installed.Length > 0 ? installed : "not-installed"));
+                return 0;
+            }
+            int code = tc.NpmInstallGlobal(target, registry);
+            string after = reg.Get<IToolchainQuery>().DshVersion();
+            if (!string.IsNullOrEmpty(after))
+            {
+                Console.WriteLine(verb + "_OK " + after + T("（复检已观测到 dsh）", " (dsh observed after the run)"));
+                Console.WriteLine(verb + "_OBSERVED " + after);
+                return 0;
+            }
+            Console.WriteLine(verb + "_FAIL " + T("npm 退出码 ", "npm exit code ") + code + T("，且复检仍未观测到 dsh", ", and dsh is still not observed"));
+            Console.WriteLine(verb + "_OBSERVED not-installed");
+            return 0;
+        }
+
+        /// <summary>uninstall（V3 独有）：卸载 dsh（**不动数据目录**）。同样：计划 → 闸门 → npm → 复检。</summary>
+        private static int UninstallCmd(string[] args, ServiceRegistry reg)
+        {
+            IToolchainQuery tc = reg.Get<IToolchainQuery>();
+            string which = tc.WhichDsh();
+            string installed = tc.DshVersion();
+            if (string.IsNullOrEmpty(which) && string.IsNullOrEmpty(installed))
+            {
+                Console.WriteLine("UNINSTALL_SKIP " + T("没有观测到已安装的 dsh", "no installed dsh observed"));
+                Console.WriteLine("UNINSTALL_OBSERVED not-installed");
+                return 0;
+            }
+            Console.WriteLine("UNINSTALL_PLAN " + T("将执行：npm uninstall -g @deepseek-ai/dsh（只移除 dsh 程序，**不动**你的数据目录与备份）", "will run: npm uninstall -g @deepseek-ai/dsh (removes the program only; your data root and backups are NOT touched)"));
+            if (!Has(args, "--yes"))
+            {
+                Console.WriteLine("UNINSTALL_DRYRUN " + T("（确认请加 --yes）", "(add --yes to confirm)"));
+                Console.WriteLine("UNINSTALL_OBSERVED " + (installed.Length > 0 ? installed : "installed"));
+                return 0;
+            }
+            int code = tc.NpmUninstallGlobal();
+            string after = reg.Get<IToolchainQuery>().DshVersion();
+            if (string.IsNullOrEmpty(after) && string.IsNullOrEmpty(tc.WhichDsh()))
+            {
+                Console.WriteLine("UNINSTALL_OK");
+                Console.WriteLine("UNINSTALL_OBSERVED not-installed");
+                return 0;
+            }
+            Console.WriteLine("UNINSTALL_FAIL " + T("npm 退出码 ", "npm exit code ") + code + T("（复检仍观测到 dsh）", " (dsh still observed)"));
+            Console.WriteLine("UNINSTALL_OBSERVED " + (after.Length > 0 ? after : "installed"));
+            return 0;
         }
         private static int StartCmd(string[] args, ServiceRegistry reg)
         {
