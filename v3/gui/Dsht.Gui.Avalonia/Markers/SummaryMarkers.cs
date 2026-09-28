@@ -44,10 +44,10 @@ namespace Dsht.Gui.Avalonia.Markers
                 string line = lines[i] == null ? "" : lines[i].Trim();
                 if (line.Length == 0) continue;
                 if (line.StartsWith("DOCTOR_OK", StringComparison.Ordinal)) { d.Ok = true; continue; }
-                if (line.StartsWith("DOCTOR_WARN", StringComparison.Ordinal)) { d.Warn++; d.Ok = true; continue; }
-                if (line.StartsWith("DOCTOR_ERROR", StringComparison.Ordinal)) { d.Error++; d.Ok = true; continue; }
-                if (line.StartsWith("[错误]", StringComparison.Ordinal) || line.StartsWith("[ERROR", StringComparison.OrdinalIgnoreCase)) { if (d.ErrorLines.Count < 8) d.ErrorLines.Add(line); continue; }
-                if (line.StartsWith("[提醒]", StringComparison.Ordinal) || line.StartsWith("[WARN", StringComparison.OrdinalIgnoreCase)) { if (d.WarnLines.Count < 8) d.WarnLines.Add(line); continue; }
+                if (line.StartsWith("DOCTOR_WARN", StringComparison.Ordinal)) { d.Ok = true; continue; }   // 标记行只表示"体检跑过"，计数以条目行为准
+                if (line.StartsWith("DOCTOR_ERROR", StringComparison.Ordinal)) { d.Ok = true; continue; }
+                if (line.StartsWith("[错误]", StringComparison.Ordinal) || line.StartsWith("[ERROR", StringComparison.OrdinalIgnoreCase)) { d.Error++; if (d.ErrorLines.Count < 8) d.ErrorLines.Add(line); continue; }
+                if (line.StartsWith("[提醒]", StringComparison.Ordinal) || line.StartsWith("[WARN", StringComparison.OrdinalIgnoreCase)) { d.Warn++; if (d.WarnLines.Count < 8) d.WarnLines.Add(line); continue; }
                 if (line.StartsWith("[OK]", StringComparison.Ordinal) || line.StartsWith("[通过]", StringComparison.Ordinal)) { d.Pass++; continue; }
             }
             return d;
