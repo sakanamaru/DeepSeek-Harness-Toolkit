@@ -33,6 +33,8 @@ namespace Dsht.Cli
             if (cmd == "describe") return Describe(reg);
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
             if (cmd == "profiles") return Profiles(reg);
+            if (cmd == "start") return StartCmd(args, reg);
+            if (cmd == "stop") return StopCmd(args, reg);
             if (cmd == "sessions") return Sessions(reg);
             if (cmd == "backup-list") return BackupList(args, reg);
             if (cmd == "doctor") return Doctor(args, reg);
@@ -47,7 +49,7 @@ namespace Dsht.Cli
             if (cmd == "backup-export") return BackupExport(args, reg);
             if (cmd == "backup-delete") return BackupDelete(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | sessions | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | sessions | start [--port <n>] [--profile <name>] [--yes] | stop [--yes] | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
             return 2;
         }
 
@@ -232,6 +234,118 @@ namespace Dsht.Cli
             return v < 0 ? "unknown" : v.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
         }
 
+        /// <summary>start（V3 独有）：启动 dsh，然后**用可观测事实确认**是否真的起来 —— 绝不因为"命令发出去了"就报成功。
+        /// 标记行：`START_OK &lt;pid&gt;` / `START_FAIL &lt;原因&gt;`，两者之后都会补一行 `START_OBSERVED &lt;状态&gt;`（Ready/Listening/Down）。
+        /// 用法：`start [--port &lt;n&gt;] [--profile &lt;name&gt;]`（默认 3080 / web）。</summary>
+        private static int StartCmd(string[] args, ServiceRegistry reg)
+        {
+            IServiceTarget target = reg.Get<IServiceTarget>();
+            IServiceControl ctl = reg.Get<IServiceControl>();
+
+            ServiceReport before = target.Probe();
+            string st = before.State.ToString();
+            if (st == "Ready" || st == "Listening")
+            {
+                Console.WriteLine("START_OK " + (before.Pid > 0 ? before.Pid.ToString() : "0"));
+                Console.WriteLine("START_OBSERVED " + st.ToLowerInvariant() + " " + T("（观测到已在运行，未重复启动）", "(already running; not started again)"));
+                return 0;
+            }
+
+            if (!Has(args, "--yes"))
+            {
+                Console.WriteLine("START_PLAN " + T("将启动：dsh（默认 profile web / 端口 3080）—— 这会改变系统状态，需要显式确认。", "will start dsh (profile web / port 3080) - this changes system state and needs explicit confirmation."));
+                Console.WriteLine("START_NOTE " + T("确认请加 --yes；可用 --port &lt;n&gt; 指定端口（测试时务必用非默认端口）。", "add --yes to confirm; --port &lt;n&gt; to pick a port (always use a non-default port when testing)."));
+                Console.WriteLine("START_OBSERVED " + before.State.ToString().ToLowerInvariant());
+                return 0;
+            }
+            int port = 3080;
+            string profile = "web";
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i] == "--port") { int pp; if (int.TryParse(args[i + 1], out pp)) port = pp; }
+                else if (args[i] == "--profile") profile = args[i + 1];
+            }
+
+            string file, cmdArgs;
+            if (PlatformIsWindows())
+            {
+                file = "cmd.exe";                                   // npm 的 dsh 是 .cmd 垫片，必须经 cmd 包装
+                cmdArgs = "/c dsh --profile " + profile + " --port " + port;
+            }
+            else
+            {
+                file = "dsh";                                       // Unix 上是带 shebang 的可执行文件
+                cmdArgs = "--profile " + profile + " --port " + port;
+            }
+
+            int pid; string err;
+            bool launched = ctl.StartDetached(file, cmdArgs, null, out pid, out err);
+            if (!launched)
+            {
+                Console.WriteLine("START_FAIL " + T("启动命令未能发出：", "could not launch: ") + err);
+                Console.WriteLine("START_OBSERVED down");
+                return 0;
+            }
+            Console.WriteLine("START_LAUNCHED " + pid + " " + T("（命令已发出，正在用可观测事实确认…）", "(launched; verifying by observation…)"));
+
+            // 等最多 15 秒，用端口/HTTP 观测确认（不猜）
+            for (int i = 0; i < 15; i++)
+            {
+                System.Threading.Thread.Sleep(1000);
+                ServiceReport now = target.Probe();
+                string s2 = now.State.ToString();
+                if (s2 == "Ready" || s2 == "Listening")
+                {
+                    Console.WriteLine("START_OK " + (now.Pid > 0 ? now.Pid.ToString() : pid.ToString()));
+                    Console.WriteLine("START_OBSERVED " + s2.ToLowerInvariant());
+                    return 0;
+                }
+            }
+            ServiceReport last = target.Probe();
+            Console.WriteLine("START_FAIL " + T("命令已发出但 15 秒内未观测到端口/HTTP 就绪（可能仍在启动，或启动失败）", "launched but not observed ready within 15s"));
+            Console.WriteLine("START_OBSERVED " + last.State.ToString().ToLowerInvariant() + " " + last.Basis);
+            return 0;
+        }
+
+        /// <summary>stop（V3 独有）：按**观测到的 PID** 结束 dsh，再用观测确认真的停了。
+        /// 标记行：`STOP_OK &lt;pid&gt;` / `STOP_FAIL &lt;原因&gt;` + `STOP_OBSERVED &lt;状态&gt;`。</summary>
+        private static int StopCmd(string[] args, ServiceRegistry reg)
+        {
+            IServiceTarget target = reg.Get<IServiceTarget>();
+            ServiceReport r = target.Probe();
+            if (r.Pid <= 0 || r.State.ToString() == "Down")
+            {
+                Console.WriteLine("STOP_FAIL " + T("没有观测到在运行的 dsh（端口未监听）", "no running dsh observed (port not listening)"));
+                Console.WriteLine("STOP_OBSERVED down");
+                return 0;
+            }
+            if (!Has(args, "--yes"))
+            {
+                Console.WriteLine("STOP_PLAN " + T("将停止 PID ", "will stop PID ") + r.Pid + T("（端口 ", " (port ") + T("默认 3080", "default 3080") + T("）—— 这会中断正在运行的服务，需要显式确认。", ") - this interrupts a running service and needs explicit confirmation."));
+                Console.WriteLine("STOP_NOTE " + T("确认请加 --yes。注意：DSH_HOME 隔离不隔离端口，测试时绝不要对默认端口执行本命令。", "add --yes to confirm. Note: isolating DSH_HOME does NOT isolate the port - never run this against the default port in a test."));
+                return 0;
+            }
+            IServiceControl ctl = reg.Get<IServiceControl>();
+            string err;
+            bool ok = ctl.StopTree(r.Pid, out err);
+            ServiceReport after = target.Probe();
+            string st = after.State.ToString();
+            if (st == "Down")
+            {
+                Console.WriteLine("STOP_OK " + r.Pid);
+                Console.WriteLine("STOP_OBSERVED down");
+                return 0;
+            }
+            Console.WriteLine("STOP_FAIL " + (ok ? T("进程已结束但端口仍在监听", "process gone but port still listening") : err));
+            Console.WriteLine("STOP_OBSERVED " + st.ToLowerInvariant());
+            return 0;
+        }
+
+        /// <summary>是否 Windows（平台判断只用于选择启动方式，不用于猜形态）。</summary>
+        private static bool PlatformIsWindows()
+        {
+            return System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+        }
         /// <summary>profiles（V3 独有）：列出 profile、它们的**配置形态**与插件清单。
         /// 数据来源：`&lt;数据根&gt;/profiles/&lt;name&gt;/package.json` 里的 `dsh.profile.bundles`（明文小 JSON，只读零注入）。
         /// 标记行：
