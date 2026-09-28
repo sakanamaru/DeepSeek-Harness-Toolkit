@@ -16,7 +16,7 @@ namespace Dsht.Platform.Linux
         /// 于是"是否已安装"判断永远为假 ✗。改用 `npm ls -g` 的输出解析（可靠 ✓），失败再退回 PATH 查找。</summary>
         public string DshVersion()
         {
-            string raw = CaptureNpm("ls -g @deepseek-ai/dsh --depth=0");
+            string raw = CaptureNpm("ls -g @deepseek-ai/dsh --depth=0 --registry https://registry.npmmirror.com");   // 本地查询也带上镜像，避免联网卡住 ✗
             if (!string.IsNullOrEmpty(raw))
             {
                 int at = raw.LastIndexOf("@deepseek-ai/dsh@", StringComparison.Ordinal);
@@ -94,7 +94,7 @@ namespace Dsht.Platform.Linux
                 {
                     System.Threading.Tasks.Task<string> so = System.Threading.Tasks.Task.Run(delegate { return p.StandardOutput.ReadToEnd(); });
                     System.Threading.Tasks.Task<string> se = System.Threading.Tasks.Task.Run(delegate { return p.StandardError.ReadToEnd(); });
-                    if (!p.WaitForExit(600000)) { try { p.Kill(); } catch { } return -1; }
+                    if (!p.WaitForExit(120000)) { try { p.Kill(); } catch { } return -1; }
                     System.Threading.Tasks.Task.WaitAll(so, se);
                     return p.ExitCode;
                 }
@@ -164,7 +164,7 @@ namespace Dsht.Platform.Linux
                 {
                     System.Threading.Tasks.Task<string> so = System.Threading.Tasks.Task.Run(delegate { return p.StandardOutput.ReadToEnd(); });
                     System.Threading.Tasks.Task<string> se = System.Threading.Tasks.Task.Run(delegate { return p.StandardError.ReadToEnd(); });
-                    if (!p.WaitForExit(900000)) { try { p.Kill(); } catch { } output = "（超时）"; return -1; }
+                    if (!p.WaitForExit(120000)) { try { p.Kill(); } catch { } output = "（超时）"; return -1; }
                     System.Threading.Tasks.Task.WaitAll(so, se);
                     string o = (so.Result ?? "") + (se.Result ?? "");
                     output = o.Length > 1200 ? o.Substring(o.Length - 1200) : o;
@@ -213,7 +213,17 @@ namespace Dsht.Platform.Linux
             {
                 // **先清空目标目录再解包** ✗：就地覆盖升级会把 npm 搞坏（真机报 "Class extends value undefined" ✗）。
                 // 代价是全局包（含 dsh）需要重装 —— 紧接着的 npm install 会补上 ✓。
-                try { if (System.IO.Directory.Exists(dir)) System.IO.Directory.Delete(dir, true); } catch { }
+                if (System.IO.Directory.Exists(dir))
+                {
+                    try { System.IO.Directory.Delete(dir, true); }
+                    catch (Exception dex)
+                    {
+                        // **删不掉就不能继续** ✗：覆盖解包会把 npm 弄坏（真机报 "Class extends value undefined" ✗）
+                        LastError = "无法清空 " + dir + "（可能有进程在用）：" + dex.Message;
+                        return -1;
+                    }
+                    if (System.IO.Directory.Exists(dir)) { LastError = "清空 " + dir + " 后目录仍存在"; return -1; }
+                }
                 System.IO.Directory.CreateDirectory(dir);
                 for (int vi = 0; vi < versions.Length; vi++)
                 {
@@ -262,9 +272,10 @@ namespace Dsht.Platform.Linux
         {
             // 只取"最后一行"：npm 会把 EBADENGINE/deprecated 等警告混进输出 ✗，
             // 整段拿去白名单会被拒 → 表现为"拿不到可信版本"（真机抓到的 ✗）
-            string v = LastVersionLine(CaptureNpm("view @deepseek-ai/dsh version"));
+            // 先走镜像 ✓（国内实测 26 秒 vs npmjs 2 分钟 ✗），再退回默认源
+            string v = LastVersionLine(CaptureNpm("view @deepseek-ai/dsh version --registry https://registry.npmmirror.com"));
             if (v.Length > 0) return v;
-            return LastVersionLine(CaptureNpm("view @deepseek-ai/dsh version --registry https://registry.npmmirror.com"));
+            return LastVersionLine(CaptureNpm("view @deepseek-ai/dsh version"));
         }
 
         /// <summary>从 npm 输出里取最后一行"看起来像版本号"的内容（去掉警告噪音 ✓）。</summary>
@@ -298,9 +309,11 @@ namespace Dsht.Platform.Linux
                 using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
                 {
                     if (p == null) return "";
-                    string outp = p.StandardOutput.ReadToEnd();
-                    p.StandardError.ReadToEnd();
-                    p.WaitForExit(15000);
+                    System.Threading.Tasks.Task<string> soT2 = System.Threading.Tasks.Task.Run(delegate { return p.StandardOutput.ReadToEnd(); });
+                    System.Threading.Tasks.Task<string> seT2 = System.Threading.Tasks.Task.Run(delegate { return p.StandardError.ReadToEnd(); });
+                    string outp = soT2.Result;
+                    seT2.Wait(5000);
+                    p.WaitForExit(120000);
                     return outp;
                 }
             }
