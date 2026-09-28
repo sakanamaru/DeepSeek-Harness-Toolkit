@@ -353,6 +353,8 @@ namespace Dsht.Gui.Avalonia.Shells
             Control rightScroll = new ScrollViewer { Content = right };
             Grid.SetColumn(rightScroll, 1);
             g.Children.Add(leftCard); g.Children.Add(rightScroll);
+            // DetailHost 此时才就位：补一次首行选中，让右侧详情不用等用户点
+            if (host.IsSessionsSection && host.Rows.Count > 0) host.ShowDetail(host.Rows[0]);
             return g;
         }
 
@@ -666,9 +668,9 @@ namespace Dsht.Gui.Avalonia.Shells
             mid.Children.Add(new TextBlock { Text = vm.DecodeLine, Foreground = Palette.TextFaint, FontSize = 11, Margin = new Thickness(0, 2, 0, 0) });
             Grid.SetColumn(mid, 1);
 
-            Control m1 = Metric("输入 token", vm.InText, vm.TokenBar, Palette.Text);
-            Control m2 = Metric("缓存命中", vm.HitText, vm.HitBar, vm.HitBrush);
-            Control m3 = Metric("上下文压力", vm.CtxText, vm.CtxBar, vm.CtxBrush);
+            Control m1 = Metric("输入 token", vm.InText, vm.TokenBar, Palette.Text, vm.TokenBrush);
+            Control m2 = Metric("缓存命中", vm.HitText, vm.HitBar, vm.HitBrush, vm.HitBrush);
+            Control m3 = Metric("上下文压力", vm.CtxText, vm.CtxBar, vm.CtxBrush, vm.CtxBrush);
             Grid.SetColumn(m1, 2); Grid.SetColumn(m2, 3); Grid.SetColumn(m3, 4);
             g.Children.Add(dot); g.Children.Add(mid); g.Children.Add(m1); g.Children.Add(m2); g.Children.Add(m3);
 
@@ -677,17 +679,17 @@ namespace Dsht.Gui.Avalonia.Shells
             return card;
         }
 
-        private static Control Metric(string label, string value, double pct, IBrush brush)
+        private static Control Metric(string label, string value, double pct, IBrush valueBrush, IBrush meterBrush)
         {
             StackPanel s = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
             Grid top = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
             TextBlock l = T(label, 10.5, Palette.TextFaint);
             Grid.SetColumn(l, 0);
-            TextBlock v = T(value, 12, brush, FontWeight.SemiBold);
+            TextBlock v = T(value, 12, valueBrush, FontWeight.SemiBold);
             Grid.SetColumn(v, 1);
             top.Children.Add(l); top.Children.Add(v);
             s.Children.Add(top);
-            s.Children.Add(new Border { Margin = new Thickness(0, 5, 0, 0), Child = Meter(pct, brush, 4) });
+            s.Children.Add(new Border { Margin = new Thickness(0, 5, 0, 0), Child = Meter(pct, meterBrush, 4) });
             return s;
         }
 
@@ -877,9 +879,9 @@ namespace Dsht.Gui.Avalonia.Shells
 
             // —— 运行时事实 ——
             Grid facts = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") };
-            facts.Children.Add(StatCard(Symbol.NumberSymbol, "进程 PID", string.IsNullOrEmpty(st.Pid) ? "—" : st.Pid, "运行 dsh 的进程号", Palette.Text, -1, 0));
-            facts.Children.Add(StatCard(Symbol.Calendar, "启动时间", string.IsNullOrEmpty(st.Start) ? "—" : st.Start, "dsh 启动的时刻", Palette.Text, -1, 1));
-            facts.Children.Add(StatCard(Symbol.Clock, "已运行", string.IsNullOrEmpty(st.Uptime) ? "—" : st.Uptime, "从启动到现在", Palette.Accent, -1, 2));
+            facts.Children.Add(StatCard(Symbol.NumberSymbol, "进程 PID", string.IsNullOrEmpty(st.Pid) ? "—" : st.Pid, "运行 dsh 的进程号", Palette.Text, -1, 0, 3));
+            facts.Children.Add(StatCard(Symbol.Calendar, "启动时间", string.IsNullOrEmpty(st.Start) ? "—" : st.Start, "dsh 启动的时刻", Palette.Text, -1, 1, 3));
+            facts.Children.Add(StatCard(Symbol.Clock, "已运行", string.IsNullOrEmpty(st.Uptime) ? "—" : st.Uptime, "从启动到现在", Palette.Accent, -1, 2, 3));
             s.Children.Add(facts);
 
             // —— 总览指标（把其它页的要点也摆到这里，省得来回点）——
@@ -894,17 +896,17 @@ namespace Dsht.Gui.Avalonia.Shells
                 formText = pf.Profiles[0].FormText;
             }
             Grid row1 = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
-            row1.Children.Add(StatCard(Symbol.Box, "当前形态", formText, "来自 profile 的 dsh.profile.bundles", Palette.Text, -1, 0));
-            row1.Children.Add(StatCard(Symbol.PuzzlePiece, "profile / 插件", (pf == null ? "—" : pf.Count.ToString()) + " / " + thirdCount, bundleCount + " 个组合包（含官方）", Palette.Text, -1, 1));
-            row1.Children.Add(StatCard(Symbol.ChatMultiple, "会话", se == null ? "—" : se.Count.ToString(), "非空 " + (se == null ? "—" : se.NonBlank.ToString()) + " · 运行中 " + (se == null ? "—" : se.Live.ToString()), Palette.Text, -1, 2));
-            row1.Children.Add(StatCard(Symbol.DataUsage, "累计输入 token", se == null ? "—" : SessionRow.Human(se.TotalIn), "输出 " + (se == null ? "—" : SessionRow.Human(se.TotalOut)), Palette.Text, -1, 3));
+            row1.Children.Add(StatCard(Symbol.Box, "当前形态", formText, "来自 profile 的 dsh.profile.bundles", Palette.Text, -1, 0, 4));
+            row1.Children.Add(StatCard(Symbol.PuzzlePiece, "profile / 插件", (pf == null ? "—" : pf.Count.ToString()) + " / " + thirdCount, bundleCount + " 个组合包（含官方）", Palette.Text, -1, 1, 4));
+            row1.Children.Add(StatCard(Symbol.ChatMultiple, "会话", se == null ? "—" : se.Count.ToString(), "非空 " + (se == null ? "—" : se.NonBlank.ToString()) + " · 运行中 " + (se == null ? "—" : se.Live.ToString()), Palette.Text, -1, 2, 4));
+            row1.Children.Add(StatCard(Symbol.DataUsage, "累计输入 token", se == null ? "—" : SessionRow.Human(se.TotalIn), "输出 " + (se == null ? "—" : SessionRow.Human(se.TotalOut)), Palette.Text, -1, 3, 4));
             s.Children.Add(row1);
 
             Grid row2 = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
-            row2.Children.Add(StatCard(Symbol.Database, "缓存命中率", se == null ? "—" : PctText(se.TotalHitPercent), "越高越省钱", Palette.Good, se == null ? -1 : se.TotalHitPercent, 0));
-            row2.Children.Add(StatCard(Symbol.Gauge, "解码速度", se == null ? "—" : TpsText(se.TotalDecodeTps), "tok/s（按合计加权）", Palette.Accent, -1, 1));
-            row2.Children.Add(StatCard(Symbol.Archive, "备份", bk == null || !bk.Ok ? "—" : bk.Count.ToString(), "份（backup-list）", Palette.Text, -1, 2));
-            row2.Children.Add(StatCard(Symbol.Stethoscope, "体检", dc == null || !dc.Ok ? "未运行" : dc.Headline, "点下面按钮运行 doctor", dc != null && dc.Error > 0 ? Palette.Bad : (dc != null && dc.Warn > 0 ? Palette.Warn : Palette.Good), -1, 3));
+            row2.Children.Add(StatCard(Symbol.Database, "缓存命中率", se == null ? "—" : PctText(se.TotalHitPercent), "越高越省钱", Palette.Good, se == null ? -1 : se.TotalHitPercent, 0, 4));
+            row2.Children.Add(StatCard(Symbol.Gauge, "解码速度", se == null ? "—" : TpsText(se.TotalDecodeTps), "tok/s（按合计加权）", Palette.Accent, -1, 1, 4));
+            row2.Children.Add(StatCard(Symbol.Archive, "备份", bk == null || !bk.Ok ? "—" : bk.Count.ToString(), "份（backup-list）", Palette.Text, -1, 2, 4));
+            row2.Children.Add(StatCard(Symbol.Stethoscope, "体检", dc == null || !dc.Ok ? "未运行" : dc.Headline, "点下面按钮运行 doctor", dc != null && dc.Error > 0 ? Palette.Bad : (dc != null && dc.Warn > 0 ? Palette.Warn : Palette.Good), -1, 3, 4));
             s.Children.Add(row2);
 
             // —— 快捷入口 ——
@@ -930,7 +932,7 @@ namespace Dsht.Gui.Avalonia.Shells
             return s;
         }
 
-        private static Control StatCard(Symbol icon, string label, string value, string sub, IBrush valueBrush, double pct, int col)
+        private static Control StatCard(Symbol icon, string label, string value, string sub, IBrush valueBrush, double pct, int col, int cols)
         {
             StackPanel s = new StackPanel();
             Grid head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
@@ -947,8 +949,7 @@ namespace Dsht.Gui.Avalonia.Shells
                 int level = pct >= 90 ? 3 : (pct >= 70 ? 2 : 1);
                 s.Children.Add(new Border { Margin = new Thickness(0, 8, 0, 0), Child = Meter(pct, Palette.HitBrush(level), 4) });
             }
-            Border card = Card(s, new Thickness(0, 0, 0, 0), new Thickness(16, 14));
-            card.Margin = new Thickness(0);
+            Border card = Card(s, new Thickness(0, 0, col == cols - 1 ? 0 : 12, 0), new Thickness(16, 14));
             Grid.SetColumn(card, col);
             return card;
         }
