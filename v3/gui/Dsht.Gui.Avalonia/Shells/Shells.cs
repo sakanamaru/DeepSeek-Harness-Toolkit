@@ -388,6 +388,16 @@ namespace Dsht.Gui.Avalonia.Shells
             search.TextChanged += delegate { host.SetProfileSearch(search.Text); };
             tools.Children.Add(search);
             s.Children.Add(tools);
+            StackPanel health = new StackPanel { Spacing = 6 };
+            StackPanel hrow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            Button hb = new Button { Content = "运行健康检查（profilecheck）" };
+            hb.Click += delegate { host.LoadHealth(); };
+            hrow.Children.Add(hb);
+            hrow.Children.Add(new TextBlock { Text = "检查 profile 的语法/重复 id/缺字段，并给出处方", FontSize = 11, Foreground = Palette.TextFaint, VerticalAlignment = VerticalAlignment.Center });
+            health.Children.Add(hrow);
+            if (!string.IsNullOrEmpty(host.Health))
+                health.Children.Add(new TextBlock { Text = host.Health, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"), FontSize = 11, Foreground = Palette.TextDim, TextWrapping = TextWrapping.Wrap });
+            s.Children.Add(Card(health, new Thickness(0), new Thickness(16, 14)));
             for (int i = 0; i < d.Profiles.Count; i++)
             {
                 ProfileCard p = d.Profiles[i];
@@ -404,6 +414,19 @@ namespace Dsht.Gui.Avalonia.Shells
                 });
                 head.Children.Add(new TextBlock { Text = p.CountText, Foreground = Palette.TextDim, FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
                 card.Children.Add(head);
+                if (p.Disabled.Count > 0)
+                {
+                    StackPanel dis = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                    dis.Children.Add(new TextBlock { Text = "已隔离：" + string.Join("、", p.Disabled.ToArray()), FontSize = 12, Foreground = Palette.Warn, VerticalAlignment = VerticalAlignment.Center });
+                    for (int k = 0; k < p.Disabled.Count; k++)
+                    {
+                        string id = p.Disabled[k];
+                        Button back = new Button { Content = "恢复 " + id, FontSize = 11, Padding = new Thickness(8, 2) };
+                        back.Click += delegate { host.PatchEntry(p.Name, id, false); };
+                        dis.Children.Add(back);
+                    }
+                    card.Children.Add(dis);
+                }
                 for (int b = 0; b < p.Items.Count; b++)
                 {
                     BundleItem it = p.Items[b];

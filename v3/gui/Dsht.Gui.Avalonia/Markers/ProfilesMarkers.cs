@@ -11,6 +11,9 @@ namespace Dsht.Gui.Avalonia.Markers
         public int Bundles;
         public int ThirdParty;
         public List<BundleItem> Items = new List<BundleItem>();
+        /// <summary>被隔离（cordis.patch.yml 里 disabled: true）的条目 id。</summary>
+        public List<string> Disabled = new List<string>();
+        public string DisabledText { get { return Disabled.Count == 0 ? "" : "已隔离 " + Disabled.Count + " 项：" + string.Join("、", Disabled.ToArray()); } }
 
         public string FormText
         {
@@ -35,6 +38,8 @@ namespace Dsht.Gui.Avalonia.Markers
     {
         public string Id = "";
         public bool Official;
+        public string Version = "";
+        public string VersionText { get { return string.IsNullOrEmpty(Version) ? "" : "v" + Version; } }
         public string KindText { get { return Official ? "官方" : "第三方"; } }
     }
 
@@ -92,6 +97,12 @@ namespace Dsht.Gui.Avalonia.Markers
                         s.Profiles.Add(c);
                         continue;
                     }
+                    if (line.StartsWith("DISABLED ", StringComparison.Ordinal))
+                    {
+                        string[] dp = line.Substring("DISABLED ".Length).Trim().Split(new char[] { ' ' }, 2);
+                        if (dp.Length == 2) { ProfileCard dc = Find(s, dp[0]); if (dc != null) dc.Disabled.Add(dp[1].Trim()); }
+                        continue;
+                    }
                     if (line.StartsWith("BUNDLE ", StringComparison.Ordinal))
                     {
                         string[] parts = line.Substring("BUNDLE ".Length).Trim().Split(' ');
@@ -101,6 +112,10 @@ namespace Dsht.Gui.Avalonia.Markers
                         BundleItem it = new BundleItem();
                         it.Id = parts[1];
                         it.Official = parts[2] == "official";
+                        for (int k = 3; k < parts.Length; k++)
+                        {
+                            if (parts[k].StartsWith("version=", StringComparison.Ordinal)) it.Version = parts[k].Substring("version=".Length);
+                        }
                         c.Items.Add(it);
                     }
                 }

@@ -12,5 +12,11 @@ namespace Dsht.Domain.Abstractions
 
         /// <summary>读某个 profile 的 package.json 文本；不存在或读不到 → null。</summary>
         string ReadManifest(string profileName);
+
+        /// <summary>读某个 profile 的 cordis.patch.yml 文本（用于找出 `disabled: true` 的条目）；读不到 → null。</summary>
+        string ReadPatch(string profileName);
+
+        /// <summary>读某个 profile 里某个组合包自己的 package.json（取版本号）；读不到 → null。</summary>
+        string ReadBundleManifest(string profileName, string bundleId);
     }
 }
