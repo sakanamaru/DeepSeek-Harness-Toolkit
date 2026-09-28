@@ -364,6 +364,30 @@ static class ContractTests
         Check("无 @ 包名 → 退回最后一个匹配", bp.Recognized && bp.Plugin == "plain-plugin" && bp.Entry == "e1");
         Check("无 set maxDepth → 默认提示", bp.Hint == "set maxDepth: 'provider-managed'");
         Check("TextClipper 短串不变", Dsht.Domain.Services.TextClipper.Clip("abc", 200) == "abc");
+        Console.WriteLine("[16] dryrun 领域纯函数（路径判定 / 跳过规则 / 合并计划）");
+        Check("TrimTrailingSep：普通目录", Dsht.Domain.Services.PathUtil.TrimTrailingSep("C:\\a\\b\\") == "C:\\a\\b");
+        Check("TrimTrailingSep：盘根保留", Dsht.Domain.Services.PathUtil.TrimTrailingSep("D:\\") == "D:\\");
+        Check("IsSubPath：子树内", Dsht.Domain.Services.PathUtil.IsSubPath("C:\\bk", "C:\\bk\\dsh-data-1"));
+        Check("IsSubPath：相等算在内", Dsht.Domain.Services.PathUtil.IsSubPath("C:\\bk\\", "C:\\bk"));
+        Check("IsSubPath：外部不算", !Dsht.Domain.Services.PathUtil.IsSubPath("C:\\bk", "C:\\other"));
+        Check("IsSubPath：大小写不敏感", Dsht.Domain.Services.PathUtil.IsSubPath("C:\\BK", "c:\\bk\\x"));
+
+        Check("跳过：node_modules", Dsht.Domain.Services.SkipRules.SkipDir("node_modules", false));
+        Check("跳过：backup（防自嵌套）", Dsht.Domain.Services.SkipRules.SkipDir("backup", false));
+        Check("跳过：dsh-data-*（防嵌套备份）", Dsht.Domain.Services.SkipRules.SkipDir("dsh-data-20260101-000000-auto", false));
+        Check("跳过：reparse point", Dsht.Domain.Services.SkipRules.SkipDir("normal", true));
+        Check("不跳过：普通目录", !Dsht.Domain.Services.SkipRules.SkipDir("sessions", false));
+
+        System.Collections.Generic.Dictionary<string, long> sm = new System.Collections.Generic.Dictionary<string, long>();
+        sm["a.txt"] = 10; sm["sub/b.txt"] = 20; sm["sub/c.txt"] = 30;
+        System.Collections.Generic.Dictionary<string, long> dm = new System.Collections.Generic.Dictionary<string, long>();
+        dm["a.txt"] = 5; dm["only-here.txt"] = 99;
+        long[] pl = Dsht.Domain.Services.MergePlanner.Plan(sm, dm);
+        Check("计划：新增 2 覆盖 1 保留 1 字节 60", pl[0] == 2 && pl[1] == 1 && pl[2] == 1 && pl[3] == 60);
+        long[] pl2 = Dsht.Domain.Services.MergePlanner.Plan(null, dm);
+        Check("计划：空源 → 全保留、0 字节", pl2[0] == 0 && pl2[1] == 0 && pl2[2] == 2 && pl2[3] == 0);
+        long[] pl3 = Dsht.Domain.Services.MergePlanner.Plan(sm, null);
+        Check("计划：空目标 → 全新", pl3[0] == 3 && pl3[1] == 0 && pl3[2] == 0 && pl3[3] == 60);
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
