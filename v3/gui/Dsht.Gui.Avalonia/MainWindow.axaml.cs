@@ -24,7 +24,7 @@ namespace Dsht.Gui.Avalonia
     public partial class MainWindow : Window
     {
         /// <summary>主菜单（侧栏一级）。</summary>
-        public static readonly string[] NavItems = new string[] { "状态", "会话与 Token", "形态与插件", "备份", "体检", "配置", "说明" };
+        public static readonly string[] NavItems = new string[] { "看板", "会话与 Token", "形态与插件", "备份", "体检", "配置", "说明" };
         /// <summary>主菜单图标（FluentIcons，编译期检查）。</summary>
         public static readonly FluentIcons.Common.Symbol[] NavIcons = new FluentIcons.Common.Symbol[]
         {
@@ -43,8 +43,8 @@ namespace Dsht.Gui.Avalonia
         };
         private static readonly string[][] NavSubs = new string[][]
         {
-            new string[] { "概览", "原始输出" },
-            new string[] { "总览", "缓存命中率", "解码速度", "上下文压力" },
+            new string[] { "概览", "详细状态" },
+            new string[] { "会话列表", "统计" },
             new string[] { "原始输出" },
             new string[] { "原始输出" },
             new string[] { "原始输出" },
@@ -53,8 +53,8 @@ namespace Dsht.Gui.Avalonia
         };
         private static readonly string[][] NavDesc = new string[][]
         {
-            new string[] { "dsh 是否在跑、跑在哪个端口、启动时间 —— 只依据可观测事实。", "status --detail 的原始标记行。" },
-            new string[] { "总览：会话数、token、缓存命中、解码速度、上下文压力。", "按缓存命中率从低到高排 —— 最该优化的排最前。", "按解码速度从快到慢排。", "按上下文压力从高到低排 —— 最接近压缩的排最前。" },
+            new string[] { "一键启动/停止 dsh，以及 token 消耗、缓存命中、解码速度、会话数。", "运行时长、进程 PID、启动时间与原始标记行。" },
+            new string[] { "逐条会话：标题、token、缓存命中率、解码速度、上下文压力（排序用工具栏的下拉）。", "汇总统计：总量、命中率、速度，以及最耗 token 的会话排行。" },
             new string[] { "每个 profile 启用了哪个形态（web/headless/acp）以及装了哪些插件（含第三方）。" },
             new string[] { "备份清单：每个备份的时间、范围与大小。" },
             new string[] { "体检：配置、日志、网络与安装完整性检查。" },
@@ -154,6 +154,56 @@ namespace Dsht.Gui.Avalonia
         {
             for (int i = 0; i < _windowButtons.Count; i++)
                 _windowButtons[i].Foreground = i == _windowButtons.Count - 1 ? Palette.TextDim : Palette.TextDim;
+        }
+        /// <summary>看板上的操作日志（一键启动/停止的结果，原样展示给用户）。</summary>
+        private string _actionLog = "";
+        public string ActionLog { get { return _actionLog; } }
+
+        /// <summary>一键启动 dsh（调用工具箱核心的 `start`：非交互，GUI 用）。</summary>
+        public void StartDsh() { RunCoreAction("start", "启动"); }
+
+        /// <summary>停止 dsh（核心的 `stop`）。</summary>
+        public void StopDsh() { RunCoreAction("stop", "停止"); }
+
+        private void RunCoreAction(string verb, string label)
+        {
+            string core = ToolkitCore();
+            if (core == null)
+            {
+                _actionLog = "未找到工具箱核心程序（DeepSeek Harness Toolkit.exe），无法" + label + "。";
+                BuildShell();
+                return;
+            }
+            _actionLog = "已发起" + label + "…（" + Path.GetFileName(core) + " " + verb + "）";
+            BuildShell();
+            string outp = RunQuick(core, verb, 8);
+            _actionLog = label + "结果：" + Environment.NewLine + outp.Trim();
+            Refresh();
+        }
+
+        /// <summary>短超时运行（启动/停止这类命令可能一直挂着，不能把界面卡住 30 秒）。</summary>
+        private static string RunQuick(string cli, string args, int seconds)
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo(cli, args);
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                psi.StandardOutputEncoding = new UTF8Encoding(false);
+                psi.StandardErrorEncoding = new UTF8Encoding(false);
+                using (Process p = Process.Start(psi))
+                {
+                    StringBuilder sb = new StringBuilder();
+                    sb.Append(p.StandardOutput.ReadToEnd());
+                    string err = p.StandardError.ReadToEnd();
+                    if (!p.WaitForExit(seconds * 1000)) return "（命令已发出，超过 " + seconds + " 秒仍在运行 —— 这是正常的，点刷新看状态）" + Environment.NewLine + sb;
+                    if (!string.IsNullOrEmpty(err)) sb.Append(Environment.NewLine).Append("[stderr] ").Append(err);
+                    return sb.Length == 0 ? "（无输出）" : sb.ToString();
+                }
+            }
+            catch (Exception ex) { return "执行失败：" + ex.Message; }
         }
         private void InitializeComponent()
         {
@@ -402,7 +452,7 @@ namespace Dsht.Gui.Avalonia
             if (IsSessionsSection)
             {
                 // 子菜单即"排序视角"：总览=最后活动，命中率=低→高，解码=快→慢，压力=高→低
-                SortMode = idx == 1 ? 2 : (idx == 2 ? 4 : (idx == 3 ? 3 : 0));
+                // 子菜单只决定"看什么"（列表 / 统计）；排序一律交给工具栏的下拉 —— 原先两者都管排序，互相冲突。
                 Rerender();
             }
             else
