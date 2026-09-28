@@ -16,7 +16,7 @@ namespace Dsht.Domain.Services
                                    string configSummary, string logSummary, string summary)
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("== DeepSeek Harness Toolkit 诊断报告 ==");
+            sb.AppendLine("== DeepSeek Harness Toolkit 诊断报告 ==");   // 契约比对覆盖此表头 → 不改
             sb.AppendLine("生成时间: " + generatedAt);
             sb.AppendLine("Toolkit : " + toolkitVersion);
             sb.AppendLine("系统    : " + system);

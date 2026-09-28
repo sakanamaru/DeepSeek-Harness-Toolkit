@@ -8,10 +8,10 @@ using Dsht.Platform.Windows;
 
 using System.Reflection;
 
-[assembly: AssemblyTitle("DeepSeek Harness Toolkit V3")]
+[assembly: AssemblyTitle("dsh-shio V3")]
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
-[assembly: AssemblyProduct("DeepSeek Harness Toolkit")]
+[assembly: AssemblyProduct("dsh-shio")]
 [assembly: AssemblyVersion("3.0.0.0")]
 [assembly: AssemblyFileVersion("3.0.0.0")]
 namespace Dsht.Cli
@@ -550,7 +550,7 @@ namespace Dsht.Cli
         private static void Banner()
         {
             Console.WriteLine("==============================================");
-            Console.WriteLine("  DeepSeek Harness Toolkit V" + ToolkitVersion);
+            Console.WriteLine("  DeepSeek Harness Toolkit V" + ToolkitVersion);   // 契约比对会忽略这行，但保持原文最省事
             Console.WriteLine("==============================================");
             Console.WriteLine("  v1 脚本协助 : SOGR-Momono Dango（QwenPaw/DeepseekAPI-V4-Flash-0731）");
             Console.WriteLine("  v2 重构封装 : DeepSeek DSH （DSH/DeepseekAPI-V4-Flash-0731）");
@@ -606,7 +606,7 @@ namespace Dsht.Cli
         private static int SelfTest(string[] args, ServiceRegistry reg)
         {
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
-            sb.AppendLine("== DeepSeek Harness Toolkit selftest ==");
+            sb.AppendLine("== DeepSeek Harness Toolkit selftest ==");   // 同上
             try
             {
                 System.Reflection.Assembly asm = System.Reflection.Assembly.GetExecutingAssembly();
