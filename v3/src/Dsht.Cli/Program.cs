@@ -121,15 +121,16 @@ namespace Dsht.Cli
                 Console.WriteLine("PROFILECHK_WARN " + f.File + " " + f.Line + " " + f.Id + " " + f.Missing + " " + f.Hint);
             Console.WriteLine("PROFILECHK_TOTAL " + fs.Count + " " + files);
             if (skipped > 0) Console.WriteLine("PROFILECHK_SKIPPED_VENDOR " + skipped);
-            if (readErrors > 0 && Has(args, "--diag")) Console.WriteLine("PROFILECHK_READ_ERRORS " + readErrors);   // 附加诊断：只在 --diag 下输出，避免改变契约比对的形式 ✓
+            if (readErrors > 0 && Has(args, "--diag")) Console.WriteLine("PROFILECHK_READ_ERRORS " + readErrors);
             if (abs)
             {
                 foreach (ProfileFinding f in fs)
                     if (f.Missing == "maxDepth") Console.WriteLine("PROFILECHK_FIX " + f.File + "|" + f.Line + "|" + f.Id + "|" + f.Missing);
             }
             // 只有"确实扫过且没有任何发现"才说 OK ✗：读不到目录时结果不完整，必须如实说明 ✓
-            if (readErrors > 0 && Has(args, "--diag")) Console.WriteLine("PROFILECHK_INCOMPLETE " + T("有目录读不到，本次结果不完整 —— 不要当作「没有问题」", "some directories could not be read; this result is incomplete - do not read it as no problems"));
-            else if (fs.Count == 0) Console.WriteLine("PROFILECHK_OK");
+            // OK 的抑制是**无条件**的 ✓：只要读错误 > 0，就不许说"没有问题" ✗（这跟 --diag 无关 —— 我一度把它一起 gated 了，回归测试立刻抓到 ✗）。
+            if (fs.Count == 0 && readErrors == 0) Console.WriteLine("PROFILECHK_OK");
+            else if (readErrors > 0 && Has(args, "--diag")) Console.WriteLine("PROFILECHK_INCOMPLETE " + T("有目录读不到，本次结果不完整 —— 不要当作「没有问题」", "some directories could not be read; this result is incomplete - do not read it as no problems"));
             return 0;
         }
 
