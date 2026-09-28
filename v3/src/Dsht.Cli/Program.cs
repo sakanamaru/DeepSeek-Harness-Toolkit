@@ -1857,6 +1857,7 @@ namespace Dsht.Cli
                 BackupResult pre = bk.Create(dstRoot, BackupKind.PreRestore, _cfg == null ? 3 : _cfg.KeepBackups, WorkspaceRoot(reg));
                 if (pre == null) { Console.WriteLine("RESTORE_FAIL " + T("恢复前自动备份失败", "pre-restore backup failed")); return 0; }
                 AddContentHashToMarker(pre.Path);   // 回滚锚点也要能自证完整 ✓✓（恢复前自动备份 ✓）
+            Console.WriteLine("RESTORE_PRE_BACKUP " + pre.Path);   // 回滚锚点必须**总是**告诉用户 ✗（我曾在一次编辑中误删此行 ✗）
             }
 
             if (!IntegrityGate(reg)) return 0;   // 对齐 v2.x：完整性不匹配时在写盘前拒绝
