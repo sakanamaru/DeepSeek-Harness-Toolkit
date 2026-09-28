@@ -139,9 +139,78 @@ namespace Dsht.Platform.Linux
             catch { }
         }
 
+        /// <summary>真实合并恢复（与 Windows 实现同语义，复现 v2.x 的 RestoreFromSource + RestoreWorkspaces）：
+        ///   顶层目录逐个 CopyTree（**恢复模式**：失败如实抛出）→ 顶层文件覆盖复制 → _workspace 下的工作区。
+        /// 合并语义：目标端独有的文件不会被删除。</summary>
+        public RestoreOutcome Restore(string backupDir, string dataRoot, string workspaceRoot)
+        {
+            RestoreOutcome o = new RestoreOutcome();
+            try
+            {
+                string src = Dsht.Domain.Services.PathUtil.TrimTrailingSep(backupDir);
+                string dst = Dsht.Domain.Services.PathUtil.TrimTrailingSep(dataRoot);
+                Directory.CreateDirectory(dst);
+                string[] dirs;
+                try { dirs = Directory.GetDirectories(src); } catch { dirs = new string[0]; }
+                foreach (string d in dirs)
+                {
+                    string name = Path.GetFileName(d.TrimEnd('\\', '/'));
+                    if (name == "_workspace") continue;                       // v2.x：工作区单独处理
+                    CopyTree(d, Path.Combine(dst, name), false);
+                    o.TopDirs++;
+                }
+                string[] files;
+                try { files = Directory.GetFiles(src); } catch { files = new string[0]; }
+                foreach (string f in files)
+                {
+                    File.Copy(f, Path.Combine(dst, Path.GetFileName(f)), true);
+                    o.TopFiles++;
+                }
+                string ws = Path.Combine(src, "_workspace");
+                if (Directory.Exists(ws)) RestoreWorkspaces(ws, workspaceRoot, o);
+                o.Ok = true;
+            }
+            catch (Exception ex) { o.Ok = false; o.Error = ex.Message; }
+            return o;
+        }
+
+        /// <summary>工作区恢复：新格式（子目录含 .dshws 标记）逐个恢复；否则整个 _workspace 视为一个工作区。</summary>
+        private static void RestoreWorkspaces(string wsRoot, string workspaceRoot, RestoreOutcome o)
+        {
+            string[] subs;
+            try { subs = Directory.GetDirectories(wsRoot); } catch { subs = new string[0]; }
+            bool anyNew = false;
+            for (int i = 0; i < subs.Length; i++) { if (File.Exists(Path.Combine(subs[i], ".dshws"))) { anyNew = true; break; } }
+            if (anyNew)
+            {
+                for (int i = 0; i < subs.Length; i++)
+                {
+                    if (!File.Exists(Path.Combine(subs[i], ".dshws"))) { o.WorkspacesUnrecognized++; continue; }
+                    RestoreOneWorkspace(subs[i], true, workspaceRoot, o);
+                }
+            }
+            else RestoreOneWorkspace(wsRoot, false, workspaceRoot, o);
+        }
+
+        /// <summary>单个工作区恢复。非交互语义（v2.x 的 inputEof=true）：目标固定取自动探测到的工作区根，
+        /// 取不到或不存在就跳过——不询问、不自定义、不删除目标端独有文件。</summary>
+        private static void RestoreOneWorkspace(string srcDir, bool isNewFormat, string target, RestoreOutcome o)
+        {
+            if (string.IsNullOrEmpty(target) || !Directory.Exists(target)) { o.WorkspacesSkipped++; return; }
+            if (isNewFormat)
+            {
+                foreach (string d in Directory.GetDirectories(srcDir))
+                    CopyTree(d, Path.Combine(target, Path.GetFileName(d.TrimEnd('\\', '/'))), false);
+                foreach (string f in Directory.GetFiles(srcDir))
+                    if (Path.GetFileName(f) != ".dshws") File.Copy(f, Path.Combine(target, Path.GetFileName(f)), true);
+            }
+            else CopyTree(srcDir, target, false);
+            o.WorkspacesRestored++;
+        }
+
         /// <summary>复现 v2.x 的 CopyTree（best-effort 模式）：跳过 node_modules / backup / dsh-data-* / reparse；
         /// 文件用 FileShare.ReadWrite|Delete 打开（被独占的文件才失败，正常读取中的文件可复制）；失败记数不中断。
-        /// 返回被跳过的嵌套 dsh-data-* 目录数（供上层提示）。</summary>
+        /// 返回被跳过的嵌套 dsh-data-* 目录数（供上层提示）。skipLocked=false 时（恢复模式）失败如实抛出。</summary>
         private static int CopyTree(string src, string dst, bool skipLocked)
         {
             int skippedNested = 0;

@@ -20,6 +20,13 @@ namespace Dsht.Cli
             return Path.DirectorySeparatorChar == '\\';
         }
 
+        /// <summary>默认数据根候选（由当前平台实现给出）。供 restore --apply 的隔离判定使用——
+        /// 领域层只接收字符串数组，不依赖任何平台 API。</summary>
+        public static string[] DefaultDataRoots()
+        {
+            return IsWindows() ? WindowsPaths.DefaultDataRoots() : LinuxPaths.DefaultDataRoots();
+        }
+
 
         /// <summary>组合服务目标：web 用真实观测；headless/acp/desktop 是**预留形态**（当前无可观测事实）。
         /// 这样"未识别形态"在 CLI 里是一等公民——不假装 Ready，也不假装"没在跑"。</summary>

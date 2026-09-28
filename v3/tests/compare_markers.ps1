@@ -5,6 +5,10 @@
 # 退出码：0=全部对齐；1=有差异；2=环境不足（缺 v2.x exe 或 csc）
 param([string]$Repo = ".", [switch]$Fixtures, [switch]$Heavy)
 $ErrorActionPreference = "Stop"
+# 统一转成绝对路径：v2.x 的 P() 会给相对路径加 \\?\ 前缀（\\?\.\backup\x 是非法 Win32 路径），
+# 于是 `--path .\backup\...` 在 v2.x 里源侧遍历静默失败（DRYRUN_NEW/OVERWRITE 全 0），
+# 而 V3 用相对路径能正常遍历 → 用 `-Repo .` 调用时会比对出**假差异**。绝对路径两边都正确。
+$Repo = (Resolve-Path -LiteralPath $Repo).Path
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path $csc)) { Write-Host "SKIP: 找不到 csc（需 Windows + .NET Framework 4.x）"; exit 2 }
 $v2 = Join-Path $Repo 'DeepSeek Harness Toolkit.exe'

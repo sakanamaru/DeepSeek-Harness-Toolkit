@@ -18,15 +18,16 @@ v3/
                             IToolchainQuery / IIntegritySource / IProfileSource / IBackupSource / IPaths
       Services/             ServiceJudge / UptimeFormatter / BackupRetention / BackupPackage /
                             ProfileScanner / ManifestParser / IntegrityJudge / DoctorSummary /
-                            SizeFormatter / ReportSanitizer / BackupAge
+                            SizeFormatter / ReportSanitizer / BackupAge / RestoreApplyPolicy
       Targets/              WebTarget / UnknownTarget / ReservedTarget / CompositeServiceTarget
     Dsht.Platform.Windows/  Windows 实现（netstat / Get-CimInstance / where / taskkill / %APPDATA%）
     Dsht.Platform.Linux/    Linux 实现（ss / /proc/<pid>/cmdline / ps / PATH 扫描 / $XDG_* / $DSH_HOME）
     Dsht.Cli/               组合根（自写 ServiceRegistry，零第三方 DI）+ 命令面 + 平台装配
   tests/
-    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，206 项）
+    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，220 项）
     verify_domain_pure.ps1  领域层纯净度守卫（扫描前剥离注释）
     compare_markers.ps1     与 v2.x 的标记行契约比对（可 -Fixtures 造受控备份）
+    verify_restore_apply.ps1 真实 restore 的端到端验证（隔离数据根 + --apply，含"零越界"证明）
     verify_release.ps1      发布物校验（v2.x verify.ps1 等价物，含校验器自证）
 ```
 
@@ -58,6 +59,9 @@ powershell -ExecutionPolicy Bypass -File v3\tests\compare_markers.ps1 -Repo . -H
 
 # ③ 发布物校验（-Build 本地造发布物；-SelfTest 篡改一字节证明校验器有效）
 powershell -ExecutionPolicy Bypass -File v3\tests\verify_release.ps1 -Repo . -Build -SelfTest
+
+# ④ 真实 restore 的端到端验证（隔离数据根 + --apply；含"真实数据根零写入"证明）
+powershell -ExecutionPolicy Bypass -File v3\tests\verify_restore_apply.ps1 -Repo .
 ```
 
 > 注意：`-ExecutionPolicy Bypass` 不能省——默认执行策略常禁止直接运行 `.ps1`（会报 UnauthorizedAccess）。
@@ -80,7 +84,7 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_release.ps1 -Repo . -Bu
 | `config-set <key> <value>` | `CONFIGSET_OK <key>` / `CONFIGSET_FAIL <reason>` |
 | `bootdiag --from <file>` | `BOOTDIAG_OK`/`_FAIL` + `_KIND`/`_PLUGIN`/`_ENTRY`/`_FILE`/`_LINE`/`_HINT`（未识别时 `_FIRST`） |
 | `backup` | `BACKUP_OK <路径>` / `BACKUP_FAIL <原因>`（真实写盘；比对需 `-Heavy`，目录名含时间戳会归一化） |
-| `restore` / `restore --path <dir>`（非 dry-run） | 校验 + **安全闸门**（无有效备份 / 运行中拒绝 / 恢复前自动备份失败）→ `RESTORE_FAIL <原因>`；**闸门通过后仍明确拒绝**真实写入 |
+| `restore` / `restore --path <dir>`（非 dry-run） | 校验 + **安全闸门**（无有效备份 / 运行中拒绝 / 恢复前自动备份失败）→ `RESTORE_FAIL <原因>`；闸门通过后**真实合并恢复**：`RESTORE_PRE_BACKUP <回滚锚点>` + `RESTORE_OK <备份目录>`（工作区另有 `RESTORE_WS_*`）。**`--apply` 显式开关**：只允许写入隔离数据根（见 §7） |
 | `backup-delete --path <bk>` | **真实删除**（含只读属性清理）→ `BKDEL_OK <名字>` / `BKDEL_FAIL <原因>`；隔离根下已验证（见 §7） |
 | `backup-export --path <bk> --to <dir>` | **真实导出副本**（只读源）→ `BKEXPORT_OK <目标路径>` / `BKEXPORT_FAIL <原因>`；隔离根下已验证 |
 | `check` | 横幅 + `Node.js`/`npm`/`dsh`/`dsh 版本`/`dsh 最新`/`Web 服务`/`UI 语言` 七行（GUI 检查页数据源） |
@@ -121,7 +125,10 @@ interface IServiceTarget { AppKind Kind; bool IsAvailable(); ServiceReport Probe
 | `Environment.OSVersion.VersionString` | .NET Framework 与 net8 下字符串不同 → 将来 V3 真正用 net8 发布时需要归一化 |
 | headless / acp / desktop | **预留**，无可观测事实前不实现猜测逻辑 |
 | macOS | 未开始（设计稿决策：Linux 优先，macOS 视需求后补） |
-| 命令面广度 | 已覆盖 GUI 消费的主要命令（含 `restore --dry-run` 预览、`selftest`、`check`、真实 `backup`）；**只剩真实 `restore` 的数据写入**尚未移植（其安全闸门已对齐；写操作**明确拒绝**而不是静默失败）。`backup`/`backup-delete`/`backup-export` 均已真实实现并在隔离根下验证 |
+| 命令面广度 | 已覆盖 GUI 消费的主要命令（含 `restore --dry-run` 预览、`selftest`、`check`、真实 `backup`）；**真实 `restore` 的数据写入已移植**（合并语义、恢复前自动备份、自身完整性闸门、`_workspace` 工作区恢复；隔离根下端到端验证 24/24）。`backup`/`backup-delete`/`backup-export`/`restore` 均已真实实现并在隔离根下验证 |
+| 真实 restore 的写入范围 | **V3 独有约束**：默认路径（不给 `--apply`）与 v2.x 同序同语义（运行中拒绝 → 恢复前备份 → 恢复）；给 `--apply` 时只允许写入**隔离数据根**——必须设置 `$DSH_HOME` 且生效数据根不等于任何默认候选，否则 `RESTORE_FAIL` 拒绝。因此 `--apply` 永远不可能写进 `~/.dsh`（v2.x 没有这个开关，也没有这层保护） |
+| `RESTORE_OK` 的时机 | **有意比 v2.x 更严格**：v2.x 在恢复失败（异常/完整性不匹配）时也会打印 `RESTORE_OK`；V3 只在真正成功时打印，失败打印 `RESTORE_FAIL <原因>` |
+| `restore --dry-run --path <相对路径>` | **v2.x 的已知缺陷**：v2.x 的 `P()` 给相对路径加 `\\?\` 前缀（`\\?\.\backup\x` 是非法 Win32 路径）→ 源侧遍历被 try/catch 静默吞掉，预览报 `DRYRUN_NEW 0 / OVERWRITE 0`；V3 用相对路径能正常遍历（数字正确）。`compare_markers.ps1` 因此统一把 `-Repo` 转绝对路径，否则会比对出**假差异**（这条已在脚本注释里写明原因） |
 | GUI | Windows-only WinForms 保持不变；跨平台 GUI 只留架构能力（见设计稿 §7） |
 | **`DSH_HOME` 环境变量** | **唯一一处刻意偏离 v2.x 的行为**：Windows 侧也优先读 `$DSH_HOME`（Linux 侧本就支持）→ 便于在隔离数据根下安全测试写操作与多环境部署；未设置时与 v2.x 完全一致 |
 ---
@@ -137,7 +144,7 @@ git push -u origin v3-linux         # 只推这个分支
 gh run watch                        # 看 CI：会跑 windows-latest + ubuntu-latest
 ```
 
-**预期结果**：`v3-contracts` job 在两个平台上都绿（`dotnet build v3/src/Dsht.Cli` + 契约测试 180/180）。
+**预期结果**：`v3-contracts` job 在两个平台上都绿（`dotnet build v3/src/Dsht.Cli` + 契约测试 220/220）。
 若 ubuntu 上失败，那正是有价值的信号——说明 Linux 实现里还有**只在真机才暴露**的问题（我本地只能做到"编译过 + 纯逻辑单测"，见 §5）。
 
 跑完后删分支即可（不影响 main）：
@@ -169,4 +176,28 @@ $env:DSH_HOME = "$iso\data"
 Remove-Item Env:\DSH_HOME; Remove-Item $iso -Recurse -Force
 ```
 
-实测结论（本轮）：`doctor` 显示隔离数据根（1 B）· `backup` 写出 1 个文件的备份 · **真实 `~/.dsh` 未被触碰** · 不设该变量时标记行契约仍 **19/19**（零回归）。
+实测结论（本轮）：`doctor` 显示隔离数据根（1 B）· `backup` 写出 1 个文件的备份 · **真实 `~/.dsh` 未被触碰** · 不设该变量时标记行契约仍 **20/20**（零回归）。
+
+### 7.1 一条命令跑完全部真实 restore 验证
+
+```powershell
+powershell -ExecutionPolicy Bypass -File v3\tests\verify_restore_apply.ps1 -Repo .
+# 24 项：备份 → 篡改 → restore --apply（真实写盘）→ 合并语义 → 恢复前自动备份内容 →
+#        不给 --apply 的边界行为 → 未设 $DSH_HOME 时拒绝 → 真实默认数据根快照未变 + %TEMP%\backup 无残留
+```
+
+### 7.2 `--apply` 的规则（为什么要它）
+
+真实恢复会**覆盖用户数据**，所以 V3 把它拆成两级：
+
+| 情形 | 行为 |
+|---|---|
+| 不给 `--apply` | 与 v2.x 同序：运行中拒绝 → 恢复前自动备份 → 恢复。服务在跑就**不会**写盘 |
+| `--apply` + 已设 `$DSH_HOME` + 数据根 ≠ 任何默认候选 | **真实写盘**；并打印 `RESTORE_APPLY_ACK`（把观测到的服务状态原样留证）与 `RESTORE_APPLY_ROOT` |
+| `--apply` + 未设 `$DSH_HOME` | `RESTORE_FAIL … 需要先设置 $DSH_HOME`（零写入） |
+| `--apply` + 数据根就是默认位置 | `RESTORE_FAIL … 生效数据根就是默认位置`（零写入） |
+
+`--apply` 是**人类可问责的断言**（"我确认没有 dsh 正在使用这个数据根"），而不是绕过闸门的后门：
+它无法指向默认数据根，因此**不可能**写坏你的 `~/.dsh`；同时它把"跳过闸门"这件事与观测到的事实一起打出来，不静默。
+`apply-not-isolated` 这条分支**故意不做端到端测试**——把"应当拒绝"的用例指向真实数据根，一旦判定有 bug 就会真写用户数据；
+它由纯领域契约测试覆盖（`RestoreApplyPolicy`，见 §2 的契约测试 220 项）。
