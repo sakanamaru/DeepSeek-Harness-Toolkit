@@ -46,7 +46,7 @@ This section states exactly where Linux stands, so nobody has to discover it the
 
 - The GUI's start/stop, profile check and quarantine buttons still call the Windows-only classic
   core. The CLI behind them already works on Linux, so this is wiring rather than capability.
-- Workspace backup does not include workspaces yet (restore can already consume a `_workspace` section).
+- Workspace backup packages the auto-detected workspace into `_workspace/`, and restore merges it back. The multi-workspace (`.dshws`) layout that restore also understands is not written yet.
 - No log centre, update centre, backup import, wipe-data, tray or keyboard shortcuts yet.
 - `keep_backups` is applied as a fixed value of 3 instead of the configured number.
 - The classic v2.x line, if built from source on Linux, has broken `start` / `stop` / `shortcut` seams

@@ -62,7 +62,8 @@ namespace Dsht.Domain.Services
             if (v.IndexOf('\\') >= 0 || v.IndexOf('/') >= 0) return true;
             string l = v.ToLowerInvariant();
             return l.EndsWith(".exe", StringComparison.Ordinal) || l.EndsWith(".cmd", StringComparison.Ordinal)
-                || l.EndsWith(".bat", StringComparison.Ordinal) || l.EndsWith(".ps1", StringComparison.Ordinal);
+                || l.EndsWith(".bat", StringComparison.Ordinal) || l.EndsWith(".ps1", StringComparison.Ordinal)
+                || l.EndsWith(".sh", StringComparison.Ordinal) || l.EndsWith(".py", StringComparison.Ordinal);   // Linux 脚本也要认 ✓
         }
 
         /// <summary>扫描一段 profile 文本，返回发现列表。</summary>
