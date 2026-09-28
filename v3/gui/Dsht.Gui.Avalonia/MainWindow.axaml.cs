@@ -8,6 +8,9 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
+using Avalonia.Styling;
+using FluentIcons.Avalonia;
+using FluentIcons.Common;
 using Dsht.Gui.Avalonia.Markers;
 using Dsht.Gui.Avalonia.ViewModels;
 
@@ -73,6 +76,7 @@ namespace Dsht.Gui.Avalonia
         public MainWindow()
         {
             InitializeComponent();
+            InitChrome();
             for (int i = 0; i < 5; i++) BindShell(i);
             for (int i = 0; i < 4; i++) BindStyle(i);
             Refresh();
@@ -81,6 +85,91 @@ namespace Dsht.Gui.Avalonia
         private void InitializeComponent()
         {
             AvaloniaXamlLoader.Load(this);
+        }
+
+        // ---------------- 窗口壳配色（跟随 Palette，风格切换时重刷） ----------------
+
+        /// <summary>顶栏切换器的内容与提示（只装一次；颜色在 ApplyChrome 里刷）。</summary>
+        private void InitChrome()
+        {
+            Symbol[] shellIcons = new Symbol[] { Symbol.PanelLeft, Symbol.Tab, Symbol.Grid, Symbol.PanelRight, Symbol.Board };
+            for (int i = 0; i < 5; i++)
+            {
+                Button b = this.FindControl<Button>("Shell" + i);
+                if (b == null) continue;
+                b.Content = new SymbolIcon { Symbol = shellIcons[i], IconVariant = IconVariant.Regular, FontSize = 15 };
+                ToolTip.SetTip(b, "布局：" + Shells.Shells.Name(i));
+            }
+            for (int i = 0; i < 4; i++)
+            {
+                Button b = this.FindControl<Button>("Style" + i);
+                if (b == null) continue;
+                b.Content = new TextBlock { Text = ((char)('A' + i)).ToString(), FontSize = 12, FontWeight = FontWeight.SemiBold };
+                ToolTip.SetTip(b, "风格：" + Palette.StyleName(i));
+            }
+        }
+
+        /// <summary>把 Palette 应用到窗口壳：主题变体（让 Fluent 控件跟随明暗）、顶栏、两个 segmented 切换器的激活态。</summary>
+        private void ApplyChrome()
+        {
+            Background = Palette.PageBg;
+            if (Application.Current != null)
+                Application.Current.RequestedThemeVariant = Palette.Dark ? ThemeVariant.Dark : ThemeVariant.Light;
+
+            Border appBar = this.FindControl<Border>("AppBar");
+            if (appBar != null) { appBar.Background = Palette.SidebarBg; appBar.BorderBrush = Palette.Border; }
+
+            Border mark = this.FindControl<Border>("BrandMark");
+            if (mark != null)
+                mark.Background = new LinearGradientBrush
+                {
+                    StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+                    EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+                    GradientStops = new GradientStops
+                    {
+                        new GradientStop(((SolidColorBrush)Palette.Accent).Color, 0),
+                        new GradientStop(((SolidColorBrush)Palette.AccentHover).Color, 1)
+                    }
+                };
+            SetFg("BrandTitle", Palette.Text);
+            SetFg("BrandSub", Palette.TextFaint);
+
+            Border pill = this.FindControl<Border>("DisclaimerPill");
+            if (pill != null) pill.Background = Palette.WarnSoft;
+            SetFg("DisclaimerIcon", Palette.Warn);
+            SetFg("DisclaimerText", Palette.TextDim);
+
+            PaintSwitch("ShellSwitch");
+            PaintSwitch("StyleSwitch");
+            for (int i = 0; i < 5; i++) PaintSwitchButton("Shell" + i, i == _shell);
+            for (int i = 0; i < 4; i++) PaintSwitchButton("Style" + i, i == Palette.StyleKind);
+        }
+
+        private void SetFg(string name, IBrush fg)
+        {
+            TextBlock t = this.FindControl<TextBlock>(name);
+            if (t != null) t.Foreground = fg;
+        }
+
+        private void PaintSwitch(string name)
+        {
+            Border b = this.FindControl<Border>(name);
+            if (b != null) { b.Background = Palette.InsetBg; b.BorderBrush = Palette.Border; b.BorderThickness = new Thickness(1); }
+        }
+
+        private void PaintSwitchButton(string name, bool active)
+        {
+            Button b = this.FindControl<Button>(name);
+            if (b == null) return;
+            b.Padding = new Thickness(10, 5);
+            b.CornerRadius = new CornerRadius(7);
+            b.BorderThickness = new Thickness(0);
+            b.Background = active ? (IBrush)Palette.CardBg : Brushes.Transparent;
+            IBrush fg = active ? Palette.Accent : Palette.TextDim;
+            SymbolIcon si = b.Content as SymbolIcon;
+            if (si != null) si.Foreground = fg;
+            TextBlock tb = b.Content as TextBlock;
+            if (tb != null) tb.Foreground = fg;
         }
 
         // ---------------- 给 Shells 用的状态 ----------------
@@ -168,6 +257,7 @@ namespace Dsht.Gui.Avalonia
         public void SetProfileSearch(string text) { ProfileSearch = text == null ? "" : text; BuildShell(); }
         public List<SessionRowVm> Rows { get { return _rows; } }
         public int SortMode { get; set; }
+        public int Filter { get { return _filter; } }
         public int StyleKind { get { return Palette.StyleKind; } }
 
         /// <summary>切换视觉 demo（A/B/C/D）：换配色与密度后重画外壳。</summary>
@@ -292,8 +382,7 @@ namespace Dsht.Gui.Avalonia
         {
             ContentControl body = this.FindControl<ContentControl>("Body");
             if (body == null) return;
-            TextBlock hint = this.FindControl<TextBlock>("ShellHint");
-            if (hint != null) hint.Text = "布局：" + Shells.Shells.Name(_shell) + "　风格：" + Palette.StyleName(Palette.StyleKind);
+            ApplyChrome();
             DetailHost = null;
             body.Content = Shells.Shells.Build(_shell, this);
         }

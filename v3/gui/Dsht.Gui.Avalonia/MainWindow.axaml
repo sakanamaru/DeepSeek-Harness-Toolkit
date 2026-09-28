@@ -1,43 +1,52 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Dsht.Gui.Avalonia.MainWindow"
-        Title="DeepSeek Harness Toolkit — 布局框架对比"
-        Width="1280" Height="820"
-        MinWidth="1000" MinHeight="600"
-        Background="#F3F4F6">
-  <Grid RowDefinitions="Auto,Auto,Auto,*">
-    <Border Grid.Row="0" Background="#4D6BFE" Padding="16,10">
+        Title="DeepSeek Harness Toolkit — V3 预览"
+        Width="1320" Height="840"
+        MinWidth="1080" MinHeight="640"
+        WindowStartupLocation="CenterScreen">
+  <!-- 颜色全部由 code-behind 的 ApplyChrome() 按 Palette 设置（风格切换时重刷），这里不写死任何颜色。 -->
+  <Grid RowDefinitions="Auto,*">
+    <!-- 顶栏：品牌 + 非官方声明 + 布局/风格切换器 -->
+    <Border x:Name="AppBar" Grid.Row="0" Padding="16,9" BorderThickness="0,0,0,1">
       <Grid ColumnDefinitions="Auto,*,Auto">
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10">
-          <TextBlock Text="◆" Foreground="White" FontSize="16" VerticalAlignment="Center" />
-          <TextBlock Text="DeepSeek Harness Toolkit" Foreground="White" FontSize="15" FontWeight="Bold" VerticalAlignment="Center" />
-          <Border Background="#3A55D9" CornerRadius="9" Padding="7,2" VerticalAlignment="Center">
-            <TextBlock Text="布局框架对比 · 本地预览" Foreground="White" FontSize="11" />
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
+          <Border x:Name="BrandMark" Width="28" Height="28" CornerRadius="8">
+            <TextBlock Text="D" Foreground="White" FontSize="13" FontWeight="Bold"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <StackPanel VerticalAlignment="Center" Spacing="1">
+            <TextBlock x:Name="BrandTitle" Text="DeepSeek Harness Toolkit" FontSize="13.5" FontWeight="SemiBold" />
+            <TextBlock x:Name="BrandSub" Text="V3 · 跨平台 GUI 预览" FontSize="10.5" />
+          </StackPanel>
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <Border x:Name="DisclaimerPill" CornerRadius="999" Padding="10,5" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock x:Name="DisclaimerIcon" Text="⚠" FontSize="11" VerticalAlignment="Center" />
+              <TextBlock x:Name="DisclaimerText" Text="非官方工具，与 DeepSeek 官方无关 · 只读本地状态 · 不联网" FontSize="11" VerticalAlignment="Center" />
+            </StackPanel>
+          </Border>
+          <Border x:Name="ShellSwitch" CornerRadius="9" Padding="3" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="2">
+              <Button x:Name="Shell0" />
+              <Button x:Name="Shell1" />
+              <Button x:Name="Shell2" />
+              <Button x:Name="Shell3" />
+              <Button x:Name="Shell4" />
+            </StackPanel>
+          </Border>
+          <Border x:Name="StyleSwitch" CornerRadius="9" Padding="3" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="2">
+              <Button x:Name="Style0" />
+              <Button x:Name="Style1" />
+              <Button x:Name="Style2" />
+              <Button x:Name="Style3" />
+            </StackPanel>
           </Border>
         </StackPanel>
-        <TextBlock Grid.Column="2" Text="⚠ 非官方 · 只读本地状态 · 不联网" Foreground="#DCE4FF" FontSize="12" VerticalAlignment="Center" />
       </Grid>
     </Border>
-    <Border Grid.Row="1" Background="White" BorderThickness="0,0,0,1" BorderBrush="#E5E7EB" Padding="16,8">
-      <StackPanel Orientation="Horizontal" Spacing="8">
-        <TextBlock Text="布局框架" Foreground="#6B7280" FontSize="12" VerticalAlignment="Center" />
-        <Button x:Name="Shell0" Content="① 侧栏式" />
-        <Button x:Name="Shell1" Content="② 顶部标签式" />
-        <Button x:Name="Shell2" Content="③ 卡片网格仪表盘" />
-        <Button x:Name="Shell3" Content="④ 主从式（列表+详情）" />
-        <Button x:Name="Shell4" Content="⑤ 混合式（主菜单+子菜单）" />
-        <TextBlock x:Name="ShellHint" Foreground="#9CA3AF" FontSize="12" VerticalAlignment="Center" Margin="10,0,0,0" Text="" />
-      </StackPanel>
-    </Border>
-    <Border Grid.Row="2" Background="White" BorderThickness="0,0,0,1" BorderBrush="#E5E7EB" Padding="16,8">
-      <StackPanel Orientation="Horizontal" Spacing="8">
-        <TextBlock Text="视觉风格" Foreground="#6B7280" FontSize="12" VerticalAlignment="Center" />
-        <Button x:Name="Style0" Content="A · 浅色卡片" />
-        <Button x:Name="Style1" Content="B · 深色卡片" />
-        <Button x:Name="Style2" Content="C · 深色紧凑" />
-        <Button x:Name="Style3" Content="D · 浅色仪表盘" />
-      </StackPanel>
-    </Border>
-    <ContentControl Grid.Row="3" x:Name="Body" />
+    <ContentControl Grid.Row="1" x:Name="Body" />
   </Grid>
 </Window>
