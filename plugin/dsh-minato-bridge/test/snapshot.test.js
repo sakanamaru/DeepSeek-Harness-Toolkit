@@ -1,6 +1,6 @@
 /**
  * 零依赖自测（只用 node 内置 assert / fs / os / path）。
- * 运行：node test/snapshot.test.js   （在 plugin/dsh-shio-bridge 目录下）
+ * 运行：node test/snapshot.test.js   （在 plugin/dsh-minato-bridge 目录下）
  * 覆盖：纯函数 buildSnapshot 的字段映射与两种投影形状、防御式 collectSessions、
  *       原子写、defaultOutFile 的 DSH_HOME 语义、apply 的首帧写入与 enabled:false。
  * 注意：这里**不验证真实 dsh 的 ctx 形状**（那需要跑一次 dsh）——本测试只保证我们自己的逻辑与契约。
@@ -23,7 +23,7 @@ function check(name, fn) {
 	}
 }
 
-console.log("== dsh-shio-bridge 自测（零依赖）==");
+console.log("== dsh-minato-bridge 自测（零依赖）==");
 
 // ---- buildSnapshot：字段映射 ----
 const bare = {

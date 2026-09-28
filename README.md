@@ -1,10 +1,10 @@
-# dsh-shio
+# dsh-minato
 
 <div align="center">
 
 **[English](README.md) · [简体中文](README_zh-CN.md)**
 
-<img src="logo.png" alt="dsh-shio" width="220"/>
+<img src="logo.png" alt="dsh-minato" width="220"/>
 
 **Windows installer, monitor, backup & restore tool for the DeepSeek Harness (dsh) Web UI — double-click and go.**
 
@@ -17,7 +17,7 @@ Install, start, monitor and uninstall the dsh Web UI, with data backup / restore
 
 ## Official downloads
 
-Only this repository's [Releases page](https://github.com/sakanamaru/dsh-shio/releases) ships official binaries — anything else (cloud-drive re-uploads, "paid / cracked / modified" editions, other websites or accounts) is **not official**. The project is free and open source (MIT); **no one is authorized to sell it**. Verify before running: `verify.ps1` checks SHA-256 against the CI-generated manifest and the GPG signature, and the GitHub artifact attestation is an **independent extra** provenance check that `verify.ps1` does not perform — attestation does not replace the GPG signature check either. The trust model, supply-chain controls and manual verification steps live in [SECURITY.md](SECURITY.md).
+Only this repository's [Releases page](https://github.com/sakanamaru/dsh-minato/releases) ships official binaries — anything else (cloud-drive re-uploads, "paid / cracked / modified" editions, other websites or accounts) is **not official**. The project is free and open source (MIT); **no one is authorized to sell it**. Verify before running: `verify.ps1` checks SHA-256 against the CI-generated manifest and the GPG signature, and the GitHub artifact attestation is an **independent extra** provenance check that `verify.ps1` does not perform — attestation does not replace the GPG signature check either. The trust model, supply-chain controls and manual verification steps live in [SECURITY.md](SECURITY.md).
 
 ## Screenshots
 
@@ -94,22 +94,22 @@ The cure is **one line** inside the existing profile entry's `config:` block. Th
 
 ```powershell
 # 1) Proactive scan (read-only): which profile entries would break a boot?
-dsh-shio.exe profilecheck              # alias: pc
-dsh-shio.exe profilecheck --vendor     # also scan node_modules (skipped by default)
+dsh-minato.exe profilecheck              # alias: pc
+dsh-minato.exe profilecheck --vendor     # also scan node_modules (skipped by default)
 
 # 2) Already failed to start? Save the startup output to a text file, then:
-dsh-shio.exe bootdiag --from captured.txt    # alias: bdiag
+dsh-minato.exe bootdiag --from captured.txt    # alias: bdiag
 
 # 3) The prescription — preview first, then apply (backup → verify → rollback on failure):
-dsh-shio.exe profilepatch --file <yaml> --id <entry> --set maxDepth=provider-managed
-dsh-shio.exe profilepatch --file <yaml> --id <entry> --set maxDepth=provider-managed --yes
+dsh-minato.exe profilepatch --file <yaml> --id <entry> --set maxDepth=provider-managed
+dsh-minato.exe profilepatch --file <yaml> --id <entry> --set maxDepth=provider-managed --yes
 ```
 
 **Any broken plugin, not just `maxDepth` — quarantine it and move on.** The `maxDepth` cure keeps the plugin working; when the failing plugin is unknown, or you just need dsh to boot again, append a top-level patch item that switches that entry off (append-only — not one existing character of your profile is changed):
 
 ```powershell
-dsh-shio.exe profilepatch --disable <entry-id>          # preview (PROFILEPATCH_DRYRUN, zero writes)
-dsh-shio.exe profilepatch --disable <entry-id> --yes    # backup → append → re-check → byte-identical rollback on failure
+dsh-minato.exe profilepatch --disable <entry-id>          # preview (PROFILEPATCH_DRYRUN, zero writes)
+dsh-minato.exe profilepatch --disable <entry-id> --yes    # backup → append → re-check → byte-identical rollback on failure
 ```
 
 `disabled: true` is a first-class field of dsh's own patch layer (`PatchOptions.disabled` in `@deepseek-ai/cordis-plugin-include`), and dsh itself uses it to switch off its telemetry row — so this is the canonical "turn that row off" form, not a rewrite of your profile. It is **manual-only and never runs automatically**, idempotent (already quarantined → `PROFILEPATCH_NOOP`), the entry id is charset-whitelisted (`[A-Za-z0-9._@/-]`, so no YAML injection), and a failed re-check rolls the file back byte-for-byte.
@@ -154,7 +154,7 @@ Since v2.4.1 a **graphical panel** ships in three forms — pick what fits (the 
 
 | Variant | File(s) | Unzip / run | For |
 |---|---|---|---|
-| **A. CLI core** | `dsh-shio.exe` | unzip fully, double-click | terminal users, scripts/automation |
+| **A. CLI core** | `dsh-minato.exe` | unzip fully, double-click | terminal users, scripts/automation |
 | **B. GUI attached** | `Toolkit GUI.exe` + core **next to it** | **must unzip fully** — the GUI depends on the sibling core exe; a stray copy shows "Core exe (CLI) not found" | GUI users deploying with the core |
 | **C. GUI standalone** | `Toolkit GUI Standalone.exe` | **single file, fully independent** — embeds the core and extracts it next to itself on first launch | "one exe handles everything" users |
 
@@ -186,11 +186,11 @@ Since v2.4.1 a **graphical panel** ships in three forms — pick what fits (the 
 
 ## Usage
 
-Double-click `dsh-shio.exe`, or use the command line:
+Double-click `dsh-minato.exe`, or use the command line:
 
 ```
-dsh-shio.exe install|start|uninstall|update|check|about|help
-dsh-shio.exe profilecheck|bootdiag|profilepatch     # when dsh won't start (see below)
+dsh-minato.exe install|start|uninstall|update|check|about|help
+dsh-minato.exe profilecheck|bootdiag|profilepatch     # when dsh won't start (see below)
 ```
 
 Launching without arguments opens the interactive menu: with dsh installed the first run auto-starts the Web UI after a 5-second countdown (interruptible); later launches auto-start too. Set `auto_start=off` to drop the countdown — the menu then waits for a manual choice and says so. If dsh is **not** installed, the menu waits for your choice (press 1) — nothing is auto-installed. With the service already running, it goes straight to the status page.
@@ -207,14 +207,14 @@ Launching without arguments opens the interactive menu: with dsh installed the f
 | Backup failed | Check `logs\launcher.log` next to the exe for the real reason |
 | Backup failed (PathTooLongException) | Long path support and `dsh-data-*` skipping are built in; if the log still shows path issues, move that folder out of the workspace |
 | Prompted for extra paths | Type each extra workspace path (empty Enter to finish), or preset one under **7 Entry → 3** |
-| GUI says "Core exe (CLI) not found" | Variant B must sit **next to** `dsh-shio.exe` — unzip the full package, or use variant C (standalone) instead |
+| GUI says "Core exe (CLI) not found" | Variant B must sit **next to** `dsh-minato.exe` — unzip the full package, or use variant C (standalone) instead |
 
 ## Build from Source
 
 Requires the built-in .NET Framework 4.x on Windows (preinstalled on Win10 / Win11):
 
 ```
-"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico "/out:dsh-shio.exe" dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs /warn:4
+"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico "/out:dsh-minato.exe" dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs /warn:4
 ```
 
 Or double-click `build_exe.cmd` in this directory. The GUI compiles from the same-rules single file `gui_v2.cs` (one source → both attached and standalone variants; the standalone adds `/resource:<core exe>,DSHCore.exe`).
@@ -310,7 +310,7 @@ backup/  logs/       Runtime dirs (gitignored — never committed)
   `A2F67D170B5BE4845612642C240979232B4E4CE4`.
 - **GitHub artifact attestation — an independent extra check**: tag builds also publish a
   GitHub artifact attestation; verify it with
-  `gh attestation verify <file> --repo sakanamaru/dsh-shio`. `verify.ps1` does
+  `gh attestation verify <file> --repo sakanamaru/dsh-minato`. `verify.ps1` does
   **not** verify attestations, and the attestation does **not** replace the GPG signature
   check — the two are independent, so pick either or (better) run both.
 - **What the built-in integrity checks prove — and what they do not**: the GUI's

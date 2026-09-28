@@ -13,7 +13,7 @@ dotnet run --project v3/gui/Dsht.Gui.Avalonia
 
 GUI 需要能找到**工具箱 CLI**，按这个顺序找：
 1. 环境变量 `DSHT_CLI`（指向 exe 全路径）
-2. GUI 同目录的 `dsht.exe` / `dsht_v3.exe` / `dsh-shio.exe`
+2. GUI 同目录的 `dsht.exe` / `dsht_v3.exe` / `dsh-minato.exe`
 
 最省事的做法：把 V3 CLI 编译到 GUI 的输出目录旁，或直接 `export DSHT_CLI=<路径>`。
 
