@@ -24,28 +24,49 @@ namespace Dsht.Platform.Windows
         public string DataRoot { get { return _dataRoot; } }
         public string ProfilesRoot { get { return Path.Combine(_dataRoot, "profiles"); } }
 
-        public ProfileCollection CollectDirectory(string dirOverride, bool includeVendor, bool absoluteLabel)
+                public ProfileCollection CollectDirectory(string dirOverride, bool includeVendor, bool absoluteLabel)
         {
             ProfileCollection result = new ProfileCollection();
-            try
+            string dir = string.IsNullOrEmpty(dirOverride) ? ProfilesRoot : dirOverride;
+            if (!Directory.Exists(dir)) return result;   // 目录不存在不是错误，返回空（CLI 会看 files=0）
+            List<string> found = new List<string>();
+            CollectInto(dir, found, result, 0);
+            found.Sort(StringComparer.OrdinalIgnoreCase);
+            foreach (string f in found)
             {
-                string dir = string.IsNullOrEmpty(dirOverride) ? ProfilesRoot : dirOverride;
-                if (!Directory.Exists(dir)) return result;
-                List<string> merged = new List<string>();
-                merged.AddRange(Directory.GetFiles(dir, "*.yml", SearchOption.AllDirectories));
-                merged.AddRange(Directory.GetFiles(dir, "*.yaml", SearchOption.AllDirectories));
-                merged.Sort(StringComparer.OrdinalIgnoreCase);
-                foreach (string f in merged)
-                {
-                    if (!includeVendor && ProfileScanner.IsVendorPath(f)) { result.SkippedVendor++; continue; }
-                    string text;
-                    try { text = File.ReadAllText(f, new UTF8Encoding(false)); }
-                    catch { continue; }
-                    result.Files.Add(new ProfileFile(absoluteLabel ? f : Pretty(f), f, text));
-                }
+                if (!includeVendor && ProfileScanner.IsVendorPath(f)) { result.SkippedVendor++; continue; }
+                string text;
+                try { text = File.ReadAllText(f, new UTF8Encoding(false)); }
+                catch { result.ReadErrors++; continue; }   // 读不到就计数，不再静默丢弃
+                result.Files.Add(new ProfileFile(absoluteLabel ? f : Pretty(f), f, text));
             }
-            catch { }
             return result;
+        }
+
+        /// <summary>Recursively collect .yml/.yaml with a CASE-INSENSITIVE extension check (Linux is
+        /// case sensitive, so the old *.yml glob silently missed .YML). Each directory gets its own
+        /// try/catch: one unreadable subdirectory now costs one error instead of discarding the whole
+        /// tree, which used to make profilecheck report a false "no problems found".</summary>
+        private static void CollectInto(string dir, List<string> found, ProfileCollection result, int depth)
+        {
+            if (depth > 24) return;
+            string[] files;
+            try { files = Directory.GetFiles(dir); }
+            catch { result.ReadErrors++; return; }
+            for (int i = 0; i < files.Length; i++)
+            {
+                string name = Path.GetFileName(files[i]);
+                if (name.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase)) found.Add(files[i]);
+            }
+            string[] subs;
+            try { subs = Directory.GetDirectories(dir); }
+            catch { result.ReadErrors++; return; }
+            for (int i = 0; i < subs.Length; i++)
+            {
+                string leaf = Path.GetFileName(subs[i]);
+                if (leaf.Equals("node_modules", StringComparison.OrdinalIgnoreCase)) continue;
+                CollectInto(subs[i], found, result, depth + 1);
+            }
         }
 
         public ProfileFile ReadSingle(string path, bool absoluteLabel)

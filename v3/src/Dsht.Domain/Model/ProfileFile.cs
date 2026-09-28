@@ -20,6 +20,8 @@ namespace Dsht.Domain.Model
     /// <summary>一次 profile 收集结果：文件列表 + 被跳过的 vendor 文件数（透明，不静默吞掉）。</summary>
     public sealed class ProfileCollection
     {
+        /// <summary>读不到的目录/文件计数。> 0 表示本次扫描**不完整** ✓ —— 调用方不得据此宣称"没有问题" ✗。</summary>
+        public int ReadErrors;
         public List<ProfileFile> Files { get; private set; }
         public int SkippedVendor { get; set; }
 

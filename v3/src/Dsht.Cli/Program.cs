@@ -96,7 +96,7 @@ namespace Dsht.Cli
             bool abs = Has(args, "--abs");
             IProfileSource src = reg.Get<IProfileSource>();
             List<ProfileFinding> fs = new List<ProfileFinding>();
-            int files = 0, skipped = 0;
+            int files = 0, skipped = 0, readErrors = 0;
             if (!string.IsNullOrEmpty(one))
             {
                 ProfileFile pf = src.ReadSingle(one, abs);
@@ -106,6 +106,7 @@ namespace Dsht.Cli
             {
                 ProfileCollection col = src.CollectDirectory(dir, vendor, abs);
                 skipped = col.SkippedVendor;
+                readErrors = col.ReadErrors;
                 foreach (ProfileFile pf in col.Files)
                 {
                     files++;
@@ -116,12 +117,15 @@ namespace Dsht.Cli
                 Console.WriteLine("PROFILECHK_WARN " + f.File + " " + f.Line + " " + f.Id + " " + f.Missing + " " + f.Hint);
             Console.WriteLine("PROFILECHK_TOTAL " + fs.Count + " " + files);
             if (skipped > 0) Console.WriteLine("PROFILECHK_SKIPPED_VENDOR " + skipped);
+            if (readErrors > 0) Console.WriteLine("PROFILECHK_READ_ERRORS " + readErrors);
             if (abs)
             {
                 foreach (ProfileFinding f in fs)
                     if (f.Missing == "maxDepth") Console.WriteLine("PROFILECHK_FIX " + f.File + "|" + f.Line + "|" + f.Id + "|" + f.Missing);
             }
-            if (fs.Count == 0) Console.WriteLine("PROFILECHK_OK");
+            // 只有"确实扫过且没有任何发现"才说 OK ✗：读不到目录时结果不完整，必须如实说明 ✓
+            if (readErrors > 0) Console.WriteLine("PROFILECHK_INCOMPLETE " + T("有目录读不到，本次结果不完整 —— 不要当作「没有问题」", "some directories could not be read; this result is incomplete - do not read it as no problems"));
+            else if (fs.Count == 0) Console.WriteLine("PROFILECHK_OK");
             return 0;
         }
 
