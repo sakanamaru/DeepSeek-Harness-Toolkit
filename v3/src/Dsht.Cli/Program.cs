@@ -530,6 +530,7 @@ namespace Dsht.Cli
                 Dsht.Domain.Model.BackupResult pb = reg.Get<IBackupSource>().Create(dataFull, Dsht.Domain.Model.BackupKind.PreWipe, _cfg == null ? 3 : _cfg.KeepBackups, WorkspaceRoot(reg));
                 if (pb == null || string.IsNullOrEmpty(pb.Path)) { Console.WriteLine("WIPE_REFUSED " + T("清除前的安全备份未能创建，已拒绝执行（没备份就不清 ✗）", "the pre-wipe backup could not be created; refusing to wipe (no backup, no wipe)")); return 0; }
                 AddContentHashToMarker(pb.Path);   // 回滚锚点也要能自证完整 ✓✓
+            Console.WriteLine("WIPE_PRE_BACKUP " + pb.Path);   // 打印行必须保留 ✗（我第 53 轮把它替换成了哈希调用 ✗✗ → 用户看不到安全备份在哪 ✓）
             }
             catch (Exception bex) { Console.WriteLine("WIPE_REFUSED " + T("清除前的安全备份失败，已拒绝执行: ", "the pre-wipe backup failed; refusing to wipe: ") + bex.Message); return 0; }
             // 真清：只删数据根**内容** ✓
