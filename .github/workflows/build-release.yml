@@ -150,7 +150,7 @@ jobs:
         run: gh release upload "${GITHUB_REF_NAME}" dsh-minato-linux-x64.tar.gz dsh-minato-linux-x64.tar.gz.sha256 --clobber
 
   build:
-    needs: test
+    needs: [test, v3-linux]   # Linux 打包/冒烟失败即拦住发布（此前 Linux 坏掉也能发）
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'   # M-8：发布/手动才构建产物；普通 push/PR 仅跑测试
     runs-on: windows-latest
     permissions:
