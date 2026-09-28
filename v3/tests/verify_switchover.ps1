@@ -75,6 +75,8 @@ Gate 'invariant release chain' ([string]::IsNullOrWhiteSpace($chainChanged) -and
 $pure = & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_domain_pure.ps1') -Repo $Repo 2>&1 | Out-String
 Gate 'invariant domain purity' ($LASTEXITCODE -eq 0) '零 IO / 零平台 / 零时钟耦合'
 
+Remove-Item $exe -Force -ErrorAction SilentlyContinue   # 别把契约测试 exe 留在 %TEMP%
+
 Write-Host '== V3 切换就绪度 =='
 $rows | ForEach-Object { Write-Host $_ }
 if ($fail -gt 0) { Write-Host ("== 未就绪项：" + $fail + "（详见上面 [ NOT ] 行）=="); exit 1 }
