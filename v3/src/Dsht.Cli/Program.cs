@@ -286,7 +286,11 @@ namespace Dsht.Cli
                 delegate(string p) { return fs.DirectoryExists(p); },
                 delegate(string p) { return System.IO.Path.GetFullPath(p); });
             if (reason != null) { Console.WriteLine("BKEXPORT_FAIL " + T("导出校验失败: " + reason, "export validation failed: " + reason)); return 0; }
-            Console.WriteLine("BKEXPORT_NOT_IMPLEMENTED V3 尚未移植真实导出；请用 v2.x 执行导出。");
+            string src = (Flag(args, "--path") ?? "").Trim().Trim('"');
+            string to = (Flag(args, "--to") ?? "").Trim().Trim('"');
+            string target = bk.Export(src, System.IO.Path.GetFullPath(to));
+            if (target == null) { Console.WriteLine("BKEXPORT_FAIL " + T("导出失败（见 launcher.log）", "export failed (see launcher.log)")); return 0; }
+            Console.WriteLine("BKEXPORT_OK " + target);
             return 0;
         }
 

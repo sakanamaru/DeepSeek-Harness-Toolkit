@@ -82,7 +82,7 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_release.ps1 -Repo . -Bu
 | `backup` | `BACKUP_OK <路径>` / `BACKUP_FAIL <原因>`（真实写盘；比对需 `-Heavy`，目录名含时间戳会归一化） |
 | `restore` / `restore --path <dir>`（非 dry-run） | 校验 + **安全闸门**（无有效备份 / 运行中拒绝 / 恢复前自动备份失败）→ `RESTORE_FAIL <原因>`；**闸门通过后仍明确拒绝**真实写入 |
 | `backup-delete --path <bk>` | **真实删除**（含只读属性清理）→ `BKDEL_OK <名字>` / `BKDEL_FAIL <原因>`；隔离根下已验证（见 §7） |
-| `backup-export` | `BKEXPORT_FAIL 校验失败: <原因>`；**真实复制明确拒绝** |
+| `backup-export --path <bk> --to <dir>` | **真实导出副本**（只读源）→ `BKEXPORT_OK <目标路径>` / `BKEXPORT_FAIL <原因>`；隔离根下已验证 |
 | `check` | 横幅 + `Node.js`/`npm`/`dsh`/`dsh 版本`/`dsh 最新`/`Web 服务`/`UI 语言` 七行（GUI 检查页数据源） |
 | `selftest [<report>]` | 写自检报告并打印 `report -> <路径>`（报告正文 11 行与 v2.x 一致；产品标识行本就不同） |
 | `describe`（V3 独有） | 说明"考虑过哪些形态、为什么暂时观测不到" |
@@ -121,7 +121,7 @@ interface IServiceTarget { AppKind Kind; bool IsAvailable(); ServiceReport Probe
 | `Environment.OSVersion.VersionString` | .NET Framework 与 net8 下字符串不同 → 将来 V3 真正用 net8 发布时需要归一化 |
 | headless / acp / desktop | **预留**，无可观测事实前不实现猜测逻辑 |
 | macOS | 未开始（设计稿决策：Linux 优先，macOS 视需求后补） |
-| 命令面广度 | 已覆盖 GUI 消费的主要命令（含 `restore --dry-run` 预览、`selftest`、`check`、真实 `backup`）；非交互真实 `restore`/`backup-export` 的**写操作**尚未移植（校验路径已对齐，写操作**明确拒绝**而不是静默失败）；`backup` 与 `backup-delete` 已真实实现并在隔离根下验证 |
+| 命令面广度 | 已覆盖 GUI 消费的主要命令（含 `restore --dry-run` 预览、`selftest`、`check`、真实 `backup`）；**只剩真实 `restore` 的数据写入**尚未移植（其安全闸门已对齐；写操作**明确拒绝**而不是静默失败）。`backup`/`backup-delete`/`backup-export` 均已真实实现并在隔离根下验证 |
 | GUI | Windows-only WinForms 保持不变；跨平台 GUI 只留架构能力（见设计稿 §7） |
 | **`DSH_HOME` 环境变量** | **唯一一处刻意偏离 v2.x 的行为**：Windows 侧也优先读 `$DSH_HOME`（Linux 侧本就支持）→ 便于在隔离数据根下安全测试写操作与多环境部署；未设置时与 v2.x 完全一致 |
 ---
