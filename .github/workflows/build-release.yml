@@ -108,7 +108,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2 fixed SHA
       - name: Publish V3 CLI (small, framework-dependent)
-        run: dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -o out/fd --nologo
+        run: dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r linux-x64 --self-contained false -o out/fd --nologo
       - name: Publish V3 CLI (self-contained single file)
         run: dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o out/sc --nologo
       - name: Publish Avalonia GUI (self-contained)
