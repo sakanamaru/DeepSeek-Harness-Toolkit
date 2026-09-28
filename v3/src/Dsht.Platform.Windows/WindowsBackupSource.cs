@@ -15,7 +15,7 @@ namespace Dsht.Platform.Windows
     {
         private readonly string _stateDir;
 
-        public WindowsBackupSource() { _stateDir = ResolveStateDir(); }
+        public WindowsBackupSource(IPaths paths) { _stateDir = paths == null ? ResolveStateDir() : paths.StateDir; }
 
         public string StateDir { get { return _stateDir; } }
 

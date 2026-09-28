@@ -19,7 +19,7 @@ namespace Dsht.Platform.Windows
         private const string DataDirName = ".dsh";
         private readonly string _dataRoot;
 
-        public WindowsProfileSource() { _dataRoot = ResolveDataRoot(); }
+        public WindowsProfileSource(IPaths paths) { _dataRoot = paths == null ? ResolveDataRoot() : paths.DataRoot; }
 
         public string DataRoot { get { return _dataRoot; } }
         public string ProfilesRoot { get { return Path.Combine(_dataRoot, "profiles"); } }

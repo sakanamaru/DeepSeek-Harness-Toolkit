@@ -21,10 +21,11 @@ namespace Dsht.Cli
 
             if (cmd == "status") return Status(reg, Has(args, "--detail"));
             if (cmd == "describe") return Describe(reg);
-            if (cmd == "profilecheck") return ProfileCheck(args);
-            if (cmd == "backup-list") return BackupList(args);
+            if (cmd == "profilecheck") return ProfileCheck(args, reg);
+            if (cmd == "backup-list") return BackupList(args, reg);
+            if (cmd == "doctor") return Doctor(reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail]");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor");
             return 2;
         }
 
@@ -56,13 +57,13 @@ namespace Dsht.Cli
         }
 
         /// <summary>profilecheck：标记行逐条对齐 v2.x 的 ProfileCheckCli。</summary>
-        private static int ProfileCheck(string[] args)
+        private static int ProfileCheck(string[] args, ServiceRegistry reg)
         {
             string dir = Flag(args, "--dir");
             string one = Flag(args, "--file");
             bool vendor = Has(args, "--vendor");
             bool abs = Has(args, "--abs");
-            WindowsProfileSource src = new WindowsProfileSource();
+            WindowsProfileSource src = new WindowsProfileSource(reg.Get<IPaths>());
             List<ProfileFinding> fs = new List<ProfileFinding>();
             int files = 0, skipped = 0;
             if (!string.IsNullOrEmpty(one))
@@ -95,10 +96,10 @@ namespace Dsht.Cli
 
 
         /// <summary>backup-list：标记行与裸路径行逐条对齐 v2.x 的 NIBackupList。</summary>
-        private static int BackupList(string[] args)
+        private static int BackupList(string[] args, ServiceRegistry reg)
         {
             bool detail = Has(args, "--detail");
-            IBackupSource src = new WindowsBackupSource();
+            IBackupSource src = reg.Get<IBackupSource>();
             List<BackupEntry> all = src.ListRaw();
             List<BackupEntry> valid = new List<BackupEntry>();
             for (int i = 0; i < all.Count; i++)
@@ -122,6 +123,110 @@ namespace Dsht.Cli
             return 0;
         }
 
+
+        /// <summary>doctor：七类体检。首行 DOCTOR_OK|WARN|ERROR n，其后每行 [级别] 类别 描述。逐条对齐 v2.x。
+        /// 注：--report 尚未移植（v2.x 的报告含配置/日志摘要，属后续工作）。</summary>
+        private static int Doctor(ServiceRegistry reg)
+        {
+            List<DocItem> items = new List<DocItem>();
+            DoctorCollect(reg, items);
+            Console.WriteLine(DoctorSummary.Summary(items));
+            foreach (DocItem it in items)
+                Console.WriteLine("[" + DoctorSummary.Level(it.Level) + "] " + it.Cat + " " + it.Text);
+            return 0;
+        }
+
+        private static void DoctorCollect(ServiceRegistry reg, List<DocItem> items)
+        {
+            IToolchainQuery tc = reg.Get<IToolchainQuery>();
+            IFileSystemQuery fs = reg.Get<IFileSystemQuery>();
+            IBackupSource bk = reg.Get<IBackupSource>();
+            IHttpProbe http = reg.Get<IHttpProbe>();
+            IProcessQuery proc = reg.Get<IProcessQuery>();
+            IIntegritySource integ = reg.Get<IIntegritySource>();
+            IPaths paths = reg.Get<IPaths>();
+            ServiceReport sr = reg.Get<IServiceTarget>().Probe();
+
+            items.Add(new DocItem("System", 0, "Windows: " + Environment.OSVersion.VersionString + " (" + (Environment.Is64BitOperatingSystem ? "x64" : "x86") + ")"));
+            string node = tc.NodeVersion();
+            if (string.IsNullOrWhiteSpace(node)) items.Add(new DocItem("System", 1, "Node.js 未找到（dsh 依赖 npm 安装）"));
+            else items.Add(new DocItem("System", 0, "Node.js: " + node.Trim()));
+            string npm = tc.NpmVersion();
+            items.Add(new DocItem("System", string.IsNullOrWhiteSpace(npm) ? 1 : 0, string.IsNullOrWhiteSpace(npm) ? "npm 不可用" : "npm: " + npm.Trim()));
+
+            string dsh = tc.WhichDsh();
+            if (dsh == null) items.Add(new DocItem("Harness", 2, "dsh 未安装（交互菜单按 1 安装）"));
+            else
+            {
+                items.Add(new DocItem("Harness", 0, "dsh 已安装: " + ReportSanitizer.Sanitize(dsh)));
+                string dv = tc.DshVersion();
+                if (string.IsNullOrWhiteSpace(dv)) items.Add(new DocItem("Harness", 1, "dsh --version 无输出"));
+                else items.Add(new DocItem("Harness", 0, "dsh 版本: " + ReportSanitizer.Sanitize(dv.Trim().Replace("\r", " ").Replace("\n", " "))));
+            }
+
+            if (sr.State == ServiceState.Down)
+            {
+                items.Add(new DocItem("Service", 2, "端口 " + WebPort + " 未监听（服务未运行；菜单按 2 启动）"));
+            }
+            else
+            {
+                int pid = sr.Pid;
+                items.Add(new DocItem("Service", 0, "端口 " + WebPort + " 监听中" + (pid > 0 ? "（PID " + pid + "）" : "")));
+                bool isDsh = pid > 0 && proc.IsDshCommandLine(pid);
+                string who = isDsh ? "监听进程确为 dsh" : (pid > 0 ? "监听进程不是 dsh！命令行: " + ReportSanitizer.Sanitize(proc.CommandLine(pid)) : "无法确认监听进程身份");
+                items.Add(new DocItem("Service", isDsh ? 0 : 2, who));
+                bool httpOk = http.Responds(WebUrl, 800);
+                items.Add(new DocItem("Service", 0, "HTTP: " + (httpOk ? "有应答（dsh 未授权统一 401 属正常门控）" : "无应答")));
+                items.Add(new DocItem("Service", sr.State == ServiceState.Ready ? 0 : 1, "服务状态: " + (sr.State == ServiceState.Ready ? "运行中" : (sr.State == ServiceState.Listening ? "启动中" : "已停止"))));
+            }
+
+            string data = paths.DataRoot;
+            if (string.IsNullOrEmpty(data) || !fs.DirectoryExists(data))
+            {
+                items.Add(new DocItem("Workspace", 2, "数据目录不存在: " + data + "（dsh 尚未初始化）"));
+            }
+            else
+            {
+                bool enumerable = fs.CanEnumerate(data);
+                items.Add(new DocItem("Workspace", enumerable ? 0 : 2, "数据目录: " + ReportSanitizer.Sanitize(data) + (enumerable ? "" : "（无读取权限）")));
+                long size = fs.DirSize(data);
+                items.Add(new DocItem("Workspace", size > 1024L * 1024 * 1024 ? 1 : 0, "数据大小: " + SizeFormatter.Human(size) + (size > 1024L * 1024 * 1024 ? "（较大，备份耗时会增加）" : "")));
+            }
+
+            string bkRoot = bk.BackupsRoot;
+            if (!fs.DirectoryExists(bkRoot))
+            {
+                items.Add(new DocItem("Backup", 1, "备份目录不存在（尚未备份过；建议定期备份）"));
+            }
+            else
+            {
+                items.Add(new DocItem("Backup", 0, "备份目录: " + ReportSanitizer.Sanitize(bkRoot)));
+                List<BackupEntry> all = bk.ListRaw();
+                string latest = null;
+                for (int i = all.Count - 1; i >= 0; i--) { if (BackupPackage.IsValidPackage(all[i].Snapshot)) { latest = all[i].Name; break; } }
+                if (latest == null) items.Add(new DocItem("Backup", 1, "无有效备份（全部无效或为空）"));
+                else
+                {
+                    items.Add(new DocItem("Backup", 0, "最新备份: " + ReportSanitizer.Sanitize(latest)));
+                    int? days = BackupAge.DaysSince(latest, DateTime.Now);
+                    if (days.HasValue) items.Add(new DocItem("Backup", days.Value > 7 ? 1 : 0, "距上次备份: " + days.Value + " 天" + (days.Value > 7 ? "（建议更新备份）" : "")));
+                }
+            }
+
+            string cfgReg = tc.NpmRegistryConfig();
+            string registry = string.IsNullOrWhiteSpace(cfgReg) ? NpmOfficial : cfgReg.Trim();
+            bool reach = http.Responds(registry, 4000);
+            items.Add(new DocItem("Network", reach ? 0 : 1, "npm registry " + ReportSanitizer.Sanitize(registry) + (reach ? " 可达" : " 不可达（离线或网络受限；不影响本地功能）")));
+
+            string expected = ManifestParser.ParseHash(integ.ReadManifest(), integ.SelfFileName());
+            IntegrityVerdict verdict = IntegrityJudge.Judge(expected, integ.SelfHash());
+            if (verdict == IntegrityVerdict.Match) items.Add(new DocItem("Integrity", 0, "自身 exe 与随包 hashes.txt 一致（未被改动）"));
+            else if (verdict == IntegrityVerdict.Mismatch) items.Add(new DocItem("Integrity", 2, "自身 exe 与随包 hashes.txt 不一致！（可能被篡改或替换，请从官方 Release 重新下载）"));
+            else items.Add(new DocItem("Integrity", 0, "旁无 hashes.txt，跳过自身校验（单独复制 exe 或源码编译属正常；如需校验请使用官方发布包）"));
+        }
+
+        private const string NpmOfficial = "https://registry.npmjs.org";
+
         private static bool FileExists(string p) { try { return System.IO.File.Exists(p); } catch { return false; } }
 
         private static string Flag(string[] args, string name)
@@ -143,11 +248,17 @@ namespace Dsht.Cli
             WindowsPortProbe port = new WindowsPortProbe();
             WindowsProcessQuery proc = new WindowsProcessQuery(http, WebUrl, 800);
 
+            WindowsPaths paths = new WindowsPaths();
             ServiceRegistry reg = new ServiceRegistry();
             reg.Add<IPortProbe>(port);
             reg.Add<IHttpProbe>(http);
             reg.Add<IProcessQuery>(proc);
-            reg.Add<IProfileSource>(new WindowsProfileSource());
+            reg.Add<IPaths>(paths);
+            reg.Add<IToolchainQuery>(new WindowsToolchainQuery());
+            reg.Add<IFileSystemQuery>(new WindowsFileSystemQuery());
+            reg.Add<IIntegritySource>(new WindowsIntegritySource());
+            reg.Add<IProfileSource>(new WindowsProfileSource(paths));
+            reg.Add<IBackupSource>(new WindowsBackupSource(paths));
             reg.Add<IServiceTarget>(new WebTarget(port, http, proc, new WebTargetOptions(WebPort, WebUrl, 800, 800)));
             return reg;
         }

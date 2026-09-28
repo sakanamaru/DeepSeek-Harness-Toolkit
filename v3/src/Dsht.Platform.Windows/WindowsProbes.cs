@@ -42,8 +42,10 @@ namespace Dsht.Platform.Windows
             catch { return false; }
         }
 
-        /// <summary>任意状态码（含 401/403/404）也算有应答：服务活着但要求鉴权时用（对齐 v2.x 的 HttpResponds）。</summary>
-        public bool Responds(string url, int timeoutMs)
+        /// <summary>接口方法：任意状态码也算有应答（对齐 v2.x 的 HttpResponds）。</summary>
+        public bool Responds(string url, int timeoutMs) { return RespondsCore(url, timeoutMs); }
+
+        public bool RespondsCore(string url, int timeoutMs)
         {
             try
             {

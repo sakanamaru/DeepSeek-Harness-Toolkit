@@ -7,7 +7,7 @@ namespace Dsht.Platform.Windows
     /// <summary>进程观测（Windows）。
     /// 逐条对齐 v2.x：FindPortPid = netstat -ano -p tcp + ParsePortPid；
     /// 监听身份 = 命令行含 "dsh"（忽略大小写），否则若进程名含 node 再用 HTTP 应答兜底。
-    /// 与 v2.x 的差异：**不做 10 秒缓存**——v2.x 缓存是因为 GUI 每 3 秒轮询；V3 CLI 每次进程只探一次，缓存无收益。</summary>
+    /// 与 v2.x 的差异：**不做 10 秒缓存**——v2.x 缓存是因为 GUI 每 3 秒轮询；V3 CLI 每次进程只探一次。</summary>
     public sealed class WindowsProcessQuery : IProcessQuery
     {
         private readonly WindowsHttpProbe _http;
@@ -33,18 +33,27 @@ namespace Dsht.Platform.Windows
             catch { return null; }
         }
 
+        public string CommandLine(int pid)
+        {
+            if (pid <= 0) return "";
+            try
+            {
+                return WindowsShell.Capture("powershell.exe",
+                    "-NoProfile -NonInteractive -Command \"Get-CimInstance Win32_Process -Filter 'ProcessId=" + pid + "' | Select-Object -ExpandProperty CommandLine\"");
+            }
+            catch { return ""; }
+        }
+
         public bool IsDshCommandLine(int pid)
         {
             if (pid <= 0) return false;
             try
             {
-                string cmd = WindowsShell.Capture("powershell.exe",
-                    "-NoProfile -NonInteractive -Command \"Get-CimInstance Win32_Process -Filter 'ProcessId=" + pid + "' | Select-Object -ExpandProperty CommandLine\"");
-                if (IsDshCommandLineText(cmd)) return true;
+                if (IsDshCommandLineText(CommandLine(pid))) return true;
                 string pname = "";
                 try { pname = Process.GetProcessById(pid).ProcessName ?? ""; } catch { }
                 if (pname.IndexOf("node", StringComparison.OrdinalIgnoreCase) >= 0)
-                    return _http != null && _http.Responds(_probeUrl, _httpTimeoutMs);
+                    return _http != null && _http.RespondsCore(_probeUrl, _httpTimeoutMs);
                 return false;
             }
             catch { return false; }
