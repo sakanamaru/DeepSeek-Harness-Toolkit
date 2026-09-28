@@ -6,6 +6,8 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
+using FluentIcons.Avalonia;
+using FluentIcons.Common;
 using Dsht.Gui.Avalonia.Markers;
 using Dsht.Gui.Avalonia.ViewModels;
 
@@ -78,17 +80,27 @@ namespace Dsht.Gui.Avalonia.Shells
             return g;
         }
 
+        /// <summary>导航行：图标 + 文字（FluentIcons，替代之前的 Unicode 字形）。</summary>
+        private static Control NavRow(Symbol icon, string text, IBrush fg)
+        {
+            StackPanel s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            s.Children.Add(new SymbolIcon { Symbol = icon, IconVariant = IconVariant.Regular, FontSize = 16, Foreground = fg, VerticalAlignment = VerticalAlignment.Center });
+            s.Children.Add(new TextBlock { Text = text, Foreground = fg, FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
+            return s;
+        }
+
         private static Control MainMenu(MainWindow host)
         {
             StackPanel s = new StackPanel { Margin = new Thickness(10, 14, 10, 14), Spacing = 2 };
             s.Children.Add(new TextBlock { Text = "主菜单", Foreground = Palette.TextFaint, FontSize = 11, Margin = new Thickness(10, 4, 0, 6) });
+            s.Children.Add(NavRow(Symbol.AppsList, "全部功能", Palette.TextFaint));
             for (int i = 0; i < MainWindow.NavItems.Length; i++)
             {
                 int idx = i;
                 bool active = host.MainSection == i;
                 Button b = new Button
                 {
-                    Content = MainWindow.NavItems[i],
+                    Content = NavRow(MainWindow.NavIcons[i], MainWindow.NavItems[i], active ? Palette.Accent : Palette.Text),
                     HorizontalAlignment = HorizontalAlignment.Stretch,
                     HorizontalContentAlignment = HorizontalAlignment.Left,
                     Background = active ? Palette.AccentSoft : Brushes.Transparent,
