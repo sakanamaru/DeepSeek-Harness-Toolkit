@@ -85,6 +85,9 @@ namespace Dsht.Platform.Windows
             }
             catch { return -1; }
         }
+        /// <summary>Windows 上不代装 Node（安装器负责）；返回 -1，由调用方如实说明。</summary>
+        public int InstallNodeRuntime() { return -1; }
+
         public string NpmViewLatest() { return WindowsShell.Capture("cmd.exe", "/c npm view @deepseek-ai/dsh version 2>nul"); }
     }
 }
