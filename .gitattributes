@@ -1,0 +1,7 @@
+# Keep shell scripts LF everywhere. The repo is developed on Windows where core.autocrlf=true,
+# which would check these out as CRLF and break them on Linux (and in CI).
+*.sh text eol=lf
+
+# PowerShell files must keep their BOM (the switchover suite asserts it); line endings are not
+# constrained because PowerShell 5.1 reads either.
+*.ps1 text
