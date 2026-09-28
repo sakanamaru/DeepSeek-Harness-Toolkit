@@ -89,6 +89,7 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_switchover.ps1 -Repo .
 |---|---|
 | `status` / `status --detail` | `STATUS_UP` / `STATUS_STARTING` / `STATUS_DOWN` + `STATUS_PID` / `STATUS_START` / `STATUS_UPTIME` |
 | `profilecheck [--dir X] [--file Y] [--vendor] [--abs]` | `PROFILECHK_WARN` / `_TOTAL` / `_SKIPPED_VENDOR` / `_FIX` / `_OK` |
+| `profiles`（V3 独有） | `PROFILES_OK <n>` + `PROFILE <name> form=<web\|headless\|acp\|unknown\|unparsed> bundles=<n> thirdparty=<m>` + `BUNDLE <profile> <bundle-id> <official\|thirdparty>` / `PROFILES_FAIL <原因>`；**只读** `profiles/<name>/package.json` 的 `dsh.profile.bundles` → 给出**配置形态**与**插件清单（含第三方）**。**注意：这是配置形态，不是运行形态**——"dsh 在跑"仍由端口/进程等运行时事实判断 |
 | `backup-list [--detail]` | `BACKUP_LIST_OK` + 裸路径行 + `BACKUP_ITEM` |
 | `doctor [--report <file>]` | `DOCTOR_OK` / `DOCTOR_WARN` / `DOCTOR_ERROR` + `[级别] 类别 描述`；`--report` 另写完整诊断报告（分类小节 + 配置/日志摘要，全部脱敏）→ `DOCTOR_REPORT <路径>` / `DOCTOR_WRITE_FAIL <原因>` |
 | `restore --dry-run [--path <dir>]` | `DRYRUN_OK` + `DRYRUN_SRC` + 每个作用域 `DRYRUN_SCOPE`/`_NEW`/`_OVERWRITE`/`_KEEP`/`_BYTES` + `DRYRUN_TOTAL` + `DRYRUN_NOTE`（失败 `DRYRUN_FAIL 原因`） |
