@@ -1192,6 +1192,26 @@ namespace Dsht.Cli
         /// <summary>备份完成性核对 ✓（`backup-list --verify`）：读每个包的**同级完成标记** &lt;包&gt;.manifest ✓。
         /// 标记**最后写** ✓ → 缺失即"备份未完成"（中断可被精确识别 ✓✓）；存在则核对文件数是否与标记一致 ✓（截断可被发现 ✓）。
         /// 这是**新增开关** ✓，不在标记行契约的比对用例里 ✓ → 不影响 gate1 ✓。</summary>
+        /// <summary>恢复前的**完成性核对** ✓：只在"完成标记**存在**且对不上"时返回原因 ✓。
+        /// 标记缺失时**不拦** ✓（老包没有标记 ✓，拦了会破坏兼容 ✓）；对不上则说明包被截断 ✓ → 恢复会缺内容 ✓。
+        /// 用 --force 可越过 ✓（与 stop 的闸门同一风格 ✓）。</summary>
+        private static string BackupTruncatedReason(string pkgDir)
+        {
+            try
+            {
+                string mf = pkgDir + ".manifest";
+                if (!System.IO.File.Exists(mf)) return null;
+                int want = -1;
+                string[] ls = System.IO.File.ReadAllLines(mf);
+                for (int i = 0; i < ls.Length; i++) { if (ls[i].StartsWith("files=", StringComparison.Ordinal)) int.TryParse(ls[i].Substring(6).Trim(), out want); }
+                if (want < 0) return null;
+                int have = 0;
+                try { have = System.IO.Directory.GetFiles(pkgDir, "*", System.IO.SearchOption.AllDirectories).Length; } catch { return null; }
+                if (have >= want) return null;
+                return T("该备份不完整（完成标记 ", "this backup is incomplete (marker says ") + want + T(" 个文件，实际 ", " files, actual ") + have + T(" 个）—— 恢复出来的数据会缺内容", " files) - a restore would come back with content missing");
+            }
+            catch { return null; }
+        }
         private static int BackupVerify(ServiceRegistry reg)
         {
             IBackupSource bk = reg.Get<IBackupSource>();
@@ -1699,6 +1719,13 @@ namespace Dsht.Cli
                     return 0;
                 }
                 bkDir = pathArg.Trim().Trim('"');
+                string trunc = BackupTruncatedReason(bkDir);
+                if (trunc != null && !Has(args, "--force"))
+                {
+                    Console.WriteLine("RESTORE_FAIL " + trunc + T("；确认要用它恢复请加 --force", "; add --force to restore from it anyway"));
+                    return 0;
+                }
+                if (trunc != null) Console.WriteLine("RESTORE_WARN " + trunc);
             }
             else
             {
@@ -1787,6 +1814,12 @@ namespace Dsht.Cli
             else
             {
                 string p = PathValidator.ResolveBackupPath(pathArg.Trim().Trim('"'), bk.BackupsRoot);   // 裸备份名解析到备份根内 ✓
+                string trunc2 = BackupTruncatedReason(p);
+                if (trunc2 != null && !Has(args, "--force"))
+                {
+                    Console.WriteLine("DRYRUN_FAIL " + trunc2 + T("；确认要预览它请加 --force", "; add --force to preview it anyway"));
+                    return 0;
+                }
                 if (PathUtil.IsSubPath(bk.BackupsRoot, p))
                 {
                     if (!BackupPackage.IsValidPackage(bk.Snapshot(p))) { Console.WriteLine("DRYRUN_FAIL " + T("无效备份目录", "invalid backup directory")); return 0; }
