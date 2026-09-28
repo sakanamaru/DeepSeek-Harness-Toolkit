@@ -437,6 +437,37 @@ namespace Dsht.Gui.Avalonia.Shells
 
         private static Control MainMenu(MainWindow host)
         {
+            Grid g = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+            Control inner = MainMenuInner(host);
+            Grid.SetRow(inner, 0);
+            g.Children.Add(inner);
+            Control start = StartStopButton(host);
+            Grid.SetRow(start, 1);
+            g.Children.Add(start);
+            return g;
+        }
+
+        /// <summary>侧栏最底下的一键启动/停止（用户要求放这里，不放看板）。</summary>
+        private static Control StartStopButton(MainWindow host)
+        {
+            StatusSnapshot st = host.Status;
+            bool up = st != null && st.Ok && st.State == 0;
+            StackPanel s = new StackPanel { Margin = new Thickness(12, 8, 12, 12), Spacing = 6 };
+            Button b = new Button
+            {
+                Content = up ? "■  停止 dsh" : "▶  一键启动 dsh",
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                Padding = new Thickness(10, 9)
+            };
+            b.Click += delegate { if (up) host.StopDsh(); else host.StartDsh(); };
+            s.Children.Add(b);
+            s.Children.Add(T(up ? "当前：运行中" : "当前：未运行", 10.5, up ? Palette.Good : Palette.TextFaint));
+            return s;
+        }
+
+        private static Control MainMenuInner(MainWindow host)
+        {
             StackPanel s = new StackPanel { Margin = new Thickness(12, 16, 12, 12), Spacing = 2 };
             s.Children.Add(new TextBlock { Text = "导航", Foreground = Palette.TextFaint, FontSize = 11, Margin = new Thickness(12, 0, 0, 8) });
             for (int i = 0; i < MainWindow.NavItems.Length; i++) s.Children.Add(NavItem(host, i));
@@ -912,6 +943,216 @@ namespace Dsht.Gui.Avalonia.Shells
             s.Children.Add(Card(list, new Thickness(0), new Thickness(16, 14)));
             return s;
         }
+        /// <summary>备份页：清单（名称/类型/大小/时间）+ 立即备份 / 导出 / 恢复预览 / 应用恢复 / 删除（两次确认）。</summary>
+        private static Control BackupContent(MainWindow host)
+        {
+            StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
+            List<BackupItem> items = host.BackupItems;
+
+            StackPanel bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            Button mk = new Button { Content = "＋ 立即备份" };
+            mk.Click += delegate { host.CreateBackup(); };
+            bar.Children.Add(mk);
+            bar.Children.Add(T("共 " + items.Count + " 份（" + (host.Backups != null && host.Backups.Ok ? "backup-list 有效包" : "未读到清单") + "）", 12, Palette.TextDim));
+            s.Children.Add(Card(bar, new Thickness(0), new Thickness(16, 14)));
+
+            if (items.Count == 0)
+                s.Children.Add(Card(T("还没有备份。点「立即备份」创建第一份（空数据根不会被算作有效备份，这是刻意的规则）。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));
+            for (int i = 0; i < items.Count; i++)
+            {
+                BackupItem b = items[i];
+                StackPanel row = new StackPanel { Spacing = 8 };
+                StackPanel head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+                head.Children.Add(Chip(b.KindText, b.Kind == "Manual" ? Palette.Accent : Palette.TextDim, b.Kind == "Manual" ? Palette.AccentSoft : Palette.BarTrack));
+                head.Children.Add(T(b.Name, 12.5, Palette.Text, FontWeight.SemiBold));
+                head.Children.Add(T(b.SizeText + "　" + b.Time, 11.5, Palette.TextFaint));
+                row.Children.Add(head);
+                StackPanel acts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                Button ex = new Button { Content = "导出", FontSize = 11.5 };
+                ex.Click += delegate { host.ExportBackup(b.Name); };
+                acts.Children.Add(ex);
+                Button dr = new Button { Content = "恢复预览", FontSize = 11.5 };
+                dr.Click += delegate { host.DryRunRestore(b.Name); };
+                acts.Children.Add(dr);
+                Button ap = new Button { Content = "应用恢复（仅隔离数据根）", FontSize = 11.5 };
+                ap.Click += delegate { host.ApplyRestore(b.Name); };
+                acts.Children.Add(ap);
+                string key = "del:" + b.Name;
+                bool armed = host.PendingDelete == key;
+                Button del = new Button
+                {
+                    Content = armed ? "再点一次确认删除" : "删除",
+                    FontSize = 11.5,
+                    Background = armed ? Palette.Bad : Palette.WarnSoft,
+                    Foreground = armed ? Brushes.White : Palette.Warn
+                };
+                del.Click += delegate
+                {
+                    if (host.PendingDelete != key) { host.PendingDelete = key; host.Rebuild(); return; }
+                    host.PendingDelete = "";
+                    host.DeleteBackup(b.Name);
+                };
+                acts.Children.Add(del);
+                row.Children.Add(acts);
+                s.Children.Add(Card(row, new Thickness(0), new Thickness(16, 14)));
+            }
+
+            if (!string.IsNullOrEmpty(host.ActionLog))
+                s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
+            s.Children.Add(Card(T("恢复是合并语义：只覆盖同名文件，不删除目标端独有的文件；「应用恢复」只允许写入隔离数据根（CLI 的准入闸门会拒绝其它情况并把原因显示在上面）。", 11.5, Palette.TextFaint), new Thickness(0), new Thickness(16, 12)));
+            return s;
+        }
+
+        /// <summary>设置页：逐键编辑（config-get / config-set），开关型给两个按钮，只读键禁编辑。</summary>
+        private static Control SettingsContent(MainWindow host)
+        {
+            StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 12 };
+            List<ConfigItem> items = host.Config;
+            if (items.Count == 0)
+            {
+                s.Children.Add(Card(T("没有读到配置项（CLI 未返回 CONFIG 行）。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));
+                return s;
+            }
+            s.Children.Add(Card(T("配置写入会立即生效并落盘（CLI 的 config-set）；键名与 v2.x 完全一致，可用文本编辑器对照。", 11.5, Palette.TextFaint), new Thickness(0), new Thickness(16, 12)));
+            for (int i = 0; i < items.Count; i++)
+            {
+                ConfigItem c = items[i];
+                StackPanel row = new StackPanel { Spacing = 8 };
+                StackPanel head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+                head.Children.Add(T(c.Key, 12.5, Palette.Text, FontWeight.SemiBold));
+                head.Children.Add(T(c.Desc, 11.5, Palette.TextDim));
+                row.Children.Add(head);
+
+                StackPanel edit = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                if (c.ReadOnly)
+                {
+                    edit.Children.Add(T(c.Value, 12, Palette.TextFaint));
+                }
+                else if (c.IsSwitch)
+                {
+                    string[] opts = new string[] { "on", "off" };
+                    for (int k = 0; k < opts.Length; k++)
+                    {
+                        string val = opts[k];
+                        bool active = c.Value == val;
+                        Button ob = new Button
+                        {
+                            Content = val,
+                            FontSize = 11.5,
+                            Background = active ? Palette.AccentSoft : Brushes.Transparent,
+                            Foreground = active ? Palette.Accent : Palette.TextDim
+                        };
+                        ob.Click += delegate { host.SetConfig(c.Key, val); };
+                        edit.Children.Add(ob);
+                    }
+                }
+                else
+                {
+                    TextBox box = new TextBox { Text = c.Value, Width = 260, FontSize = 12 };
+                    edit.Children.Add(box);
+                    Button save = new Button { Content = "保存", FontSize = 11.5 };
+                    save.Click += delegate { host.SetConfig(c.Key, box.Text == null ? "" : box.Text.Trim()); };
+                    edit.Children.Add(save);
+                    if (c.Key == "ws") edit.Children.Add(T("留空=自动探测；填了必须存在", 11, Palette.TextFaint));
+                }
+                row.Children.Add(edit);
+                s.Children.Add(Card(row, new Thickness(0), new Thickness(16, 12)));
+            }
+            if (!string.IsNullOrEmpty(host.ActionLog))
+                s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
+            return s;
+        }
+        /// <summary>看板图表：近 14 天新增会话（柱状）+ 缓存命中率分布（柱状）。
+        /// **手绘**（Grid + Border 柱），不引入任何图表依赖；日期用 ISO 字符串前缀比对，不做时区/日历运算（不猜）。</summary>
+        private static Control ChartsBody(MainWindow host)
+        {
+            SessionsSnapshot d = host.Data;
+            StackPanel s = new StackPanel { Spacing = 14 };
+            if (d == null || !d.Ok)
+            {
+                s.Children.Add(Card(T("没有可绘制的会话数据。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));
+                return s;
+            }
+
+            // ① 近 14 天新增会话
+            int days = 14;
+            string[] labels = new string[days];
+            long[] counts = new long[days];
+            System.DateTime today = System.DateTime.UtcNow.Date;
+            for (int i = 0; i < days; i++) labels[i] = today.AddDays(i - (days - 1)).ToString("MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            long max = 0;
+            for (int i = 0; i < d.Rows.Count; i++)
+            {
+                string created = d.Rows[i].Created;
+                if (string.IsNullOrEmpty(created) || created.Length < 10) continue;
+                string day = created.Substring(0, 10);
+                for (int k = 0; k < days; k++)
+                {
+                    if (labels[k].Length == 5 && day.Length == 10 && day.Substring(5, 5) == labels[k]) { counts[k]++; if (counts[k] > max) max = counts[k]; break; }
+                }
+            }
+            StackPanel c1 = new StackPanel { Spacing = 8 };
+            c1.Children.Add(T("近 14 天新增会话（按 dsh 记录的创建时间，UTC 日期）", 13, Palette.Text, FontWeight.Bold));
+            c1.Children.Add(BarChart(labels, counts, max, Palette.Accent, "个"));
+            c1.Children.Add(T("最高 " + max + " 个/天　合计 " + Sum(counts) + " 个（创建时间缺失的会话不计入，不猜）", 11.5, Palette.TextFaint));
+            s.Children.Add(Card(c1, new Thickness(0), new Thickness(18, 16)));
+
+            // ② 缓存命中率分布
+            long low = 0, mid = 0, high = 0, unknown = 0;
+            for (int i = 0; i < d.Rows.Count; i++)
+            {
+                double h = d.Rows[i].HitPercent;
+                if (h < 0) unknown++;
+                else if (h < 70) low++;
+                else if (h < 90) mid++;
+                else high++;
+            }
+            string[] hl = new string[] { "< 70%", "70–90%", "≥ 90%", "unknown" };
+            long[] hc = new long[] { low, mid, high, unknown };
+            StackPanel c2 = new StackPanel { Spacing = 8 };
+            c2.Children.Add(T("缓存命中率分布（会话数）", 13, Palette.Text, FontWeight.Bold));
+            c2.Children.Add(BarChart(hl, hc, Math.Max(Math.Max(low, mid), Math.Max(high, unknown)), Palette.Good, "个"));
+            c2.Children.Add(T("命中率越高越省钱；unknown 表示该会话没有这个字段（空会话），我们不会把它算成 0%。", 11.5, Palette.TextFaint));
+            s.Children.Add(Card(c2, new Thickness(0), new Thickness(18, 16)));
+            return s;
+        }
+
+        private static long Sum(long[] a) { long s = 0; for (int i = 0; i < a.Length; i++) s += a[i]; return s; }
+
+        /// <summary>柱状图：等宽柱子 + 底部标签（纯 Grid/Border，零依赖）。</summary>
+        private static Control BarChart(string[] labels, long[] values, long max, IBrush brush, string unit)
+        {
+            Grid g = new Grid { Height = 132 };
+            for (int i = 0; i < labels.Length; i++) g.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
+            for (int i = 0; i < labels.Length; i++)
+            {
+                long v = values[i];
+                double h = max <= 0 ? 2 : 4 + (v * 88.0 / max);
+                StackPanel col = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Spacing = 3, Margin = new Thickness(2, 0) };
+                col.Children.Add(T(v == 0 ? "" : v.ToString(), 10, Palette.TextDim));
+                col.Children.Add(new Border { Height = h, CornerRadius = new CornerRadius(3), Background = v == 0 ? Palette.BarTrack : brush });
+                col.Children.Add(T(labels[i], 9.5, Palette.TextFaint));
+                Grid.SetColumn(col, i);
+                g.Children.Add(col);
+            }
+            return g;
+        }
+        private static Control OverviewContent(MainWindow host)
+        {
+            if (host.SubTab == 1) return new Border { Margin = PageMargin, Child = RawCard(host, "原始输出", "status --detail 的标记行原文") };
+            return StatusDetail(host);
+        }
+
+        /// <summary>看板：指标（KPI + 操作日志）与图表（近 14 天新增会话、命中率分布）。</summary>
+        private static Control BoardContent(MainWindow host)
+        {
+            StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
+            if (host.SubTab == 1) { s.Children.Add(ChartsBody(host)); return s; }
+            s.Children.Add(KpiStrip(host));
+            if (!string.IsNullOrEmpty(host.ActionLog)) s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
+            return s;
+        }
+
         private static Control StatusDetail(MainWindow host)
         {
             StatusSnapshot st = host.Status;
