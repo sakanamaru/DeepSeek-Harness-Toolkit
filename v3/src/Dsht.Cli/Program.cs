@@ -35,6 +35,7 @@ namespace Dsht.Cli
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
             if (cmd == "profilepatch") return ProfilePatch(args, reg);
             if (cmd == "profiles") return Profiles(reg);
+            if (cmd == "import") return ImportCmd(args, reg);
             if (cmd == "update-info") return UpdateInfo(reg);
             if (cmd == "log") return LogCmd(args, reg);
             if (cmd == "about") return AboutCmd();
@@ -360,6 +361,70 @@ namespace Dsht.Cli
             Console.Write(T("将执行：", "will run: ") + what + T("　确认？(y/N) ", "  confirm? (y/N) "));
             string a = Console.ReadLine();
             return a != null && a.Trim().ToLowerInvariant() == "y";
+        }
+        /// <summary>import（V3 独有）：把**外部**备份包导入本机备份根 ✓ —— 跨机迁移的关键一环 ✓。
+        /// 恢复侧刻意只接受备份根内的路径（outside → 拒绝 ✓），所以外部包必须先导入 ✓。
+        /// 用法：import --path &lt;外部包&gt; [--yes]。加 --yes 时：先对当前数据根做一次 -pre-import 安全备份 ✓，
+        /// 再**复制**外部包进备份根（源包不动 ✓），最后提示用 restore 恢复 ✓。导入本身不改动数据 ✓。</summary>
+        private static int ImportCmd(string[] args, ServiceRegistry reg)
+        {
+            string src = FlagOf(args, "--path");
+            if (src.Length == 0) { Console.WriteLine("IMPORT_FAIL usage: import --path <外部备份包> [--yes]"); return 0; }
+            if (!System.IO.Directory.Exists(src)) { Console.WriteLine("IMPORT_FAIL " + T("源目录不存在: ", "source directory does not exist: ") + src); return 0; }
+            IBackupSource bk = reg.Get<IBackupSource>();
+            string root = bk.BackupsRoot;
+            string srcFull, rootFull;
+            try
+            {
+                srcFull = System.IO.Path.GetFullPath(src).TrimEnd(System.IO.Path.DirectorySeparatorChar);
+                rootFull = System.IO.Path.GetFullPath(root).TrimEnd(System.IO.Path.DirectorySeparatorChar);
+            }
+            catch (Exception ex) { Console.WriteLine("IMPORT_FAIL " + ex.Message); return 0; }
+            if (srcFull == rootFull || srcFull.StartsWith(rootFull + System.IO.Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            {
+                Console.WriteLine("IMPORT_NOTE " + T("该备份已在本机备份根内，无需导入 —— 直接 restore 即可", "that backup is already inside the local backups root - just restore it"));
+                Console.WriteLine("IMPORT_OK " + srcFull);
+                return 0;
+            }
+            string[] entries = null;
+            try { entries = System.IO.Directory.GetFileSystemEntries(srcFull); } catch { }
+            if (entries == null || entries.Length == 0) { Console.WriteLine("IMPORT_FAIL " + T("无效备份目录（空目录）", "invalid backup directory (empty)")); return 0; }
+            if (!Has(args, "--yes"))
+            {
+                Console.WriteLine("IMPORT_PLAN " + T("将把 ", "will copy ") + srcFull + T(" 复制进备份根 ", " into the backups root ") + rootFull + T("，并先对当前数据根做一次 -pre-import 安全备份（会写盘）—— 确认请加 --yes", ", taking a -pre-import safety backup of the current data root first (writes to disk) - add --yes to confirm"));
+                return 0;
+            }
+            // 1) 安全网：导入前给当前数据根留一份 -pre-import 备份 ✓
+            try
+            {
+                Dsht.Domain.Model.BackupResult pb = bk.Create(reg.Get<IPaths>().DataRoot, Dsht.Domain.Model.BackupKind.PreImport, _cfg == null ? 3 : _cfg.KeepBackups, WorkspaceRoot(reg));
+                if (pb != null && !string.IsNullOrEmpty(pb.Path)) Console.WriteLine("IMPORT_PRE_BACKUP " + pb.Path);
+            }
+            catch (Exception bex) { Console.WriteLine("IMPORT_PRE_BACKUP_FAILED " + bex.Message); }
+            // 2) 复制外部包进备份根（源包不动 ✓）；名字带 -imported 便于识别（Classify 视作手动类 ✓ 不会被自动清理 ✓）
+            string dest = System.IO.Path.Combine(rootFull, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff") + "-imported");
+            try
+            {
+                int files = CopyDirDeep(srcFull, dest, 0);
+                OpLog(reg, "INFO", "import OK " + srcFull + " -> " + dest + " (" + files + " files)");
+                Console.WriteLine("IMPORT_OK " + dest + " " + files);
+                Console.WriteLine("IMPORT_NEXT " + T("下一步：restore --path ", "next: restore --path ") + dest + T(" --dry-run 先预览，再去掉 --dry-run 执行", " --dry-run to preview, then drop --dry-run to apply"));
+            }
+            catch (Exception cex) { OpLog(reg, "ERROR", "import failed: " + cex.Message); Console.WriteLine("IMPORT_FAIL " + cex.Message); }
+            return 0;
+        }
+
+        /// <summary>递归复制目录（导入用 ✓；深度上限兜底，避免符号链接环 ✗）。返回复制文件数。</summary>
+        private static int CopyDirDeep(string from, string to, int depth)
+        {
+            if (depth > 32) return 0;
+            System.IO.Directory.CreateDirectory(to);
+            int n = 0;
+            string[] files = System.IO.Directory.GetFiles(from);
+            for (int i = 0; i < files.Length; i++) { System.IO.File.Copy(files[i], System.IO.Path.Combine(to, System.IO.Path.GetFileName(files[i])), true); n++; }
+            string[] dirs = System.IO.Directory.GetDirectories(from);
+            for (int i = 0; i < dirs.Length; i++) n += CopyDirDeep(dirs[i], System.IO.Path.Combine(to, System.IO.Path.GetFileName(dirs[i])), depth + 1);
+            return n;
         }
         /// <summary>update-info（V3 独有，只读）：经典版「更新中心」的 CLI 对应物 ✓。
         /// 标记行：UPDATEINFO_INSTALLED/LATEST/REGISTRY/STATE/PRE_BACKUP/PRE_BACKUP_VERSION/ROLLBACK。</summary>
