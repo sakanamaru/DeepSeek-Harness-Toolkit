@@ -68,6 +68,10 @@ $cases = @(
     @{ name = 'check'; args = @('check'); full = $true; ignore = '^(=+|-+)$|^\s*(DeepSeek Harness Toolkit V|v1 脚本协助|v2 重构封装|GitHub\s|⚠|dsh 最新\s+:)' },
     # backup：真实写盘（每次约 400MB）→ 用 -Heavy 按需开启；目录名含时间戳，比对时归一化
     @{ name = 'backup (heavy)'; args = @('backup'); full = $true; heavy = $true; mask = 'dsh-data-\d{8}-\d{9,}' },
+    @{ name = 'restore --path (outside)'; args = @('restore','--path','C:\nope\outside'); full = $true },
+    @{ name = 'restore --path (invalid, never exists)'; args = @('restore','--path',(Join-Path $Repo 'backup\dsh-data-19990101-000000000')); full = $true },
+    @{ name = 'backup-delete (outside)'; args = @('backup-delete','--path','C:\nope\x'); full = $true },
+    @{ name = 'backup-export (no-to)'; args = @('backup-export','--path',(Join-Path $Repo 'backup\dsh-data-1')); full = $true },
     @{ name = 'config-get';          args = @('config-get'); full = $true },
     @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity '; ignoreSummary = $true }
 )
