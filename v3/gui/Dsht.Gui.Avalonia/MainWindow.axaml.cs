@@ -392,7 +392,7 @@ namespace Dsht.Gui.Avalonia
         public void PatchEntry(string profile, string entryId, bool disable)
         {
             string core = ToolkitCore();
-            if (core == null) { _actionLog = "无法执行隔离：" + CoreMissingText(); BuildShell(); return;; BuildShell(); return; }
+            if (core == null) { _actionLog = "无法执行隔离：" + CoreMissingText(); BuildShell(); return; }
             string yaml = Path.Combine(Path.Combine(_profilesRoot, profile), "cordis.patch.yml");
             string args = "profilepatch --file " + yaml + " --id " + entryId + (disable ? " --disable" : " --set disabled=false") + " --yes";
             string outp = Run(core, args);

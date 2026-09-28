@@ -158,9 +158,9 @@ namespace Dsht.Cli
         /// <summary>sessions（V3 独有）：会话 / token / 缓存 面板的数据源。**只读** dsh 的会话投影（明文 JSON）。
         /// 来源优先级：插件快照（存在时）→ 每会话投影文件 → 投影总表。
         /// 标记行：
-        ///   `SESSIONS_OK &lt;n&gt;` / `SESSIONS_NONBLANK &lt;n&gt;` / `SESSIONS_SOURCE &lt;snapshot|disk|aggregate&gt;` / `SESSIONS_ROOT &lt;dir&gt;`
-        ///   / 每会话 `SESSION &lt;id&gt; last=&lt;t|unknown&gt; turns= steps= in= out= cacheRead= hit=&lt;%|unknown&gt; decode=&lt;tok/s|unknown&gt; ttft=&lt;ms|unknown&gt; ctx=&lt;%|unknown&gt; blank=0|1`
-        ///   / `SESSIONS_TOTAL in= out= cacheRead= hit=&lt;%|unknown&gt; decode=&lt;tok/s|unknown&gt;` / `SESSIONS_FAIL &lt;原因&gt;`
+        ///   `SESSIONS_OK <n>` / `SESSIONS_NONBLANK <n>` / `SESSIONS_SOURCE <snapshot|disk|aggregate>` / `SESSIONS_ROOT <dir>`
+        ///   / 每会话 `SESSION <id> last=<t|unknown> turns= steps= in= out= cacheRead= hit=<%|unknown> decode=<tok/s|unknown> ttft=<ms|unknown> ctx=<%|unknown> blank=0|1`
+        ///   / `SESSIONS_TOTAL in= out= cacheRead= hit=<%|unknown> decode=<tok/s|unknown>` / `SESSIONS_FAIL <原因>`
         /// **诚实边界**：只读计数/时间/元数据，**不读对话正文**；字段缺失打印 `unknown`（不假装 0）；
         /// "有几个会话在运行"这里只能给**最后活动时间**——运行态是进程内事实，需要插件。</summary>
         private static int Sessions(ServiceRegistry reg)
@@ -242,8 +242,8 @@ namespace Dsht.Cli
         }
 
         /// <summary>start（V3 独有）：启动 dsh，然后**用可观测事实确认**是否真的起来 —— 绝不因为"命令发出去了"就报成功。
-        /// 标记行：`START_OK &lt;pid&gt;` / `START_FAIL &lt;原因&gt;`，两者之后都会补一行 `START_OBSERVED &lt;状态&gt;`（Ready/Listening/Down）。
-        /// 用法：`start [--port &lt;n&gt;] [--profile &lt;name&gt;]`（默认 3080 / web）。</summary>
+        /// 标记行：`START_OK <pid>` / `START_FAIL <原因>`，两者之后都会补一行 `START_OBSERVED <状态>`（Ready/Listening/Down）。
+        /// 用法：`start [--port <n>] [--profile <name>]`（默认 3080 / web）。</summary>
         /// <summary>取参数值（形如 `--port 3999`）；缺省或非法时返回 fallback。仅用于文案展示，判定逻辑在 TargetForStart 里。</summary>
         private static string ArgOr(string[] args, string name, string fallback)
         {
@@ -269,7 +269,7 @@ namespace Dsht.Cli
         }
         /// <summary>install / update（V3 独有）：装或升级 dsh。**只用可观测事实判定结果**：
         /// 先看 WhichDsh/DshVersion（是否已装）→ 打印计划 → `--yes` 闸门 → npm → **再复检**。
-        /// 标记行：`INSTALL_PLAN/_DRYRUN/_SKIP/_OK/_FAIL` 或 `UPDATE_*`，并始终补一行 `*_OBSERVED &lt;版本|not-installed&gt;`。</summary>
+        /// 标记行：`INSTALL_PLAN/_DRYRUN/_SKIP/_OK/_FAIL` 或 `UPDATE_*`，并始终补一行 `*_OBSERVED <版本|not-installed>`。</summary>
         /// <summary>无参数时的数字菜单（沿用 v2.x 的习惯，条目按 V3 的命令重排）。
         /// **纪律：写操作在菜单里二次确认后，才带 --yes 调用同一个命令实现** —— 闸门不绕过；
         /// 输入 EOF（管道/重定向）视为退出，绝不空转。</summary>
@@ -324,7 +324,10 @@ namespace Dsht.Cli
         private static int ShortcutCmd(string[] args)
         {
             bool win = PlatformIsWindows();
-            string exe = System.Reflection.Assembly.GetEntryAssembly() != null ? System.Reflection.Assembly.GetEntryAssembly().Location : "";
+            // 单文件发布下 Assembly.Location 是空的 ✗（真机测试抓到的）→ 用 MainModule，两条构建路径都可用 ✓
+            string exe = "";
+            try { exe = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName; } catch { }
+            if (string.IsNullOrEmpty(exe)) exe = System.IO.Path.Combine(AppContext.BaseDirectory, "dsh-minato");
             if (string.IsNullOrEmpty(exe)) { Console.WriteLine("SHORTCUT_FAIL " + T("拿不到自身路径", "cannot resolve own path")); return 0; }
             string dir = System.IO.Path.GetDirectoryName(exe);
             string target = win ? System.IO.Path.Combine(dir, "dsht-minato.exe") : System.IO.Path.Combine(dir, "dsht-minato");
@@ -511,7 +514,7 @@ namespace Dsht.Cli
             if (!Has(args, "--yes"))
             {
                 Console.WriteLine("START_PLAN " + T("将启动：dsh（profile ", "will start dsh (profile ") + ArgOr(args, "--profile", "web") + T(" / 端口 ", " / port ") + ArgOr(args, "--port", WebPort.ToString()) + T("）—— 这会改变系统状态，需要显式确认。", ") - this changes system state and needs explicit confirmation."));
-                Console.WriteLine("START_NOTE " + T("确认请加 --yes；可用 --port &lt;n&gt; 指定端口（测试时务必用非默认端口）。", "add --yes to confirm; --port &lt;n&gt; to pick a port (always use a non-default port when testing)."));
+                Console.WriteLine("START_NOTE " + T("确认请加 --yes；可用 --port <n> 指定端口（测试时务必用非默认端口）。", "add --yes to confirm; --port <n> to pick a port (always use a non-default port when testing)."));
                 Console.WriteLine("START_OBSERVED " + before.State.ToString().ToLowerInvariant());
                 return 0;
             }
@@ -565,7 +568,7 @@ namespace Dsht.Cli
         }
 
         /// <summary>stop（V3 独有）：按**观测到的 PID** 结束 dsh，再用观测确认真的停了。
-        /// 标记行：`STOP_OK &lt;pid&gt;` / `STOP_FAIL &lt;原因&gt;` + `STOP_OBSERVED &lt;状态&gt;`。</summary>
+        /// 标记行：`STOP_OK <pid>` / `STOP_FAIL <原因>` + `STOP_OBSERVED <状态>`。</summary>
         private static int StopCmd(string[] args, ServiceRegistry reg)
         {
             IServiceTarget target = reg.Get<IServiceTarget>();
@@ -615,10 +618,10 @@ namespace Dsht.Cli
             return System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
         }
         /// <summary>profiles（V3 独有）：列出 profile、它们的**配置形态**与插件清单。
-        /// 数据来源：`&lt;数据根&gt;/profiles/&lt;name&gt;/package.json` 里的 `dsh.profile.bundles`（明文小 JSON，只读零注入）。
+        /// 数据来源：`<数据根>/profiles/<name>/package.json` 里的 `dsh.profile.bundles`（明文小 JSON，只读零注入）。
         /// 标记行：
-        ///   `PROFILES_OK &lt;n&gt;` / `PROFILE &lt;name&gt; form=&lt;web|headless|acp|unknown|unparsed&gt; bundles=&lt;n&gt; thirdparty=&lt;m&gt;`
-        ///   / `BUNDLE &lt;profile&gt; &lt;bundle-id&gt; &lt;official|thirdparty&gt;` / `PROFILES_FAIL &lt;原因&gt;`
+        ///   `PROFILES_OK <n>` / `PROFILE <name> form=<web|headless|acp|unknown|unparsed> bundles=<n> thirdparty=<m>`
+        ///   / `BUNDLE <profile> <bundle-id> <official|thirdparty>` / `PROFILES_FAIL <原因>`
         /// **诚实边界**：这是**配置形态**（manifest 里启用了哪个 app bundle），**不是运行形态**——
         /// "dsh 在跑"仍必须由端口/进程等运行时事实判断（见 describe/status）。</summary>
         private static int Profiles(ServiceRegistry reg)
@@ -693,8 +696,8 @@ namespace Dsht.Cli
 
 
         /// <summary>doctor：七类体检。首行 DOCTOR_OK|WARN|ERROR n，其后每行 [级别] 类别 描述。逐条对齐 v2.x。
-        /// 可选 `--report &lt;file&gt;`：写完整诊断报告（含配置/日志摘要，全部脱敏）→ `DOCTOR_REPORT &lt;路径&gt;`；
-        /// 写失败 → `DOCTOR_WRITE_FAIL &lt;原因&gt;`。全程只读（与 v2.x 一致，报告用 UTF-8 **带 BOM** 写）。</summary>
+        /// 可选 `--report <file>`：写完整诊断报告（含配置/日志摘要，全部脱敏）→ `DOCTOR_REPORT <路径>`；
+        /// 写失败 → `DOCTOR_WRITE_FAIL <原因>`。全程只读（与 v2.x 一致，报告用 UTF-8 **带 BOM** 写）。</summary>
         /// <summary>当前操作系统名（跨平台：Linux 上不能写 "Windows" —— 真机测试抓到的 bug）。</summary>
         private static string OsName()
         {
@@ -835,8 +838,8 @@ namespace Dsht.Cli
 
         /// <summary>profilepatch（V3 独有）：给 profile 的 cordis.patch.yml 追加/修改"禁用某个条目"的顶层行。
         /// 纪律与 v2.x 一致：**备份 → 写盘 → 复检 → 失败回滚**；不带 --yes 只打印计划（DRYRUN）。
-        /// 用法：`profilepatch --profile &lt;name&gt; --id &lt;entry&gt; [--enable] [--yes]`
-        /// 标记行：`PROFILEPATCH_PLAN` / `_DRYRUN` / `_BACKUP` / `_OK` / `_NOOP` / `_ROLLBACK` / `_FAIL &lt;原因&gt;`。</summary>
+        /// 用法：`profilepatch --profile <name> --id <entry> [--enable] [--yes]`
+        /// 标记行：`PROFILEPATCH_PLAN` / `_DRYRUN` / `_BACKUP` / `_OK` / `_NOOP` / `_ROLLBACK` / `_FAIL <原因>`。</summary>
         private static int ProfilePatch(string[] args, ServiceRegistry reg)
         {
             IProfileManifestSource src = reg.Get<IProfileManifestSource>();
@@ -1358,7 +1361,7 @@ namespace Dsht.Cli
             catch { return new ToolkitConfig(); }
         }
 
-        /// <summary>config-get：CONFIGGET_OK + 每行 CONFIG &lt;key&gt; &lt;value&gt;（顺序与 v2.x 一致）。</summary>
+        /// <summary>config-get：CONFIGGET_OK + 每行 CONFIG <key> <value>（顺序与 v2.x 一致）。</summary>
         private static int ConfigGet()
         {
             Console.WriteLine("CONFIGGET_OK");
@@ -1375,7 +1378,7 @@ namespace Dsht.Cli
             return 0;
         }
 
-        /// <summary>config-set &lt;key&gt; &lt;value&gt;：白名单内才写盘，否则 CONFIGSET_FAIL 原因。</summary>
+        /// <summary>config-set <key> <value>：白名单内才写盘，否则 CONFIGSET_FAIL 原因。</summary>
         private static int ConfigSet(string[] args, ServiceRegistry reg)
         {
             string key = args.Length > 1 ? args[1] : "";
