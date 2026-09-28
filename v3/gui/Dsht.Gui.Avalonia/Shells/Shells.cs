@@ -557,6 +557,7 @@ namespace Dsht.Gui.Avalonia.Shells
             if (host.MainSection == 0) return OverviewContent(host);
             if (host.MainSection == 1) return BoardContent(host);
             if (host.MainSection == 4) return BackupContent(host);
+            if (host.MainSection == 5) return HealthContent(host);
             if (host.MainSection == 6) return SettingsContent(host);
             return new Border { Margin = PageMargin, Child = RawCard(host, "原始输出", "CLI 标记行原文") };
         }
@@ -944,6 +945,35 @@ namespace Dsht.Gui.Avalonia.Shells
                 list.Children.Add(T((i + 1) + ".　" + name + "　　" + r.InText + "　命中 " + r.HitText + "　" + r.DecodeText, 12, Palette.TextDim));
             }
             s.Children.Add(Card(list, new Thickness(0), new Thickness(16, 14)));
+            return s;
+        }
+        /// <summary>体检页：结论徽章 + 分级条目（错误在前），原始输出另有一页。</summary>
+        private static Control HealthContent(MainWindow host)
+        {
+            DoctorSummary d = host.Doctor;
+            StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
+            if (host.SubTab == 1) { s.Children.Add(new Border { Child = RawCard(host, "原始输出", "doctor 的标记行与分级条目原文") }); return s; }
+            if (d == null || !d.Ok)
+            {
+                s.Children.Add(Card(T("还没有体检结果。进这一页会自动跑一次 doctor（会检查网络，可能需要几秒）。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));
+                return s;
+            }
+            IBrush b = d.Error > 0 ? Palette.Bad : (d.Warn > 0 ? Palette.Warn : Palette.Good);
+            StackPanel head = new StackPanel { Spacing = 6 };
+            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+            row.Children.Add(new Ellipse { Width = 14, Height = 14, Fill = b, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(T(d.Headline, 24, b, FontWeight.Bold));
+            head.Children.Add(row);
+            head.Children.Add(T("错误 " + d.Error + " · 提醒 " + d.Warn + " · 通过 " + d.Pass + "（只依据工具箱自己的检查结果，不替它下别的结论）", 12, Palette.TextDim));
+            s.Children.Add(Card(head, new Thickness(0), new Thickness(18, 16)));
+
+            if (d.ErrorLines.Count > 0 || d.WarnLines.Count > 0)
+            {
+                StackPanel list = new StackPanel { Spacing = 6 };
+                for (int i = 0; i < d.ErrorLines.Count; i++) list.Children.Add(T(d.ErrorLines[i], 12, Palette.Bad));
+                for (int i = 0; i < d.WarnLines.Count; i++) list.Children.Add(T(d.WarnLines[i], 12, Palette.Warn));
+                s.Children.Add(Card(list, new Thickness(0), new Thickness(16, 14)));
+            }
             return s;
         }
         /// <summary>备份页：清单（名称/类型/大小/时间）+ 立即备份 / 导出 / 恢复预览 / 应用恢复 / 删除（两次确认）。</summary>

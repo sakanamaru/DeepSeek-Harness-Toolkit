@@ -433,7 +433,8 @@ namespace Dsht.Gui.Avalonia
         /// <summary>概览与看板都需要 status/profiles/sessions 这批数据。</summary>
         public bool IsOverviewLike { get { return _mainSection <= 1; } }
         public string RawOutput { get { return _rawOutput; } }
-        public string[] SubTabs { get { return NavSubs[_mainSection]; } }
+        /// <summary>导航表访问一律带范围保护 —— 菜单项数与表长度不一致时不允许越界（审计发现过 UI 线程越界崩溃）。</summary>
+        public string[] SubTabs { get { return _mainSection >= 0 && _mainSection < NavSubs.Length && NavSubs[_mainSection] != null ? NavSubs[_mainSection] : new string[0]; } }
 
         public string PageTitle
         {
@@ -444,8 +445,9 @@ namespace Dsht.Gui.Avalonia
         {
             get
             {
-                string[] d = NavDesc[_mainSection];
-                int i = _subTab < d.Length ? _subTab : 0;
+                string[] d = _mainSection >= 0 && _mainSection < NavDesc.Length && NavDesc[_mainSection] != null ? NavDesc[_mainSection] : new string[0];
+                if (d.Length == 0) return "";
+            int i = _subTab < d.Length ? _subTab : 0;
                 return d[i];
             }
         }
@@ -588,7 +590,7 @@ namespace Dsht.Gui.Avalonia
             }
             if (!IsSessionsSection)
             {
-                _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, string.Join(" ", NavCli[_mainSection])); });
+                _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, string.Join(" ", (_mainSection >= 0 && _mainSection < NavCli.Length && NavCli[_mainSection] != null ? NavCli[_mainSection] : new string[0]))); });
                 BuildShell();
                 return;
             }

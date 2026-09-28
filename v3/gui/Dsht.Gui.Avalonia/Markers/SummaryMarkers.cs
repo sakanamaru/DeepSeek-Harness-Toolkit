@@ -48,7 +48,7 @@ namespace Dsht.Gui.Avalonia.Markers
                 if (line.StartsWith("DOCTOR_ERROR", StringComparison.Ordinal)) { d.Error++; d.Ok = true; continue; }
                 if (line.StartsWith("[错误]", StringComparison.Ordinal) || line.StartsWith("[ERROR", StringComparison.OrdinalIgnoreCase)) { if (d.ErrorLines.Count < 8) d.ErrorLines.Add(line); continue; }
                 if (line.StartsWith("[提醒]", StringComparison.Ordinal) || line.StartsWith("[WARN", StringComparison.OrdinalIgnoreCase)) { if (d.WarnLines.Count < 8) d.WarnLines.Add(line); continue; }
-                if (line.StartsWith("[通过]", StringComparison.Ordinal)) { d.Pass++; continue; }
+                if (line.StartsWith("[OK]", StringComparison.Ordinal) || line.StartsWith("[通过]", StringComparison.Ordinal)) { d.Pass++; continue; }
             }
             return d;
         }
