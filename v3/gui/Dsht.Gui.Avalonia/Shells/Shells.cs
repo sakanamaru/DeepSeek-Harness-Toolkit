@@ -447,23 +447,44 @@ namespace Dsht.Gui.Avalonia.Shells
             return g;
         }
 
-        /// <summary>侧栏最底下的一键启动/停止（用户要求放这里，不放看板）。</summary>
+        /// <summary>侧栏最底下的一键启动/停止（用户要求放这里，不放看板）。未运行=实心 accent 主按钮；运行中=柔色底+绿点，状态就在按钮里。</summary>
         private static Control StartStopButton(MainWindow host)
         {
             StatusSnapshot st = host.Status;
             bool up = st != null && st.Ok && st.State == 0;
-            StackPanel s = new StackPanel { Margin = new Thickness(12, 8, 12, 12), Spacing = 6 };
+            Grid row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+            Border dot = new Border
+            {
+                Width = 8,
+                Height = 8,
+                CornerRadius = new CornerRadius(4),
+                Background = up ? Palette.Good : Palette.OnAccent,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(dot, 0);
+            TextBlock label = T(up ? "停止 dsh" : "一键启动 dsh", 13, up ? Palette.Accent : Palette.OnAccent, FontWeight.SemiBold);
+            label.Margin = new Thickness(10, 0, 0, 0);
+            label.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(label, 1);
+            TextBlock state = T(up ? "运行中" : "未运行", 10.5, up ? Palette.Good : Palette.OnAccent);
+            state.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(state, 2);
+            row.Children.Add(dot); row.Children.Add(label); row.Children.Add(state);
+
             Button b = new Button
             {
-                Content = up ? "■  停止 dsh" : "▶  一键启动 dsh",
+                Content = row,
+                Margin = new Thickness(12, 8, 12, 12),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Center,
-                Padding = new Thickness(10, 9)
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Background = up ? Palette.AccentSoft : Palette.Accent,
+                BorderThickness = new Thickness(0),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(12, 10)
             };
+            Hover(b, up ? Palette.AccentSoft : Palette.Accent, up ? Palette.CardHover : Palette.AccentHover);
             b.Click += delegate { if (up) host.StopDsh(); else host.StartDsh(); };
-            s.Children.Add(b);
-            s.Children.Add(T(up ? "当前：运行中" : "当前：未运行", 10.5, up ? Palette.Good : Palette.TextFaint));
-            return s;
+            return b;
         }
 
         private static Control MainMenuInner(MainWindow host)
@@ -881,41 +902,6 @@ namespace Dsht.Gui.Avalonia.Shells
         }
 
         // ================================================================ 状态（概览）
-
-        /// <summary>看板（概览子菜单）：一键启动/停止 + token 消耗 / 缓存命中 / 解码速度 / 会话数。</summary>
-        private static Control StatusContent(MainWindow host)
-        {
-            if (host.SubTab == 1) return StatusDetail(host);
-            StatusSnapshot st = host.Status;
-            StackPanel s = new StackPanel { Margin = new Thickness(20, 0, 20, 12), Spacing = 12 };
-
-            StackPanel hero = new StackPanel { Spacing = 10 };
-            StackPanel head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-            bool known = st != null && st.Ok;
-            bool up = known && st.State == 0;
-            IBrush stateBrush = up ? Palette.Good : (known && st.State == 1 ? Palette.Warn : Palette.Bad);
-            head.Children.Add(new Ellipse { Width = 14, Height = 14, Fill = stateBrush, VerticalAlignment = VerticalAlignment.Center });
-            head.Children.Add(T(known ? st.StateText : "未知", 26, stateBrush, FontWeight.Bold));
-            if (known && !string.IsNullOrEmpty(st.Uptime)) head.Children.Add(T("已运行 " + st.Uptime, 12, Palette.TextDim));
-            hero.Children.Add(head);
-
-            StackPanel acts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            Button start = new Button { Content = "▶  一键启动 dsh" };
-            start.Click += delegate { host.StartDsh(); };
-            acts.Children.Add(start);
-            Button stop = new Button { Content = "■  停止" };
-            stop.Click += delegate { host.StopDsh(); };
-            acts.Children.Add(stop);
-            acts.Children.Add(T("只有你点的时候才执行；启动/停止都走工具箱核心（非交互命令）", 11, Palette.TextFaint));
-            hero.Children.Add(acts);
-            s.Children.Add(Card(hero, new Thickness(0), new Thickness(18, 16)));
-
-            s.Children.Add(KpiStrip(host));
-
-            if (!string.IsNullOrEmpty(host.ActionLog))
-                s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
-            return s;
-        }
 
         /// <summary>统计视图（会话页「统计」子菜单）：总量、命中率、速度 + 最耗 token 的会话排行。</summary>
         private static Control StatsBody(MainWindow host)
