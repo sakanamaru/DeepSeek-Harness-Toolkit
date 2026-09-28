@@ -251,6 +251,9 @@ namespace Dsht.Gui.Avalonia.Markers
                     /* 单行解析失败不影响其它行 —— 界面绝不能因为一行脏数据而崩 */
                 }
             }
+            // 运行态只有桥接插件快照才知道：磁盘投影没有这个事实（unknown 不等于"已结束"）
+            bool liveKnown = s.Source == "snapshot";
+            for (int i = 0; i < s.Rows.Count; i++) s.Rows[i].LiveKnown = liveKnown;
             return s;
         }
 
