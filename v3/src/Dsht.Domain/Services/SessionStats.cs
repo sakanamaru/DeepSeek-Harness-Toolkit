@@ -15,7 +15,10 @@ namespace Dsht.Domain.Services
     public static class SessionStats
     {
         /// <summary>插件快照格式版本（我们的桥接插件与 CLI 之间的约定）。</summary>
-        public const int SnapshotFormatVersion = 1;
+        public const int SnapshotFormatVersion = 2;
+
+        /// <summary>仍接受的最小版本（v1 无 live 字段）。</summary>
+        public const int SnapshotFormatVersionMin = 1;
 
         /// <summary>未知值（派生指标的分母为 0 时返回它，而不是 0）。</summary>
         public const double Unknown = -1;
@@ -71,7 +74,8 @@ namespace Dsht.Domain.Services
             JNode root = JsonLite.Parse(json);
             if (root == null || !root.IsObject) return list.ToArray();
             JNode ver = root.Get("formatVersion");
-            if (ver == null || (long)ver.AsNumber(-1) != SnapshotFormatVersion) return list.ToArray();
+            long v = ver == null ? -1 : (long)ver.AsNumber(-1);
+            if (v != SnapshotFormatVersionMin && v != SnapshotFormatVersion) return list.ToArray();   // v1（无 live）与 v2（含 live）都认
             JNode arr = root.Get("sessions");
             if (arr == null || !arr.IsArray) return list.ToArray();
             for (int i = 0; i < arr.Items.Count; i++)
@@ -85,6 +89,7 @@ namespace Dsht.Domain.Services
                 s.CreatedAt = Str(n, "createdAt");
                 s.LastPromptAt = Str(n, "lastPromptAt");
                 s.Blank = n.Get("blank") != null && n.Get("blank").AsBool(false);
+                s.Live = n.Get("live") != null && n.Get("live").AsBool(false);
                 s.Turns = Num(n, "turns");
                 s.Steps = Num(n, "steps");
                 s.LlmMs = Num(n, "llmMs");

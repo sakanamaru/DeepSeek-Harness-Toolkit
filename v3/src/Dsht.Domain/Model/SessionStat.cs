@@ -14,6 +14,10 @@ namespace Dsht.Domain.Model
         public long LastPromptEpochMs;      // 原值（epoch 毫秒；0 = 未知）
         public bool Blank;                  // 空会话（dsh 自己标的）
 
+        /// <summary>是否**正在运行**（来自桥接插件的快照：dsh `listSessions()` 的 `live` 标记）。
+        /// 磁盘投影拿不到这个事实，所以插件缺失时恒为 false —— 这是"面板少了实时部分"的诚实体现。</summary>
+        public bool Live;
+
         public long Turns, Steps;
         public long LlmMs, ToolMs, TtftMs, DecodeMs, DecodeTokens, TtftSteps;
         public long UncachedInputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens;

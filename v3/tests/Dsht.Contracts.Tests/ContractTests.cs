@@ -551,7 +551,10 @@ static class ContractTests
         Dsht.Domain.Model.SessionStat[] sn = Dsht.Domain.Services.SessionStats.ParseSnapshot(snap);
         Check("快照：解析成功（id/title/turns/blank）", sn.Length == 1 && sn[0].Id == "s1" && sn[0].Title == "t" && sn[0].Turns == 3 && sn[0].Blank);
         Check("快照：指标可算（命中 75%、解码 500 tok/s、压力 50%）", Math.Abs(Dsht.Domain.Services.SessionStats.CacheHitPercent(sn[0]) - 75.0) < 0.001 && Math.Abs(Dsht.Domain.Services.SessionStats.DecodeTokensPerSec(sn[0]) - 500.0) < 0.001 && Math.Abs(Dsht.Domain.Services.SessionStats.ContextPressurePercent(sn[0]) - 50.0) < 0.001);
-        Check("快照：formatVersion 不认 → 空数组（诚实降级）", Dsht.Domain.Services.SessionStats.ParseSnapshot(snap.Replace("\"formatVersion\":1", "\"formatVersion\":2")).Length == 0);
+        Check("快照：v1（无 live）仍被接受且 live=false", sn.Length == 1 && sn[0].Live == false);
+        Dsht.Domain.Model.SessionStat[] s2 = Dsht.Domain.Services.SessionStats.ParseSnapshot(snap.Replace("\"formatVersion\":1", "\"formatVersion\":2").Replace("\"blank\":true", "\"blank\":true,\"live\":true"));
+        Check("快照：v2（含 live）被接受且 live 生效", s2.Length == 1 && s2[0].Live);
+        Check("快照：formatVersion 不认（v3）→ 空数组（诚实降级）", Dsht.Domain.Services.SessionStats.ParseSnapshot(snap.Replace("\"formatVersion\":1", "\"formatVersion\":3")).Length == 0);
         Check("快照：无 sessions 字段 → 空数组", Dsht.Domain.Services.SessionStats.ParseSnapshot("{\"formatVersion\":1}").Length == 0);
         List<Dsht.Domain.Model.SessionStat> tl = new List<Dsht.Domain.Model.SessionStat>();
         tl.Add(ps); tl.Add(sn[0]);
