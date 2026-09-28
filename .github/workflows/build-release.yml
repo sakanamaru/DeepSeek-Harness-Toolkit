@@ -143,6 +143,10 @@ jobs:
           tar -czf "$PKG.tar.gz" "$PKG"
           sha256sum "$PKG.tar.gz" > "$PKG.tar.gz.sha256"
           cat "$PKG.tar.gz.sha256"
+      - name: Verify the assembled package with the shell verifier
+        run: |
+          chmod +x v3/tools/verify-linux.sh
+          bash v3/tools/verify-linux.sh dsh-minato-linux-x64.tar.gz dsh-minato-linux-x64.tar.gz.sha256
       - name: Upload to the release (tags only)
         if: startsWith(github.ref, 'refs/tags/')
         env:
