@@ -32,6 +32,7 @@ namespace Dsht.Cli
             if (cmd == "status") return Status(reg, Has(args, "--detail"));
             if (cmd == "describe") return Describe(reg);
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
+            if (cmd == "profiles") return Profiles(reg);
             if (cmd == "backup-list") return BackupList(args, reg);
             if (cmd == "doctor") return Doctor(args, reg);
             if (cmd == "version") { Console.WriteLine("DSHT_VERSION " + ToolkitVersion); return 0; }
@@ -45,7 +46,7 @@ namespace Dsht.Cli
             if (cmd == "backup-export") return BackupExport(args, reg);
             if (cmd == "backup-delete") return BackupDelete(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
             return 2;
         }
 
@@ -114,6 +115,48 @@ namespace Dsht.Cli
             return 0;
         }
 
+
+        /// <summary>profiles（V3 独有）：列出 profile、它们的**配置形态**与插件清单。
+        /// 数据来源：`&lt;数据根&gt;/profiles/&lt;name&gt;/package.json` 里的 `dsh.profile.bundles`（明文小 JSON，只读零注入）。
+        /// 标记行：
+        ///   `PROFILES_OK &lt;n&gt;` / `PROFILE &lt;name&gt; form=&lt;web|headless|acp|unknown|unparsed&gt; bundles=&lt;n&gt; thirdparty=&lt;m&gt;`
+        ///   / `BUNDLE &lt;profile&gt; &lt;bundle-id&gt; &lt;official|thirdparty&gt;` / `PROFILES_FAIL &lt;原因&gt;`
+        /// **诚实边界**：这是**配置形态**（manifest 里启用了哪个 app bundle），**不是运行形态**——
+        /// "dsh 在跑"仍必须由端口/进程等运行时事实判断（见 describe/status）。</summary>
+        private static int Profiles(ServiceRegistry reg)
+        {
+            IProfileManifestSource src = reg.Get<IProfileManifestSource>();
+            if (!reg.Get<IFileSystemQuery>().DirectoryExists(src.ProfilesRoot))
+            {
+                Console.WriteLine("PROFILES_FAIL " + T("找不到 profiles 目录", "profiles directory not found"));
+                return 0;
+            }
+            string[] names = src.ListProfiles();
+            List<string[]> rows = new List<string[]>();
+            List<string[]> bundles = new List<string[]>();
+            for (int i = 0; i < names.Length; i++)
+            {
+                string name = names[i];
+                if (string.Equals(name, "node_modules", StringComparison.OrdinalIgnoreCase)) continue;   // 插件安装目录，不是 profile
+                string manifestText = src.ReadManifest(name);
+                if (manifestText == null) continue;                    // 没有 package.json → 不是 profile（诚实跳过，不报噪声）
+                ProfileManifestInfo info = ProfileManifest.Parse(manifestText);
+                string form = info.Parsed ? ProfileManifest.FormName(info.ConfiguredForm) : "unparsed";
+                rows.Add(new string[] { name, form, info.Bundles.Length.ToString(), info.ThirdPartyPlugins.Length.ToString() });
+                for (int b = 0; b < info.Bundles.Length; b++)
+                {
+                    string id = info.Bundles[b];
+                    bool official = id != null && id.StartsWith("@deepseek-ai/", StringComparison.Ordinal);
+                    bundles.Add(new string[] { name, id, official ? "official" : "thirdparty" });
+                }
+            }
+            Console.WriteLine("PROFILES_OK " + rows.Count);
+            for (int i = 0; i < rows.Count; i++)
+                Console.WriteLine("PROFILE " + rows[i][0] + " form=" + rows[i][1] + " bundles=" + rows[i][2] + " thirdparty=" + rows[i][3]);
+            for (int i = 0; i < bundles.Count; i++)
+                Console.WriteLine("BUNDLE " + bundles[i][0] + " " + bundles[i][1] + " " + bundles[i][2]);
+            return 0;
+        }
 
         /// <summary>backup-list：标记行与裸路径行逐条对齐 v2.x 的 NIBackupList。</summary>
         private static int BackupList(string[] args, ServiceRegistry reg)
