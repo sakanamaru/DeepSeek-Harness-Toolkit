@@ -46,6 +46,7 @@ namespace Dsht.Gui.Avalonia
         {
             new string[] { "概览", "原始输出" },
             new string[] { "指标", "图表" },
+            new string[] { "指标", "图表" },
             new string[] { "会话列表", "统计" },
             new string[] { "原始输出" },
             new string[] { "原始输出" },
