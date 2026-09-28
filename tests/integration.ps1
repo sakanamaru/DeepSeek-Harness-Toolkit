@@ -286,7 +286,7 @@ if (Test-Path -LiteralPath $csprojPath) {
     $expect = @('dsh_v2.cs', 'src\Core\**\*.cs', 'src\Platform\**\*.cs', 'src\Cli\**\*.cs')
     $csprojOk = ($incs.Count -eq $expect.Count)
     foreach ($e in $expect) { if ($incs -notcontains $e) { $csprojOk = $false } }
-    $all = @('dsh_v2.cs') + (Get-ChildItem (Join-Path $RepoRoot 'src') -Recurse -Filter *.cs | ForEach-Object { $_.FullName.Substring($RepoRoot.Length).TrimStart('\') })
+    $all = @('dsh_v2.cs') + (Get-ChildItem (Join-Path $RepoRoot 'src') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object { $_.FullName.Substring($RepoRoot.Length).TrimStart('\') })
     $uncovered = @($all | Where-Object { $_ -ne 'dsh_v2.cs' -and $_ -notlike 'src\Core\*' -and $_ -notlike 'src\Platform\*' -and $_ -notlike 'src\Cli\*' })
     if ($uncovered.Count -gt 0) { $csprojOk = $false; $csprojDetail = '未覆盖: ' + ($uncovered -join ',') }
     else { $csprojDetail = 'glob 覆盖 ' + $all.Count + ' 个源文件' }

@@ -13,10 +13,10 @@ function Gate([string]$name, [bool]$ok, [string]$detail) {
 }
 
 # ---- 门槛② 领域单测（csc 构建 + 运行契约测试）----
-$dom = @(Get-ChildItem (Join-Path $Repo 'v3\src\Dsht.Domain') -Recurse -Filter *.cs | ForEach-Object FullName)
-$win = @(Get-ChildItem (Join-Path $Repo 'v3\src\Dsht.Platform.Windows') -Recurse -Filter *.cs | ForEach-Object FullName)
-$lin = @(Get-ChildItem (Join-Path $Repo 'v3\src\Dsht.Platform.Linux') -Recurse -Filter *.cs | ForEach-Object FullName)
-$tst = @(Get-ChildItem (Join-Path $Repo 'v3\tests\Dsht.Contracts.Tests') -Recurse -Filter *.cs | ForEach-Object FullName)
+$dom = @(Get-ChildItem (Join-Path $Repo 'v3\src\Dsht.Domain') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
+$win = @(Get-ChildItem (Join-Path $Repo 'v3\src\Dsht.Platform.Windows') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
+$lin = @(Get-ChildItem (Join-Path $Repo 'v3\src\Dsht.Platform.Linux') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
+$tst = @(Get-ChildItem (Join-Path $Repo 'v3\tests\Dsht.Contracts.Tests') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
 $exe = Join-Path $env:TEMP 'dsht_switchover_contracts.exe'
 Remove-Item $exe -Force -ErrorAction SilentlyContinue
 & $csc /nologo /target:exe /warn:4 ("/out:" + $exe) ($dom + $win + $lin + $tst) | Out-Null
@@ -78,7 +78,7 @@ Gate 'invariant release chain' ([string]::IsNullOrWhiteSpace($chainChanged) -and
 # 于是本地重编译脚本连续几轮都是坏的（CI 用 -Recurse 所以发布没受影响）——这条不变量就是补这个盲区。
 $v2out = Join-Path $env:TEMP 'dsht_v2_buildgate.exe'
 Remove-Item $v2out -Force -ErrorAction SilentlyContinue
-$v2src = @('dsh_v2.cs') + @(Get-ChildItem (Join-Path $Repo 'src') -Recurse -Filter *.cs | ForEach-Object FullName)
+$v2src = @('dsh_v2.cs') + @(Get-ChildItem (Join-Path $Repo 'src') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
 $v2build = (& $csc /nologo /optimize+ /target:exe /warn:4 ("/out:" + $v2out) $v2src 2>&1 | Out-String)
 $v2ok = (Test-Path $v2out)
 Gate 'invariant v2.x release build' $v2ok $(if ($v2ok) { ('csc 编译 ' + $v2src.Count + ' 个源文件通过（dsh_v2.cs + src/**）') } else { '编译失败：' + (($v2build -split "`r?`n" | Where-Object { $_ -match 'error ' } | Select-Object -First 2) -join ' / ') })

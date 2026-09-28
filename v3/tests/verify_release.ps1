@@ -21,7 +21,7 @@ if (-not (Test-Path $csc)) { Write-Host "SKIP: 找不到 csc"; exit 2 }
 
 function Build-Release([string]$dir) {
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
-    $src = @(Get-ChildItem (Join-Path $Repo 'v3\src') -Recurse -Filter *.cs | ForEach-Object FullName)
+    $src = @(Get-ChildItem (Join-Path $Repo 'v3\src') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
     $exe = Join-Path $dir 'dsht.exe'
     & $csc /nologo /target:exe /warn:4 ("/out:" + $exe) $src | Out-Null
     if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: V3 构建失败"; exit 2 }

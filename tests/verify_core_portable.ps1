@@ -10,7 +10,7 @@ $forbidden = @('System.Windows.Forms','System.Drawing','Microsoft.Win32','DllImp
 $files = @((Join-Path $Repo 'dsh_v2.cs'))
 foreach ($sub in @('src\Core','src\Cli')) {
     $d = Join-Path $Repo $sub
-    if (Test-Path $d) { $files += (Get-ChildItem $d -Recurse -Filter *.cs | ForEach-Object FullName) }
+    if (Test-Path $d) { $files += (Get-ChildItem $d -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName) }
 }
 $viol = New-Object System.Collections.Generic.List[string]
 $runtimeCalls = 0

@@ -75,7 +75,7 @@ The GUI **Settings** page edits the toolkit's own configuration (`launcher.confi
 
 `doctor` (CLI) and the GUI **Doctor** page run a read-only seven-category check — System (Windows / Node / npm), Harness (installed & version), Service (port, listener identity, HTTP, 3-state), Workspace (path, permissions, size), Backup (dir, latest, age), Network (registry reachability), Integrity (the running exe vs the bundled `hashes.txt`: match / mismatch, reported as an error / no manifest found, normal for a single copied exe) — and end with a machine-readable verdict (`DOCTOR_OK 0` / `DOCTOR_WARN n` / `DOCTOR_ERROR n`). `doctor --report <file>` exports a full diagnostic report with API keys / tokens / cookies / passwords redacted.
 
-### "dsh won't start" / a dsh plugin failed to load — from the error to the one line that fixes it
+### "dsh won't start" — from the error to the one line that fixes it
 
 A real failure (2026-09-15): `dsh web` refused to boot with
 
@@ -105,20 +105,9 @@ DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <entry> --set maxDe
 DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <entry> --set maxDepth=provider-managed --yes
 ```
 
-**Any broken plugin, not just `maxDepth` — quarantine it and move on.** The `maxDepth` cure keeps the plugin working; when the failing plugin is unknown, or you just need dsh to boot again, append a top-level patch item that switches that entry off (append-only — not one existing character of your profile is changed):
-
-```powershell
-DeepSeek Harness Toolkit.exe profilepatch --disable <entry-id>          # preview (PROFILEPATCH_DRYRUN, zero writes)
-DeepSeek Harness Toolkit.exe profilepatch --disable <entry-id> --yes    # backup → append → re-check → byte-identical rollback on failure
-```
-
-`disabled: true` is a first-class field of dsh's own patch layer (`PatchOptions.disabled` in `@deepseek-ai/cordis-plugin-include`), and dsh itself uses it to switch off its telemetry row — so this is the canonical "turn that row off" form, not a rewrite of your profile. It is **manual-only and never runs automatically**, idempotent (already quarantined → `PROFILEPATCH_NOOP`), the entry id is charset-whitelisted (`[A-Za-z0-9._@/-]`, so no YAML injection), and a failed re-check rolls the file back byte-for-byte.
-
 In the GUI the **Doctor** page has a **Config Check** button that does the same thing: it runs `profilecheck`, and when fixable risks are found it asks for confirmation, then backs up and fixes them through `profilepatch` and rescans.
 
 **Honest limit — the live crash is not detected for you.** Detecting this failure automatically from a live failed start is **not** automatic: the tool cannot see that crash by itself. Either run `profilecheck` proactively (a static, read-only scan of `~/.dsh/profiles/**/*.yaml|*.yml`) or save the failing startup output to a file and run `bootdiag --from <file>` (it never guesses — an unrecognized error prints `BOOTDIAG_KIND unknown` plus the first error line). The scan and both diagnostics are read-only; the write path requires an explicit `--yes`, always takes a backup first, adds only that one line, verifies by rescanning and rolls back automatically on failure, and it never touches credentials, never goes online and never edits files under `node_modules` by default. On the maintainer's own machine the scan found exactly one real leftover issue (`subagent-acp-kimi` missing `maxDepth`) across 7 profile files while skipping 563 package files under `node_modules`; `bootdiag` resolved the real captured stack to `@deepseek-ai/dsh-tool-subagent` / `tool-subagent-kimi` / line 20 of `cordis.patch.yml`; and `profilepatch` on a copy added exactly one line and reported NOOP on the second run.
-
-**Where this tool sits in the plugin ecosystem.** This toolkit is **not** a dsh plugin: it is a standalone Windows executable that does not inject into dsh, does not run inside its plugin tree, and works even when dsh is not installed. It reads — and, only with your explicit `--yes`, writes — the same profile files that dsh's plugin layer reads, which is exactly why it can diagnose and quarantine a plugin that dsh itself cannot boot past.
 
 ### Log Center — filter, search, export
 
@@ -227,19 +216,20 @@ Or double-click `build_exe.cmd` in this directory. The GUI compiles from the sam
 
 No test framework or third-party dependency is required.
 
-- **Unit tests (304)** — same-assembly test proxy (`/define:UNIT`; the test entry point is `tests\unit_tests.cs`, everything else is the production code being tested):
+- **Unit tests (318)** — same-assembly test proxy (`/define:UNIT`; the test entry point is `tests\unit_tests.cs`, everything else is the production code being tested):
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs tests\unit_tests.cs
   unittests.exe
   ```
-  Exit code 0 = all green. Covers: path round-trips (incl. UNC / non-ASCII), workspace blacklist, dsh-data markers, root marker strictness, backup dir validation, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection, netstat PID parsing, dry-run merge/delete planning (incl. restore-side skip-rule fidelity), backup kind parsing, export / delete validation, rollback-candidate lookup, configuration whitelist (incl. the `close_action` / `auto_start` keys), status-bar uptime formatting, profile block scanning / `bootdiag` output parsing / the controlled patch path (one-line plan, idempotent NOOP, backup, verify and rollback).
+  Exit code 0 = all green. Covers: path round-trips (incl. UNC / non-ASCII and **relative paths**), workspace blacklist, dsh-data markers, root marker strictness, backup dir validation, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection, netstat PID parsing, dry-run merge/delete planning (incl. restore-side skip-rule fidelity), backup kind parsing, export / delete validation, rollback-candidate lookup, configuration whitelist (incl. the `close_action` / `auto_start` keys), status-bar uptime formatting, profile block scanning / `bootdiag` output parsing / the controlled patch path (one-line plan, idempotent NOOP, backup, verify and rollback).
 
 - **GUI logic tests (52)** — same-assembly as `gui_v2.cs`, zero third-party deps; run by CI on every push:
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /main:GuiLogicTests /out:guilogictests.exe gui_v2.cs tests\gui_logic_tests.cs
   guilogictests.exe
   ```
-  Covers the presentation-layer foundation: marker-line parsing (the table that used to be missing `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK`), the signal bus (`SignalBus` — incl. "one throwing subscriber must not break the others"), the signal-to-UI routing table (`SigRouting`), the settings card model (`SettingsCards`), and **source-level i18n enforcement** (every `L10N._()` key must be defined, no dead keys, no empty translations, and **no Chinese string literals outside the L10N dictionary**).
+  Covers the presentation-layer foundation: marker-line parsing (the table that used to be missing `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK`), the signal bus (`SignalBus` — incl. "one throwing subscriber must not break the others"), the signal→UI routing table (`SigRouting`), the settings card model (`SettingsCards`), and **source-level i18n enforcement** (every `L10N._()` key must be defined, no dead keys, no empty translations, and **no Chinese string literals outside the L10N dictionary**).
+
 - **Integration tests (33 cases)** — stubbed end-to-end matrix (variants A/C, real 3080 probing; retention policy, restore/import blocked while running, bilingual asserts):
   ```
   powershell -ExecutionPolicy Bypass -File tests\integration.ps1
@@ -278,7 +268,7 @@ docs/screenshots/    README screenshots
 backup/  logs/       Runtime dirs (gitignored — never committed)
 ```
 
-> **The `src/` lines above are the layout shipped since v2.7.3.** They come from the **move-only** split of the single 4000+ line `dsh_v2.cs` into `partial class Program` layers (`partial` within the same assembly, so no call site, signature or behaviour changes); it landed in commit ee36ac0 (CI green). The released **v2.7.3** is built from this layout. The split does not touch `gui_v2.cs`, `tests/unit_tests.cs` or `verify.ps1`.
+> **The `src/` lines above are the layout shipped since v2.7.3.** Stage 1 is a **move-only** split of the single 4000+ line `dsh_v2.cs` into `partial class Program` layers (`partial` within the same assembly, so no call site, signature or behaviour changes); it landed in commit ee36ac0 (CI green). The released **v2.7.3** is built from this layout. Stage 1 does not touch `gui_v2.cs`, `tests/unit_tests.cs` or `verify.ps1`.
 
 ## Error Log
 
@@ -291,7 +281,7 @@ backup/  logs/       Runtime dirs (gitignored — never committed)
 - **Verify before you run (≈20 seconds)**:
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.3 -OutDir D:\verify
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.0 -OutDir D:\verify
   ```
 
   `verify.ps1` (shipped in the package) downloads the release artifacts (all three
