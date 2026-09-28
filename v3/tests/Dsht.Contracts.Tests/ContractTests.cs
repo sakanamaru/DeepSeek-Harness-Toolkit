@@ -566,6 +566,19 @@ static class ContractTests
         Dsht.Domain.Model.SessionStat zero = new Dsht.Domain.Model.SessionStat();
         Check("指标：分母为 0 → 未知（-1，不假装 0）", Dsht.Domain.Services.SessionStats.CacheHitPercent(zero) < 0 && Dsht.Domain.Services.SessionStats.DecodeTokensPerSec(zero) < 0 && Dsht.Domain.Services.SessionStats.ContextPressurePercent(zero) < 0);
         Console.WriteLine();
+        Console.WriteLine("[25] start/stop 判定（纯函数：只有可观测事实能判定成功）");
+        Check("启动前：已在运行 → 不重复启动（Ready）", Dsht.Domain.Services.ServiceControlPolicy.BeforeStart("Ready", 123) == Dsht.Domain.Services.StartDecision.AlreadyRunning);
+        Check("启动前：Listening 也算在运行", Dsht.Domain.Services.ServiceControlPolicy.BeforeStart("Listening", 123) == Dsht.Domain.Services.StartDecision.AlreadyRunning);
+        Check("启动前：Down → 应该启动", Dsht.Domain.Services.ServiceControlPolicy.BeforeStart("Down", 0) == Dsht.Domain.Services.StartDecision.ShouldLaunch);
+        Check("启动后：观测到 Ready → Started", Dsht.Domain.Services.ServiceControlPolicy.AfterLaunch("Ready", 9, 8) == Dsht.Domain.Services.StartOutcome.Started);
+        Check("启动后：只发出命令、未观测到就绪 → NotObserved（不算成功）", Dsht.Domain.Services.ServiceControlPolicy.AfterLaunch("Down", 0, 8) == Dsht.Domain.Services.StartOutcome.NotObserved);
+        Check("启动后：未知状态 → NotObserved（不猜）", Dsht.Domain.Services.ServiceControlPolicy.AfterLaunch("Unknown", 0, 8) == Dsht.Domain.Services.StartOutcome.NotObserved);
+        Check("停止前：无 PID → 没什么可停", Dsht.Domain.Services.ServiceControlPolicy.BeforeStop("Ready", 0) == Dsht.Domain.Services.StopDecision.NothingToStop);
+        Check("停止前：状态 Down（即使有 PID）→ 没什么可停", Dsht.Domain.Services.ServiceControlPolicy.BeforeStop("Down", 77) == Dsht.Domain.Services.StopDecision.NothingToStop);
+        Check("停止前：在运行 → 应该停", Dsht.Domain.Services.ServiceControlPolicy.BeforeStop("Listening", 77) == Dsht.Domain.Services.StopDecision.ShouldStop);
+        Check("停止后：观测到 Down → Stopped", Dsht.Domain.Services.ServiceControlPolicy.AfterStop("Down") == Dsht.Domain.Services.StopOutcome.Stopped);
+        Check("停止后：仍能观测到 → StillListening（不谎报已停）", Dsht.Domain.Services.ServiceControlPolicy.AfterStop("Ready") == Dsht.Domain.Services.StopOutcome.StillListening);
+        Check("IsRunning：大小写敏感（状态名是契约，不做宽松匹配）", Dsht.Domain.Services.ServiceControlPolicy.IsRunning("ready") == false && Dsht.Domain.Services.ServiceControlPolicy.IsRunning("Ready"));
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
     }

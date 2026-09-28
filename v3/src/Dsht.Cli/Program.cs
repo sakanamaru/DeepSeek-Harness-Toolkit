@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Dsht.Domain.Abstractions;
 using Dsht.Domain.Model;
 using Dsht.Domain.Services;
+using Dsht.Domain.Services;
 using Dsht.Domain.Targets;
 using Dsht.Platform.Windows;
 
@@ -244,7 +245,7 @@ namespace Dsht.Cli
 
             ServiceReport before = target.Probe();
             string st = before.State.ToString();
-            if (st == "Ready" || st == "Listening")
+            if (ServiceControlPolicy.BeforeStart(st, before.Pid) == StartDecision.AlreadyRunning)
             {
                 Console.WriteLine("START_OK " + (before.Pid > 0 ? before.Pid.ToString() : "0"));
                 Console.WriteLine("START_OBSERVED " + st.ToLowerInvariant() + " " + T("（观测到已在运行，未重复启动）", "(already running; not started again)"));
@@ -294,7 +295,7 @@ namespace Dsht.Cli
                 System.Threading.Thread.Sleep(1000);
                 ServiceReport now = target.Probe();
                 string s2 = now.State.ToString();
-                if (s2 == "Ready" || s2 == "Listening")
+                if (ServiceControlPolicy.AfterLaunch(s2, now.Pid, pid) == StartOutcome.Started)
                 {
                     Console.WriteLine("START_OK " + (now.Pid > 0 ? now.Pid.ToString() : pid.ToString()));
                     Console.WriteLine("START_OBSERVED " + s2.ToLowerInvariant());
@@ -324,7 +325,7 @@ namespace Dsht.Cli
                 target = PlatformComposition.WebFor(portArg, reg.Get<IPortProbe>(), reg.Get<IHttpProbe>(), reg.Get<IProcessQuery>());
             }
             ServiceReport r = target.Probe();
-            if (r.Pid <= 0 || r.State.ToString() == "Down")
+            if (ServiceControlPolicy.BeforeStop(r.State.ToString(), r.Pid) == StopDecision.NothingToStop)
             {
                 Console.WriteLine("STOP_FAIL " + T("没有观测到在运行的 dsh（端口未监听）", "no running dsh observed (port not listening)"));
                 Console.WriteLine("STOP_OBSERVED down");
@@ -341,7 +342,7 @@ namespace Dsht.Cli
             bool ok = ctl.StopTree(r.Pid, out err);
             ServiceReport after = target.Probe();
             string st = after.State.ToString();
-            if (st == "Down")
+            if (ServiceControlPolicy.AfterStop(st) == StopOutcome.Stopped)
             {
                 Console.WriteLine("STOP_OK " + r.Pid);
                 Console.WriteLine("STOP_OBSERVED down");
