@@ -1910,6 +1910,16 @@ namespace Dsht.Cli
                 {
                     if (!BackupPackage.IsValidPackage(bk.Snapshot(p))) { Console.WriteLine("DRYRUN_FAIL " + T("无效备份目录", "invalid backup directory")); return 0; }
                     bkDir = p;
+                    // 完成性闸门 ✓✓：放在**路径校验通过之后** —— 不存在的路径与根外路径都到不了这里 ✓（这正是上一版放错位置的原因 ✗）。
+                    // 条件用 !IsNullOrEmpty ✓ 且只在"原因非空"时拦 ✓ → **最多少报，绝不误拦** ✓✓。
+                    string truncReason = BackupTruncatedReason(p);
+                    if (!string.IsNullOrEmpty(truncReason) && !Has(args, "--force"))
+                    {
+                        Console.WriteLine("DRYRUN_FAIL " + truncReason + T("；确认要预览它请加 --force", "; add --force to preview it anyway"));
+                        OpLog(reg, "WARN", "restore --dry-run refused a truncated backup: " + p);
+                        return 0;
+                    }
+                    if (!string.IsNullOrEmpty(truncReason)) Console.WriteLine("DRYRUN_WARN " + truncReason);
                 }
                 else
                 {
