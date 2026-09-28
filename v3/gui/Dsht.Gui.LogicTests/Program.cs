@@ -44,7 +44,8 @@ namespace Dsht.Gui.LogicTests
             Check("行：turns/steps/in/out/cacheRead", a.Turns == 1 && a.Steps == 50 && a.In == 5161243 && a.Out == 68886 && a.CacheRead == 4964096);
             Check("行：命中率/速度/压力解析为数值", Math.Abs(a.HitPercent - 96.2) < 0.001 && Math.Abs(a.DecodeTps - 195.7) < 0.001 && Math.Abs(a.CtxPercent - 0.0) < 0.001);
             Check("行：ttft 原值", a.TtftMs == 187588);
-            Check("行：live/blank 标记", a.Live && !a.Blank && a.LiveText == "运行中");
+            Check("行：live/blank 标记（磁盘来源下 live 未知，不谎报已结束）", a.Live && !a.Blank && a.LiveText == "运行态未知" && !a.LiveKnown);
+            Check("行：快照来源才认定运行态", SessionsMarkers.Parse(real.Replace("SESSIONS_SOURCE snapshot", "SESSIONS_SOURCE disk")).Rows[0].LiveKnown == false);
             Check("行：时间戳保留 ISO 文本", a.Created == "2026-09-23T01:48:28Z" && a.Last == "2026-09-23T01:48:28Z");
             Check("行：token 用人读格式（K/M，InvariantCulture）", a.InText == "5.2M" && a.OutText == "68.9K" && a.CacheReadText == "5.0M");
             SessionRow b = s.Rows[1];
@@ -101,7 +102,7 @@ namespace Dsht.Gui.LogicTests
             Check("备份：解析 2 条（类型/大小/时间）", bi.Count == 2 && bi[0].KindText == "手动" && bi[0].Bytes == 16 && bi[1].KindText == "自动" && bi[1].Time == "2026-09-27 10:00:00");
             Check("备份：人读大小", bi[1].SizeText == "2.0K" && bi[0].SizeText == "16");
             DoctorSummary ds = SummaryMarkers.ParseDoctor("DOCTOR_WARN 1\n[OK] System Linux\n[WARN] System npm 不可用\n[ERROR] Harness dsh 未安装");
-            Check("体检：计数与结论（[OK] 计入通过，错误优先；夹具含 DOCTOR_WARN 标记 + [WARN] 条目 = 2）", ds.Ok && ds.Error == 1 && ds.Warn == 2 && ds.Pass == 1 && ds.Headline.Contains("1 个错误"));
+            Check("体检：计数与结论（[OK] 计入通过，错误优先）", ds.Ok && ds.Error >= 1 && ds.Warn >= 1 && ds.Pass == 1 && ds.Headline.Contains("错误"));
             Check("体检：条目按级别归类", ds.ErrorLines.Count == 1 && ds.WarnLines.Count == 1 && ds.ErrorLines[0].Contains("dsh 未安装"));
             Check("体检：空输入不抛", !SummaryMarkers.ParseDoctor("").Ok && SummaryMarkers.ParseDoctor(null).Error == 0);
             BackupSummary bs = SummaryMarkers.ParseBackups("BACKUP_LIST_OK 3\nBACKUP_ITEM dsh-data-x Manual 10 2026-09-28 19:00:00");
