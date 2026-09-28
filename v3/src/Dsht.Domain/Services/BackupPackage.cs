@@ -75,7 +75,13 @@ namespace Dsht.Domain.Services
             return BackupKind.Manual;
         }
 
-        /// <summary>目录名后缀。逐字对齐 v2.x 的 BackupSuffix（Manual 无后缀）。</summary>
+        /// <summary>目录名后缀。逐字对齐 v2.x 的 BackupSuffix（Manual 无后缀）。
+        /// <para>**并发命名约束** ✓✓（真机复现过一次数据互混 ✗，故记于此）：包名 = `dsh-data-&lt;毫秒时间戳&gt;-&lt;PID&gt;&lt;本后缀&gt;`。</para>
+        /// <para>· 后缀必须**留在结尾** ✗ —— BackupRetention 用 EndsWith("-auto") 等识别自动类；BackupAge 只解析前缀后的 18 个字符。</para>
+        /// <para>· PID 覆盖**跨进程**同毫秒（两个 CLI 进程各跑一次备份 ✓ 这是最常见的"双击两次" ✓）。</para>
+        /// <para>· **同进程同类**目前不可达 ✓ —— 每个命令最多创建一次同类备份（import 的两个包后缀不同 ✓）。
+        ///   若将来出现"一个进程内同类创建两次"的命令 ✗，需在此处**加重试**（目录已存在则换名 ✓ 且新名字必须仍以后缀结尾 ✓）。</para>
+        /// </summary>
         public static string Suffix(BackupKind k)
         {
             if (k == BackupKind.Auto) return "-auto";
