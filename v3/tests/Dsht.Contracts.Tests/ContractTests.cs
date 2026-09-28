@@ -171,6 +171,23 @@ static class ContractTests
         Check("mcp command 存在 → 无发现", ProfileScanner.Scan(mcpMissing, "f", AnyFile).Count == 0);
         Check("mcp 未开 failOnStartupError → 无发现", ProfileScanner.Scan("- id: mcp\n  name: '@deepseek-ai/dsh-mcp-client'\n  command: C:\\nope\\x.exe\n", "f", NoFile).Count == 0);
         Check("空文本 → 无发现", ProfileScanner.Scan("", "f", NoFile).Count == 0);
+        Console.WriteLine("[6] 完整性判定与 manifest 解析（逐条对齐 v2.x）");
+        string hex64 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        string manifest = "# 头部注释\n\n" + hex64 + "  DeepSeek Harness Toolkit.exe\n" + hex64 + "  README.md\n";
+        Check("解析命中（文件名忽略大小写）", ManifestParser.ParseHash(manifest, "deepseek harness toolkit.exe") == hex64);
+        Check("解析未命中 → null", ManifestParser.ParseHash(manifest, "other.exe") == null);
+        Check("跳过 # 注释与空行", ManifestParser.ParseHash("#x\n\ny\n", "z") == null);
+        Check("hash 长度非 64 → null（视为非法）", ManifestParser.ParseHash("abc  f.exe\n", "f.exe") == null);
+        Check("非十六进制 → null", ManifestParser.ParseHash(new string('z', 64) + "  f.exe\n", "f.exe") == null);
+        Check("空输入 → null", ManifestParser.ParseHash(null, "f.exe") == null && ManifestParser.ParseHash("x", "") == null);
+
+        Check("期望缺失 → Unknown", IntegrityJudge.Judge(null, hex64) == IntegrityVerdict.Unknown);
+        Check("实际缺失 → Unknown", IntegrityJudge.Judge(hex64, null) == IntegrityVerdict.Unknown);
+        Check("相等 → Match", IntegrityJudge.Judge(hex64, hex64) == IntegrityVerdict.Match);
+        Check("忽略大小写 → Match", IntegrityJudge.Judge(hex64.ToUpperInvariant(), hex64) == IntegrityVerdict.Match);
+        Check("不等 → Mismatch", IntegrityJudge.Judge(hex64, new string('0', 64)) == IntegrityVerdict.Mismatch);
+        Check("只有 Mismatch 拦截高风险操作", IntegrityJudge.ShouldBlock(IntegrityVerdict.Mismatch)
+            && !IntegrityJudge.ShouldBlock(IntegrityVerdict.Match) && !IntegrityJudge.ShouldBlock(IntegrityVerdict.Unknown));
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
