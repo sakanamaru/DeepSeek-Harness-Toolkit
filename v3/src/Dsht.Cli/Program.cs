@@ -34,6 +34,8 @@ namespace Dsht.Cli
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
             if (cmd == "profilepatch") return ProfilePatch(args, reg);
             if (cmd == "profiles") return Profiles(reg);
+            if (cmd == "about") return AboutCmd();
+            if (cmd == "ui") return UiCmd();
             if (cmd == "install") return InstallLike(args, reg, false);
             if (cmd == "update") return InstallLike(args, reg, true);
             if (cmd == "uninstall") return UninstallCmd(args, reg);
@@ -53,7 +55,7 @@ namespace Dsht.Cli
             if (cmd == "backup-export") return BackupExport(args, reg);
             if (cmd == "backup-delete") return BackupDelete(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | profilepatch --profile <name> --id <entry> [--enable] [--yes] | sessions | install [--yes] | update [--yes] | uninstall [--yes] | start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--yes] | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | profilepatch --profile <name> --id <entry> [--enable] [--yes] | sessions | about | ui | install [--yes] | update [--yes] | uninstall [--yes] | start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--yes] | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
             return 2;
         }
 
@@ -267,6 +269,51 @@ namespace Dsht.Cli
         /// <summary>install / update（V3 独有）：装或升级 dsh。**只用可观测事实判定结果**：
         /// 先看 WhichDsh/DshVersion（是否已装）→ 打印计划 → `--yes` 闸门 → npm → **再复检**。
         /// 标记行：`INSTALL_PLAN/_DRYRUN/_SKIP/_OK/_FAIL` 或 `UPDATE_*`，并始终补一行 `*_OBSERVED &lt;版本|not-installed&gt;`。</summary>
+        /// <summary>about（V3 独有）：版本、定位、许可与"非官方"声明。纯文本，不联网。</summary>
+        private static int AboutCmd()
+        {
+            Console.WriteLine("dsh-minato " + ToolkitVersion);
+            Console.WriteLine(T("社区版 DeepSeek Harness (dsh) 本机部署运维套件：安装 / 启动 / 监控 / 备份恢复 / 插件诊断与隔离",
+                                "community deploy & ops kit for DeepSeek Harness (dsh): install, start, monitor, backup & restore, plugin diagnosis & quarantine"));
+            Console.WriteLine(T("非官方工具，与 DeepSeek 官方无关。", "Unofficial tool; not affiliated with DeepSeek."));
+            Console.WriteLine(T("仓库：", "Repository: ") + "https://github.com/sakanamaru/dsh-minato");
+            Console.WriteLine(T("许可：MIT", "License: MIT"));
+            Console.WriteLine(T("本程序只读写本机：不联网（余额查询除外，需显式开启）；写操作一律先备份、可回滚。",
+                                "Works locally only: no network (except the opt-in balance check); every write is backed up first and can be rolled back."));
+            return 0;
+        }
+
+        /// <summary>ui（V3 独有）：启动跨平台 GUI（Avalonia）。找不到就**如实说明**，不静默失败、不假装已启动。</summary>
+        private static int UiCmd()
+        {
+            string gui = Environment.GetEnvironmentVariable("DSHT_GUI");
+            if (!string.IsNullOrEmpty(gui) && !System.IO.File.Exists(gui)) { Console.WriteLine("UI_FAIL " + T("DSHT_GUI 指向的文件不存在：", "DSHT_GUI points at a missing file: ") + gui); return 0; }
+            if (string.IsNullOrEmpty(gui))
+            {
+                string dir = AppDomain.CurrentDomain.BaseDirectory;
+                string[] names = PlatformIsWindows() ? new string[] { "dsht-gui.exe" } : new string[] { "dsht-gui" };
+                for (int i = 0; i < names.Length; i++)
+                {
+                    string cand = System.IO.Path.Combine(dir, names[i]);
+                    if (System.IO.File.Exists(cand)) { gui = cand; break; }
+                }
+            }
+            if (string.IsNullOrEmpty(gui))
+            {
+                Console.WriteLine("UI_FAIL " + T("没找到 GUI（把 dsht-gui 放在本程序同目录，或用环境变量 DSHT_GUI 指定）", "no GUI found (put dsht-gui next to this program, or set DSHT_GUI)"));
+                return 0;
+            }
+            try
+            {
+                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(gui);
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi);
+                Console.WriteLine("UI_OK " + gui + (p != null ? " pid=" + p.Id : ""));
+            }
+            catch (Exception ex) { Console.WriteLine("UI_FAIL " + ex.Message); }
+            return 0;
+        }
         private static int InstallLike(string[] args, ServiceRegistry reg, bool update)
         {
             IToolchainQuery tc = reg.Get<IToolchainQuery>();
