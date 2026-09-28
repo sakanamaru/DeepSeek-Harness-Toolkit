@@ -35,6 +35,7 @@ namespace Dsht.Cli
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
             if (cmd == "profilepatch") return ProfilePatch(args, reg);
             if (cmd == "profiles") return Profiles(reg);
+            if (cmd == "update-info") return UpdateInfo(reg);
             if (cmd == "log") return LogCmd(args, reg);
             if (cmd == "about") return AboutCmd();
             if (cmd == "shortcut") return ShortcutCmd(args);
@@ -312,7 +313,8 @@ namespace Dsht.Cli
             Console.WriteLine("  profiles | profilecheck [--dir <d>] [--file <yaml>] [--diag] | profilepatch --profile <name> --id <entry> [--enable] [--yes]");
             Console.WriteLine("  sessions | log [--lines <n>] [--level info|warn|error] [--grep <text>] [--export <file> [--yes]]");
             Console.WriteLine("  config-get | config-set <key> <value>");
-            Console.WriteLine("  install [--install-node] [--yes] | update [--yes] | uninstall [--yes]");
+            Console.WriteLine("  install [--install-node] [--version <v>] [--list] [--yes] | update [--version <v>] [--list] [--yes] | uninstall [--yes]");
+            Console.WriteLine("  update-info（只读：当前/最新/来源/状态/回滚候选 ✓）");
             Console.WriteLine("  start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--force] [--yes]");
             Console.WriteLine("  backup | backup-list [--detail] | backup-export --path <备份> --to <目标> [--yes] | backup-delete --path <备份> [--yes] [--yes]");
             Console.WriteLine("  restore --path <备份> [--dry-run] [--apply] [--yes]");
@@ -358,6 +360,46 @@ namespace Dsht.Cli
             Console.Write(T("将执行：", "will run: ") + what + T("　确认？(y/N) ", "  confirm? (y/N) "));
             string a = Console.ReadLine();
             return a != null && a.Trim().ToLowerInvariant() == "y";
+        }
+        /// <summary>update-info（V3 独有，只读）：经典版「更新中心」的 CLI 对应物 ✓。
+        /// 标记行：UPDATEINFO_INSTALLED/LATEST/REGISTRY/STATE/PRE_BACKUP/PRE_BACKUP_VERSION/ROLLBACK。</summary>
+        private static int UpdateInfo(ServiceRegistry reg)
+        {
+            IToolchainQuery tc = reg.Get<IToolchainQuery>();
+            string installed = tc.DshVersion();
+            if (string.IsNullOrEmpty(installed))
+            {
+                // 未安装时明确说"未安装"，不伪装成"最新" ✗
+                if (string.IsNullOrEmpty(tc.WhichDsh())) { Console.WriteLine("UPDATEINFO_INSTALLED not-installed"); Console.WriteLine("UPDATEINFO_LATEST unknown"); Console.WriteLine("UPDATEINFO_STATE unknown"); return 0; }
+            }
+            Console.WriteLine("UPDATEINFO_INSTALLED " + (string.IsNullOrEmpty(installed) ? "unknown" : installed));
+            string latest = NpmVersionGuard.Normalize(tc.NpmViewLatest());
+            Console.WriteLine("UPDATEINFO_LATEST " + (latest.Length == 0 ? "unknown" : latest));
+            string reg2 = tc.NpmRegistryConfig();
+            Console.WriteLine("UPDATEINFO_REGISTRY " + (string.IsNullOrEmpty(reg2) ? "default" : reg2.Trim()));
+            string state = "unknown";
+            if (installed != null && installed.Length > 0 && latest.Length > 0)
+                state = installed == latest ? "up-to-date" : (installed.CompareTo(latest) < 0 ? "update-available" : "newer-installed");
+            Console.WriteLine("UPDATEINFO_STATE " + state);
+            // 回滚候选：最新的 -pre-update 备份，以及它旁挂文件里记录的当时版本 ✓
+            try
+            {
+                string root = reg.Get<IBackupSource>().BackupsRoot;
+                string best = null;
+                if (!string.IsNullOrEmpty(root) && System.IO.Directory.Exists(root))
+                {
+                    string[] dirs = System.IO.Directory.GetDirectories(root, "*-pre-update");
+                    System.Array.Sort(dirs, StringComparer.Ordinal);
+                    if (dirs.Length > 0) best = dirs[dirs.Length - 1];
+                }
+                Console.WriteLine("UPDATEINFO_PRE_BACKUP " + (best == null ? "none" : best));
+                string wasVersion = "unknown";
+                if (best != null) { try { if (System.IO.File.Exists(best + ".version")) wasVersion = System.IO.File.ReadAllText(best + ".version").Trim(); } catch { } }
+                Console.WriteLine("UPDATEINFO_PRE_BACKUP_VERSION " + wasVersion);
+                Console.WriteLine("UPDATEINFO_ROLLBACK " + (best == null ? "none" : wasVersion));
+            }
+            catch (Exception ex) { Console.WriteLine("UPDATEINFO_PRE_BACKUP none"); Console.WriteLine("UPDATEINFO_ROLLBACK none"); Console.WriteLine("UPDATEINFO_NOTE " + ex.Message); }
+            return 0;
         }
         /// <summary>log（V3 独有）：查看/筛选/导出操作日志 —— 经典版「日志中心」的 CLI 对应物 ✓。
         /// 用法：log [--lines &lt;n&gt;] [--level info|warn|error] [--grep &lt;text&gt;] [--export &lt;file&gt; [--yes]]
@@ -619,6 +661,12 @@ namespace Dsht.Cli
                     Dsht.Domain.Abstractions.IBackupSource bks = reg.Get<Dsht.Domain.Abstractions.IBackupSource>();
                     Dsht.Domain.Model.BackupResult pb = bks.Create(reg.Get<Dsht.Domain.Abstractions.IPaths>().DataRoot, Dsht.Domain.Model.BackupKind.PreUpdate, _cfg == null ? 3 : _cfg.KeepBackups, WorkspaceRoot(reg));
                     if (pb != null && !string.IsNullOrEmpty(pb.Path)) Console.WriteLine(verb + "_PRE_BACKUP " + pb.Path);
+                    // Record the version we are about to replace, NEXT TO the package (a file inside it would
+                    // be restored into the data root). This is what makes a rollback candidate knowable.
+                    if (pb != null && !string.IsNullOrEmpty(pb.Path))
+                    {
+                        try { System.IO.File.WriteAllText(pb.Path + ".version", installed); } catch { }
+                    }
                     else Console.WriteLine(verb + "_PRE_BACKUP_FAILED " + T("更新前备份未能创建（数据根不可读？）", "pre-update backup could not be created (data root unreadable?)"));
                 }
                 catch (Exception bex) { Console.WriteLine(verb + "_PRE_BACKUP_FAILED " + bex.Message); }
