@@ -116,3 +116,30 @@ interface IServiceTarget { AppKind Kind; bool IsAvailable(); ServiceReport Probe
 | macOS | 未开始（设计稿决策：Linux 优先，macOS 视需求后补） |
 | 命令面广度 | 已覆盖 GUI 消费的主要只读命令（含 `restore --dry-run` 预览）；`check`/`selftest`/非交互真实 `backup`/`restore` 尚未移植（真实恢复**明确拒绝**而不是静默失败） |
 | GUI | Windows-only WinForms 保持不变；跨平台 GUI 只留架构能力（见设计稿 §7） |
+---
+
+## 6. 怎么让门槛③（Win/Linux 双跑）变绿 —— 你自己也能做
+
+门槛③ 只差"**在 CI 上真跑一次**"，而 CI 只在推送后触发。若你不想让我推送，可以自己推一个分支（**不动 main**）：
+
+```powershell
+cd "D:\dsh-workspace\技术\DSHToolkit\09-源码仓库\repo"
+git switch -c v3-linux              # 建分支，不动 main
+git push -u origin v3-linux         # 只推这个分支
+gh run watch                        # 看 CI：会跑 windows-latest + ubuntu-latest
+```
+
+**预期结果**：`v3-contracts` job 在两个平台上都绿（`dotnet build v3/src/Dsht.Cli` + 契约测试 180/180）。
+若 ubuntu 上失败，那正是有价值的信号——说明 Linux 实现里还有**只在真机才暴露**的问题（我本地只能做到"编译过 + 纯逻辑单测"，见 §5）。
+
+跑完后删分支即可（不影响 main）：
+
+```powershell
+git push origin --delete v3-linux
+git branch -D v3-linux
+```
+
+**或者**：你放行让我推送（我会推同样的分支，不碰 main），我负责跑通并把结果写回文档。
+
+> 说明：`v3-linux` 分支上是**未合并的 41 个本地提交**（含 v2.8 阶段的拆分/接缝/Linux 实现 + V3 全部工作）。
+> main 上仍是 `8f885ce`，`verify.ps1` 与 16 项发布清单完好，**随时可发布**。
