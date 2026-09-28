@@ -10,7 +10,10 @@ namespace Dsht.Platform.Windows
     {
         public static string Capture(string exe, string args)
         {
-            return Capture(exe, args, 15000);
+            // 120s, not 15s: this default also covers network queries (npm view), and a cold registry
+            // lookup can easily exceed 15s - which showed up as a transient "could not list versions".
+            // Matches the ceiling the Linux side already uses.
+            return Capture(exe, args, 120000);
         }
 
         public static string Capture(string exe, string args, int timeoutMs)
