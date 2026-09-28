@@ -32,6 +32,7 @@ namespace Dsht.Cli
             if (cmd == "status") return Status(reg, Has(args, "--detail"));
             if (cmd == "describe") return Describe(reg);
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
+            if (cmd == "profilepatch") return ProfilePatch(args, reg);
             if (cmd == "profiles") return Profiles(reg);
             if (cmd == "start") return StartCmd(args, reg);
             if (cmd == "stop") return StopCmd(args, reg);
@@ -49,7 +50,7 @@ namespace Dsht.Cli
             if (cmd == "backup-export") return BackupExport(args, reg);
             if (cmd == "backup-delete") return BackupDelete(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | sessions | start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--yes] | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | profilepatch --profile <name> --id <entry> [--enable] [--yes] | sessions | start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--yes] | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
             return 2;
         }
 
@@ -599,6 +600,55 @@ namespace Dsht.Cli
             return null;
         }
 
+        /// <summary>profilepatch（V3 独有）：给 profile 的 cordis.patch.yml 追加/修改"禁用某个条目"的顶层行。
+        /// 纪律与 v2.x 一致：**备份 → 写盘 → 复检 → 失败回滚**；不带 --yes 只打印计划（DRYRUN）。
+        /// 用法：`profilepatch --profile &lt;name&gt; --id &lt;entry&gt; [--enable] [--yes]`
+        /// 标记行：`PROFILEPATCH_PLAN` / `_DRYRUN` / `_BACKUP` / `_OK` / `_NOOP` / `_ROLLBACK` / `_FAIL &lt;原因&gt;`。</summary>
+        private static int ProfilePatch(string[] args, ServiceRegistry reg)
+        {
+            IProfileManifestSource src = reg.Get<IProfileManifestSource>();
+            string profile = FlagOf(args, "--profile");
+            string id = FlagOf(args, "--id");
+            bool enable = Has(args, "--enable");
+            bool yes = Has(args, "--yes");
+
+            if (string.IsNullOrEmpty(profile))
+            {
+                Console.WriteLine("PROFILEPATCH_FAIL usage: profilepatch --profile <name> --id <entry> [--enable] [--yes]");
+                return 0;
+            }
+            string text = src.ReadPatch(profile);
+            if (text == null) { Console.WriteLine("PROFILEPATCH_FAIL file-not-found " + profile); return 0; }
+
+            PatchPlan plan = enable ? PatchPlanner.PlanEnable(text, id) : PatchPlanner.PlanDisable(text, id);
+            if (plan.Noop) { Console.WriteLine("PROFILEPATCH_NOOP " + plan.Reason); return 0; }
+            if (!plan.Valid) { Console.WriteLine("PROFILEPATCH_FAIL " + plan.Reason); return 0; }
+
+            Console.WriteLine("PROFILEPATCH_PLAN " + profile + "/cordis.patch.yml:" + plan.Line + " " + (enable ? "disabled: false" : "disabled: true"));
+            if (!yes)
+            {
+                Console.WriteLine("PROFILEPATCH_DRYRUN " + T("（确认请加 --yes；只改该 profile 的补丁文件，且会先备份）", "(add --yes to confirm; only that profile's patch file is touched, and it is backed up first)"));
+                return 0;
+            }
+            string backup; string err;
+            bool ok = src.ApplyPatch(profile, plan.NewText, out backup, out err);
+            if (!string.IsNullOrEmpty(backup)) Console.WriteLine("PROFILEPATCH_BACKUP " + backup);
+            if (!ok)
+            {
+                if (err == "verify-failed") Console.WriteLine("PROFILEPATCH_ROLLBACK " + backup);
+                Console.WriteLine("PROFILEPATCH_FAIL " + err);
+                return 0;
+            }
+            Console.WriteLine("PROFILEPATCH_OK " + profile + "/cordis.patch.yml:" + plan.Line);
+            return 0;
+        }
+
+        /// <summary>取 `--name value` 形式的值；缺省返回空串。</summary>
+        private static string FlagOf(string[] args, string name)
+        {
+            for (int i = 0; i < args.Length - 1; i++) { if (args[i] == name) return args[i + 1]; }
+            return "";
+        }
         private static bool Has(string[] args, string name)
         {
             for (int i = 0; i < args.Length; i++) if (args[i] == name) return true;
