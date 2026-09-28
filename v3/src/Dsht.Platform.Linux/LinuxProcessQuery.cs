@@ -48,9 +48,11 @@ namespace Dsht.Platform.Linux
             if (pid <= 0) return null;
             try
             {
-                string s = Capture("ps", "-o lstart= -p " + pid).Trim();
+                string s = Capture("ps", "-o etimes= -p " + pid).Trim();
                 if (s.Length == 0) return null;
                 DateTime dt;
+                int secs;
+                if (int.TryParse(s, out secs) && secs >= 0) return DateTime.Now.AddSeconds(-secs);   // locale-independent
                 if (DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out dt)) return dt;
                 return null;
             }

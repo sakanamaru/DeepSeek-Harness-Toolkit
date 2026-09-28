@@ -35,6 +35,13 @@ namespace Dsht.Platform.Linux
 
         public string WhichDsh()
         {
+            // Check known install locations first: the no-sudo bootstrap puts the global bin in
+            // ~/.local/node/bin, which is not on this process PATH, so PATH alone lies.
+            string[] known = NodeBinDirs();
+            for (int i = 0; i < known.Length; i++)
+            {
+                try { string kf = System.IO.Path.Combine(known[i], "dsh"); if (System.IO.File.Exists(kf)) return kf; } catch { }
+            }
             try
             {
                 string path = Environment.GetEnvironmentVariable("PATH") ?? "";
@@ -201,6 +208,20 @@ namespace Dsht.Platform.Linux
             if (cli.Length > 0) return RunExitCapture(NodeExe(), cli + " " + args, out output);
             return RunExitCapture(NpmExe(), args, out output);
         }
+        /// <summary>Node archive architecture suffix (RuntimeInformation works on both build paths).</summary>
+        private static string NodeArch()
+        {
+            try
+            {
+                System.Runtime.InteropServices.Architecture a = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture;
+                if (a == System.Runtime.InteropServices.Architecture.Arm64) return "arm64";
+                if (a == System.Runtime.InteropServices.Architecture.Arm) return "armv7l";
+                if (a == System.Runtime.InteropServices.Architecture.X86) return "x86";
+                return "x64";
+            }
+            catch { return "x64"; }
+        }
+
         public int InstallNodeRuntime()
         {
             // dsh 要求 Node >= 22.19.0（真机 npm warn EBADENGINE 抓到的 ✗）→ 按候选列表逐个试 ✓
@@ -228,7 +249,7 @@ namespace Dsht.Platform.Linux
                 for (int vi = 0; vi < versions.Length; vi++)
                 {
                 string ver = versions[vi];
-                string url = "https://nodejs.org/dist/" + ver + "/node-" + ver + "-linux-x64.tar.xz";
+                string url = "https://nodejs.org/dist/" + ver + "/node-" + ver + "-linux-" + NodeArch() + ".tar.xz";
                 // 三级兜底：curl → wget → python3（真机上 curl 常常没装 ✗）
                 if (RunExit("curl", "-fsSL --max-time 600 " + url + " -o " + tar) != 0
                     && RunExit("wget", "-q --timeout=60 -O " + tar + " " + url) != 0
@@ -242,6 +263,8 @@ namespace Dsht.Platform.Linux
                     LastError = "下载的文件不完整（" + ver + "）";
                     continue;   // 换下一个候选版本 ✓
                 }
+                try { if (System.IO.Directory.Exists(dir)) System.IO.Directory.Delete(dir, true); } catch (Exception dex) { LastError = "cannot clear " + dir + ": " + dex.Message; return -1; }
+                System.IO.Directory.CreateDirectory(dir);
                 if (RunExit("tar", "-xf " + tar + " --strip-components=1 -C " + dir) != 0) return -1;
                 try { System.IO.File.Delete(tar); } catch { }
                 LastError = "";
