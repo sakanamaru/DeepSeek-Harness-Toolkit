@@ -168,7 +168,22 @@ namespace Dsht.Platform.Windows
                     foreach (string victim in Dsht.Domain.Services.BackupRetention.SelectForDeletion(names, keep <= 0 ? 3 : keep))
                     {
                         try { Directory.Delete(paths[victim], true); } catch { }
+                        try { System.IO.File.Delete(paths[victim] + ".manifest"); } catch { }   // 旁挂文件一起清 ✓
+                        try { System.IO.File.Delete(paths[victim] + ".version"); } catch { }
                     }
+                }
+                catch { }
+                // 完成标记 ✓（**同级旁挂** ✓ 绝不写进包内 —— 包内文件会被恢复到数据根 ✗✗）。
+                // **最后写** ✓ → 标记缺失即"备份未完成"（中断可被精确识别 ✓）；标记存在则可核对内容是否被截断 ✓。
+                try
+                {
+                    int finalFiles = 0;
+                    int before = _copyFailures;
+                    CountTree(dest, ref finalFiles);
+                    _copyFailures = before;
+                    long bytes = DirSizeForManifest(dest);
+                    System.IO.File.WriteAllText(dest + ".manifest",
+                        "files=" + finalFiles + "\nbytes=" + bytes + "\nfailed=" + _copyFailures + "\nfinished=" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n");
                 }
                 catch { }
                 return new BackupResult(dest, skipped, _copyFailures);
@@ -300,6 +315,18 @@ namespace Dsht.Platform.Windows
                 if (name.StartsWith("dsh-data-", StringComparison.OrdinalIgnoreCase)) continue;
                 CountTree(ds[i], ref files);
             }
+        }
+        /// <summary>目录总字节数（仅用于完成标记 ✓ 容错 ✓）。</summary>
+        private static long DirSizeForManifest(string dir)
+        {
+            long total = 0;
+            string[] fs;
+            try { fs = Directory.GetFiles(dir); } catch { return 0; }
+            for (int i = 0; i < fs.Length; i++) { try { total += new FileInfo(fs[i]).Length; } catch { } }
+            string[] ds;
+            try { ds = Directory.GetDirectories(dir); } catch { return total; }
+            for (int i = 0; i < ds.Length; i++) total += DirSizeForManifest(ds[i]);
+            return total;
         }
         private static int CopyTree(string src, string dst, bool skipLocked)
         {
