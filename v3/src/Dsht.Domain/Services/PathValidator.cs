@@ -11,7 +11,7 @@ namespace Dsht.Domain.Services
     {
         public static string ValidateRestorePath(string pathArg, string backupsRoot, Func<string, bool> isValidBackupDir)
         {
-            string bk = Resolve(Trim(pathArg), backupsRoot);
+            string bk = ResolveBackupPath(Trim(pathArg), backupsRoot);
             if (bk.Length == 0) return "no-path";
             if (!PathUtil.IsSubPath(backupsRoot, bk)) return "outside";
             if (isValidBackupDir == null || !Safe(isValidBackupDir, bk)) return "invalid";
@@ -21,7 +21,7 @@ namespace Dsht.Domain.Services
         public static string ValidateExport(string srcArg, string toArg, string backupsRoot,
             Func<string, bool> dirExists, Func<string, string> fullPath)
         {
-            string src = Resolve(Trim(srcArg), backupsRoot);
+            string src = ResolveBackupPath(Trim(srcArg), backupsRoot);
             string to = Trim(toArg);
             if (src.Length == 0) return "no-path";
             if (to.Length == 0) return "no-to";
@@ -36,7 +36,7 @@ namespace Dsht.Domain.Services
 
         public static string ValidateDeletePath(string srcArg, string backupsRoot, Func<string, bool> dirExists)
         {
-            string src = Resolve(Trim(srcArg), backupsRoot);
+            string src = ResolveBackupPath(Trim(srcArg), backupsRoot);
             if (src.Length == 0) return "no-path";
             if (!PathUtil.IsSubPath(backupsRoot, src)) return "outside";
             string name = BaseName(src);
@@ -48,14 +48,15 @@ namespace Dsht.Domain.Services
         /// <summary>把"裸备份名"解析到备份根内 ✓ —— GUI 与命令行都可能只给名字（列表里显示的那个 ✓）。
         /// 只做**根内**解析：含分隔符或盘符的按路径处理 ✓，解析后仍要过 IsSubPath ✓ 所以 `..` 逃逸照样被拒 ✓✓。
         /// 纯字符串拼接（不引 System.IO ✓ 保持领域纯净 ✓）；两种分隔符 IsSubPath 都认 ✓。</summary>
-        private static string Resolve(string p, string backupsRoot)
+        public static string ResolveBackupPath(string p, string backupsRoot)
         {
             if (string.IsNullOrEmpty(p)) return p;
             if (p.IndexOf('/') >= 0 || p.IndexOf('\\') >= 0) return p;
             if (p.Length >= 2 && p[1] == ':') return p;
             string root = (backupsRoot == null ? "" : backupsRoot).TrimEnd('\\', '/');
             if (root.Length == 0) return p;
-            return root + "/" + p;
+            char sep = root.IndexOf('\\') >= 0 ? '\\' : '/';   // 跟随备份根自身的风格 ✓（纯字符串判断，不引 System.IO ✓）
+            return root + sep + p;
         }
 
         private static string Trim(string s) { return (s == null ? "" : s).Trim().Trim('"'); }

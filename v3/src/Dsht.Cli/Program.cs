@@ -1735,7 +1735,7 @@ namespace Dsht.Cli
             }
             else
             {
-                string p = pathArg.Trim().Trim('"');
+                string p = PathValidator.ResolveBackupPath(pathArg.Trim().Trim('"'), bk.BackupsRoot);   // 裸备份名解析到备份根内 ✓
                 if (PathUtil.IsSubPath(bk.BackupsRoot, p))
                 {
                     if (!BackupPackage.IsValidPackage(bk.Snapshot(p))) { Console.WriteLine("DRYRUN_FAIL " + T("无效备份目录", "invalid backup directory")); return 0; }
