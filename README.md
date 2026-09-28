@@ -42,6 +42,12 @@ This section states exactly where Linux stands, so nobody has to discover it the
   not a desktop icon.
 - `--install-node` is Linux-only; on Windows Node is installed by the installer.
 
+- **Workspace auto-detection differs by platform, by necessity.** On Windows the workspace is the folder two
+  levels above the executable (the v2.x rule: an exe in `...\dsh-minato\` means the workspace is `...\`). On
+  Linux the executable usually lives in `~/.local/bin`, where that rule would point at `~/.local`, so the
+  workspace is the directory you run the command from instead. Either way an explicit `ws=` setting wins, and
+  a location that looks unreasonable (your home directory itself, a drive root, a system directory) is
+  rejected and left to you to set.
 ### Known gaps on Linux (tracked; being closed before 3.0)
 
 - The GUI's start/stop, profile check and quarantine buttons still call the Windows-only classic
