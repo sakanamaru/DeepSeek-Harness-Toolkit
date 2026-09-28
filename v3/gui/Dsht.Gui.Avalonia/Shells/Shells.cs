@@ -553,8 +553,11 @@ namespace Dsht.Gui.Avalonia.Shells
         private static Control SectionInner(MainWindow host)
         {
             if (host.IsSessionsSection) return SessionsContent(host);
-            if (host.MainSection == 2) return ProfilesContent(host);
-            if (host.MainSection == 0) return StatusContent(host);
+            if (host.MainSection == 3) return ProfilesContent(host);
+            if (host.MainSection == 0) return OverviewContent(host);
+            if (host.MainSection == 1) return BoardContent(host);
+            if (host.MainSection == 4) return BackupContent(host);
+            if (host.MainSection == 6) return SettingsContent(host);
             return new Border { Margin = PageMargin, Child = RawCard(host, "原始输出", "CLI 标记行原文") };
         }
 
