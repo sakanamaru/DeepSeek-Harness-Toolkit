@@ -162,6 +162,9 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2，固定 commit SHA
 
+      - name: Verify session fixes are still in the code (mechanical audit)
+        shell: pwsh
+        run: pwsh -NoProfile -File v3/tests/verify_fixes.ps1 -Repo .
       - name: Build exe from source (csc, .NET Framework 4.x)
         shell: pwsh
         run: |
