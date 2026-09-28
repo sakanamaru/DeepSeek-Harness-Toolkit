@@ -13,6 +13,14 @@ namespace Dsht.Domain.Abstractions
         /// <summary>列出备份根下 dsh-data-* 直接子目录，按名字升序（旧 → 新），与 v2.x 排序一致。</summary>
         List<BackupEntry> ListRaw();
 
+        /// <summary>创建一次备份（Manual/Auto/Pre*）：源目录 → 备份根/dsh-data-&lt;时间戳&gt;&lt;后缀&gt;；
+        /// 复制时跳过 node_modules/backup/dsh-data-*/reparse point，被锁文件按 best-effort 跳过；
+        /// 成功后执行保留策略（只清自动类）。失败返回 null。</summary>
+        BackupResult Create(string sourceDir, BackupKind kind);
+
+        /// <summary>删除备份目录（保留策略用）；失败静默。</summary>
+        void Delete(string dir);
+
         /// <summary>读取某目录的快照（名字 + 直接子条目名），供领域层判定有效性。</summary>
         DirSnapshot Snapshot(string dir);
 
