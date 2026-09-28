@@ -20,7 +20,7 @@ echo "--- 9 隔离根：restore 预览"; DSH_HOME="$ISO" $T "$BIN" restore --dry
 echo "--- 10 隔离根：profilepatch 计划（不写盘）"; DSH_HOME="$ISO" $T "$BIN" profilepatch --profile web --id demo
 echo "--- 11 安全：start 计划（不带 --yes，绝不启动）"; DSH_HOME="$ISO" $T "$BIN" start --port 3999
 echo "--- 12 安全：stop 计划（不带 --yes，绝不停止）"; DSH_HOME="$ISO" $T "$BIN" stop --port 3999
-echo "--- 13 shortcut 计划（不带 --yes）"; DSH_HOME="$ISO" $T "$BIN" shortcut
+echo "--- 13 shortcut 计划（不带 --yes；同时验证单文件下能取到自身路径 ✓）"; DSH_HOME="$ISO" $T "$BIN" shortcut
 echo "--- 14 菜单（管道输入，EOF 即退出）"; printf '4\nq\n' | $T "$BIN" 2>&1 | head -8
 echo "--- 15 默认端口是否仍被你的实例占用（应为监听中）"; (ss -ltnp 2>/dev/null || netstat -ltnp 2>/dev/null) | grep -E ':3080' || echo "3080 未监听"
 rm -rf "$ISO"
