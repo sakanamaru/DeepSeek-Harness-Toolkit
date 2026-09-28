@@ -6,7 +6,32 @@ All notable changes to **DeepSeek Harness Toolkit** (unofficial). Full release n
 
 ---
 
+## v2.7.3 — 2026-09-28 —（修复：Dry-Run 相对路径预览谎报 0 文件 / Fix: dry-run preview reported 0 files for a relative backup path）
+
+### Fixed / 修复
+
+- **`restore --dry-run --path <相对路径>` 谎报"0 个文件"** —— `P()`（长路径前缀规范化）对相对路径生成 `\\?\.\backup\x`，这不是合法 Win32 路径：源侧遍历抛异常后被 `PlanMergeCore` 的 `catch` 静默吞掉，于是一份**有内容**的备份被预览成 `DRYRUN_NEW 0 / DRYRUN_OVERWRITE 0 / DRYRUN_BYTES 0`（`restore` 本身会先拒绝相对路径，所以只影响预览，不影响真实恢复）。
+  现在非"完全限定"路径（`.\x`、`backup\x`、`C:x`、`\x`）先经 `Path.GetFullPath` 规范化再前缀；**绝对路径与 UNC 输入完全不受影响（零行为变化）**。实测：`.\backup\dsh-data-...` 现在报 `NEW 1 / OVERWRITE 1 / KEEP 510`，与绝对路径逐字一致。
+  **`restore --dry-run --path <relative>` reported "0 files"** — `P()` (long-path prefix normalisation) turned a relative path into `\\?\.\backup\x`, which is not a valid Win32 path: the source-side walk threw and `PlanMergeCore`'s `catch` swallowed it, so a backup **with content** previewed as `DRYRUN_NEW 0 / DRYRUN_OVERWRITE 0 / DRYRUN_BYTES 0` (`restore` itself already rejects relative paths, so only the preview was affected). Non-fully-qualified paths (`.\x`, `backup\x`, `C:x`, `\x`) are now resolved with `Path.GetFullPath` before the prefix is added; **absolute and UNC input is untouched — zero behaviour change**. Measured: `.\backup\dsh-data-...` now reports `NEW 1 / OVERWRITE 1 / KEEP 510`, identical to the absolute path.
+
+### Changed / 变更
+
+- `build_exe.cmd` 改为**递归收集源码**（与 CI 的 `Build exe from source` 步骤同一套规则），不再写死目录列表（写死的列表在核心分层后会漏文件）；同时改用 CRLF 行尾（cmd.exe 会错解 LF 批处理）。
+  `build_exe.cmd` now discovers sources **recursively** (same rule as the CI `Build exe from source` step) instead of a hard-coded directory list, which misses files once the core is split; it is also written with CRLF line endings (cmd.exe mis-parses LF batch files).
+- 文档：README（EN/zh）的单测构建命令补上 `src\**`（分层后原命令已不能编译）、`pwsh` 示例改为 `powershell -ExecutionPolicy Bypass -File`（Windows 自带的 Windows PowerShell 即可）、`verify.ps1 -Tag` 示例更新为 v2.7.3；`src/` 分层布局的说明由「不是已发布状态」改为「v2.7.3 起的发布布局」。
+  Docs: the unit-test build command in README (EN/zh) now includes `src\**` (it no longer compiled after the split); the `pwsh` example is now `powershell -ExecutionPolicy Bypass -File` (the built-in Windows PowerShell suffices); the `verify.ps1 -Tag` example points at v2.7.3; the `src/` layout note no longer says "not a released state".
+
+### Tests / 测试
+
+- 单元测试 **297 → 304**：新增 7 项覆盖 `P()` 的相对路径行为（不再产生 `\\?\.\`、尾部保留、解析为绝对路径、绝对/UNC/已加前缀输入零变化）以及一条真实临时目录的 Dry-Run 计划断言（相对 `--path` 必须看到 2 个文件）。
+  Unit tests **297 → 304**: 7 new checks for `P()` on relative paths (no `\\?\.\`, tail preserved, resolves to absolute, absolute / UNC / already-prefixed input unchanged) plus a real temp-dir dry-run plan assertion (a relative `--path` must see both files). Integration suite unchanged at **33**.
+
+---
+
 ## v2.8.0 — 未发布 / Unreleased
+
+> 注：阶段 1 的**分层拆分**（及阶段 2 的 net8.0 工程）已随 **v2.7.3** 一起发布——下面的记录保留为当时的过程说明，本版号只留给后续阶段。
+> Note: the stage-1 **layering split** (and stage 2's net8.0 project) already shipped with **v2.7.3** — the record below is kept as the process note of that work; this version number is reserved for later stages.
 
 ### Changed / 变更（重构 · 阶段 1：分层，已完成 · 2026-09-21）
 

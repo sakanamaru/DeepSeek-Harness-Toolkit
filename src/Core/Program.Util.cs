@@ -34,8 +34,21 @@ partial class Program
     {
         if (string.IsNullOrEmpty(p)) return p;
         if (p.StartsWith(@"\\?\")) return p;
+        // 相对路径/驱动器相对路径（.\x、backup\x、C:x）必须先转绝对：\\?\.\x 不是合法 Win32 路径，
+        // System.IO 会抛异常，而调用方（如 PlanMergeCore）把异常静默吞掉 →
+        // `restore --dry-run --path .\backup\...` 会谎报"0 个文件"（v2.7.3 修复）。
+        if (!IsFullyQualified(p)) { try { p = Path.GetFullPath(p); } catch { } }
         if (p.StartsWith(@"\\")) return @"\\?\UNC\" + p.Substring(2);   // \\server\share → \\?\UNC\server\share
         return @"\\?\" + p;
+    }
+
+
+    /// <summary>是否已是"完全限定"路径（X:\... 或 \\server\share...）。驱动器相对路径（C:x）与根相对路径（\x）都算否。</summary>
+    static bool IsFullyQualified(string p)
+    {
+        if (string.IsNullOrEmpty(p)) return false;
+        if (p.StartsWith(@"\\")) return true;                                    // UNC 或 \\?\
+        return p.Length >= 3 && p[1] == ':' && (p[2] == '\\' || p[2] == '/');     // X:\ 或 X:/
     }
 
 

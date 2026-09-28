@@ -208,7 +208,7 @@ Requires the built-in .NET Framework 4.x on Windows (preinstalled on Win10 / Win
 
 Or double-click `build_exe.cmd` in this directory. The GUI compiles from the same-rules single file `gui_v2.cs` (one source → both attached and standalone variants; the standalone adds `/resource:<core exe>,DSHCore.exe`).
 
-> The `src\` globs in the command above belong to the **v2.8 stage 1 layout, complete as of 2026-09-21** — the **move-only** split of the single 4000+ line `dsh_v2.cs` into `partial class Program` layers (see Directory Layout). The **released v2.7.2** core is still the single file `dsh_v2.cs`: to rebuild that, drop the three `src\` globs. `csc.exe` does not expand wildcards itself — when an explicit file list is needed, expand them with `Get-ChildItem src -Recurse -Filter *.cs`.
+> The `src\` globs in the command above belong to the **v2.8 stage 1 layout, complete as of 2026-09-21** — the **move-only** split of the single 4000+ line `dsh_v2.cs` into `partial class Program` layers (see Directory Layout). The **released v2.7.3** core is built from this split layout (v2.7.2 and earlier were a single file `dsh_v2.cs`: to rebuild those, drop the three `src\` globs). `csc.exe` does not expand wildcards itself — when an explicit file list is needed, expand them with `Get-ChildItem src -Recurse -Filter *.cs`.
 
 **Reproducible releases (source == artifact):** each GitHub Release exe is compiled from this source by **GitHub Actions CI**, and `hashes.txt` is regenerated + **GPG-signed** by CI in the same run. Tag builds additionally publish a **GitHub artifact attestation** — an independent provenance check, verified separately with `gh`; `verify.ps1` does not check it, and it does not replace the GPG signature check. The repository stores no binaries.
 
@@ -216,16 +216,16 @@ Or double-click `build_exe.cmd` in this directory. The GUI compiles from the sam
 
 No test framework or third-party dependency is required.
 
-- **Unit tests (297)** — same-assembly test proxy (`/define:UNIT`; the test entry point is `tests\unit_tests.cs`, everything else is the production code being tested):
+- **Unit tests (304)** — same-assembly test proxy (`/define:UNIT`; the test entry point is `tests\unit_tests.cs`, everything else is the production code being tested):
   ```
-  "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs tests\unit_tests.cs
+  "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs tests\unit_tests.cs
   unittests.exe
   ```
   Exit code 0 = all green. Covers: path round-trips (incl. UNC / non-ASCII), workspace blacklist, dsh-data markers, root marker strictness, backup dir validation, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection, netstat PID parsing, dry-run merge/delete planning (incl. restore-side skip-rule fidelity), backup kind parsing, export / delete validation, rollback-candidate lookup, configuration whitelist (incl. the `close_action` / `auto_start` keys), status-bar uptime formatting, profile block scanning / `bootdiag` output parsing / the controlled patch path (one-line plan, idempotent NOOP, backup, verify and rollback).
 
 - **Integration tests (33 cases)** — stubbed end-to-end matrix (variants A/C, real 3080 probing; retention policy, restore/import blocked while running, bilingual asserts):
   ```
-  pwsh -NoProfile -File tests\integration.ps1
+  powershell -ExecutionPolicy Bypass -File tests\integration.ps1
   ```
   Touches only the stubbed data dir `~/.dsh_test` — never your real `~/.dsh`. When port 3080 is closed, "running"-related cases are SKIPped, not failed. Exit code 0 = all green.
 
@@ -261,7 +261,7 @@ docs/screenshots/    README screenshots
 backup/  logs/       Runtime dirs (gitignored — never committed)
 ```
 
-> **The `src/` lines above are the v2.8 stage 1 layout, complete as of 2026-09-21 — not a released state.** Stage 1 is a **move-only** split of the single 4000+ line `dsh_v2.cs` into `partial class Program` layers (`partial` within the same assembly, so no call site, signature or behaviour changes); it landed in commit ee36ac0 (CI green). The released **v2.7.2** still builds from the single file `dsh_v2.cs`. Stage 1 does not touch `gui_v2.cs`, `tests/unit_tests.cs` or `verify.ps1`.
+> **The `src/` lines above are the layout shipped since v2.7.3.** They come from the **move-only** split of the single 4000+ line `dsh_v2.cs` into `partial class Program` layers (`partial` within the same assembly, so no call site, signature or behaviour changes); it landed in commit ee36ac0 (CI green). The released **v2.7.3** is built from this layout. The split does not touch `gui_v2.cs`, `tests/unit_tests.cs` or `verify.ps1`.
 
 ## Error Log
 
@@ -274,7 +274,7 @@ backup/  logs/       Runtime dirs (gitignored — never committed)
 - **Verify before you run (≈20 seconds)**:
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.0 -OutDir D:\verify
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.3 -OutDir D:\verify
   ```
 
   `verify.ps1` (shipped in the package) downloads the release artifacts (all three
