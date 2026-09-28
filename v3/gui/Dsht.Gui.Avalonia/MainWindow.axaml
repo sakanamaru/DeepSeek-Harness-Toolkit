@@ -14,9 +14,6 @@
     <Border x:Name="AppBar" Grid.Row="0" Padding="16,9" BorderThickness="0,0,0,1">
       <Grid ColumnDefinitions="Auto,*,Auto">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
-          <Border x:Name="BrandMark" Width="28" Height="28" CornerRadius="8">
-            <Image Source="avares://dsht-gui/Assets/logo-mark.png" Stretch="UniformToFill" />
-          </Border>
           <StackPanel VerticalAlignment="Center" Spacing="1">
             <TextBlock x:Name="BrandTitle" Text="dsh-minato" FontSize="13.5" FontWeight="SemiBold" />
             <TextBlock x:Name="BrandSub" Text="V3 · 跨平台 GUI 预览" FontSize="10.5" />

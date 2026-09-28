@@ -10,13 +10,13 @@ namespace Dsht.Platform.Linux
     {
         public string NodeVersion() { return Capture(NodeExe(), "--version"); }
 
-        public string NpmVersion() { return Capture(NpmExe(), "--version"); }
+        public string NpmVersion() { return CaptureNpm("--version"); }
 
         /// <summary>dsh 版本：**不能用 `dsh --version`** ✗ —— 真机实测它对 --version/-v/version 全部零输出，
         /// 于是"是否已安装"判断永远为假 ✗。改用 `npm ls -g` 的输出解析（可靠 ✓），失败再退回 PATH 查找。</summary>
         public string DshVersion()
         {
-            string raw = Capture(NpmExe(), "ls -g @deepseek-ai/dsh --depth=0");
+            string raw = CaptureNpm("ls -g @deepseek-ai/dsh --depth=0");
             if (!string.IsNullOrEmpty(raw))
             {
                 int at = raw.LastIndexOf("@deepseek-ai/dsh@", StringComparison.Ordinal);
@@ -54,20 +54,20 @@ namespace Dsht.Platform.Linux
             return null;
         }
 
-        public string NpmRegistryConfig() { return Capture(NpmExe(), "config get registry"); }
+        public string NpmRegistryConfig() { return CaptureNpm("config get registry"); }
 
         /// <summary>全局安装（Linux 直接执行 npm；registry 为空则用默认源）。返回退出码，-1 = 未能执行。</summary>
         /// <summary>全局安装：先用配置的 registry；失败且不是镜像源时**自动回退到 npmmirror** ✓（国内网络现实）。
         /// 全程把 npm 的输出留在 LastError 里，失败时 CLI 会如实展示（之前只报退出码，无法诊断 ✗）。</summary>
         public int NpmInstallGlobal(string pkg, string registry)
         {
-            int code = RunExitCapture(NpmExe(), "install -g " + (string.IsNullOrEmpty(registry) ? "" : "--registry " + registry + " ") + pkg, out LastError);
+            int code = RunNpm("install -g " + (string.IsNullOrEmpty(registry) ? "" : "--registry " + registry + " ") + pkg, out LastError);
             if (code == 0) return 0;
             if (string.IsNullOrEmpty(registry) || registry.IndexOf("npmmirror", StringComparison.OrdinalIgnoreCase) < 0)
             {
                 string mirror = "https://registry.npmmirror.com";
                 string second;
-                int code2 = RunExitCapture(NpmExe(), "install -g --registry " + mirror + " " + pkg, out second);
+                int code2 = RunNpm("install -g --registry " + mirror + " " + pkg, out second);
                 LastError = LastError + "\n--- 回退 " + mirror + " ---\n" + second;
                 if (code2 == 0) return 0;
                 return code2;
@@ -173,6 +173,34 @@ namespace Dsht.Platform.Linux
             }
             catch (Exception ex) { output = ex.Message; return -1; }
         }
+        /// <summary>npm-cli.js 的绝对路径（官方 Node 包内）。用它配合 NodeExe() 调用，**绕开 npm 垫片的
+        /// `#!/usr/bin/env node` shebang** ✗ —— 真机上正是它导致 npm 在子进程里报 "env: 'node': No such file" ✗。</summary>
+        private static string NpmCliJs()
+        {
+            string home = Environment.GetEnvironmentVariable("HOME");
+            if (!string.IsNullOrEmpty(home))
+            {
+                string p = System.IO.Path.Combine(System.IO.Path.Combine(System.IO.Path.Combine(System.IO.Path.Combine(home, ".local"), "node"), "lib"), "node_modules/npm/bin/npm-cli.js");
+                if (System.IO.File.Exists(p)) return p;
+            }
+            return "";
+        }
+
+        /// <summary>跑 npm 并取输出：优先 `<node> <npm-cli.js> args` ✓；没有引导版 Node 时才退回 PATH 上的 npm。</summary>
+        private static string CaptureNpm(string args)
+        {
+            string cli = NpmCliJs();
+            if (cli.Length > 0) return Capture2(NodeExe(), cli + " " + args);
+            return Capture(NpmExe(), args);
+        }
+
+        /// <summary>跑 npm 并取退出码与输出（同上策略 ✓）。</summary>
+        private static int RunNpm(string args, out string output)
+        {
+            string cli = NpmCliJs();
+            if (cli.Length > 0) return RunExitCapture(NodeExe(), cli + " " + args, out output);
+            return RunExitCapture(NpmExe(), args, out output);
+        }
         public int InstallNodeRuntime()
         {
             // dsh 要求 Node >= 22.19.0（真机 npm warn EBADENGINE 抓到的 ✗）→ 按候选列表逐个试 ✓
@@ -234,9 +262,9 @@ namespace Dsht.Platform.Linux
         {
             // 只取"最后一行"：npm 会把 EBADENGINE/deprecated 等警告混进输出 ✗，
             // 整段拿去白名单会被拒 → 表现为"拿不到可信版本"（真机抓到的 ✗）
-            string v = LastVersionLine(Capture(NpmExe(), "view @deepseek-ai/dsh version"));
+            string v = LastVersionLine(CaptureNpm("view @deepseek-ai/dsh version"));
             if (v.Length > 0) return v;
-            return LastVersionLine(Capture(NpmExe(), "view @deepseek-ai/dsh version --registry https://registry.npmmirror.com"));
+            return LastVersionLine(CaptureNpm("view @deepseek-ai/dsh version --registry https://registry.npmmirror.com"));
         }
 
         /// <summary>从 npm 输出里取最后一行"看起来像版本号"的内容（去掉警告噪音 ✓）。</summary>
@@ -254,6 +282,8 @@ namespace Dsht.Platform.Linux
             }
             return "";
         }
+
+        private static string Capture2(string exe, string args) { return Capture(exe, args); }
 
         private static string Capture(string exe, string args)
         {
