@@ -4,7 +4,7 @@
 # 退出码：0=通过；1=有违规；2=领域层尚未建立
 param([string]$Repo = ".")
 $ErrorActionPreference = "Stop"
-$dir = Join-Path $Repo 'v3\src\Dsht.Domain'
+$dir = Join-Path $Repo 'v3/src/Dsht.Domain'
 if (-not (Test-Path $dir)) { Write-Host "SKIP: 领域层尚未建立（$dir）"; exit 2 }
 
 # 剥离注释：字符级状态机（识别 // 行注释、/* */ 块注释、'...' 与 "..." 字符串）
