@@ -35,6 +35,7 @@ namespace Dsht.Gui.Avalonia
         private static readonly string[][] NavCli = new string[][]
         {
             new string[] { "status", "--detail" },
+            new string[] { "status", "--detail" },
             new string[] { "sessions" },
             new string[] { "profiles" },
             new string[] { "backup-list", "--detail" },
@@ -178,7 +179,7 @@ namespace Dsht.Gui.Avalonia
         /// <summary>应用恢复。**只在隔离数据根里允许**（CLI 自己的准入闸门会拒绝其它情况，界面把它的话原样显示）。</summary>
         public void ApplyRestore(string name) { RunCliAction("restore --path " + name + " --apply", "应用恢复"); }
 
-        public void SetConfig(string key, string value) { RunCliAction("config-set " + key + " " + value, "保存设置 " + key); }
+        public void SetConfig(string key, string value) { RunCliAction("config-set " + key + " \"" + (value == null ? "" : value.Replace("\"", "")) + "\"", "保存设置 " + key); }
 
         private void RunCliAction(string args, string label)
         {
@@ -209,7 +210,7 @@ namespace Dsht.Gui.Avalonia
             string core = ToolkitCore();
             if (core == null)
             {
-                _actionLog = "未找到工具箱核心程序（DeepSeek Harness Toolkit.exe），无法" + label + "。";
+                _actionLog = "无法" + label + "：" + CoreMissingText();
                 BuildShell();
                 return;
             }
@@ -235,9 +236,12 @@ namespace Dsht.Gui.Avalonia
                 using (Process p = Process.Start(psi))
                 {
                     StringBuilder sb = new StringBuilder();
-                    sb.Append(p.StandardOutput.ReadToEnd());
-                    string err = p.StandardError.ReadToEnd();
-                    if (!p.WaitForExit(seconds * 1000)) return "（命令已发出，超过 " + seconds + " 秒仍在运行 —— 这是正常的，点刷新看状态）" + Environment.NewLine + sb;
+                    string err = "";
+                    System.Threading.Tasks.Task<string> soT = System.Threading.Tasks.Task.Run(delegate { return p.StandardOutput.ReadToEnd(); });
+                    System.Threading.Tasks.Task<string> seT = System.Threading.Tasks.Task.Run(delegate { return p.StandardError.ReadToEnd(); });
+                    if (!p.WaitForExit(seconds * 1000)) { try { p.Kill(); } catch { } return "（超过 " + seconds + " 秒未结束，已结束该进程）"; }
+                    sb.Append(soT.Result);
+                    err = seT.Result;
                     if (!string.IsNullOrEmpty(err)) sb.Append(Environment.NewLine).Append("[stderr] ").Append(err);
                     return sb.Length == 0 ? "（无输出）" : sb.ToString();
                 }
@@ -255,6 +259,14 @@ namespace Dsht.Gui.Avalonia
                 }
             }
             catch { /* 图标缺失不影响功能 */ }
+        }
+        /// <summary>核心程序不可用时的说明（区分"平台不支持"与"文件缺失"）。</summary>
+        private static string CoreMissingText()
+        {
+            if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+                return "此功能需要 Windows 专有的 v2.x 核心（DeepSeek Harness Toolkit.exe）—— 当前平台不支持。"
+                     + Environment.NewLine + "跨平台可用的替代：状态/概览/会话/token/形态与插件/备份清单/设置（都走 V3 CLI）。";
+            return "未找到工具箱核心程序（DeepSeek Harness Toolkit.exe）：请把它与 GUI 放在同一目录，或设置环境变量 DSHT_CORE。";
         }
         private void InitializeComponent()
         {
@@ -370,7 +382,7 @@ namespace Dsht.Gui.Avalonia
         {
             if (!string.IsNullOrEmpty(_health)) { BuildShell(); return; }
             string core = ToolkitCore();
-            if (core == null) { _health = "未找到工具箱核心程序（DeepSeek Harness Toolkit.exe）——健康检查需要它。"; BuildShell(); return; }
+            if (core == null) { _health = CoreMissingText(); BuildShell(); return; }
             _health = Run(core, "profilecheck");
             _doctor = SummaryMarkers.ParseDoctor(Run(core, "doctor"));
             BuildShell();
@@ -380,7 +392,7 @@ namespace Dsht.Gui.Avalonia
         public void PatchEntry(string profile, string entryId, bool disable)
         {
             string core = ToolkitCore();
-            if (core == null) { _health = "未找到工具箱核心程序（DeepSeek Harness Toolkit.exe），无法执行隔离。"; BuildShell(); return; }
+            if (core == null) { _actionLog = "无法执行隔离：" + CoreMissingText(); BuildShell(); return;; BuildShell(); return; }
             string yaml = Path.Combine(Path.Combine(_profilesRoot, profile), "cordis.patch.yml");
             string args = "profilepatch --file " + yaml + " --id " + entryId + (disable ? " --disable" : " --set disabled=false") + " --yes";
             string outp = Run(core, args);
@@ -399,7 +411,7 @@ namespace Dsht.Gui.Avalonia
             }
             catch (Exception ex)
             {
-                _health = "打开目录失败：" + ex.Message + Environment.NewLine + path;
+                _actionLog = "打开目录失败：" + ex.Message + Environment.NewLine + path;
                 BuildShell();
             }
         }
@@ -421,6 +433,8 @@ namespace Dsht.Gui.Avalonia
             string env = Environment.GetEnvironmentVariable("DSHT_CORE");
             if (!string.IsNullOrEmpty(env) && File.Exists(env)) return env;
             string dir = AppDomain.CurrentDomain.BaseDirectory;
+            if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+                return null;   // v2.x 核心是 Windows/.NET Framework 专有：非 Windows 上不是"文件缺失"，而是平台不支持
             string[] names = new string[] { "DeepSeek Harness Toolkit.exe", "dsht.exe" };
             for (int i = 0; i < names.Length; i++)
             {
@@ -566,7 +580,8 @@ namespace Dsht.Gui.Avalonia
             body.Content = Shells.Shells.Build(_shell, this);
         }
 
-        public void Refresh() { _ = RefreshAsync(); }   // 异步：CLI 调用不占 UI 线程
+        private bool _busy;
+        public void Refresh() { if (_busy) return; _busy = true; _ = RefreshAsync(); }   // 重入保护：刷新期间再点不叠加   // 异步：CLI 调用不占 UI 线程
 
         private async System.Threading.Tasks.Task RefreshAsync()
         {
@@ -651,7 +666,10 @@ namespace Dsht.Gui.Avalonia
             string env = Environment.GetEnvironmentVariable("DSHT_CLI");
             if (!string.IsNullOrEmpty(env) && File.Exists(env)) return env;
             string dir = AppDomain.CurrentDomain.BaseDirectory;
-            string[] names = new string[] { "dsht.exe", "dsht_v3.exe", "DeepSeek Harness Toolkit.exe" };
+            bool win = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+            string[] names = win
+                ? new string[] { "dsht.exe", "dsht_v3.exe", "DeepSeek Harness Toolkit.exe" }
+                : new string[] { "dsht", "dsht_v3", "DeepSeek Harness Toolkit" };   // Unix 的 apphost 没有扩展名
             for (int i = 0; i < names.Length; i++)
             {
                 string p = Path.Combine(dir, names[i]);
@@ -674,9 +692,10 @@ namespace Dsht.Gui.Avalonia
                 using (Process p = Process.Start(psi))
                 {
                     StringBuilder sb = new StringBuilder();
-                    sb.Append(p.StandardOutput.ReadToEnd());
-                    string err = p.StandardError.ReadToEnd();
-                    if (!p.WaitForExit(30000)) { try { p.Kill(); } catch { } return "（超时 30 秒）" + Environment.NewLine + sb; }
+                    string err = "";
+                    System.Threading.Tasks.Task<string> soT = System.Threading.Tasks.Task.Run(delegate { return p.StandardOutput.ReadToEnd(); });
+                    System.Threading.Tasks.Task<string> seT = System.Threading.Tasks.Task.Run(delegate { return p.StandardError.ReadToEnd(); });
+                    if (!p.WaitForExit(30000)) { try { p.Kill(); } catch { } return "（超时 30 秒，已结束该进程）"; }
                     if (!string.IsNullOrEmpty(err)) sb.Append(Environment.NewLine).Append("[stderr] ").Append(err);
                     return sb.ToString();
                 }

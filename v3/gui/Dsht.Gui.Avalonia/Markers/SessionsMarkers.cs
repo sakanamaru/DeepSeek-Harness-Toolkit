@@ -23,6 +23,8 @@ namespace Dsht.Gui.Avalonia.Markers
         public double CtxPercent = -1;     // 上下文压力（%）
         public bool Blank;
         public bool Live;
+        /// <summary>是否**知道**运行态（只有桥接插件快照才提供 live；磁盘投影没有这个事实）。</summary>
+        public bool LiveKnown;
 
         /// <summary>相对最大输入量的条形长度（0–100，由 SessionsView.AttachBars 计算）</summary>
         public int TokenBar;
@@ -35,7 +37,7 @@ namespace Dsht.Gui.Avalonia.Markers
         /// <summary>状态语义：0=运行中 1=已结束 2=空会话（颜色由界面层决定）。</summary>
         public int StatusKind { get { return Live ? 0 : (Blank ? 2 : 1); } }
 
-        public string LiveText { get { return Live ? "运行中" : (Blank ? "空会话" : "已结束"); } }
+        public string LiveText { get { if (!LiveKnown) return Blank ? "空会话" : "运行态未知"; return Live ? "运行中" : (Blank ? "空会话" : "已结束"); } }
 
         public string HitText { get { return HitPercent < 0 ? "unknown" : HitPercent.ToString("0.0", CultureInfo.InvariantCulture) + "%"; } }
         public string DecodeText { get { return DecodeTps < 0 ? "unknown" : DecodeTps.ToString("0.0", CultureInfo.InvariantCulture) + " tok/s"; } }

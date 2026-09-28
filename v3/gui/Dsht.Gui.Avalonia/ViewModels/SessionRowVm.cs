@@ -212,6 +212,8 @@ namespace Dsht.Gui.Avalonia.ViewModels
         public string ShortId { get { return Row.ShortId; } }
         public string TitleText { get { return Row.TitleText; } }
         public string StatusText { get { return Row.LiveText; } }
+        /// <summary>运行态是否已知（未知时状态点用中性色，避免"灰=已结束"的误导）。</summary>
+        public bool LiveKnown { get { return Row.LiveKnown; } }
         public IBrush StatusBrush { get { return Palette.StatusBrush(Row.StatusKind); } }
         public string MetaText
         {
