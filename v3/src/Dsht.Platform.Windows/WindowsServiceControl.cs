@@ -16,8 +16,6 @@ namespace Dsht.Platform.Windows
                 psi.UseShellExecute = false;
                 psi.CreateNoWindow = true;
                 // 不继承调用方 stdio；并后台抽干（否则子进程占住管道，脚本/CI 场景会挂住 ✗ —— 与 Linux 侧同类问题）
-                psi.RedirectStandardOutput = true;
-                psi.RedirectStandardError = true;
                 if (!string.IsNullOrEmpty(workingDirectory)) psi.WorkingDirectory = workingDirectory;
                 Process p = Process.Start(psi);
                 if (p == null) { error = "Process.Start 返回 null"; return false; }
@@ -40,8 +38,6 @@ namespace Dsht.Platform.Windows
                 ProcessStartInfo psi = new ProcessStartInfo("taskkill", "/T /F /PID " + pid);
                 psi.UseShellExecute = false;
                 psi.CreateNoWindow = true;
-                psi.RedirectStandardOutput = true;
-                psi.RedirectStandardError = true;
                 using (Process k = Process.Start(psi))
                 {
                     string outp = k.StandardOutput.ReadToEnd();

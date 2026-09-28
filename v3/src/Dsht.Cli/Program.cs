@@ -257,6 +257,24 @@ namespace Dsht.Cli
         /// **单独成方法**是为了让"先解析参数、再选目标"的顺序不会被后续改动打乱 ——
         /// 之前就是因为顺序反了，`start --port 3999` 去探了默认 3080（用户的实例）。
         /// 注意：DSH_HOME 隔离数据根、**不隔离端口**，所以测试必须能指定端口。</summary>
+        /// <summary>解析 dsh 可执行文件路径：先问工具链，再查免 sudo 引导后的常见目录（非交互 PATH 里通常没有 ✗），最后交给 PATH。</summary>
+        private static string ResolveDsh(ServiceRegistry reg)
+        {
+            string w = reg.Get<IToolchainQuery>().WhichDsh();
+            if (!string.IsNullOrEmpty(w)) return w;
+            string home = Environment.GetEnvironmentVariable("HOME");
+            if (!string.IsNullOrEmpty(home))
+            {
+                string[] cands = new string[]
+                {
+                    System.IO.Path.Combine(home, ".local/node/bin/dsh"),
+                    System.IO.Path.Combine(home, ".npm-global/bin/dsh"),
+                    System.IO.Path.Combine(home, ".local/bin/dsh")
+                };
+                for (int i = 0; i < cands.Length; i++) { if (System.IO.File.Exists(cands[i])) return cands[i]; }
+            }
+            return "dsh";
+        }
         private static IServiceTarget TargetForStart(string[] args, ServiceRegistry reg)
         {
             int port = 0;
@@ -422,6 +440,23 @@ namespace Dsht.Cli
             catch (Exception ex) { Console.WriteLine("UI_FAIL " + ex.Message); }
             return 0;
         }
+        /// <summary>Node 版本是否低于要求（真机抓到：dsh 要求 >= 22.19.0，太旧时它会**静默退出** ✗，极难诊断）。
+        /// 纯函数，便于单测；无法解析时保守返回 false（不误伤）。</summary>
+        private static bool NodeTooOld(string version, int needMajor, int needMinor)
+        {
+            if (string.IsNullOrEmpty(version)) return false;
+            string v = version.Trim().TrimStart('v', 'V');
+            int dot = v.IndexOf('.');
+            if (dot <= 0) return false;
+            int major;
+            if (!int.TryParse(v.Substring(0, dot), out major)) return false;
+            string rest = v.Substring(dot + 1);
+            int dot2 = rest.IndexOf('.');
+            int minor;
+            if (!int.TryParse(dot2 > 0 ? rest.Substring(0, dot2) : rest, out minor)) return false;
+            if (major != needMajor) return major < needMajor;
+            return minor < needMinor;
+        }
         private static int InstallLike(string[] args, ServiceRegistry reg, bool update)
         {
             IToolchainQuery tc = reg.Get<IToolchainQuery>();
@@ -437,6 +472,35 @@ namespace Dsht.Cli
                 return 0;
             }
 
+            // Linux 一键安装的前置：dsh 靠 npm 装，npm 靠 node。缺 node 时**不能假装一键** ✗
+            string nodeNow = tc.NodeVersion();
+            bool nodeMissing = string.IsNullOrEmpty(nodeNow);
+            bool nodeOld = !nodeMissing && NodeTooOld(nodeNow, 22, 19);   // dsh 要求 >= 22.19.0（真机抓到的 ✗）
+            if (!PlatformIsWindows() && (nodeMissing || nodeOld))
+            {
+                Console.WriteLine(verb + "_NEED_NODE " + (nodeMissing
+                    ? T("未检测到 Node.js（dsh 通过 npm 安装，需要它）", "Node.js not found (dsh installs through npm and needs it)")
+                    : T("Node.js 版本过旧（", "Node.js is too old (") + nodeNow + T("）—— dsh 要求 >= 22.19.0", ") - dsh requires >= 22.19.0")));
+                Console.WriteLine(verb + "_NODE_HINT " + T("免 sudo：加 --install-node 自动装到 ~/.local/node；或用系统包管理器：sudo apt install -y nodejs npm（Debian/Ubuntu）/ sudo dnf install -y nodejs npm（Fedora）",
+                                                            "no sudo needed: add --install-node to install into ~/.local/node; or use your package manager: sudo apt install -y nodejs npm (Debian/Ubuntu) / sudo dnf install -y nodejs npm (Fedora)"));
+                if (!Has(args, "--install-node") || !Has(args, "--yes"))
+                {
+                    Console.WriteLine(verb + "_DRYRUN " + T("（确认请加 --install-node --yes）", "(add --install-node --yes to confirm)"));
+                    Console.WriteLine(verb + "_OBSERVED not-installed");
+                    return 0;
+                }
+                Console.WriteLine(verb + "_NODE_INSTALLING " + T("正在下载官方 Node LTS 到 ~/.local/node …", "downloading the official Node LTS into ~/.local/node ..."));
+                int nc = tc.InstallNodeRuntime();
+                string nv = tc.NodeVersion();
+                if (string.IsNullOrEmpty(nv))
+                {
+                    Console.WriteLine(verb + "_FAIL " + T("Node 引导失败（退出码 ", "Node bootstrap failed (exit code ") + nc + T("）：", "): ") + Dsht.Platform.Linux.LinuxToolchainQuery.LastError);
+                    Console.WriteLine(verb + "_NODE_HINT " + T("可改用系统包管理器：sudo apt install -y nodejs npm", "or use your package manager: sudo apt install -y nodejs npm"));
+                    Console.WriteLine(verb + "_OBSERVED not-installed");
+                    return 0;
+                }
+                Console.WriteLine(verb + "_NODE_OK " + nv + T("（免 sudo，装在 ~/.local/node）", " (no sudo, installed under ~/.local/node)"));
+            }
             string latest = NpmVersionGuard.Normalize(tc.NpmViewLatest());
             if (!NpmVersionGuard.IsSafe(latest))
             {
@@ -534,7 +598,7 @@ namespace Dsht.Cli
             }
             else
             {
-                file = "dsh";                                       // Unix 上是带 shebang 的可执行文件
+                file = ResolveDsh(reg);                              // 主动解析（免 sudo 引导的 node 其 bin 不在非交互 PATH 里 ✗）
                 cmdArgs = "--profile " + profile + " --port " + port;
             }
 
@@ -562,7 +626,7 @@ namespace Dsht.Cli
                 }
             }
             ServiceReport last = target.Probe();
-            Console.WriteLine("START_FAIL " + T("命令已发出但 15 秒内未观测到端口/HTTP 就绪（可能仍在启动，或启动失败）", "launched but not observed ready within 15s"));
+            Console.WriteLine("START_FAIL " + T("命令已发出但 30 秒内未观测到端口/HTTP 就绪；子进程输出见 ", "launched but not observed ready within 30s; child output: ") + Dsht.Platform.Linux.LinuxServiceControl.LastLogPath);
             Console.WriteLine("START_OBSERVED " + last.State.ToString().ToLowerInvariant() + " " + last.Basis);
             return 0;
         }
@@ -614,15 +678,21 @@ namespace Dsht.Cli
                 Console.WriteLine("STOP_FAIL " + T("监听该端口的进程不是 dsh（PID ", "the process on that port is not dsh (PID ") + r.Pid + T("）；如确认要停，请加 --force", "); add --force to stop it anyway"));
                 return 0;
             }            bool ok = ctl.StopTree(r.Pid, out err);
-            ServiceReport after = target.Probe();
-            string st = after.State.ToString();
+            // 再观测要**重试**：进程刚收到信号还没死透 ✗，立刻复探会看到"仍在监听"→ 假失败 ✗（真机抓到的）
+            string st = "";
+            for (int i = 0; i < 12; i++)
+            {
+                System.Threading.Thread.Sleep(1000);
+                st = target.Probe().State.ToString();
+                if (ServiceControlPolicy.AfterStop(st) == StopOutcome.Stopped) break;
+            }
             if (ServiceControlPolicy.AfterStop(st) == StopOutcome.Stopped)
             {
                 Console.WriteLine("STOP_OK " + r.Pid);
                 Console.WriteLine("STOP_OBSERVED down");
                 return 0;
             }
-            Console.WriteLine("STOP_FAIL " + (ok ? T("进程已结束但端口仍在监听", "process gone but port still listening") : err));
+            Console.WriteLine("STOP_FAIL " + (ok ? T("进程已结束但端口仍在监听（12 秒后仍未观测到停止）", "process gone but the port is still listening (still not stopped after 12s)") : (string.IsNullOrEmpty(err) ? T("结束进程失败（未给出原因）", "failed to stop the process (no reason given)") : err)));
             Console.WriteLine("STOP_OBSERVED " + st.ToLowerInvariant());
             return 0;
         }
