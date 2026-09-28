@@ -417,6 +417,18 @@ static class ContractTests
         Check("delete：非备份名 → not-backup", Dsht.Domain.Services.PathValidator.ValidateDeletePath("C:\\bk\\other", "C:\\bk", exists) == "not-backup");
         Check("delete：不存在 → not-found", Dsht.Domain.Services.PathValidator.ValidateDeletePath("C:\\bk\\dsh-data-1", "C:\\bk", invalid) == "not-found");
         Check("delete：通过 → null", Dsht.Domain.Services.PathValidator.ValidateDeletePath("C:\\bk\\dsh-data-1", "C:\\bk", exists) == null);
+        Console.WriteLine("[19] Windows 数据根支持 DSH_HOME（隔离测试与多环境部署的前提）");
+        string oldWinHome = Environment.GetEnvironmentVariable("DSH_HOME");
+        try
+        {
+            Environment.SetEnvironmentVariable("DSH_HOME", @"C:\tmp\v3-win-home");
+            Check("Windows DataRoot 优先取 DSH_HOME", new Dsht.Platform.Windows.WindowsPaths().DataRoot == @"C:\tmp\v3-win-home");
+            Check("BackupsRoot 跟随数据根？不——跟随状态目录（与 v2.x 一致）", new Dsht.Platform.Windows.WindowsPaths().BackupsRoot.EndsWith("backup"));
+            Environment.SetEnvironmentVariable("DSH_HOME", null);
+            string wdr = new Dsht.Platform.Windows.WindowsPaths().DataRoot;
+            Check("未设置时回退到 <home>/.dsh（与 v2.x 一致）", wdr != null && wdr.EndsWith(".dsh"));
+        }
+        finally { Environment.SetEnvironmentVariable("DSH_HOME", oldWinHome); }
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;

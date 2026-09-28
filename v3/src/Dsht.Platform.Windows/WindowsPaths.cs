@@ -19,10 +19,15 @@ namespace Dsht.Platform.Windows
 
         public string BackupsRoot { get { return Path.Combine(_stateDir, "backup"); } }
 
+        /// <summary>数据根。**唯一一处刻意偏离 v2.x 的行为**：优先读 $DSH_HOME（Linux 侧同样支持），
+        /// 以便在隔离数据根下安全测试写操作（真实 restore/export/delete）与多环境部署；
+        /// 未设置时与 v2.x 完全一致（用户主目录/.dsh → %APPDATA%/.dsh → %LOCALAPPDATA%/.dsh）。</summary>
         public string DataRoot
         {
             get
             {
+                string env = Environment.GetEnvironmentVariable("DSH_HOME");
+                if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
                 string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
                 string appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);

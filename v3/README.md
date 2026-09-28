@@ -24,7 +24,7 @@ v3/
     Dsht.Platform.Linux/    Linux 实现（ss / /proc/<pid>/cmdline / ps / PATH 扫描 / $XDG_* / $DSH_HOME）
     Dsht.Cli/               组合根（自写 ServiceRegistry，零第三方 DI）+ 命令面 + 平台装配
   tests/
-    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，203 项）
+    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，206 项）
     verify_domain_pure.ps1  领域层纯净度守卫（扫描前剥离注释）
     compare_markers.ps1     与 v2.x 的标记行契约比对（可 -Fixtures 造受控备份）
     verify_release.ps1      发布物校验（v2.x verify.ps1 等价物，含校验器自证）
@@ -122,6 +122,7 @@ interface IServiceTarget { AppKind Kind; bool IsAvailable(); ServiceReport Probe
 | macOS | 未开始（设计稿决策：Linux 优先，macOS 视需求后补） |
 | 命令面广度 | 已覆盖 GUI 消费的主要命令（含 `restore --dry-run` 预览、`selftest`、`check`、真实 `backup`）；非交互真实 `restore`/`backup-export`/`backup-delete` 的**写操作**尚未移植（校验路径已对齐，写操作**明确拒绝**而不是静默失败） |
 | GUI | Windows-only WinForms 保持不变；跨平台 GUI 只留架构能力（见设计稿 §7） |
+| **`DSH_HOME` 环境变量** | **唯一一处刻意偏离 v2.x 的行为**：Windows 侧也优先读 `$DSH_HOME`（Linux 侧本就支持）→ 便于在隔离数据根下安全测试写操作与多环境部署；未设置时与 v2.x 完全一致 |
 ---
 
 ## 6. 怎么让门槛③（Win/Linux 双跑）变绿 —— 你自己也能做
@@ -149,3 +150,22 @@ git branch -D v3-linux
 
 > 说明：`v3-linux` 分支上是**未合并的 41 个本地提交**（含 v2.8 阶段的拆分/接缝/Linux 实现 + V3 全部工作）。
 > main 上仍是 `8f885ce`，`verify.ps1` 与 16 项发布清单完好，**随时可发布**。
+---
+
+## 7. 怎么安全地测试写操作（真实 restore/export/delete）
+
+V3 的 Windows 路径解析支持 **`$DSH_HOME`**（唯一一处刻意偏离 v2.x 的行为），因此可以在**隔离数据根**下真实测试写操作，完全不碰你的 `~/.dsh`：
+
+```powershell
+$iso = Join-Path $env:TEMP ("v3_iso_" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path "$iso\data" -Force | Out-Null
+'x' | Set-Content "$iso\data\settings.yaml"        # 造一个假数据根
+Copy-Item "$env:TEMP\dsht_v3.exe" $iso -Force      # exe 与数据根同处隔离目录
+
+$env:DSH_HOME = "$iso\data"
+& "$iso\dsht_v3.exe" doctor                        # 应看到隔离数据根与 1 B 大小
+& "$iso\dsht_v3.exe" backup                        # 备份应写进 $iso\backup
+Remove-Item Env:\DSH_HOME; Remove-Item $iso -Recurse -Force
+```
+
+实测结论（本轮）：`doctor` 显示隔离数据根（1 B）· `backup` 写出 1 个文件的备份 · **真实 `~/.dsh` 未被触碰** · 不设该变量时标记行契约仍 **19/19**（零回归）。
