@@ -47,7 +47,6 @@ namespace Dsht.Gui.Avalonia
         {
             new string[] { "概览", "原始输出" },
             new string[] { "指标", "图表" },
-            new string[] { "指标", "图表" },
             new string[] { "会话列表", "统计" },
             new string[] { "原始输出" },
             new string[] { "原始输出" },
@@ -58,6 +57,7 @@ namespace Dsht.Gui.Avalonia
         private static readonly string[][] NavDesc = new string[][]
         {
             new string[] { "一键启动/停止 dsh，以及 token 消耗、缓存命中、解码速度、会话数。", "运行时长、进程 PID、启动时间与原始标记行。" },
+            new string[] { "关键指标（KPI）总览，以及一键启动/停止等操作的回执。", "手绘图表：近 14 天新增会话、缓存命中率分布。" },
             new string[] { "逐条会话：标题、token、缓存命中率、解码速度、上下文压力（排序用工具栏的下拉）。", "汇总统计：总量、命中率、速度，以及最耗 token 的会话排行。" },
             new string[] { "每个 profile 启用了哪个形态（web/headless/acp）以及装了哪些插件（含第三方）。" },
             new string[] { "备份清单：每个备份的时间、范围与大小。" },
@@ -589,7 +589,7 @@ namespace Dsht.Gui.Avalonia
             if (cli == null)
             {
                 _data = null;
-                _rawOutput = "未找到工具箱 CLI。请把 dsht.exe / dsht_v3.exe 放到本程序同目录，或设置环境变量 DSHT_CLI 指向它。";
+                _rawOutput = "未找到工具箱 CLI。请把 dsh-minato.exe（或 dsht.exe / dsht_v3.exe）放到本程序同目录，或设置环境变量 DSHT_CLI 指向它。";
                 BuildShell();
                 return;
             }
@@ -668,8 +668,8 @@ namespace Dsht.Gui.Avalonia
             string dir = AppDomain.CurrentDomain.BaseDirectory;
             bool win = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
             string[] names = win
-                ? new string[] { "dsht.exe", "dsht_v3.exe", "DeepSeek Harness Toolkit.exe" }
-                : new string[] { "dsht", "dsht_v3", "DeepSeek Harness Toolkit" };   // Unix 的 apphost 没有扩展名
+                ? new string[] { "dsh-minato.exe", "dsht.exe", "dsht_v3.exe", "DeepSeek Harness Toolkit.exe" }
+                : new string[] { "dsh-minato", "dsht", "dsht_v3", "DeepSeek Harness Toolkit" };   // Unix 的 apphost 没有扩展名
             for (int i = 0; i < names.Length; i++)
             {
                 string p = Path.Combine(dir, names[i]);

@@ -604,6 +604,17 @@ static class ContractTests
         Check("白名单：拒绝空/超长/以 - 开头", !Dsht.Domain.Services.NpmVersionGuard.IsSafe("") && !Dsht.Domain.Services.NpmVersionGuard.IsSafe(null) && !Dsht.Domain.Services.NpmVersionGuard.IsSafe(new string('1', 65)) && !Dsht.Domain.Services.NpmVersionGuard.IsSafe("-1.2.3"));
         Check("白名单：必须含数字", !Dsht.Domain.Services.NpmVersionGuard.IsSafe("abc") && Dsht.Domain.Services.NpmVersionGuard.IsSafe("v1"));
         Check("白名单：npm 的错误输出被拒", !Dsht.Domain.Services.NpmVersionGuard.IsSafe("npm ERR! code E404"));
+        Console.WriteLine("[28] profilepatch 往返：不堆积重复行（真机测试抓到的缺口）");
+        string rt0 = "insert:\n  - id: demo\n    name: demo\n";
+        string rt1 = Dsht.Domain.Services.PatchPlanner.PlanDisable(rt0, "demo").NewText;
+        string rt2 = Dsht.Domain.Services.PatchPlanner.PlanEnable(rt1, "demo").NewText;
+        string rt3 = Dsht.Domain.Services.PatchPlanner.PlanDisable(rt2, "demo").NewText;
+        // 只数**顶层**补丁行：insert 块里的 - id: demo 有缩进，不该算进来（我第一版数错了 ✗）
+        int Count(string s) { int n = 0; foreach (string ln in s.Split('\n')) { if (ln.StartsWith("- id: demo", StringComparison.Ordinal)) n++; } return n; }
+        Check("往返：disable→enable→disable 后仍只有 1 行 - id: demo（不堆积）", Count(rt3) == 1);
+        Check("往返：第三次 disable 是翻转而非追加（行数不变）", rt3.Split('\n').Length == rt2.Split('\n').Length);
+        Check("往返：最终状态为 disabled: true 且无 disabled: false 残留", rt3.Contains("disabled: true") && !rt3.Contains("disabled: false"));
+        Check("往返：enable→disable 再 enable 仍不堆积", Count(Dsht.Domain.Services.PatchPlanner.PlanEnable(rt3, "demo").NewText) == 1);
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
     }

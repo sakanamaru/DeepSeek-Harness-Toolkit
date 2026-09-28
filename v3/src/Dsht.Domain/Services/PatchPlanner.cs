@@ -36,6 +36,10 @@ namespace Dsht.Domain.Services
             string body = text == null ? "" : text;
             if (HasDisabled(body, id)) { p.Noop = true; p.Reason = "already-disabled"; return p; }
             if (!HasEntry(body, id)) { p.Reason = "entry-not-found"; return p; }
+            // 已有该 id 的顶层补丁行（可能是我们先前写的，也可能是用户写的）→ **翻转它**，
+            // 不再追加重复行 ✗ —— 否则每轮 disable/enable 都会堆一行（真机往返测试抓到的缺口）。
+            PatchPlan flip = FlipRow(body, id, true);
+            if (flip.Valid) return flip;
 
             string nl = body.IndexOf("\r\n", StringComparison.Ordinal) >= 0 ? "\r\n" : "\n";
             bool needNl = body.Length > 0 && !body.EndsWith(nl, StringComparison.Ordinal);
@@ -57,16 +61,23 @@ namespace Dsht.Domain.Services
             if (!HasEntry(body, id)) { p.Reason = "entry-not-found"; return p; }
             if (!HasDisabled(body, id)) { p.Noop = true; p.Reason = "not-disabled"; return p; }
 
+            return FlipRow(body, id, false);
+        }
+
+        /// <summary>把该 id 所属顶层补丁行的 disabled 值翻成 toTrue；找不到返回 Invalid。</summary>
+        private static PatchPlan FlipRow(string body, string id, bool toTrue)
+        {
+            PatchPlan p = new PatchPlan();
             string nl = body.IndexOf("\r\n", StringComparison.Ordinal) >= 0 ? "\r\n" : "\n";
             string[] lines = body.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
             for (int i = 0; i < lines.Length; i++)
             {
                 string t = lines[i].Trim();
                 if (!t.StartsWith("disabled:", StringComparison.Ordinal)) continue;
-                if (t.IndexOf("true", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                // 不按 true/false 过滤：翻转两个方向都要能找到这一行（PlanEnable 已先用 HasDisabled 排除了 Noop 情形）
                 if (!OwnerIs(lines, i, id)) continue;
                 string indent = lines[i].Substring(0, lines[i].Length - lines[i].TrimStart().Length);
-                lines[i] = indent + "disabled: false";
+                lines[i] = indent + (toTrue ? "disabled: true" : "disabled: false");
                 p.Valid = true;
                 p.Line = i + 1;
                 p.NewText = string.Join(nl, lines);
@@ -85,7 +96,8 @@ namespace Dsht.Domain.Services
             {
                 string t = lines[i].Trim();
                 if (!t.StartsWith("disabled:", StringComparison.Ordinal)) continue;
-                if (t.IndexOf("true", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                if (t.IndexOf("true", StringComparison.OrdinalIgnoreCase) < 0) continue;   // HasDisabled 只认 disabled: true ✓
+                // 不按 true/false 过滤：翻转两个方向都要能找到这一行（PlanEnable 已先用 HasDisabled 排除了 Noop 情形）
                 if (OwnerIs(lines, i, id)) return true;
             }
             return false;
