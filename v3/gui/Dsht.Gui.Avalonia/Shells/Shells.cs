@@ -475,11 +475,82 @@ namespace Dsht.Gui.Avalonia.Shells
             return s;
         }
 
+        /// <summary>C · 深色紧凑：单行会话（信息密度优先，无条形）。</summary>
+        private static Control SessionCardCompact(SessionRowVm vm)
+        {
+            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("86,*,110,110,120,120"), VerticalAlignment = VerticalAlignment.Center };
+            TextBlock id = new TextBlock { Text = vm.ShortId, FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"), FontSize = 11, Foreground = Palette.TextFaint, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(id, 0);
+            TextBlock title = new TextBlock { Text = vm.TitleText, FontSize = 12, Foreground = Palette.Text, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(title, 1);
+            TextBlock turns = new TextBlock { Text = vm.MetaText, FontSize = 11, Foreground = Palette.TextDim, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(turns, 2);
+            TextBlock tin = new TextBlock { Text = vm.InText, FontSize = 12, Foreground = Palette.Text, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(tin, 3);
+            TextBlock hit = new TextBlock { Text = vm.HitText, FontSize = 12, Foreground = vm.HitBrush, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(hit, 4);
+            TextBlock dec = new TextBlock { Text = vm.DecodeText, FontSize = 12, Foreground = Palette.TextDim, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(dec, 5);
+            g.Children.Add(id); g.Children.Add(title); g.Children.Add(turns); g.Children.Add(tin); g.Children.Add(hit); g.Children.Add(dec);
+            return new Border { Background = Palette.CardBg, CornerRadius = new CornerRadius(4), Padding = new Thickness(10, 4), Margin = new Thickness(0, 0, 0, 3), Child = g };
+        }
+
+        /// <summary>D · 浅色仪表盘：大数字 + 大条形（把可视化放大，弱化表格感）。</summary>
+        private static Control DashboardBody(MainWindow host)
+        {
+            SessionsSnapshot d = host.Data;
+            StackPanel s = new StackPanel { Spacing = 14 };
+            Grid wall = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") };
+            wall.Children.Add(BigStat("缓存命中率", PctText(d == null ? -1 : d.TotalHitPercent), "越高越省钱", d == null ? -1 : d.TotalHitPercent, Palette.Good, 0));
+            wall.Children.Add(BigStat("解码速度", TpsText(d == null ? -1 : d.TotalDecodeTps), "tok/s（按合计加权）", -1, Palette.Accent, 1));
+            wall.Children.Add(BigStat("累计输入 token", d == null ? "—" : SessionRow.Human(d.TotalIn), "含缓存读", -1, Palette.Text, 2));
+            s.Children.Add(wall);
+            for (int i = 0; i < host.Rows.Count && i < 12; i++)
+            {
+                SessionRowVm vm = host.Rows[i];
+                StackPanel card = new StackPanel { Spacing = 6 };
+                card.Children.Add(new TextBlock { Text = vm.TitleText, FontSize = 13, FontWeight = FontWeight.SemiBold, Foreground = Palette.Text, TextTrimming = TextTrimming.CharacterEllipsis });
+                card.Children.Add(new TextBlock { Text = vm.ShortId + "　" + vm.MetaText, FontSize = 11, Foreground = Palette.TextFaint });
+                card.Children.Add(BigBar("输入 token " + vm.InText, vm.TokenBar, vm.TokenBrush));
+                card.Children.Add(BigBar("缓存命中 " + vm.HitText, vm.HitBar, vm.HitBrush));
+                card.Children.Add(BigBar("上下文压力 " + vm.CtxText, vm.CtxBar, vm.CtxBrush));
+                s.Children.Add(Card(card, new Thickness(0), new Thickness(16, 12)));
+            }
+            return s;
+        }
+
+        private static Control BigStat(string label, string value, string sub, double percent, IBrush brush, int col)
+        {
+            StackPanel s = new StackPanel { Spacing = 4 };
+            s.Children.Add(new TextBlock { Text = label, FontSize = 12, Foreground = Palette.TextDim });
+            s.Children.Add(new TextBlock { Text = value, FontSize = 40, FontWeight = FontWeight.Bold, Foreground = brush });
+            s.Children.Add(new TextBlock { Text = sub, FontSize = 11, Foreground = Palette.TextFaint });
+            if (percent >= 0)
+            {
+                double w = percent > 100 ? 100 : percent;
+                int level = percent >= 90 ? 3 : (percent >= 70 ? 2 : 1);
+                Border fill = new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = Palette.HitBrush(level), HorizontalAlignment = HorizontalAlignment.Left, Width = w * 3.2 };
+                s.Children.Add(new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = Palette.BarTrack, Margin = new Thickness(0, 4, 0, 0), Child = fill });
+            }
+            Border card = Card(s, new Thickness(0, 0, col == 2 ? 0 : 12, 0), new Thickness(18, 16));
+            Grid.SetColumn(card, col);
+            return card;
+        }
+
+        private static Control BigBar(string label, double percent, IBrush brush)
+        {
+            StackPanel s = new StackPanel { Spacing = 3 };
+            s.Children.Add(new TextBlock { Text = label, FontSize = 11, Foreground = Palette.TextDim });
+            double w = percent < 0 ? 0 : (percent > 100 ? 100 : percent);
+            Border fill = new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = brush, HorizontalAlignment = HorizontalAlignment.Left, Width = w * 5.0 };
+            s.Children.Add(new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = Palette.BarTrack, Child = fill });
+            return s;
+        }
         private static Control SessionCardList(MainWindow host)
         {
             ItemsControl list = new ItemsControl();
             list.ItemsSource = host.Rows;
-            list.ItemTemplate = new FuncDataTemplate<SessionRowVm>(delegate(SessionRowVm vm, INameScope ns) { return SessionCard(vm); });
+            list.ItemTemplate = new FuncDataTemplate<SessionRowVm>(delegate(SessionRowVm vm, INameScope ns) { return Palette.Compact ? SessionCardCompact(vm) : SessionCard(vm); });
             return list;
         }
 
@@ -601,7 +672,7 @@ namespace Dsht.Gui.Avalonia.Shells
 
         private static Control Line(string text)
         {
-            return new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Color.Parse("#374151")), FontSize = 12 };
+            return new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Foreground = Palette.TextDim, FontSize = 12 };
         }
 
         private static string PctText(double v)

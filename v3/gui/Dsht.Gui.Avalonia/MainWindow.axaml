@@ -5,7 +5,7 @@
         Width="1280" Height="820"
         MinWidth="1000" MinHeight="600"
         Background="#F3F4F6">
-  <Grid RowDefinitions="Auto,Auto,*">
+  <Grid RowDefinitions="Auto,Auto,Auto,*">
     <Border Grid.Row="0" Background="#4D6BFE" Padding="16,10">
       <Grid ColumnDefinitions="Auto,*,Auto">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10">
@@ -29,6 +29,15 @@
         <TextBlock x:Name="ShellHint" Foreground="#9CA3AF" FontSize="12" VerticalAlignment="Center" Margin="10,0,0,0" Text="" />
       </StackPanel>
     </Border>
-    <ContentControl Grid.Row="2" x:Name="Body" />
+    <Border Grid.Row="2" Background="White" BorderThickness="0,0,0,1" BorderBrush="#E5E7EB" Padding="16,8">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="视觉风格" Foreground="#6B7280" FontSize="12" VerticalAlignment="Center" />
+        <Button x:Name="Style0" Content="A · 浅色卡片" />
+        <Button x:Name="Style1" Content="B · 深色卡片" />
+        <Button x:Name="Style2" Content="C · 深色紧凑" />
+        <Button x:Name="Style3" Content="D · 浅色仪表盘" />
+      </StackPanel>
+    </Border>
+    <ContentControl Grid.Row="3" x:Name="Body" />
   </Grid>
 </Window>
