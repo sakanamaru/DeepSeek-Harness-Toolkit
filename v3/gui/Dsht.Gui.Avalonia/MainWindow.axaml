@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Dsht.Gui.Avalonia.MainWindow"
+        Title="DeepSeek Harness Toolkit（跨平台 GUI · 骨架）"
+        Width="1000" Height="680"
+        MinWidth="760" MinHeight="480">
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <!-- 顶部：非官方声明（与 CLI/GUI 文案一致，README 也有） -->
+    <Border Grid.Row="0" Background="#FFF4E5" Padding="12,6">
+      <TextBlock Text="⚠ 非官方工具，由社区独立开发，与 DeepSeek 官方无关。"
+                 Foreground="#8A5300" TextWrapping="Wrap" />
+    </Border>
+
+    <Grid Grid.Row="1" ColumnDefinitions="200,*">
+      <!-- 左：页面导航（对应 CLI 的命令；GUI 只做呈现） -->
+      <Border Grid.Column="0" BorderThickness="0,0,1,0" BorderBrush="#DDDDDD">
+        <StackPanel Margin="8">
+          <TextBlock Text="页面" FontWeight="Bold" Margin="4,4,4,8" />
+          <ListBox x:Name="NavList" SelectedIndex="0" Background="Transparent">
+            <ListBoxItem Content="状态 / Status" Tag="status --detail" />
+            <ListBoxItem Content="会话与 Token / Sessions" Tag="sessions" />
+            <ListBoxItem Content="形态与插件 / Profiles" Tag="profiles" />
+            <ListBoxItem Content="备份 / Backups" Tag="backup-list --detail" />
+            <ListBoxItem Content="体检 / Doctor" Tag="doctor" />
+            <ListBoxItem Content="配置 / Config" Tag="config-get" />
+            <ListBoxItem Content="说明 / Describe" Tag="describe" />
+          </ListBox>
+        </StackPanel>
+      </Border>
+
+      <!-- 右：CLI 输出（骨架阶段直接展示标记行；后续每个页面接成卡片/表格） -->
+      <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto">
+        <TextBlock Grid.Row="0" x:Name="PageTitle" Margin="12,10,12,4" FontSize="15" FontWeight="Bold" Text="状态 / Status" />
+        <TextBox Grid.Row="1" x:Name="Output" Margin="12,0,12,8" IsReadOnly="True"
+                 AcceptsReturn="True" TextWrapping="NoWrap"
+                 FontFamily="Cascadia Mono,Consolas,monospace" />
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="12,0,12,10" Spacing="8">
+          <Button x:Name="RefreshBtn" Content="刷新 / Refresh" />
+          <TextBlock x:Name="StatusLine" VerticalAlignment="Center" Foreground="#666666" Text="" />
+        </StackPanel>
+      </Grid>
+    </Grid>
+
+    <!-- 底部：数据来源与诚实边界（与 CLI 的标记行一致） -->
+    <Border Grid.Row="2" Background="#F5F5F5" Padding="12,4">
+      <TextBlock x:Name="Footer" Foreground="#666666"
+                 Text="骨架阶段：数据来自工具箱 CLI 的标记行契约；界面与核心解耦（GUI 不引用核心程序集）。" />
+    </Border>
+  </Grid>
+</Window>
