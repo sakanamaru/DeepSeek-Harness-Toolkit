@@ -18,5 +18,9 @@ namespace Dsht.Domain.Abstractions
 
         /// <summary>读某个 profile 里某个组合包自己的 package.json（取版本号）；读不到 → null。</summary>
         string ReadBundleManifest(string profileName, string bundleId);
+
+        /// <summary>把新的补丁文本写回该 profile（**平台实现必须：先备份 → 再写 → 复检 → 不一致就回滚**）。
+        /// 返回值：是否成功写且复检通过；backupPath 为备份文件路径（失败也要尽量给出）；error 为原因键或异常信息。</summary>
+        bool ApplyPatch(string profileName, string newText, out string backupPath, out string error);
     }
 }
