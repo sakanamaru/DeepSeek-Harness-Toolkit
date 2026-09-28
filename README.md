@@ -74,7 +74,7 @@ This section states exactly where Linux stands, so nobody has to discover it the
   core. The CLI behind them already works on Linux, so this is wiring rather than capability.
 - Workspace backup packages the auto-detected workspace into `_workspace/`, and restore merges it back. The multi-workspace (`.dshws`) layout that restore also understands is not written yet.
 - No log centre, update centre, backup import, wipe-data, tray or keyboard shortcuts yet.
-- `keep_backups` is applied as a fixed value of 3 instead of the configured number.
+- `keep_backups` is honoured: automatic backups keep the configured number of copies (the default is 10).
 - The classic v2.x line, if built from source on Linux, has broken `start` / `stop` / `shortcut` seams
   and does not honour `$DSH_HOME`; use the V3 CLI on Linux instead.
 
