@@ -10,6 +10,14 @@ namespace Dsht.Platform.Linux
         /// <summary>最近一次启动的子进程输出日志路径（失败时 CLI 会指向它 ✓）。</summary>
         public static string LastLogPath = "";
 
+        /// <summary>Quote a path when it contains spaces (setsid would otherwise split it).</summary>
+        private static string QuoteIfNeeded(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            if (s.IndexOf(' ') < 0) return s;
+            return "\"" + s + "\"";
+        }
+
         public bool StartDetached(string fileName, string arguments, string workingDirectory, out int pid, out string error)
         {
             pid = 0; error = "";
@@ -17,7 +25,7 @@ namespace Dsht.Platform.Linux
             {
                 // setsid：新会话，彻底脱离调用方（真机 ssh 测试发现：不脱离时子进程占住 ssh 通道 ✗
                 // → "Connection closed by remote host"；在脚本/CI 里同样会把管道占住导致挂起 ✗）
-                ProcessStartInfo psi = new ProcessStartInfo("setsid", fileName + " " + arguments);
+                ProcessStartInfo psi = new ProcessStartInfo("setsid", QuoteIfNeeded(fileName) + " " + arguments);
                 psi.UseShellExecute = false;
                 psi.CreateNoWindow = true;
                 // 必须重定向并抽干 ✗：不重定向子进程会占住调用方管道（脚本/CI/ssh 会挂住 ✗ —— 真机踩过）
@@ -51,38 +59,62 @@ namespace Dsht.Platform.Linux
             catch (Exception ex) { error = ex.Message; return false; }
         }
 
+                /// <summary>Graceful stop: SIGTERM the whole PROCESS GROUP, wait, then SIGKILL the group.
+        /// Killing only a single PID leaves the node children dsh spawned alive (platform-seam audit).</summary>
         public bool Stop(int pid, out string error)
         {
             error = "";
-            if (pid <= 1) { error = "PID " + pid + " 被安全保护拒绝（不可能是目标进程）"; return false; }
-            try
-            {
-                using (Process k = Process.Start(new ProcessStartInfo("kill", "-TERM " + pid) { UseShellExecute = false, CreateNoWindow = true }))
-                {
-                    k.WaitForExit(5000);
-                }
-                for (int i = 0; i < 20; i++)
-                {
-                    if (!Alive(pid)) return true;
-                    System.Threading.Thread.Sleep(200);
-                }
-                return StopTree(pid, out error);
-            }
-            catch (Exception ex) { error = ex.Message; return false; }
+            if (pid <= 1) { error = "PID " + pid + " refused by safety guard"; return false; }
+            string e1;
+            if (KillGroup(pid, false, out e1)) return true;
+            for (int i = 0; i < 20; i++) { if (!Alive(pid)) return true; System.Threading.Thread.Sleep(200); }
+            return KillGroup(pid, true, out error);
         }
 
+        /// <summary>End the whole process tree: SIGTERM the group, wait, then SIGKILL the group.
+        /// Reports honestly when the process survives instead of claiming success.</summary>
         public bool StopTree(int pid, out string error)
         {
             error = "";
+            if (pid <= 1) { error = "PID " + pid + " refused by safety guard"; return false; }
+            string e1;
+            KillGroup(pid, false, out e1);
+            for (int i = 0; i < 20; i++) { if (!Alive(pid)) return true; System.Threading.Thread.Sleep(200); }
+            return KillGroup(pid, true, out error);
+        }
+
+        /// <summary>Signal the whole process group (kill -SIG -pgid), falling back to the single PID.
+        /// Returns whether the process is confirmed gone; otherwise error explains why.</summary>
+        private static bool KillGroup(int pid, bool hard, out string error)
+        {
+            error = "";
+            string sig = hard ? "-KILL" : "-TERM";
+            string outp;
+            int code = RunKill(sig + " -" + pid, out outp);
+            if (code != 0) { code = RunKill(sig + " " + pid, out outp); }
+            if (!Alive(pid)) return true;
+            error = "process " + pid + " survived kill " + sig + " (exit " + code + (outp.Length > 0 ? ": " + outp.Trim() : "") + ")";
+            return false;
+        }
+
+        private static int RunKill(string args, out string output)
+        {
+            output = "";
             try
             {
-                using (Process k = Process.Start(new ProcessStartInfo("kill", "-KILL " + pid) { UseShellExecute = false, CreateNoWindow = true }))
+                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo("kill", args);
+                psi.UseShellExecute = false; psi.CreateNoWindow = true;
+                psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
+                using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
                 {
-                    k.WaitForExit(5000);
+                    System.Threading.Tasks.Task<string> so = System.Threading.Tasks.Task.Run(delegate { return p.StandardOutput.ReadToEnd(); });
+                    System.Threading.Tasks.Task<string> se = System.Threading.Tasks.Task.Run(delegate { return p.StandardError.ReadToEnd(); });
+                    if (!p.WaitForExit(5000)) { try { p.Kill(); } catch { } return -1; }
+                    output = (so.Result == null ? "" : so.Result) + (se.Result == null ? "" : se.Result);
+                    return p.ExitCode;
                 }
-                return !Alive(pid);
             }
-            catch (Exception ex) { error = ex.Message; return false; }
+            catch (Exception ex) { output = ex.Message; return -1; }
         }
 
         private static bool Alive(int pid)

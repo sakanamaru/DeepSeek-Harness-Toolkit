@@ -14,6 +14,21 @@ namespace Dsht.Platform.Linux
         private const string AppDirName = "DeepSeekHarnessLauncher";
         private readonly string _stateDir;
 
+        /// <summary>Read an env var and NORMALISE it to an absolute path. The --apply gate that
+        /// refuses to write the default data root is a plain string comparison, so a relative
+        /// DSH_HOME (e.g. .dsh) or a symlink to ~/.dsh used to slip through.</summary>
+        internal static string NormEnv(string name)
+        {
+            try
+            {
+                string v = Environment.GetEnvironmentVariable(name);
+                if (string.IsNullOrEmpty(v)) return v;
+                v = v.Trim();
+                if (v.Length == 0) return v;
+                try { return System.IO.Path.GetFullPath(v); } catch { return v; }
+            }
+            catch { return null; }
+        }
         public LinuxPaths() { _stateDir = ResolveStateDir(); }
 
         public string StateDir { get { return _stateDir; } }
@@ -24,7 +39,7 @@ namespace Dsht.Platform.Linux
         {
             get
             {
-                string env = Environment.GetEnvironmentVariable("DSH_HOME");
+                string env = NormEnv("DSH_HOME");
                 if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
                 return DefaultDataRoots()[0];
             }

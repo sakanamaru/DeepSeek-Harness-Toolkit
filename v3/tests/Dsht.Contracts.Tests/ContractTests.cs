@@ -290,7 +290,7 @@ static class ContractTests
         try
         {
             Environment.SetEnvironmentVariable("DSH_HOME", "/tmp/dsh-home-probe");
-            Check("Linux DataRoot 优先取 DSH_HOME", new Dsht.Platform.Linux.LinuxPaths().DataRoot == "/tmp/dsh-home-probe");
+            Check("Linux DataRoot 优先取 DSH_HOME", new Dsht.Platform.Linux.LinuxPaths().DataRoot == System.IO.Path.GetFullPath("/tmp/dsh-home-probe"));
             Environment.SetEnvironmentVariable("DSH_HOME", null);
             string ldr2 = new Dsht.Platform.Linux.LinuxPaths().DataRoot;
             Check("Linux DataRoot 回退到 <home>/.dsh", ldr2 != null && ldr2.EndsWith(".dsh"));
