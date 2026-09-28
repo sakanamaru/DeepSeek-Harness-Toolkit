@@ -88,7 +88,7 @@ namespace Dsht.Platform.Linux
             {
                 string root = BackupsRoot;
                 Directory.CreateDirectory(root);
-                string dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff") + Dsht.Domain.Services.BackupPackage.Suffix(kind));
+                string dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff") + "-" + System.Diagnostics.Process.GetCurrentProcess().Id + Dsht.Domain.Services.BackupPackage.Suffix(kind));
                 _copyFailures = 0;
             int srcFiles = 0;
             CountTree(sourceDir, ref srcFiles);
