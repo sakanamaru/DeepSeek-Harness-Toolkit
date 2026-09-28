@@ -40,6 +40,7 @@ $cases = @(
     @{ name = 'backup-list';          args = @('backup-list'); full = $true },
     @{ name = 'backup-list --detail'; args = @('backup-list','--detail'); full = $true },
     # doctor：Integrity 行依赖 exe 身份（v2.x 的 exe 名在 hashes.txt 里、本地构建哈希不匹配 → ERROR；V3 临时 exe 名不在清单 → 跳过校验）。正式发布时 V3 用同名 exe，该类别行为一致。
+    @{ name = 'config-get';          args = @('config-get'); full = $true },
     @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity '; ignoreSummary = $true }
 )
 $fail = 0

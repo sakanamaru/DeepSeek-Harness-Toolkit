@@ -17,6 +17,7 @@ namespace Dsht.Cli
         public static int Main(string[] args)
         {
             ServiceRegistry reg = Compose();
+            _cfg = LoadConfig(reg);
             string cmd = args.Length > 0 ? args[0] : "";
 
             if (cmd == "status") return Status(reg, Has(args, "--detail"));
@@ -25,8 +26,10 @@ namespace Dsht.Cli
             if (cmd == "backup-list") return BackupList(args, reg);
             if (cmd == "doctor") return Doctor(reg);
             if (cmd == "version") { Console.WriteLine("DSHT_VERSION " + ToolkitVersion); return 0; }
+            if (cmd == "config-get") return ConfigGet();
+            if (cmd == "config-set") return ConfigSet(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version | config-get | config-set <key> <value>");
             return 2;
         }
 
@@ -243,6 +246,48 @@ namespace Dsht.Cli
         {
             for (int i = 0; i < args.Length; i++) if (args[i] == name) return true;
             return false;
+        }
+
+
+        private static ToolkitConfig _cfg = new ToolkitConfig();
+
+        /// <summary>ws 规范化（平台侧真实路径校验，供领域层注入）。</summary>
+        private static string CanonPath(string p) { return System.IO.Path.GetFullPath(p); }
+
+        private static ToolkitConfig LoadConfig(ServiceRegistry reg)
+        {
+            try { return ConfigCodec.Parse(reg.Get<IConfigSource>().ReadConfig(), CanonPath); }
+            catch { return new ToolkitConfig(); }
+        }
+
+        /// <summary>config-get：CONFIGGET_OK + 每行 CONFIG &lt;key&gt; &lt;value&gt;（顺序与 v2.x 一致）。</summary>
+        private static int ConfigGet()
+        {
+            Console.WriteLine("CONFIGGET_OK");
+            Console.WriteLine("CONFIG lang " + _cfg.Lang);
+            Console.WriteLine("CONFIG host " + _cfg.Host);
+            Console.WriteLine("CONFIG ws " + (_cfg.Workspace == null ? "" : _cfg.Workspace));
+            Console.WriteLine("CONFIG keep_backups " + _cfg.KeepBackups);
+            Console.WriteLine("CONFIG check_update " + (_cfg.CheckUpdate ? "on" : "off"));
+            Console.WriteLine("CONFIG check_dsh_update " + (_cfg.CheckDshUpdate ? "on" : "off"));
+            Console.WriteLine("CONFIG update_channel " + _cfg.UpdateChannel);
+            Console.WriteLine("CONFIG close_action " + _cfg.CloseAction);
+            Console.WriteLine("CONFIG auto_start " + (_cfg.AutoStart ? "on" : "off"));
+            Console.WriteLine("CONFIG dsh_versions " + _cfg.DshVersions);
+            return 0;
+        }
+
+        /// <summary>config-set &lt;key&gt; &lt;value&gt;：白名单内才写盘，否则 CONFIGSET_FAIL 原因。</summary>
+        private static int ConfigSet(string[] args, ServiceRegistry reg)
+        {
+            string key = args.Length > 1 ? args[1] : "";
+            string val = args.Length > 2 ? args[2] : "";
+            string reason = ConfigValidator.Validate(key, val, CanonPath);
+            if (reason != null) { Console.WriteLine("CONFIGSET_FAIL " + reason); return 0; }
+            _cfg = ConfigValidator.ApplyTo(_cfg, key, val, CanonPath);
+            reg.Get<IConfigSource>().WriteConfig(ConfigCodec.Serialize(_cfg));
+            Console.WriteLine("CONFIGSET_OK " + key.Trim().ToLowerInvariant());
+            return 0;
         }
 
         /// <summary>组合根：交给 PlatformComposition 按平台装配（单 exe，运行时判定）。</summary>

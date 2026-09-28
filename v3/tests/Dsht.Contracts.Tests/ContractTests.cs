@@ -310,6 +310,31 @@ static class ContractTests
         Check("预留形态永不 Ready", hd.Probe().State == ServiceState.Down && !hd.IsAvailable());
         Check("预留形态 Basis 说明原因", hd.Probe().Basis.IndexOf("预留") >= 0);
         Check("空组合 → Unknown/Down", new CompositeServiceTarget(new IServiceTarget[0]).Probe().Kind == AppKind.Unknown);
+        Console.WriteLine("[14] 配置解析/序列化/校验（逐条对齐 v2.x）");
+        System.Func<string,string> canon = delegate(string wsPath) { if (wsPath.IndexOf('<') >= 0) throw new Exception("bad"); return wsPath; };
+        ToolkitConfig def = ConfigCodec.Parse(null, canon);
+        Check("空配置 → 默认值", def.Lang == "auto" && def.Host == "127.0.0.1" && def.KeepBackups == 10 && def.CheckUpdate && def.AutoStart && def.UpdateChannel == "stable" && def.CloseAction == "");
+
+        ToolkitConfig c1 = ConfigCodec.Parse("lang=zh\nhost=localhost\nws=C:\\ws\nkeep_backups=2\ncheck_update=off\ncheck_dsh_update=off\nupdate_channel=rc\nclose_action=tray\nauto_start=off\ndsh_versions=1.0,1.1\n", canon);
+        Check("逐键解析", c1.Lang == "zh" && c1.Host == "localhost" && c1.Workspace == "C:\\ws" && c1.KeepBackups == 3 && !c1.CheckUpdate && !c1.CheckDshUpdate && c1.UpdateChannel == "rc" && c1.CloseAction == "tray" && !c1.AutoStart && c1.DshVersions == "1.0,1.1");
+        Check("非法 lang → auto", ConfigCodec.Parse("lang=xx\n", canon).Lang == "auto");
+        Check("非法 close_action → 空（回到未询问）", ConfigCodec.Parse("close_action=whatever\n", canon).CloseAction == "");
+        Check("非法 update_channel → stable", ConfigCodec.Parse("update_channel=beta\n", canon).UpdateChannel == "stable");
+        Check("非法 host 保留默认", ConfigCodec.Parse("host=evil.com\n", canon).Host == "127.0.0.1");
+        Check("ws 规范化失败 → null", ConfigCodec.Parse("ws=a<b\n", canon).Workspace == null);
+
+        string ser = ConfigCodec.Serialize(new ToolkitConfig());
+        Check("序列化键顺序与 v2.x 一致", ser.StartsWith("lang=auto\r\nhost=127.0.0.1\r\nws=\r\nkeep_backups=10\r\ncheck_update=on\r\ncheck_dsh_update=on\r\ndsh_versions=\r\nupdate_channel=stable\r\nclose_action=\r\nauto_start=on\r\n"));
+        ToolkitConfig rt = ConfigCodec.Parse(ser, canon);
+        Check("序列化→解析往返一致", rt.Lang == "auto" && rt.Host == "127.0.0.1" && rt.KeepBackups == 10 && rt.CheckUpdate && rt.AutoStart);
+
+        Check("校验：空键 → no-key", ConfigValidator.Validate("", "x", canon) == "no-key");
+        Check("校验：未知键 → unknown-key", ConfigValidator.Validate("dsh_versions", "x", canon) == "unknown-key");
+        Check("校验：lang 合法/非法", ConfigValidator.Validate("lang", "en", canon) == null && ConfigValidator.Validate("lang", "fr", canon) == "bad-value");
+        Check("校验：keep_backups 必须 ≥3", ConfigValidator.Validate("keep_backups", "2", canon) == "bad-value" && ConfigValidator.Validate("keep_backups", "3", canon) == null);
+        Check("校验：ws 走注入的规范化", ConfigValidator.Validate("ws", "a<b", canon) == "bad-value" && ConfigValidator.Validate("ws", "C:\\ok", canon) == null);
+        ToolkitConfig ap = ConfigValidator.ApplyTo(new ToolkitConfig(), "keep_backups", "2", canon);
+        Check("应用：keep_backups 夹到 3", ap.KeepBackups == 3);
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
