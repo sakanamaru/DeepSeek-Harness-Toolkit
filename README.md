@@ -28,7 +28,7 @@ it.
   Verified by making the conversation files unreadable: the statistics still worked, so the content cannot
   have been read.
 - **Uninstalling removes the program, not your data.** `uninstall` removes the dsh package and leaves the
-  data directory and every backup untouched, and it says so in the plan before doing anything.
+  data directory and every backup untouched, and it says so in the plan before doing anything. Installing again afterwards works and keeps your settings: that round trip was verified end to end, including restoring a backup taken before the uninstall.
 - **A backup can prove it is complete.** Each backup carries a completion marker written last, with a content
   hash, so an interrupted backup is detectable, altered content is detectable, and restoring from a broken
   backup is refused unless you pass `--force`.
