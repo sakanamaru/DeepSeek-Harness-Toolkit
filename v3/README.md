@@ -138,24 +138,35 @@ interface IServiceTarget { AppKind Kind; bool IsAvailable(); ServiceReport Probe
 | 命令面广度 | 已覆盖 GUI 消费的主要命令（含 `restore --dry-run` 预览、`selftest`、`check`、真实 `backup`）；**真实 `restore` 的数据写入已移植**（合并语义、恢复前自动备份、自身完整性闸门、`_workspace` 工作区恢复；隔离根下端到端验证 24/24）。`backup`/`backup-delete`/`backup-export`/`restore` 均已真实实现并在隔离根下验证 |
 | 真实 restore 的写入范围 | **V3 独有约束**：默认路径（不给 `--apply`）与 v2.x 同序同语义（运行中拒绝 → 恢复前备份 → 恢复）；给 `--apply` 时只允许写入**隔离数据根**——必须设置 `$DSH_HOME` 且生效数据根不等于任何默认候选，否则 `RESTORE_FAIL` 拒绝。因此 `--apply` 永远不可能写进 `~/.dsh`（v2.x 没有这个开关，也没有这层保护） |
 | `RESTORE_OK` 的时机 | **有意比 v2.x 更严格**：v2.x 在恢复失败（异常/完整性不匹配）时也会打印 `RESTORE_OK`；V3 只在真正成功时打印，失败打印 `RESTORE_FAIL <原因>` |
-| `restore --dry-run --path <相对路径>` | **v2.x 的已知缺陷（源码已修复，待随 v2.7.3 发布）**：v2.7.2 的 `P()` 给相对路径加 `\\?\` 前缀（`\\?\.\backup\x` 是非法 Win32 路径）→ 源侧遍历被 try/catch 静默吞掉，预览报 `DRYRUN_NEW 0 / OVERWRITE 0`。V3 用相对路径能正常遍历（数字正确）。`compare_markers.ps1` 因此统一把 `-Repo` 转绝对路径，否则会比对出**假差异**（这条已在脚本注释里写明原因） |
+| `restore --dry-run --path <相对路径>` | **v2.x 的已知缺陷 —— 已在 v2.7.3 修复发布**：v2.7.2 的 `P()` 给相对路径加 `\\?\` 前缀（`\\?\.\backup\x` 是非法 Win32 路径）→ 源侧遍历被 try/catch 静默吞掉，预览报 `DRYRUN_NEW 0 / OVERWRITE 0`。V3 用相对路径能正常遍历（数字正确）。`compare_markers.ps1` 因此统一把 `-Repo` 转绝对路径，否则会比对出**假差异**（这条已在脚本注释里写明原因） |
 | GUI | Windows-only WinForms 保持不变；跨平台 GUI 只留架构能力（见设计稿 §7） |
 | **`DSH_HOME` 环境变量** | **唯一一处刻意偏离 v2.x 的行为**：Windows 侧也优先读 `$DSH_HOME`（Linux 侧本就支持）→ 便于在隔离数据根下安全测试写操作与多环境部署；未设置时与 v2.x 完全一致 |
 ---
 
-## 6. 怎么让门槛③（Win/Linux 双跑）变绿 —— 你自己也能做
+## 6. 门槛③（Win/Linux 双跑）—— **已变绿**（2026-09-28）
 
-门槛③ 只差"**在 CI 上真跑一次**"，而 CI 只在推送后触发。若你不想让我推送，可以自己推一个分支（**不动 main**）：
+CI run **36385480118**（分支 `v3-linux`）：`V3 contracts (windows-latest)` 与 `V3 contracts (ubuntu-latest)` 各 **220/220**，
+外加 `unit + integration tests` 绿。也就是说 V3 契约测试现在**在真实 Linux 上跑过**，不再只是"编译过"。
+
+第一次真跑（run 36385248055）在**两个平台同时失败**，暴露了两个本地永远看不到的问题（本地只用 `csc` 全量编译，完全绕过 csproj）：
+
+| 失败 | 根因 | 修法 |
+|---|---|---|
+| `CS0579 Duplicate 'System.Reflection.Assembly*Attribute'` | `Program.cs` 里写了程序集属性（零 SDK 的 csc 路径需要它们），而 SDK 又自动生成 `obj/.../AssemblyInfo.cs` | `Dsht.Cli.csproj` 加 `<GenerateAssemblyInfo>false</GenerateAssemblyInfo>` |
+| `CS0234 'Linux' does not exist in the namespace 'Dsht.Platform'` | `PlatformComposition.cs` 用了 `Dsht.Platform.Linux`，但 csproj 只引用了 Domain + Platform.Windows | 补 `<ProjectReference ... Dsht.Platform.Linux.csproj />`（组合根运行时选平台，两个实现都要引用） |
+
+**自己复现**（推分支 + 看 CI）：
 
 ```powershell
 cd "D:\dsh-workspace\技术\DSHToolkit\09-源码仓库\repo"
 git switch -c v3-linux              # 建分支，不动 main
-git push -u origin v3-linux         # 只推这个分支
-gh run watch                        # 看 CI：会跑 windows-latest + ubuntu-latest
+git push -u origin v3-linux         # 推送即触发（workflow 的 push 分支已含 'v3*'）
+gh run watch                        # windows-latest + ubuntu-latest
 ```
 
-**预期结果**：`v3-contracts` job 在两个平台上都绿（`dotnet build v3/src/Dsht.Cli` + 契约测试 220/220）。
-若 ubuntu 上失败，那正是有价值的信号——说明 Linux 实现里还有**只在真机才暴露**的问题（我本地只能做到"编译过 + 纯逻辑单测"，见 §5）。
+> 注意：workflow 的 `push.branches` 原本只有 `main`，所以"推 v3-linux 就会跑 CI"曾经**不成立**
+> （推了也不会触发）——现已加入 `'v3*'`。若你只想跑一次、不想再推：`gh workflow run build-release.yml --ref v3-linux`
+> （手动触发会连 `build` job 一起跑，并在分支上提交一次 CI 生成的 `hashes.txt`）。
 
 跑完后删分支即可（不影响 main）：
 

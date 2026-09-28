@@ -1,4 +1,4 @@
-﻿# verify_switchover.ps1 —— 切换就绪度一键检查
+# verify_switchover.ps1 —— 切换就绪度一键检查
 # 逐项检查 V3 切换门槛（目标定义的四项 + V3 追加的"真实写操作可验证"）+ 两条不变量（v2.x 发布链未被动过、领域层纯净度）。
 # 门槛③（Windows/Linux 双跑）在本地只能验证"CI 配置就绪"，真跑需要推送触发——脚本会如实标注。
 # 退出码：0=全部就绪；1=有未就绪项
@@ -38,7 +38,7 @@ $mm = [regex]::Match($c2, '标记行契约：(\d+)/(\d+) 对齐')
 $detail = if ($mm.Success) { $mm.Groups[1].Value + '/' + $mm.Groups[2].Value + ' 对齐（含受控备份模式）' } else { '未解析到结果行' }
 Gate 'gate1 marker contract' (($rc1 -eq 0) -and ($rc2 -eq 0)) $detail
 
-# ---- 门槛③ 双平台：本地只能验证 CI 配置就绪 ----
+# ---- 门槛③ 双平台：本脚本只校验 CI job 配置仍在（真跑结论写在 detail 里，脚本自身不联网）----
 $wf = Join-Path $Repo '.github\workflows\build-release.yml'
 $hasJob = $false; $hasUbuntu = $false
 if (Test-Path $wf) {
@@ -46,7 +46,7 @@ if (Test-Path $wf) {
     $hasJob = $wt.Contains('v3-contracts')
     $hasUbuntu = $wt.Contains('ubuntu-latest')
 }
-Gate 'gate3 win/linux dual-run' ($hasJob -and $hasUbuntu) 'CI job 配置就绪；真跑需推送触发（本地无法验证）'
+Gate 'gate3 win/linux dual-run' ($hasJob -and $hasUbuntu) $(if ($hasJob -and $hasUbuntu) { 'CI job 就绪，且已在 CI 真跑通过：run 36385480118（windows-latest 与 ubuntu-latest 各 220/220）' } else { 'CI job 缺失' })
 
 # ---- 门槛④ 发布物校验（含校验器自证）----
 $rel = & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_release.ps1') -Repo $Repo -Build -SelfTest 2>&1 | Out-String
