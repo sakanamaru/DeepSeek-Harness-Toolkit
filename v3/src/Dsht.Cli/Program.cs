@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using Dsht.Domain.Abstractions;
 using Dsht.Domain.Model;
 using Dsht.Domain.Services;
-using Dsht.Domain.Services;
 using Dsht.Domain.Targets;
 using Dsht.Platform.Windows;
 
@@ -238,9 +237,32 @@ namespace Dsht.Cli
         /// <summary>start（V3 独有）：启动 dsh，然后**用可观测事实确认**是否真的起来 —— 绝不因为"命令发出去了"就报成功。
         /// 标记行：`START_OK &lt;pid&gt;` / `START_FAIL &lt;原因&gt;`，两者之后都会补一行 `START_OBSERVED &lt;状态&gt;`（Ready/Listening/Down）。
         /// 用法：`start [--port &lt;n&gt;] [--profile &lt;name&gt;]`（默认 3080 / web）。</summary>
+        /// <summary>取参数值（形如 `--port 3999`）；缺省或非法时返回 fallback。仅用于文案展示，判定逻辑在 TargetForStart 里。</summary>
+        private static string ArgOr(string[] args, string name, string fallback)
+        {
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i] == name && !string.IsNullOrEmpty(args[i + 1])) return args[i + 1];
+            }
+            return fallback;
+        }
+        /// <summary>按 --port 选择 start 的目标：默认端口用组合目标；指定端口时临时构造 Web 目标。
+        /// **单独成方法**是为了让"先解析参数、再选目标"的顺序不会被后续改动打乱 ——
+        /// 之前就是因为顺序反了，`start --port 3999` 去探了默认 3080（用户的实例）。
+        /// 注意：DSH_HOME 隔离数据根、**不隔离端口**，所以测试必须能指定端口。</summary>
+        private static IServiceTarget TargetForStart(string[] args, ServiceRegistry reg)
+        {
+            int port = 0;
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i] == "--port") { int pp; if (int.TryParse(args[i + 1], out pp)) port = pp; }
+            }
+            if (port <= 0 || port == WebPort) return reg.Get<IServiceTarget>();
+            return PlatformComposition.WebFor(port, reg.Get<IPortProbe>(), reg.Get<IHttpProbe>(), reg.Get<IProcessQuery>());
+        }
         private static int StartCmd(string[] args, ServiceRegistry reg)
         {
-            IServiceTarget target = reg.Get<IServiceTarget>();
+            IServiceTarget target = TargetForStart(args, reg);   // 先解析 --port 再选目标（顺序敏感）
             IServiceControl ctl = reg.Get<IServiceControl>();
 
             ServiceReport before = target.Probe();
@@ -254,7 +276,7 @@ namespace Dsht.Cli
 
             if (!Has(args, "--yes"))
             {
-                Console.WriteLine("START_PLAN " + T("将启动：dsh（默认 profile web / 端口 3080）—— 这会改变系统状态，需要显式确认。", "will start dsh (profile web / port 3080) - this changes system state and needs explicit confirmation."));
+                Console.WriteLine("START_PLAN " + T("将启动：dsh（profile ", "will start dsh (profile ") + ArgOr(args, "--profile", "web") + T(" / 端口 ", " / port ") + ArgOr(args, "--port", WebPort.ToString()) + T("）—— 这会改变系统状态，需要显式确认。", ") - this changes system state and needs explicit confirmation."));
                 Console.WriteLine("START_NOTE " + T("确认请加 --yes；可用 --port &lt;n&gt; 指定端口（测试时务必用非默认端口）。", "add --yes to confirm; --port &lt;n&gt; to pick a port (always use a non-default port when testing)."));
                 Console.WriteLine("START_OBSERVED " + before.State.ToString().ToLowerInvariant());
                 return 0;
