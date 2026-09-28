@@ -96,6 +96,13 @@ namespace Dsht.Gui.Avalonia.Shells
             return b;
         }
 
+        private static Button JumpButton(string text, int section, MainWindow host)
+        {
+            Button b = new Button { Content = text };
+            b.Click += delegate { host.SetMainSection(section); };
+            return b;
+        }
+
         private static Control MainMenu(MainWindow host)
         {
             StackPanel s = new StackPanel { Margin = new Thickness(10, 14, 10, 14), Spacing = 2 };
@@ -347,6 +354,40 @@ namespace Dsht.Gui.Avalonia.Shells
             g.Children.Add(BigStat("已运行", string.IsNullOrEmpty(st.Uptime) ? "—" : st.Uptime, "从启动到现在", -1, Palette.Accent, 2));
             s.Children.Add(g);
 
+            // —— 总览指标（把其它页的要点也摆到这里，省得来回点）——
+            ProfilesSnapshot pf = host.Profiles;
+            SessionsSnapshot se = host.Data;
+            BackupSummary bk = host.Backups;
+            DoctorSummary dc = host.Doctor;
+            int bundleCount = 0; int thirdCount = 0; string formText = "—";
+            if (pf != null && pf.Ok && pf.Profiles.Count > 0)
+            {
+                for (int i = 0; i < pf.Profiles.Count; i++) { bundleCount += pf.Profiles[i].Bundles; thirdCount += pf.Profiles[i].ThirdParty; }
+                formText = pf.Profiles[0].FormText;
+            }
+            Grid row1 = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
+            row1.Children.Add(BigStat("当前形态", formText, "来自 profile 的 dsh.profile.bundles", -1, Palette.Text, 0));
+            row1.Children.Add(BigStat("profile / 插件", (pf == null ? "—" : pf.Count.ToString()) + " / " + thirdCount, bundleCount + " 个组合包（含官方）", -1, Palette.Text, 1));
+            row1.Children.Add(BigStat("会话", se == null ? "—" : se.Count.ToString(), "非空 " + (se == null ? "—" : se.NonBlank.ToString()) + " · 运行中 " + (se == null ? "—" : se.Live.ToString()), -1, Palette.Text, 2));
+            row1.Children.Add(BigStat("累计输入 token", se == null ? "—" : SessionRow.Human(se.TotalIn), "输出 " + (se == null ? "—" : SessionRow.Human(se.TotalOut)), -1, Palette.Text, 3));
+            s.Children.Add(row1);
+
+            Grid row2 = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
+            row2.Children.Add(BigStat("缓存命中率", se == null ? "—" : PctText(se.TotalHitPercent), "越高越省钱", se == null ? -1 : se.TotalHitPercent, Palette.Good, 0));
+            row2.Children.Add(BigStat("解码速度", se == null ? "—" : TpsText(se.TotalDecodeTps), "tok/s（按合计加权）", -1, Palette.Accent, 1));
+            row2.Children.Add(BigStat("备份", bk == null || !bk.Ok ? "—" : bk.Count.ToString(), "份（backup-list）", -1, Palette.Text, 2));
+            row2.Children.Add(BigStat("体检", dc == null || !dc.Ok ? "未运行" : dc.Headline, "点下面按钮运行 doctor", -1, dc != null && dc.Error > 0 ? Palette.Bad : (dc != null && dc.Warn > 0 ? Palette.Warn : Palette.Good), 3));
+            s.Children.Add(row2);
+
+            // —— 快捷入口 ——
+            StackPanel jumps = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            jumps.Children.Add(new TextBlock { Text = "快捷入口", FontSize = 12, Foreground = Palette.TextDim, VerticalAlignment = VerticalAlignment.Center });
+            jumps.Children.Add(JumpButton("会话与 Token", 1, host));
+            jumps.Children.Add(JumpButton("形态与插件", 2, host));
+            jumps.Children.Add(JumpButton("备份", 3, host));
+            jumps.Children.Add(JumpButton("体检", 4, host));
+            jumps.Children.Add(JumpButton("配置", 5, host));
+            s.Children.Add(jumps);
             if (st.Extras.Count > 0)
             {
                 StackPanel ex = new StackPanel { Spacing = 4 };
