@@ -520,6 +520,48 @@ static class ContractTests
         Check("manifest：格式不认 → 未解析", !Dsht.Domain.Services.ProfileManifest.Parse("{oops").Parsed && !Dsht.Domain.Services.ProfileManifest.Parse(null).Parsed);
         Check("manifest：bundles 非数组 → 未解析", !Dsht.Domain.Services.ProfileManifest.Parse("{\"dsh\":{\"profile\":{\"bundles\":\"x\"}}}").Parsed);
         Check("manifest：未知 bundle 名 → Unknown（不猜）", Dsht.Domain.Services.ProfileManifest.KindOfBundle("some-random-plugin") == AppKind.Unknown);
+        Console.WriteLine("[24] 会话投影解析与派生指标（token / 缓存命中 / 速度 / 上下文压力）");
+        string proj = "{\"version\":7,\"record\":{\"identity\":{\"createdAt\":1788517824758,\"cwd\":\"D:\\\\work\"},\"rows\":{"
+            + "\"sessionStats\":{\"ver\":1,\"seq\":2,\"val\":{\"turns\":2,\"steps\":9,\"llmMs\":1000,\"toolMs\":500,\"ttftMs\":300,\"decodeMs\":2000,\"decodeTokens\":400}},"
+            + "\"tokenUsage\":{\"val\":{\"totals\":{\"uncachedInputTokens\":100,\"outputTokens\":50,\"cacheReadTokens\":900,\"cacheWriteTokens\":10}}},"
+            + "\"contextPressure\":{\"val\":{\"surfaceTokens\":500,\"contextWindow\":1000,\"pressureTokens\":250}},"
+            + "\"contextBreakdown\":{\"val\":{\"systemTokens\":10,\"toolsTokens\":20,\"messageTokens\":30}},"
+            + "\"sessionListMetadata\":{\"val\":{\"blank\":false,\"lastPromptAt\":1788517999999}},"
+            + "\"title\":{\"val\":\"hello\"}}}}";
+        Dsht.Domain.Model.SessionStat ps = Dsht.Domain.Services.SessionStats.ParseSessionProjection(proj, "abc");
+        Check("投影：解析成功且 id 透传", ps != null && ps.Id == "abc");
+        Check("投影：会话统计（turns/steps/title/cwd）", ps.Turns == 2 && ps.Steps == 9 && ps.Title == "hello" && ps.Cwd == @"D:\work");
+        Check("投影：token 总量（输入 1000 / 输出 50 / 写缓存 10）", ps.UncachedInputTokens == 100 && ps.CacheReadTokens == 900 && ps.TotalInputTokens == 1000 && ps.OutputTokens == 50 && ps.CacheWriteTokens == 10);
+        Check("投影：Has* 标记都置位", ps.HasStats && ps.HasTokens && ps.HasPressure && ps.HasBreakdown && !ps.Blank);
+        Check("指标：缓存命中率 90.0%", Math.Abs(Dsht.Domain.Services.SessionStats.CacheHitPercent(ps) - 90.0) < 0.001);
+        Check("指标：解码速度 200 tok/s", Math.Abs(Dsht.Domain.Services.SessionStats.DecodeTokensPerSec(ps) - 200.0) < 0.001);
+        Check("指标：上下文压力 25.0%", Math.Abs(Dsht.Domain.Services.SessionStats.ContextPressurePercent(ps) - 25.0) < 0.001);
+        Check("投影：epoch 毫秒 → UTC ISO", ps.CreatedAtEpochMs == 1788517824758L && ps.CreatedAt.EndsWith("Z") && ps.LastPromptEpochMs == 1788517999999L && ps.LastPromptAt.EndsWith("Z"));
+        Check("epoch 转换：0/负数 → 空串（不假装时间）", Dsht.Domain.Services.SessionStats.EpochMsToIso(0) == "" && Dsht.Domain.Services.SessionStats.EpochMsToIso(-5) == "");
+        Check("投影：缺 rows / 格式不认 / null → null", Dsht.Domain.Services.SessionStats.ParseSessionProjection("{\"record\":{}}", "x") == null && Dsht.Domain.Services.SessionStats.ParseSessionProjection("{oops", "x") == null && Dsht.Domain.Services.SessionStats.ParseSessionProjection(null, "x") == null);
+        string agg = "{\"tables\":{\"sessions\":{"
+            + "\"session-abc\":{\"identity\":{\"createdAt\":1,\"cwd\":\"C:\\\\w\"},\"rows\":{\"tokenUsage\":{\"val\":{\"totals\":{\"cacheReadTokens\":5,\"uncachedInputTokens\":5}}}}},"
+            + "\"bareid\":{\"rows\":{\"tokenUsage\":{\"val\":{\"totals\":{\"outputTokens\":7}}}}}"
+            + "}}}";
+        Dsht.Domain.Model.SessionStat[] ag = Dsht.Domain.Services.SessionStats.ParseAggregate(agg);
+        Check("总表：解析出 2 个会话且去掉 session- 前缀", ag.Length == 2 && ag[0].Id == "abc" && ag[1].Id == "bareid");
+        Check("总表：token 字段读到（5/5 与 7）", ag.Length == 2 && ag[0].CacheReadTokens == 5 && ag[0].UncachedInputTokens == 5 && ag[1].OutputTokens == 7);
+        Check("总表：格式不认 → 空数组（不抛）", Dsht.Domain.Services.SessionStats.ParseAggregate("{oops").Length == 0 && Dsht.Domain.Services.SessionStats.ParseAggregate(null).Length == 0);
+        string snap = "{\"formatVersion\":1,\"sessions\":[{\"id\":\"s1\",\"title\":\"t\",\"turns\":3,\"steps\":4,\"uncachedInputTokens\":10,\"outputTokens\":20,\"cacheReadTokens\":30,\"decodeMs\":100,\"decodeTokens\":50,\"ttftMs\":60,\"contextWindow\":200,\"pressureTokens\":100,\"blank\":true}]}";
+        Dsht.Domain.Model.SessionStat[] sn = Dsht.Domain.Services.SessionStats.ParseSnapshot(snap);
+        Check("快照：解析成功（id/title/turns/blank）", sn.Length == 1 && sn[0].Id == "s1" && sn[0].Title == "t" && sn[0].Turns == 3 && sn[0].Blank);
+        Check("快照：指标可算（命中 75%、解码 500 tok/s、压力 50%）", Math.Abs(Dsht.Domain.Services.SessionStats.CacheHitPercent(sn[0]) - 75.0) < 0.001 && Math.Abs(Dsht.Domain.Services.SessionStats.DecodeTokensPerSec(sn[0]) - 500.0) < 0.001 && Math.Abs(Dsht.Domain.Services.SessionStats.ContextPressurePercent(sn[0]) - 50.0) < 0.001);
+        Check("快照：formatVersion 不认 → 空数组（诚实降级）", Dsht.Domain.Services.SessionStats.ParseSnapshot(snap.Replace("\"formatVersion\":1", "\"formatVersion\":2")).Length == 0);
+        Check("快照：无 sessions 字段 → 空数组", Dsht.Domain.Services.SessionStats.ParseSnapshot("{\"formatVersion\":1}").Length == 0);
+        List<Dsht.Domain.Model.SessionStat> tl = new List<Dsht.Domain.Model.SessionStat>();
+        tl.Add(ps); tl.Add(sn[0]);
+        Dsht.Domain.Model.SessionTotals tt = Dsht.Domain.Services.SessionStats.Aggregate(tl);
+        Check("汇总：计数 + 合计 token（110/70/930）", tt.Count == 2 && tt.NonBlankCount == 1 && tt.UncachedInputTokens == 110 && tt.OutputTokens == 70 && tt.CacheReadTokens == 930);
+        Check("汇总：命中率/速度按合计加权", Math.Abs(tt.CacheHitPercent - (930 * 100.0 / 1040)) < 0.001 && Math.Abs(tt.DecodeTokensPerSec - (450 * 1000.0 / 2100)) < 0.001);
+        Dsht.Domain.Model.SessionTotals te = Dsht.Domain.Services.SessionStats.Aggregate(new List<Dsht.Domain.Model.SessionStat>());
+        Check("汇总：空列表 → 0 且指标为未知（-1）", te.Count == 0 && te.CacheHitPercent < 0 && te.DecodeTokensPerSec < 0);
+        Dsht.Domain.Model.SessionStat zero = new Dsht.Domain.Model.SessionStat();
+        Check("指标：分母为 0 → 未知（-1，不假装 0）", Dsht.Domain.Services.SessionStats.CacheHitPercent(zero) < 0 && Dsht.Domain.Services.SessionStats.DecodeTokensPerSec(zero) < 0 && Dsht.Domain.Services.SessionStats.ContextPressurePercent(zero) < 0);
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;

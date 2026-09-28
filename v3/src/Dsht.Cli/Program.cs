@@ -33,6 +33,7 @@ namespace Dsht.Cli
             if (cmd == "describe") return Describe(reg);
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
             if (cmd == "profiles") return Profiles(reg);
+            if (cmd == "sessions") return Sessions(reg);
             if (cmd == "backup-list") return BackupList(args, reg);
             if (cmd == "doctor") return Doctor(args, reg);
             if (cmd == "version") { Console.WriteLine("DSHT_VERSION " + ToolkitVersion); return 0; }
@@ -46,7 +47,7 @@ namespace Dsht.Cli
             if (cmd == "backup-export") return BackupExport(args, reg);
             if (cmd == "backup-delete") return BackupDelete(args, reg);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | sessions | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
             return 2;
         }
 
@@ -115,6 +116,87 @@ namespace Dsht.Cli
             return 0;
         }
 
+
+        /// <summary>sessions（V3 独有）：会话 / token / 缓存 面板的数据源。**只读** dsh 的会话投影（明文 JSON）。
+        /// 来源优先级：插件快照（存在时）→ 每会话投影文件 → 投影总表。
+        /// 标记行：
+        ///   `SESSIONS_OK &lt;n&gt;` / `SESSIONS_NONBLANK &lt;n&gt;` / `SESSIONS_SOURCE &lt;snapshot|disk|aggregate&gt;` / `SESSIONS_ROOT &lt;dir&gt;`
+        ///   / 每会话 `SESSION &lt;id&gt; last=&lt;t|unknown&gt; turns= steps= in= out= cacheRead= hit=&lt;%|unknown&gt; decode=&lt;tok/s|unknown&gt; ttft=&lt;ms|unknown&gt; ctx=&lt;%|unknown&gt; blank=0|1`
+        ///   / `SESSIONS_TOTAL in= out= cacheRead= hit=&lt;%|unknown&gt; decode=&lt;tok/s|unknown&gt;` / `SESSIONS_FAIL &lt;原因&gt;`
+        /// **诚实边界**：只读计数/时间/元数据，**不读对话正文**；字段缺失打印 `unknown`（不假装 0）；
+        /// "有几个会话在运行"这里只能给**最后活动时间**——运行态是进程内事实，需要插件。</summary>
+        private static int Sessions(ServiceRegistry reg)
+        {
+            ISessionStatsSource src = reg.Get<ISessionStatsSource>();
+            List<SessionStat> list = new List<SessionStat>();
+            string source = "disk";
+            string snap = src.ReadText(src.SnapshotPath);
+            if (snap != null)
+            {
+                SessionStat[] fromSnap = SessionStats.ParseSnapshot(snap);
+                if (fromSnap.Length > 0) { list.AddRange(fromSnap); source = "snapshot"; }
+            }
+            if (list.Count == 0)
+            {
+                string[] files = src.ListSessionFiles();
+                for (int i = 0; i < files.Length; i++)
+                {
+                    string id = System.IO.Path.GetFileNameWithoutExtension(files[i]);
+                    if (id != null && id.StartsWith("session-", StringComparison.Ordinal)) id = id.Substring("session-".Length);
+                    SessionStat s = SessionStats.ParseSessionProjection(src.ReadText(files[i]), id);
+                    if (s != null) list.Add(s);
+                }
+                if (list.Count == 0)
+                {
+                    string agg = src.ReadText(src.AggregatePath);
+                    if (agg != null)
+                    {
+                        SessionStat[] a = SessionStats.ParseAggregate(agg);
+                        if (a.Length > 0) { list.AddRange(a); source = "aggregate"; }
+                    }
+                }
+            }
+            if (list.Count == 0)
+            {
+                Console.WriteLine("SESSIONS_FAIL " + T("没有可读的会话投影（dsh 未初始化，或该 dsh 版本的投影格式不认）",
+                    "no readable session projection (dsh not initialized, or an unrecognized projection format)"));
+                return 0;
+            }
+            SessionTotals tot = SessionStats.Aggregate(list);
+            Console.WriteLine("SESSIONS_OK " + list.Count);
+            Console.WriteLine("SESSIONS_NONBLANK " + tot.NonBlankCount);
+            Console.WriteLine("SESSIONS_SOURCE " + source);
+            Console.WriteLine("SESSIONS_ROOT " + src.SessionsDir);
+            for (int i = 0; i < list.Count; i++)
+            {
+                SessionStat s = list[i];
+                Console.WriteLine("SESSION " + s.Id
+                    + " created=" + (string.IsNullOrEmpty(s.CreatedAt) ? "unknown" : s.CreatedAt)
+                    + " last=" + (string.IsNullOrEmpty(s.LastPromptAt) ? "unknown" : s.LastPromptAt)
+                    + " turns=" + s.Turns
+                    + " steps=" + s.Steps
+                    + " in=" + s.TotalInputTokens
+                    + " out=" + s.OutputTokens
+                    + " cacheRead=" + s.CacheReadTokens
+                    + " hit=" + Num1(SessionStats.CacheHitPercent(s))
+                    + " decode=" + Num1(SessionStats.DecodeTokensPerSec(s))
+                    + " ttft=" + (s.TtftMs > 0 ? s.TtftMs.ToString(System.Globalization.CultureInfo.InvariantCulture) : "unknown")
+                    + " ctx=" + Num1(SessionStats.ContextPressurePercent(s))
+                    + " blank=" + (s.Blank ? "1" : "0"));
+            }
+            Console.WriteLine("SESSIONS_TOTAL in=" + (tot.UncachedInputTokens + tot.CacheReadTokens)
+                + " out=" + tot.OutputTokens
+                + " cacheRead=" + tot.CacheReadTokens
+                + " hit=" + Num1(tot.CacheHitPercent)
+                + " decode=" + Num1(tot.DecodeTokensPerSec));
+            return 0;
+        }
+
+        /// <summary>派生指标格式化：未知（-1）→ `unknown`，否则一位小数；**固定 InvariantCulture**（标记行必须机器可读，不受区域设置影响）。</summary>
+        private static string Num1(double v)
+        {
+            return v < 0 ? "unknown" : v.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+        }
 
         /// <summary>profiles（V3 独有）：列出 profile、它们的**配置形态**与插件清单。
         /// 数据来源：`&lt;数据根&gt;/profiles/&lt;name&gt;/package.json` 里的 `dsh.profile.bundles`（明文小 JSON，只读零注入）。

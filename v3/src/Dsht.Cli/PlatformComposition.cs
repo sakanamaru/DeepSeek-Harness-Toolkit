@@ -59,6 +59,7 @@ namespace Dsht.Cli
                 reg.Add<IIntegritySource>(new WindowsIntegritySource());
                 reg.Add<IProfileSource>(new WindowsProfileSource(paths));
                 reg.Add<IProfileManifestSource>(new WindowsProfileManifestSource(paths));
+                reg.Add<ISessionStatsSource>(new WindowsSessionStatsSource(paths));
                 reg.Add<IBackupSource>(new WindowsBackupSource(paths));
                 reg.Add<IConfigSource>(new WindowsConfigSource(paths));
                 reg.Add<ILogSource>(new WindowsLogSource(paths));
@@ -79,6 +80,7 @@ namespace Dsht.Cli
                 reg.Add<IIntegritySource>(new LinuxIntegritySource());
                 reg.Add<IProfileSource>(new LinuxProfileSource(paths));
                 reg.Add<IProfileManifestSource>(new LinuxProfileManifestSource(paths));
+                reg.Add<ISessionStatsSource>(new LinuxSessionStatsSource(paths));
                 reg.Add<IBackupSource>(new LinuxBackupSource(paths));
                 reg.Add<IConfigSource>(new LinuxConfigSource(paths));
                 reg.Add<ILogSource>(new LinuxLogSource(paths));
