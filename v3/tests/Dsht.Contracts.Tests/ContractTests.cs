@@ -188,6 +188,28 @@ static class ContractTests
         Check("不等 → Mismatch", IntegrityJudge.Judge(hex64, new string('0', 64)) == IntegrityVerdict.Mismatch);
         Check("只有 Mismatch 拦截高风险操作", IntegrityJudge.ShouldBlock(IntegrityVerdict.Mismatch)
             && !IntegrityJudge.ShouldBlock(IntegrityVerdict.Match) && !IntegrityJudge.ShouldBlock(IntegrityVerdict.Unknown));
+        Console.WriteLine("[7] BackupPackage 备份包判定（逐条对齐 v2.x）");
+        Check("名字前缀（忽略大小写）", BackupPackage.IsValidBackupName("dsh-data-20260921-193000-auto") && BackupPackage.IsValidBackupName("DSH-DATA-x") && !BackupPackage.IsValidBackupName("other"));
+        Check("数据特征：settings.yaml", BackupPackage.HasDshData(new DirSnapshot("d", new string[] { "settings.yaml" })));
+        Check("数据特征：credentials/sessions/profiles/storages", BackupPackage.HasDshData(new DirSnapshot("d", new string[] { "credentials.yaml" })) && BackupPackage.HasDshData(new DirSnapshot("d", new string[] { "sessions" })) && BackupPackage.HasDshData(new DirSnapshot("d", new string[] { "profiles" })) && BackupPackage.HasDshData(new DirSnapshot("d", new string[] { "storages" })));
+        Check("无特征 → 非数据目录", !BackupPackage.HasDshData(new DirSnapshot("d", new string[] { "readme.txt" })));
+
+        Check("有效包：名字+数据", BackupPackage.IsValidPackage(new DirSnapshot("dsh-data-1", new string[] { "settings.yaml" })));
+        Check("有效包：名字+仅 _workspace", BackupPackage.IsValidPackage(new DirSnapshot("dsh-data-1", new string[] { "_workspace" })));
+        Check("仅目录存在不算数（空目录）", !BackupPackage.IsValidPackage(new DirSnapshot("dsh-data-1", new string[] { })));
+        Check("名字不符 → 无效（即使有数据）", !BackupPackage.IsValidPackage(new DirSnapshot("backup-1", new string[] { "settings.yaml" })));
+
+        DirSnapshot self = new DirSnapshot("mydir", new string[] { "readme.txt" });
+        Check("Resolve：自身有效 → 自身", BackupPackage.Resolve(new DirSnapshot("dsh-data-1", new string[] { "sessions" }), null) == "dsh-data-1");
+        Check("Resolve：父目录下恰好一个有效备份 → 下探", BackupPackage.Resolve(self, new DirSnapshot[] { new DirSnapshot("dsh-data-1", new string[] { "profiles" }) }) == "dsh-data-1");
+        Check("Resolve：两个备份子目录 → null（不猜）", BackupPackage.Resolve(self, new DirSnapshot[] { new DirSnapshot("dsh-data-1", new string[] { "profiles" }), new DirSnapshot("dsh-data-2", new string[] { "sessions" }) }) == null);
+        Check("Resolve：唯一子目录但无效 → null", BackupPackage.Resolve(self, new DirSnapshot[] { new DirSnapshot("dsh-data-1", new string[] { "readme.txt" }) }) == null);
+        Check("Resolve：无子目录 → null", BackupPackage.Resolve(self, new DirSnapshot[] { }) == null);
+
+        Check("类型判定：手动为默认", BackupPackage.Classify("dsh-data-20260921-193000") == Dsht.Domain.Model.BackupKind.Manual);
+        Check("类型判定：-auto", BackupPackage.Classify("dsh-data-x-auto") == Dsht.Domain.Model.BackupKind.Auto);
+        Check("类型判定：四种 pre-*", BackupPackage.Classify("x-pre-restore") == Dsht.Domain.Model.BackupKind.PreRestore && BackupPackage.Classify("x-pre-import") == Dsht.Domain.Model.BackupKind.PreImport && BackupPackage.Classify("x-pre-wipe") == Dsht.Domain.Model.BackupKind.PreWipe && BackupPackage.Classify("x-pre-update") == Dsht.Domain.Model.BackupKind.PreUpdate);
+        Check("保护性备份（严格模式）仅限 pre-*", BackupPackage.IsProtective(Dsht.Domain.Model.BackupKind.PreWipe) && !BackupPackage.IsProtective(Dsht.Domain.Model.BackupKind.Auto) && !BackupPackage.IsProtective(Dsht.Domain.Model.BackupKind.Manual));
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
