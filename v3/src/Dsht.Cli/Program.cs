@@ -35,6 +35,7 @@ namespace Dsht.Cli
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
             if (cmd == "profilepatch") return ProfilePatch(args, reg);
             if (cmd == "profiles") return Profiles(reg);
+            if (cmd == "verify-install") return VerifyInstall(args);
             if (cmd == "wipe") return WipeCmd(args, reg);
             if (cmd == "import") return ImportCmd(args, reg);
             if (cmd == "update-info") return UpdateInfo(reg);
@@ -362,6 +363,110 @@ namespace Dsht.Cli
             Console.Write(T("将执行：", "will run: ") + what + T("　确认？(y/N) ", "  confirm? (y/N) "));
             string a = Console.ReadLine();
             return a != null && a.Trim().ToLowerInvariant() == "y";
+        }
+        /// <summary>verify-install（V3 独有）：核对本机文件与发布清单的 SHA-256 ✓ —— 经典版「验证此安装」的 CLI 对应物 ✓。
+        /// 默认核对**正在运行的自身** ✓；清单默认取自身旁边的 hashes.txt ✓，或用 --manifest 指定，或用 --url 从发布页取 ✓。
+        /// **清单拿不到时绝不说 OK** ✗✓：只报 VERIFY_MANIFEST_MISSING 并说明如何取得 ✓。
+        /// 诚实边界 ✓：本命令只做 SHA-256 比对；清单本身的 GPG 签名校验仍在 Windows 的 verify.ps1 里 ✓（CLI 不引入第三方依赖 ✗）。
+        /// 标记行：VERIFY_SELF / VERIFY_MANIFEST / VERIFY_MATCH / VERIFY_MISMATCH / VERIFY_NOT_IN_MANIFEST / VERIFY_OK / VERIFY_FAIL。</summary>
+        private static int VerifyInstall(string[] args)
+        {
+            string target = FlagOf(args, "--file");
+            if (target.Length == 0)
+            {
+                try { target = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName; } catch { }
+                if (string.IsNullOrEmpty(target)) { Console.WriteLine("VERIFY_FAIL " + T("拿不到自身路径，请用 --file 指定要核对的文件", "cannot determine own path; pass --file")); return 0; }
+            }
+            if (!System.IO.File.Exists(target)) { Console.WriteLine("VERIFY_FAIL " + T("文件不存在: ", "file does not exist: ") + target); return 0; }
+            string manifestPath = FlagOf(args, "--manifest");
+            string url = FlagOf(args, "--url");
+            string text = null;
+            if (url.Length > 0)
+            {
+                try
+                {
+                    // .NET Framework defaults to TLS 1.0, which GitHub refuses ("could not create SSL/TLS secure
+                    // channel"); .NET 8 already negotiates 1.2+. The API is obsolete on .NET 8 but functional, so
+                    // the whole assignment is guarded rather than conditional on the runtime.
+                    try { System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12 | System.Net.SecurityProtocolType.Tls11 | System.Net.SecurityProtocolType.Tls; } catch { }
+                    using (System.Net.WebClient wc = new System.Net.WebClient())
+                    {
+                        wc.Headers.Add("User-Agent", "dsh-minato-verify");
+                        text = wc.DownloadString(url);
+                    }
+                    Console.WriteLine("VERIFY_MANIFEST " + url + " " + T("(已下载)", "(downloaded)"));
+                }
+                catch (Exception wex) { Console.WriteLine("VERIFY_MANIFEST_MISSING " + T("无法下载清单: ", "could not download the manifest: ") + wex.Message); Console.WriteLine("VERIFY_FAIL 0"); return 0; }
+            }
+            else
+            {
+                if (manifestPath.Length == 0)
+                {
+                    try { manifestPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(target)), "hashes.txt"); } catch { }
+                }
+                if (string.IsNullOrEmpty(manifestPath) || !System.IO.File.Exists(manifestPath))
+                {
+                    // 清单缺失 = 无法核对 ✗ → 明确说清，绝不给出 OK ✗✓
+                    Console.WriteLine("VERIFY_MANIFEST_MISSING " + T("找不到清单文件（默认取同目录的 hashes.txt）: ", "manifest not found (defaults to hashes.txt next to the file): ") + (manifestPath == null ? "" : manifestPath));
+                    Console.WriteLine("VERIFY_HINT " + T("用 --manifest 指定清单，或用 --url https://github.com/sakanamaru/dsh-minato/releases/latest/download/hashes.txt 联网取官方清单", "pass --manifest, or --url https://github.com/sakanamaru/dsh-minato/releases/latest/download/hashes.txt to fetch the official manifest"));
+                    Console.WriteLine("VERIFY_FAIL 0");
+                    return 0;
+                }
+                try { text = System.IO.File.ReadAllText(manifestPath); Console.WriteLine("VERIFY_MANIFEST " + manifestPath); }
+                catch (Exception rex) { Console.WriteLine("VERIFY_MANIFEST_MISSING " + rex.Message); Console.WriteLine("VERIFY_FAIL 0"); return 0; }
+            }
+            string selfHash;
+            try { selfHash = Sha256Of(target); }
+            catch (Exception hex) { Console.WriteLine("VERIFY_FAIL " + T("无法计算哈希: ", "cannot hash: ") + hex.Message); return 0; }
+            Console.WriteLine("VERIFY_SELF " + target + " " + selfHash);
+            string leaf = System.IO.Path.GetFileName(target);
+            string want = null;
+            int entries = 0;
+            string[] lines = text.Replace("\r", "").Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string l = lines[i].Trim();
+                if (l.Length == 0 || l.IndexOf((char)35) == 0) continue;   // 跳过 # 注释行
+                System.Text.RegularExpressions.Match m = System.Text.RegularExpressions.Regex.Match(l, "^([0-9a-fA-F]{64})[ \\t]+\\*?(.+)$");
+                if (!m.Success) continue;
+                entries++;
+                string name = m.Groups[2].Value.Trim();
+                if (string.Equals(name, leaf, StringComparison.OrdinalIgnoreCase)) want = m.Groups[1].Value.ToLowerInvariant();
+            }
+            if (entries == 0) { Console.WriteLine("VERIFY_MANIFEST_MISSING " + T("清单里没有可解析的 SHA-256 行", "the manifest has no parsable SHA-256 lines")); Console.WriteLine("VERIFY_FAIL 0"); return 0; }
+            Console.WriteLine("VERIFY_ENTRIES " + entries);
+            if (want == null)
+            {
+                Console.WriteLine("VERIFY_NOT_IN_MANIFEST " + leaf);
+                Console.WriteLine("VERIFY_HINT " + T("清单里没有这个文件名 —— 它可能不是本项目的发布产物（发布清单只列发布资产）", "that filename is not in the manifest - it may not be a release artifact of this project"));
+                Console.WriteLine("VERIFY_FAIL 1");
+                return 0;
+            }
+            if (string.Equals(want, selfHash, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine("VERIFY_MATCH " + leaf + " " + want);
+                Console.WriteLine("VERIFY_OK 1");
+            }
+            else
+            {
+                Console.WriteLine("VERIFY_MISMATCH " + leaf + " " + T("清单=", "manifest=") + want + " " + T("本机=", "local=") + selfHash);
+                Console.WriteLine("VERIFY_HINT " + T("不一致：本机文件与清单记录不符（可能被替换或篡改），请从官方 Release 重新下载", "mismatch: the local file does not match the manifest (it may have been replaced or tampered with); download it again from the official release"));
+                Console.WriteLine("VERIFY_FAIL 1");
+            }
+            return 0;
+        }
+
+        /// <summary>文件的 SHA-256（小写十六进制 ✓）。</summary>
+        private static string Sha256Of(string path)
+        {
+            using (System.IO.FileStream fs = System.IO.File.OpenRead(path))
+            using (System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create())
+            {
+                byte[] h = sha.ComputeHash(fs);
+                System.Text.StringBuilder sb = new System.Text.StringBuilder(h.Length * 2);
+                for (int i = 0; i < h.Length; i++) sb.Append(h[i].ToString("x2"));
+                return sb.ToString();
+            }
         }
         /// <summary>wipe（V3 独有）：清除数据根内容 ✓ —— 卸载前的"干净清除" ✓（经典版有 ✓）。
         /// 破坏性操作 ✗ → 多重闸门 ✓：① 先打印计划 ② 必须 --yes ③ **必须先成功做出 -pre-wipe 备份**
