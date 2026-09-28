@@ -82,7 +82,7 @@ namespace Dsht.Platform.Linux
             catch { return null; }
         }
 
-        public BackupResult Create(string sourceDir, BackupKind kind)
+        public BackupResult Create(string sourceDir, BackupKind kind, int keep = 3)
         {
             try
             {
@@ -100,7 +100,7 @@ namespace Dsht.Platform.Linux
                         string n = Path.GetFileName(d.TrimEnd('\\', '/'));
                         names.Add(n); paths[n] = d;
                     }
-                    foreach (string victim in Dsht.Domain.Services.BackupRetention.SelectForDeletion(names, 3))
+                    foreach (string victim in Dsht.Domain.Services.BackupRetention.SelectForDeletion(names, keep <= 0 ? 3 : keep))
                     {
                         try { Directory.Delete(paths[victim], true); } catch { }
                     }

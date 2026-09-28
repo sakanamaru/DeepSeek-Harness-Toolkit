@@ -1061,7 +1061,7 @@ namespace Dsht.Cli
                 Console.WriteLine("BACKUP_FAIL " + T("数据目录不存在：" + src, "data dir not found: " + src));
                 return 0;
             }
-            BackupResult r = bk.Create(src, BackupKind.Manual);
+            BackupResult r = bk.Create(src, BackupKind.Manual, _cfg == null ? 3 : _cfg.KeepBackups);
             if (r == null) { Console.WriteLine("BACKUP_FAIL " + T("备份失败（见 launcher.log）", "backup failed (see launcher.log)")); return 0; }
             if (r.SkippedNested > 0)
                 Console.WriteLine(T("已跳过 " + r.SkippedNested + " 个嵌套备份目录（dsh-data-*），不复制进本次备份。",
@@ -1269,7 +1269,7 @@ namespace Dsht.Cli
             string dstRoot = paths.DataRoot;
             if (fs.DirectoryExists(dstRoot))
             {
-                BackupResult pre = bk.Create(dstRoot, BackupKind.PreRestore);
+                BackupResult pre = bk.Create(dstRoot, BackupKind.PreRestore, _cfg == null ? 3 : _cfg.KeepBackups);
                 if (pre == null) { Console.WriteLine("RESTORE_FAIL " + T("恢复前自动备份失败", "pre-restore backup failed")); return 0; }
                 Console.WriteLine("RESTORE_PRE_BACKUP " + pre.Path);   // V3 追加：把回滚锚点直接给出来
             }
