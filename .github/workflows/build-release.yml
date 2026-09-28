@@ -117,6 +117,14 @@ jobs:
         run: |
           chmod +x out/sc/dsh-minato
           bash v3/tools/linux_smoke.sh out/sc/dsh-minato
+      - name: Verify the backup trust chain (isolated roots, never the default port)
+        run: |
+          chmod +x out/sc/dsh-minato
+          bash v3/tools/verify_backup_chain.sh out/sc/dsh-minato
+      - name: Verify the failure paths (read-only targets, concurrency)
+        run: |
+          chmod +x out/sc/dsh-minato
+          bash v3/tools/verify_failure_paths.sh out/sc/dsh-minato
       - name: Assemble the Linux package
         run: |
           set -e
