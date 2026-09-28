@@ -351,6 +351,8 @@ static class ContractTests
         Check("file:/// URL → 路径 + 片段", Dsht.Domain.Services.FileUrlConverter.ToPath("file:///C:/a/b.yml#ent", out frag2) == "C:\\a\\b.yml" && frag2 == "ent");
         Check("URL 解码 %20", Dsht.Domain.Services.FileUrlConverter.ToPath("file:///C:/a%20b/c.yml", out frag2) == "C:\\a b\\c.yml");
         Check("空 URL → 空", Dsht.Domain.Services.FileUrlConverter.ToPath(null, out frag2) == "" && frag2 == "");
+        Check("Linux 路径**不**被转成反斜杠（共享代码审计抓到的高严重度 bug ✗）", Dsht.Domain.Services.FileUrlConverter.ToPath("file:///home/u/a.yml#x", out frag2) == "/home/u/a.yml" && frag2 == "x");
+        Check("Linux 路径的 %20 解码后仍是正斜杠", Dsht.Domain.Services.FileUrlConverter.ToPath("file:///home/u/a%20b/c.yml", out frag2) == "/home/u/a b/c.yml");
 
         string yml = "insert:\n  - id: subagent-acp-kimi\n    name: '@deepseek-ai/dsh-subagent-acp'\n";
         Check("EntryLocator 命中行号", Dsht.Domain.Services.EntryLocator.FindLine(yml, "subagent-acp-kimi") == 2);
