@@ -26,7 +26,7 @@ v3/
     Dsht.Platform.Linux/    Linux 实现（ss / /proc/<pid>/cmdline / ps / PATH 扫描 / $XDG_* / $DSH_HOME）
     Dsht.Cli/               组合根（自写 ServiceRegistry，零第三方 DI）+ 命令面 + 平台装配
   tests/
-    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，236 项）
+    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，252 项）
     verify_domain_pure.ps1  领域层纯净度守卫（扫描前剥离注释）
     compare_markers.ps1     与 v2.x 的标记行契约比对（可 -Fixtures 造受控备份）
     verify_restore_apply.ps1 真实 restore 的端到端验证（隔离数据根 + --apply，含"零越界"证明）
@@ -72,7 +72,7 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_restore_apply.ps1 -Repo
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File v3\tests\verify_switchover.ps1 -Repo .
-# gate1 标记行契约 21/21（含受控备份模式）  gate2 契约测试 236/236
+# gate1 标记行契约 22/22（含受控备份模式）  gate2 契约测试 252/252
 # gate3 Win/Linux 双跑：已在 CI 真跑通过（run 36385480118）  gate4 发布物校验（含篡改自证）
 # gate5 真实写操作可验证 24/24（隔离根真实写盘 + 零越界）
 # 不变量：发布链未动（verify.ps1 / 16 项清单 / csc 步骤）· v2.x 发布构建可编译 · 含非 ASCII 的 .ps1 都带 BOM · 领域层纯净度
@@ -104,7 +104,7 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_switchover.ps1 -Repo .
 | `describe`（V3 独有） | 说明"考虑过哪些形态、为什么暂时观测不到" |
 | `version`（V3 独有） | `DSHT_VERSION <版本>` |
 
-比对工具当前结论：**21/21 对齐**（另有 1 项 `backup` 需 `-Heavy`，届时 22/22）。按规则忽略的行：`doctor` 的 Integrity 条目、`doctor --report` 的报告头三行（时间戳/版本/系统）与结果行、报告里的日志摘要行（两次运行之间日志会增长）——理由都写在脚本注释里。
+比对工具当前结论：**22/22 对齐**（另有 1 项 `backup` 需 `-Heavy`，届时 23/23）。按规则忽略的行：`doctor` 的 Integrity 条目、`doctor --report` 的报告头三行（时间戳/版本/系统）与结果行、报告里的日志摘要行（两次运行之间日志会增长）——理由都写在脚本注释里。
 
 ---
 
@@ -138,6 +138,7 @@ interface IServiceTarget { AppKind Kind; bool IsAvailable(); ServiceReport Probe
 | headless / acp / desktop | **预留**，无可观测事实前不实现猜测逻辑 |
 | macOS | 未开始（设计稿决策：Linux 优先，macOS 视需求后补） |
 | 命令面广度 | 已覆盖 GUI 消费的主要命令（含 `restore --dry-run` 预览、`selftest`、`check`、真实 `backup`）；**真实 `restore` 的数据写入已移植**（合并语义、恢复前自动备份、自身完整性闸门、`_workspace` 工作区恢复；隔离根下端到端验证 24/24）。`backup`/`backup-delete`/`backup-export`/`restore` 均已真实实现并在隔离根下验证 |
+| 工作区自动探测 | ✅ 已移植（2026-09-28）：Windows 侧取 **exe 所在目录的上两级**并用 `WorkspaceJudge` 做合理性判定（盘根 / 各盘根保留名 / 用户主目录 / `C:\Users` / Windows / ProgramData / Program Files ×2 一律拒绝）；`ws=` **配置优先**——配置了但目录不存在 → 返回 null 且**不回退探测**（避免误备份/误恢复）。dry-run 与真实恢复走同一个 `WorkspaceResolver`，目标一致。**Linux 侧仍诚实返回 null**（v2.x 的 Linux 接缝同样如此），但 `ws=` 配置在 Linux 上同样生效 |
 | 真实 restore 的写入范围 | **V3 独有约束**：默认路径（不给 `--apply`）与 v2.x 同序同语义（运行中拒绝 → 恢复前备份 → 恢复）；给 `--apply` 时只允许写入**隔离数据根**——必须设置 `$DSH_HOME` 且生效数据根不等于任何默认候选，否则 `RESTORE_FAIL` 拒绝。因此 `--apply` 永远不可能写进 `~/.dsh`（v2.x 没有这个开关，也没有这层保护） |
 | `RESTORE_OK` 的时机 | **有意比 v2.x 更严格**：v2.x 在恢复失败（异常/完整性不匹配）时也会打印 `RESTORE_OK`；V3 只在真正成功时打印，失败打印 `RESTORE_FAIL <原因>` |
 | `restore --dry-run --path <相对路径>` | **v2.x 的已知缺陷 —— 已在 v2.7.3 修复发布**：v2.7.2 的 `P()` 给相对路径加 `\\?\` 前缀（`\\?\.\backup\x` 是非法 Win32 路径）→ 源侧遍历被 try/catch 静默吞掉，预览报 `DRYRUN_NEW 0 / OVERWRITE 0`。V3 用相对路径能正常遍历（数字正确）。`compare_markers.ps1` 因此统一把 `-Repo` 转绝对路径，否则会比对出**假差异**（这条已在脚本注释里写明原因） |
@@ -149,7 +150,7 @@ interface IServiceTarget { AppKind Kind; bool IsAvailable(); ServiceReport Probe
 
 CI run **36385480118**（分支 `v3-linux`）：`V3 contracts (windows-latest)` 与 `V3 contracts (ubuntu-latest)` 各 **220/220**，
 外加 `unit + integration tests` 绿。也就是说 V3 契约测试现在**在真实 Linux 上跑过**，不再只是"编译过"。
-（此后又加了 16 项 `doctor --report` 契约测试 → 本地 **236/236**；下次推送 v3-linux 会再跑一次 CI。）
+（此后又加了 16 项 `doctor --report` 契约测试（236/236）与 16 项工作区判定/解析契约测试（252/252）；每次推送 v3-linux 都会再跑一次 CI。）
 
 第一次真跑（run 36385248055）在**两个平台同时失败**，暴露了两个本地永远看不到的问题（本地只用 `csc` 全量编译，完全绕过 csproj）：
 
@@ -200,7 +201,7 @@ $env:DSH_HOME = "$iso\data"
 Remove-Item Env:\DSH_HOME; Remove-Item $iso -Recurse -Force
 ```
 
-实测结论（本轮）：`doctor` 显示隔离数据根（1 B）· `backup` 写出 1 个文件的备份 · **真实 `~/.dsh` 未被触碰** · 不设该变量时标记行契约仍 **21/21**（零回归）。
+实测结论（本轮）：`doctor` 显示隔离数据根（1 B）· `backup` 写出 1 个文件的备份 · **真实 `~/.dsh` 未被触碰** · 不设该变量时标记行契约仍 **22/22**（零回归）。
 
 ### 7.1 一条命令跑完全部真实 restore 验证
 
@@ -224,4 +225,4 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_restore_apply.ps1 -Repo
 `--apply` 是**人类可问责的断言**（"我确认没有 dsh 正在使用这个数据根"），而不是绕过闸门的后门：
 它无法指向默认数据根，因此**不可能**写坏你的 `~/.dsh`；同时它把"跳过闸门"这件事与观测到的事实一起打出来，不静默。
 `apply-not-isolated` 这条分支**故意不做端到端测试**——把"应当拒绝"的用例指向真实数据根，一旦判定有 bug 就会真写用户数据；
-它由纯领域契约测试覆盖（`RestoreApplyPolicy`，见 §2 的契约测试 236 项）。
+它由纯领域契约测试覆盖（`RestoreApplyPolicy`，见 §2 的契约测试 252 项）。

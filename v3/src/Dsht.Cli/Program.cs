@@ -282,6 +282,16 @@ namespace Dsht.Cli
             return false;
         }
 
+        /// <summary>工作区解析（对齐 v2.x 的 WorkspaceRoot）：`ws=` 配置优先——配置了但目录不存在 → null
+        /// （**不回退自动探测**，避免误备份/误恢复）；未配置 → 用平台自动探测（Windows：exe 上两级 + 合理性判定；
+        /// Linux：诚实返回 null）。dry-run 与真实恢复都走这里，保证两处目标一致。</summary>
+        private static string WorkspaceRoot(ServiceRegistry reg)
+        {
+            return WorkspaceResolver.Resolve(_cfg == null ? null : _cfg.Workspace, reg.Get<IPaths>().WorkspaceRoot,
+                delegate(string p) { return System.IO.Path.GetFullPath(p); },
+                delegate(string p) { return System.IO.Directory.Exists(p); });
+        }
+
 
 
 
@@ -557,7 +567,7 @@ namespace Dsht.Cli
 
             if (!IntegrityGate(reg)) return 0;   // 对齐 v2.x：完整性不匹配时在写盘前拒绝
 
-            RestoreOutcome o = bk.Restore(bkDir, dstRoot, paths.WorkspaceRoot);
+            RestoreOutcome o = bk.Restore(bkDir, dstRoot, WorkspaceRoot(reg));
             if (!o.Ok)
             {
                 Console.WriteLine("RESTORE_FAIL " + T("恢复失败：" + (o.Error ?? ""), "restore failed: " + (o.Error ?? "")));
@@ -633,7 +643,7 @@ namespace Dsht.Cli
                     {
                         if (!fs.FileExists(System.IO.Path.Combine(subs[i], ".dshws"))) continue;
                         string name = System.IO.Path.GetFileName(subs[i]);
-                        string target = System.IO.Path.Combine(paths.WorkspaceRoot == null ? dst : paths.WorkspaceRoot, name);
+                        string target = System.IO.Path.Combine(WorkspaceRoot(reg) == null ? dst : WorkspaceRoot(reg), name);
                         long[] wp = PlanMerge(reg, subs[i], target, null, ".dshws", false);
                         Console.WriteLine("DRYRUN_SCOPE workspace " + name + " " + target);
                         PrintPlan(wp);
@@ -642,7 +652,7 @@ namespace Dsht.Cli
                 }
                 else
                 {
-                    string target = paths.WorkspaceRoot == null ? dst : paths.WorkspaceRoot;
+                    string target = WorkspaceRoot(reg) == null ? dst : WorkspaceRoot(reg);
                     long[] wp = PlanMerge(reg, wsSrc, target, null, null, true);
                     Console.WriteLine("DRYRUN_SCOPE workspace-legacy " + target);
                     PrintPlan(wp);

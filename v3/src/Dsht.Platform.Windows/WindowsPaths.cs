@@ -52,8 +52,37 @@ namespace Dsht.Platform.Windows
             };
         }
 
-        /// <summary>工作区自动探测：V3 尚未移植（v2.x 在 Windows 上会遍历盘符与常见目录）。诚实返回 null。</summary>
-        public string WorkspaceRoot { get { return null; } }
+        /// <summary>工作区自动探测（逐条对齐 v2.x 的 WorkspaceRoot）：exe 所在目录的**上两级**
+        /// （exe 在 …\DeepSeek Harness Toolkit\ 时，工作区为 …\）；结果落在用户主目录/桌面/Windows/盘根
+        /// 等明显不合理位置 → null（调用方改为手动输入或配置 `ws=`）。
+        /// 注意：这里只做**自动探测**；`ws=` 配置优先由 CLI 经 WorkspaceResolver 处理（配置了但不存在 → null，不回退探测）。</summary>
+        public string WorkspaceRoot
+        {
+            get
+            {
+                try
+                {
+                    string ws = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", ".."));
+                    return Dsht.Domain.Services.WorkspaceJudge.LooksLike(ws, ForbiddenWorkspaceRoots()) ? ws : null;
+                }
+                catch { return null; }
+            }
+        }
+
+        /// <summary>自动探测时要拒绝的系统/用户级根目录（平台侧提供环境路径，领域层只做判定）。</summary>
+        public static string[] ForbiddenWorkspaceRoots()
+        {
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return new string[]
+            {
+                home,
+                Path.GetDirectoryName(home),                                             // C:\Users 整级
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
+            };
+        }
 
         private static string ResolveStateDir()
         {
