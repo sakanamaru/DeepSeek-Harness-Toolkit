@@ -59,6 +59,7 @@ namespace Dsht.Gui.Avalonia
 
         private SessionsSnapshot _data;
         private ProfilesSnapshot _profiles;
+        private StatusSnapshot _status;
         private List<SessionRowVm> _rows = new List<SessionRowVm>();
         private int _shell = Shells.Shells.Hybrid;     // 默认：混合式（主菜单 + 子菜单）
         private int _filter = SessionsView.FilterAll;
@@ -85,6 +86,12 @@ namespace Dsht.Gui.Avalonia
 
         public SessionsSnapshot Data { get { return _data; } }
         public ProfilesSnapshot Profiles { get { return _profiles; } }
+        public StatusSnapshot Status { get { return _status; } }
+        public int ProfilesFilter { get; set; }
+        public string ProfileSearch = "";
+
+        public void SetProfilesFilter(int mode) { ProfilesFilter = mode; BuildShell(); }
+        public void SetProfileSearch(string text) { ProfileSearch = text == null ? "" : text; BuildShell(); }
         public List<SessionRowVm> Rows { get { return _rows; } }
         public int SortMode { get; set; }
         public int StyleKind { get { return Palette.StyleKind; } }
@@ -228,6 +235,13 @@ namespace Dsht.Gui.Avalonia
                 return;
             }
 
+            if (_mainSection == 0)
+            {
+                _rawOutput = Run(cli, "status --detail");
+                _status = StatusMarkers.Parse(_rawOutput);
+                BuildShell();
+                return;
+            }
             if (_mainSection == 2)
             {
                 _rawOutput = Run(cli, "profiles");
