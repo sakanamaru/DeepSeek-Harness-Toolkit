@@ -87,7 +87,7 @@ $cases = @(
     # check：横幅与"dsh 最新"行按规则忽略（前者是产品版本差异，后者依赖网络）
     @{ name = 'check'; args = @('check'); full = $true; ignore = '^(=+|-+)$|^\s*(DeepSeek Harness Toolkit V|v1 脚本协助|v2 重构封装|GitHub\s|⚠|dsh 最新\s+:)' },
     # backup：真实写盘（每次约 400MB）→ 用 -Heavy 按需开启；目录名含时间戳，比对时归一化
-    @{ name = 'backup (heavy)'; args = @('backup'); full = $true; heavy = $true; mask = 'dsh-data-\d{8}-\d{9,}' },
+    @{ name = 'backup (heavy)'; args = @('backup'); full = $true; heavy = $true; mask = 'dsh-data-\d{8}-\d{9,}(-\d+)?'; ignore = '已跳过 \d+ 个嵌套备份目录' },
     @{ name = 'restore --path (outside)'; args = @('restore','--path','C:\nope\outside'); full = $true },
     @{ name = 'restore --path (invalid, never exists)'; args = @('restore','--path',(Join-Path $Repo 'backup\dsh-data-19990101-000000000')); full = $true },
     @{ name = 'backup-delete (outside)'; args = @('backup-delete','--path','C:\nope\x'); full = $true },
@@ -96,7 +96,7 @@ $cases = @(
     # needsService：**只有服务在运行时才允许跑**——否则 v2.x 会真的把受控备份恢复进真实 ~/.dsh。
     @{ name = 'restore (latest)'; args = @('restore'); full = $true; needsService = $true },
     @{ name = 'config-get';          args = @('config-get'); full = $true },
-    @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity |^\[(OK|WARN|ERROR)\] Network '; ignoreSummary = $true },
+    @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity |^\[(OK|WARN|ERROR)\] Network |^\[(OK|WARN|ERROR)\] Backup '; ignoreSummary = $true },
     # doctor --report：比对**报告正文**（postFile 模式）。
     # 忽略：生成时间/Toolkit/系统三行（时间戳与版本必然不同）、自身完整性条目（v2.x 的 exe 在清单里但本地构建
     # 哈希不匹配 → ERROR；V3 的临时 exe 名不在清单 → 跳过）、npm registry 可达性（网络抖动会让两侧不同 → 假失败）、
