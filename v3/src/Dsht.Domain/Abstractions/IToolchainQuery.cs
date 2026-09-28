@@ -18,6 +18,9 @@ namespace Dsht.Domain.Abstractions
 
         /// <summary>全局安装（`npm install -g --registry &lt;reg&gt; &lt;pkg&gt;`），返回退出码（-1 = 未能执行）。
         /// 调用方必须用可观测事实复检（WhichDsh/DshVersion），不能只看退出码。</summary>
+        /// <summary>npm view &lt;pkg&gt; versions 的原始输出（列出可用版本 ✓；离线/失败返回空）。</summary>
+        string NpmViewVersions();
+
         int NpmInstallGlobal(string pkg, string registry);
 
         /// <summary>全局卸载 dsh，返回退出码（-1 = 未能执行）。</summary>

@@ -291,6 +291,14 @@ namespace Dsht.Platform.Linux
         }
 
         /// <summary>查最新版本：先按配置的 registry，失败再回退 npmmirror（与安装对称 ✓ —— 真机上出现过"引导完 Node 后查不到版本" ✗）。</summary>
+        /// <summary>列出可用版本（原样返回 npm 输出 ✓；失败回退镜像 ✓）。</summary>
+        public string NpmViewVersions()
+        {
+            string v = CaptureNpm("view @deepseek-ai/dsh versions");
+            if (!string.IsNullOrEmpty(v)) return v;
+            return CaptureNpm("view @deepseek-ai/dsh versions --registry https://registry.npmmirror.com");
+        }
+
         public string NpmViewLatest()
         {
             // 只取"最后一行"：npm 会把 EBADENGINE/deprecated 等警告混进输出 ✗，
