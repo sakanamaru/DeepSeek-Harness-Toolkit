@@ -29,12 +29,14 @@ namespace Dsht.Cli
             _cfg = LoadConfig(reg);
             string cmd = args.Length > 0 ? args[0] : "";
 
+            if (cmd == "") return Menu(reg);
             if (cmd == "status") return Status(reg, Has(args, "--detail"));
             if (cmd == "describe") return Describe(reg);
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
             if (cmd == "profilepatch") return ProfilePatch(args, reg);
             if (cmd == "profiles") return Profiles(reg);
             if (cmd == "about") return AboutCmd();
+            if (cmd == "shortcut") return ShortcutCmd(args);
             if (cmd == "ui") return UiCmd();
             if (cmd == "install") return InstallLike(args, reg, false);
             if (cmd == "update") return InstallLike(args, reg, true);
@@ -54,8 +56,7 @@ namespace Dsht.Cli
             if (cmd == "backup") return Backup(reg);
             if (cmd == "backup-export") return BackupExport(args, reg);
             if (cmd == "backup-delete") return BackupDelete(args, reg);
-
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | profiles | profilepatch --profile <name> --id <entry> [--enable] [--yes] | sessions | about | ui | install [--yes] | update [--yes] | uninstall [--yes] | start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--yes] | backup-list [--detail] | doctor [--report <file>] | version | config-get | config-set <key> <value> | bootdiag --from <file> | restore --dry-run [--path <backup>] | restore [--path <backup>] [--apply] | selftest [<report>] | check | backup | backup-export --path <bk> --to <dir> | backup-delete --path <bk>");
+            Usage();
             return 2;
         }
 
@@ -269,7 +270,107 @@ namespace Dsht.Cli
         /// <summary>install / update（V3 独有）：装或升级 dsh。**只用可观测事实判定结果**：
         /// 先看 WhichDsh/DshVersion（是否已装）→ 打印计划 → `--yes` 闸门 → npm → **再复检**。
         /// 标记行：`INSTALL_PLAN/_DRYRUN/_SKIP/_OK/_FAIL` 或 `UPDATE_*`，并始终补一行 `*_OBSERVED &lt;版本|not-installed&gt;`。</summary>
+        /// <summary>无参数时的数字菜单（沿用 v2.x 的习惯，条目按 V3 的命令重排）。
+        /// **纪律：写操作在菜单里二次确认后，才带 --yes 调用同一个命令实现** —— 闸门不绕过；
+        /// 输入 EOF（管道/重定向）视为退出，绝不空转。</summary>
+        /// <summary>用法行（未知命令与菜单"全部命令"共用）。</summary>
+        private static void Usage()
+        {
+            Usage();
+        }
+
+        private static int Menu(ServiceRegistry reg)
+        {
+            while (true)
+            {
+                Console.WriteLine();
+                Console.WriteLine("dsh-minato " + ToolkitVersion + T("　输入数字选择，q 退出", "  type a number, q to quit"));
+                Console.WriteLine(T("   1 安装/升级 dsh        2 启动 dsh           3 停止 dsh", "   1 install / update     2 start dsh        3 stop dsh"));
+                Console.WriteLine(T("   4 状态                 5 会话与 token       6 形态与插件", "   4 status               5 sessions         6 profiles"));
+                Console.WriteLine(T("   7 立即备份             8 备份清单           9 恢复预览（dry-run）", "   7 backup               8 backup list      9 restore (dry-run)"));
+                Console.WriteLine(T("  10 体检                11 备份目录           12 全部命令", "  10 doctor              11 backup folder   12 all commands"));
+                Console.Write(T("选择：", "choice: "));
+                string line = Console.ReadLine();
+                if (line == null) return 0;
+                line = line.Trim().ToLowerInvariant();
+                if (line == "" || line == "q" || line == "quit" || line == "0") return 0;
+                if (line == "1") { if (Confirm("install/update dsh")) { InstallLike(new string[] { "--yes" }, reg, false); InstallLike(new string[] { "--yes" }, reg, true); } continue; }
+                if (line == "2") { if (Confirm("start dsh")) StartCmd(new string[] { "--yes" }, reg); continue; }
+                if (line == "3") { if (Confirm("stop dsh")) StopCmd(new string[] { "--yes" }, reg); continue; }
+                if (line == "4") { Status(reg, true); Describe(reg); continue; }
+                if (line == "5") { Sessions(reg); continue; }
+                if (line == "6") { Profiles(reg); continue; }
+                if (line == "7") { if (Confirm("backup")) Backup(reg); continue; }
+                if (line == "8") { BackupList(new string[] { "--detail" }, reg); continue; }
+                if (line == "9") { Restore(new string[] { "--dry-run" }, reg); continue; }
+                if (line == "10") { Doctor(new string[0], reg); continue; }
+                if (line == "11") { Console.WriteLine(T("备份目录：", "backup folder: ") + reg.Get<IBackupSource>().BackupsRoot); continue; }
+                if (line == "12") { Usage(); continue; }
+                Console.WriteLine(T("没有这个选项。", "no such option."));
+            }
+        }
+
+        /// <summary>菜单里的二次确认：只有明确输入 y 才继续（写操作的闸门不绕过）。</summary>
+        private static bool Confirm(string what)
+        {
+            Console.Write(T("将执行：", "will run: ") + what + T("　确认？(y/N) ", "  confirm? (y/N) "));
+            string a = Console.ReadLine();
+            return a != null && a.Trim().ToLowerInvariant() == "y";
+        }
         /// <summary>about（V3 独有）：版本、定位、许可与"非官方"声明。纯文本，不联网。</summary>
+        /// <summary>shortcut（V3 独有）：创建桌面/应用菜单入口。
+        /// Windows 用 PowerShell 的 WScript.Shell 建 .lnk（与 v2.x 同思路）；Linux 写 XDG 的 .desktop 文件。
+        /// 写操作 → 计划 → `--yes` 闸门；失败一律如实报原因（不静默）。</summary>
+        private static int ShortcutCmd(string[] args)
+        {
+            bool win = PlatformIsWindows();
+            string exe = System.Reflection.Assembly.GetEntryAssembly() != null ? System.Reflection.Assembly.GetEntryAssembly().Location : "";
+            if (string.IsNullOrEmpty(exe)) { Console.WriteLine("SHORTCUT_FAIL " + T("拿不到自身路径", "cannot resolve own path")); return 0; }
+            string dir = System.IO.Path.GetDirectoryName(exe);
+            string target = win ? System.IO.Path.Combine(dir, "dsht-minato.exe") : System.IO.Path.Combine(dir, "dsht-minato");
+            if (!System.IO.File.Exists(target)) target = exe;   // 还没改名时就用当前可执行文件
+
+            string where;
+            if (win)
+            {
+                string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                where = System.IO.Path.Combine(desktop, "dsh-minato.lnk");
+            }
+            else
+            {
+                string home = Environment.GetEnvironmentVariable("HOME");
+                if (string.IsNullOrEmpty(home)) { Console.WriteLine("SHORTCUT_FAIL " + T("没有 HOME，无法确定位置", "no HOME, cannot decide a location")); return 0; }
+                where = System.IO.Path.Combine(System.IO.Path.Combine(System.IO.Path.Combine(home, ".local"), "share"), "applications");
+                where = System.IO.Path.Combine(where, "dsh-minato.desktop");
+            }
+            Console.WriteLine("SHORTCUT_PLAN " + (win ? T("将创建快捷方式：", "will create a shortcut: ") : T("将创建应用入口：", "will create a desktop entry: ")) + where + T(" → ", " -> ") + target);
+            if (!Has(args, "--yes"))
+            {
+                Console.WriteLine("SHORTCUT_DRYRUN " + T("（确认请加 --yes）", "(add --yes to confirm)"));
+                return 0;
+            }
+            try
+            {
+                if (win)
+                {
+                    string ps = "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('" + where.Replace("'", "''") + "');" +
+                                "$s.TargetPath='" + target.Replace("'", "''") + "';" +
+                                "$s.WorkingDirectory='" + dir.Replace("'", "''") + "';$s.Save()";
+                    System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo("powershell", "-NoProfile -Command \"" + ps.Replace("\"", "\\\"") + "\"");
+                    psi.UseShellExecute = false; psi.CreateNoWindow = true;
+                    using (System.Diagnostics.Process pr = System.Diagnostics.Process.Start(psi)) { pr.WaitForExit(30000); if (pr.ExitCode != 0) { Console.WriteLine("SHORTCUT_FAIL powershell 退出码 " + pr.ExitCode); return 0; } }
+                }
+                else
+                {
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(where));
+                    string body = "[Desktop Entry]\nType=Application\nName=dsh-minato\nComment=" + T("dsh 部署运维套件", "deploy & ops kit for dsh") + "\nExec=" + target + "\nTerminal=true\nCategories=Utility;\n";
+                    System.IO.File.WriteAllText(where, body, new System.Text.UTF8Encoding(false));
+                }
+                Console.WriteLine(System.IO.File.Exists(where) ? "SHORTCUT_OK " + where : "SHORTCUT_FAIL " + T("写入后未观测到文件", "file not observed after writing"));
+            }
+            catch (Exception ex) { Console.WriteLine("SHORTCUT_FAIL " + ex.Message); }
+            return 0;
+        }
         private static int AboutCmd()
         {
             Console.WriteLine("dsh-minato " + ToolkitVersion);
@@ -291,7 +392,10 @@ namespace Dsht.Cli
             if (string.IsNullOrEmpty(gui))
             {
                 string dir = AppDomain.CurrentDomain.BaseDirectory;
-                string[] names = PlatformIsWindows() ? new string[] { "dsht-gui.exe" } : new string[] { "dsht-gui" };
+                // Avalonia 优先；找不到再回退 v2.x 的旧界面（并如实说明那是旧版）
+                string[] names = PlatformIsWindows()
+                    ? new string[] { "dsht-gui.exe", "Toolkit GUI Standalone.exe", "Toolkit GUI.exe", "DeepSeek Harness Toolkit.exe" }
+                    : new string[] { "dsht-gui", "Toolkit GUI Standalone", "Toolkit GUI" };
                 for (int i = 0; i < names.Length; i++)
                 {
                     string cand = System.IO.Path.Combine(dir, names[i]);
@@ -309,7 +413,8 @@ namespace Dsht.Cli
                 psi.UseShellExecute = false;
                 psi.CreateNoWindow = true;
                 System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi);
-                Console.WriteLine("UI_OK " + gui + (p != null ? " pid=" + p.Id : ""));
+                string legacy = (gui.IndexOf("dsht-gui", StringComparison.OrdinalIgnoreCase) < 0) ? T("（提示：这是 v2.x 的旧界面；跨平台新界面请用 dsht-gui）", " (note: this is the v2.x UI; the cross-platform one is dsht-gui)") : "";
+                Console.WriteLine("UI_OK " + gui + (p != null ? " pid=" + p.Id : "") + legacy);
             }
             catch (Exception ex) { Console.WriteLine("UI_FAIL " + ex.Message); }
             return 0;
