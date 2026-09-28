@@ -76,13 +76,25 @@ $cases = @(
     @{ name = 'restore --path (invalid, never exists)'; args = @('restore','--path',(Join-Path $Repo 'backup\dsh-data-19990101-000000000')); full = $true },
     @{ name = 'backup-delete (outside)'; args = @('backup-delete','--path','C:\nope\x'); full = $true },
     @{ name = 'backup-export (no-to)'; args = @('backup-export','--path',(Join-Path $Repo 'backup\dsh-data-1')); full = $true },
-    # restore（无参）：有受控备份时会走到"运行中拒绝"闸门（dsh 在跑 → 不写任何东西，安全可比对）
-    @{ name = 'restore (latest)'; args = @('restore'); full = $true },
+    # restore（无参）：有受控备份时会走到"运行中拒绝"闸门（dsh 在跑 → 不写任何东西，安全可比对）。
+    # needsService：**只有服务在运行时才允许跑**——否则 v2.x 会真的把受控备份恢复进真实 ~/.dsh。
+    @{ name = 'restore (latest)'; args = @('restore'); full = $true; needsService = $true },
     @{ name = 'config-get';          args = @('config-get'); full = $true },
     @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity '; ignoreSummary = $true }
 )
 $fail = 0
 $skipped = 0
+# 服务是否在运行：restore 类用例的**唯一**安全依据（v2.x 忽略 $DSH_HOME，只会写真实数据根）
+$svcUp = ((& $v2 status 2>&1 | Out-String) -match 'STATUS_UP')
+if (-not $svcUp) { Write-Host "  [warn] 服务未运行：restore 类用例将 SKIP（服务在跑时它们才只走到拒绝闸门、不写盘）" -ForegroundColor Yellow }
+# 真实数据根快照（安全网）：整轮跑完必须一模一样，否则说明有用例真的写了用户数据
+$realRoots = @()
+foreach ($cand in @((Join-Path $env:USERPROFILE '.dsh'), (Join-Path $env:APPDATA '.dsh'), (Join-Path $env:LOCALAPPDATA '.dsh'))) {
+    if ($cand -and (Test-Path -LiteralPath $cand)) {
+        $items = Get-ChildItem -LiteralPath $cand -Force -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { if ($_.PSIsContainer) { 'D:' + $_.Name } else { 'F:' + $_.Name + ':' + $_.Length } }
+        $realRoots += @{ path = $cand; snap = ($items -join '|') }
+    }
+}
 # 备份状态只在循环前捕获一次（否则后续用例会误判"原本就存在"）
 $bkRoot2 = Join-Path $Repo 'backup'
 $bkExisted = Test-Path $bkRoot2
@@ -90,6 +102,7 @@ $bkBefore = @()
 if ($bkExisted) { $bkBefore = @(Get-ChildItem $bkRoot2 -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) }
 foreach ($c in $cases) {
     if ($c.heavy -and -not $Heavy) { Write-Host ("  {0,-18} SKIP  （需 -Heavy）" -f $c.name); $script:skipped++; continue }
+    if ($c.needsService -and -not $svcUp) { Write-Host ("  {0,-18} SKIP  （服务未运行：真实恢复用例只在服务运行时才安全）" -f $c.name); $script:skipped++; continue }
     $o2 = (& $v2 @($c.args) 2>&1 | Out-String)
     if ($c.post -eq 'report') {
         $rp = Join-Path $env:TEMP 'dsh_selftest.txt'
@@ -135,6 +148,15 @@ foreach ($c in $cases) {
         Write-Host ("      V3  : " + (($m3 | Select-Object -First 6) -join ' || '))
     }
 }
+
+# 安全网：真实数据根必须与开跑前完全一致——任何"用例真的写了用户数据"都会在这里暴露
+$rootDirty = ''
+foreach ($r in $realRoots) {
+    $items = Get-ChildItem -LiteralPath $r.path -Force -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { if ($_.PSIsContainer) { 'D:' + $_.Name } else { 'F:' + $_.Name + ':' + $_.Length } }
+    if (($items -join '|') -ne $r.snap) { $rootDirty += ($r.path + ' ') }
+}
+if ($rootDirty -ne '') { $fail++; Write-Host ("  [FAIL] 真实数据根被改动：" + $rootDirty + "——有用例真的写了用户数据！") -ForegroundColor Red }
+else { Write-Host "  [ok] 真实数据根未被触碰（快照比对通过）" }
 
 # 清理：受控备份 + 本次 backup 用例新建的备份 + 临时 exe
 if ($Heavy -and (Test-Path $bkRoot2)) {
