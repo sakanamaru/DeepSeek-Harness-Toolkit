@@ -221,6 +221,12 @@ static class ContractTests
         Check("23 小时 59 分", UptimeFormatter.Format(new TimeSpan(0, 23, 59, 0)) == "23 小时 59 分");
         Check("25 小时 → 1 天 1 小时", UptimeFormatter.Format(new TimeSpan(1, 1, 0, 0)) == "1 天 1 小时");
         Check("3 天 5 小时", UptimeFormatter.Format(new TimeSpan(3, 5, 0, 0)) == "3 天 5 小时");
+        Console.WriteLine("[9] vendor 路径判定（平台无关）");
+        Check("Windows 反斜杠路径命中", ProfileScanner.IsVendorPath("C:\\x\\node_modules\\pkg\\a.yml"));
+        Check("Linux 正斜杠路径命中", ProfileScanner.IsVendorPath("/home/u/.dsh/profiles/node_modules/pkg/a.yml"));
+        Check("普通路径不命中", !ProfileScanner.IsVendorPath("C:\\x\\profiles\\web\\cordis.patch.yml"));
+        Check("大小写不敏感", ProfileScanner.IsVendorPath("C:\\x\\NODE_MODULES\\a.yml"));
+        Check("空/空串不命中", !ProfileScanner.IsVendorPath("") && !ProfileScanner.IsVendorPath(null));
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;

@@ -44,6 +44,18 @@ namespace Dsht.Domain.Services
         }
 
         /// <summary>看着像路径（含分隔符或常见可执行后缀）。</summary>
+        /// <summary>是否是 node_modules 下的 vendor 补丁层（按路径段匹配，不依赖分隔符 → Linux 可复用）。</summary>
+        public static bool IsVendorPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            string[] parts = path.Split(new char[] { '\\', '/' });
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (string.Compare(parts[i], "node_modules", System.StringComparison.OrdinalIgnoreCase) == 0) return true;
+            }
+            return false;
+        }
+
         public static bool LooksLikeCommandPath(string v)
         {
             if (string.IsNullOrEmpty(v)) return false;
