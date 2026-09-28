@@ -138,7 +138,7 @@ interface IServiceTarget { AppKind Kind; bool IsAvailable(); ServiceReport Probe
 | 命令面广度 | 已覆盖 GUI 消费的主要命令（含 `restore --dry-run` 预览、`selftest`、`check`、真实 `backup`）；**真实 `restore` 的数据写入已移植**（合并语义、恢复前自动备份、自身完整性闸门、`_workspace` 工作区恢复；隔离根下端到端验证 24/24）。`backup`/`backup-delete`/`backup-export`/`restore` 均已真实实现并在隔离根下验证 |
 | 真实 restore 的写入范围 | **V3 独有约束**：默认路径（不给 `--apply`）与 v2.x 同序同语义（运行中拒绝 → 恢复前备份 → 恢复）；给 `--apply` 时只允许写入**隔离数据根**——必须设置 `$DSH_HOME` 且生效数据根不等于任何默认候选，否则 `RESTORE_FAIL` 拒绝。因此 `--apply` 永远不可能写进 `~/.dsh`（v2.x 没有这个开关，也没有这层保护） |
 | `RESTORE_OK` 的时机 | **有意比 v2.x 更严格**：v2.x 在恢复失败（异常/完整性不匹配）时也会打印 `RESTORE_OK`；V3 只在真正成功时打印，失败打印 `RESTORE_FAIL <原因>` |
-| `restore --dry-run --path <相对路径>` | **v2.x 的已知缺陷**：v2.x 的 `P()` 给相对路径加 `\\?\` 前缀（`\\?\.\backup\x` 是非法 Win32 路径）→ 源侧遍历被 try/catch 静默吞掉，预览报 `DRYRUN_NEW 0 / OVERWRITE 0`；V3 用相对路径能正常遍历（数字正确）。`compare_markers.ps1` 因此统一把 `-Repo` 转绝对路径，否则会比对出**假差异**（这条已在脚本注释里写明原因） |
+| `restore --dry-run --path <相对路径>` | **v2.x 的已知缺陷（源码已修复，待随 v2.7.3 发布）**：v2.7.2 的 `P()` 给相对路径加 `\\?\` 前缀（`\\?\.\backup\x` 是非法 Win32 路径）→ 源侧遍历被 try/catch 静默吞掉，预览报 `DRYRUN_NEW 0 / OVERWRITE 0`。V3 用相对路径能正常遍历（数字正确）。`compare_markers.ps1` 因此统一把 `-Repo` 转绝对路径，否则会比对出**假差异**（这条已在脚本注释里写明原因） |
 | GUI | Windows-only WinForms 保持不变；跨平台 GUI 只留架构能力（见设计稿 §7） |
 | **`DSH_HOME` 环境变量** | **唯一一处刻意偏离 v2.x 的行为**：Windows 侧也优先读 `$DSH_HOME`（Linux 侧本就支持）→ 便于在隔离数据根下安全测试写操作与多环境部署；未设置时与 v2.x 完全一致 |
 ---

@@ -60,16 +60,29 @@ Gate 'gate5 real write verifiable' ($LASTEXITCODE -eq 0) $rdet
 
 # ---- 不变量：发布与校验链未被动过 ----
 # 注意：dsh_v2.cs / src/** 的改动是**预期的**（v2.8 阶段 1–3 的拆分/接缝/Linux 实现属合法演进）；
-# 真正必须守住的是"发布与校验链"：verify.ps1、build_exe.cmd、发布步骤的 csc 命令、以及 16 项发布清单。
+# 真正必须守住的是"发布与校验链"：verify.ps1（信任锚，指纹锁死）、发布步骤的 csc 命令、以及 16 项发布清单。
+# build_exe.cmd 于 v2.7.3 被**有意**改成递归收集源码（此前写死目录列表漏了 src\Platform\Linux → CS0246），
+# 所以它不再参与"未改动"比对，改由下面的"v2.x 发布构建能编译"这条**行为**不变量来守（比文本比对更强）。
 $chainChanged = ''
-try { $chainChanged = (& git -C $Repo diff --name-only origin/main -- verify.ps1 build_exe.cmd 2>&1 | Out-String).Trim() } catch { $chainChanged = '' }
+try { $chainChanged = (& git -C $Repo diff --name-only origin/main -- verify.ps1 2>&1 | Out-String).Trim() } catch { $chainChanged = '' }
 $itemsOk = $false; $stepsOk = $false
 if (Test-Path $wf) {
     $wt2 = [System.IO.File]::ReadAllText($wf)
     $itemsOk = $wt2.Contains("'DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe'")
     $stepsOk = $wt2.Contains('/out:unittests.exe') -and $wt2.Contains('core_check.exe') -and $wt2.Contains('/out:DeepSeek Harness Toolkit.exe')
 }
-Gate 'invariant release chain' ([string]::IsNullOrWhiteSpace($chainChanged) -and $itemsOk -and $stepsOk) $(if ([string]::IsNullOrWhiteSpace($chainChanged) -and $itemsOk -and $stepsOk) { 'verify.ps1 / build_exe.cmd 未动；16 项清单与 csc 发布步骤完好' } else { 'verify.ps1/build_exe.cmd 改动:[' + ($chainChanged -replace "`r?`n", ',') + '] 清单=' + $itemsOk + ' 步骤=' + $stepsOk })
+Gate 'invariant release chain' ([string]::IsNullOrWhiteSpace($chainChanged) -and $itemsOk -and $stepsOk) $(if ([string]::IsNullOrWhiteSpace($chainChanged) -and $itemsOk -and $stepsOk) { 'verify.ps1 未动；16 项清单与 csc 发布步骤完好' } else { 'verify.ps1 改动:[' + ($chainChanged -replace "`r?`n", ',') + '] 清单=' + $itemsOk + ' 步骤=' + $stepsOk })
+
+# ---- 不变量：v2.x 发布构建**真的能编译**（行为校验，比"文件没改"强）----
+# 起因：v2.8 阶段 3 把 Linux 实现放进 src\Platform\Linux 后，build_exe.cmd 的写死目录列表漏了它，
+# 于是本地重编译脚本连续几轮都是坏的（CI 用 -Recurse 所以发布没受影响）——这条不变量就是补这个盲区。
+$v2out = Join-Path $env:TEMP 'dsht_v2_buildgate.exe'
+Remove-Item $v2out -Force -ErrorAction SilentlyContinue
+$v2src = @('dsh_v2.cs') + @(Get-ChildItem (Join-Path $Repo 'src') -Recurse -Filter *.cs | ForEach-Object FullName)
+$v2build = (& $csc /nologo /optimize+ /target:exe /warn:4 ("/out:" + $v2out) $v2src 2>&1 | Out-String)
+$v2ok = (Test-Path $v2out)
+Gate 'invariant v2.x release build' $v2ok $(if ($v2ok) { ('csc 编译 ' + $v2src.Count + ' 个源文件通过（dsh_v2.cs + src/**）') } else { '编译失败：' + (($v2build -split "`r?`n" | Where-Object { $_ -match 'error ' } | Select-Object -First 2) -join ' / ') })
+Remove-Item $v2out -Force -ErrorAction SilentlyContinue
 
 # ---- 领域层纯净度 ----
 $pure = & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_domain_pure.ps1') -Repo $Repo 2>&1 | Out-String
