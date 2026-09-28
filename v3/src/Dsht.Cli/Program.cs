@@ -8,10 +8,10 @@ using Dsht.Platform.Windows;
 
 using System.Reflection;
 
-[assembly: AssemblyTitle("dsh-shio V3")]
+[assembly: AssemblyTitle("dsh-minato V3")]
 [assembly: AssemblyDescription("DeepSeek Harness(dsh) 安装/启动/卸载/备份恢复工具箱。v1: SOGR-Momono Dango(QwenPaw/DeepseekAPI-V4-Flash-0731)；v2: DeepSeek DSH(DSH/DeepseekAPI-V4-Flash-0731)；GitHub @sakanamaru")]
 [assembly: AssemblyCompany("SOGR-Momono Dango / DeepSeek DSH / @sakanamaru")]
-[assembly: AssemblyProduct("dsh-shio")]
+[assembly: AssemblyProduct("dsh-minato")]
 [assembly: AssemblyVersion("3.0.0.0")]
 [assembly: AssemblyFileVersion("3.0.0.0")]
 namespace Dsht.Cli

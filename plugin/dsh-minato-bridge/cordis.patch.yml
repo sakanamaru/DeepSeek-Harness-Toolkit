@@ -1,8 +1,8 @@
-# dsh-shio-bridge bundle patch — 只读桥接，把 dsh 的会话/token 状态写成一份快照，
+# dsh-minato-bridge bundle patch — 只读桥接，把 dsh 的会话/token 状态写成一份快照，
 # 供独立工具箱（DeepSeek Harness Toolkit）读取。
 #
 # 语义（与 dsh 官方 bundle 一致）：带 id 的顶层条目是「改已有行」，新增行必须放进 insert 列表。
-# 卸载方式：`dsh plugin --profile <name> remove dsh-shio-bridge`（或本工具的手动隔离处方
+# 卸载方式：`dsh plugin --profile <name> remove dsh-minato-bridge`（或本工具的手动隔离处方
 # `profilepatch --disable shio-bridge`）——都会把这一行还原。
 #
 # 它做什么：每 N 毫秒读一次 ctx.sessions/sessionQuery 的会话列表与 ctx.sessionProjections 的投影，
@@ -10,7 +10,7 @@
 # 它不做什么：不发模型请求、不改 dsh 状态、不读会话正文、不联网；任何失败都静默忽略（绝不打断 dsh）。
 - insert:
     - id: shio-bridge
-      name: 'dsh-shio-bridge'
+      name: 'dsh-minato-bridge'
       config:
         enabled: true
         # 留空 = <DSH_HOME>/shio-bridge/sessions.json

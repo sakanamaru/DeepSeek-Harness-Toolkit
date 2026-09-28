@@ -1,5 +1,5 @@
 /**
- * dsh-shio-bridge —— cordis 插件入口。
+ * dsh-minato-bridge —— cordis 插件入口。
  *
  * **零依赖**：本文件只 import 同目录的 snapshot.js，不 import 任何 dsh 包。
  *

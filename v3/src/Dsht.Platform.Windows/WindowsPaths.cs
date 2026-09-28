@@ -53,7 +53,7 @@ namespace Dsht.Platform.Windows
         }
 
         /// <summary>工作区自动探测（逐条对齐 v2.x 的 WorkspaceRoot）：exe 所在目录的**上两级**
-        /// （exe 在 …\dsh-shio\ 时，工作区为 …\）；结果落在用户主目录/桌面/Windows/盘根
+        /// （exe 在 …\dsh-minato\ 时，工作区为 …\）；结果落在用户主目录/桌面/Windows/盘根
         /// 等明显不合理位置 → null（调用方改为手动输入或配置 `ws=`）。
         /// 注意：这里只做**自动探测**；`ws=` 配置优先由 CLI 经 WorkspaceResolver 处理（配置了但不存在 → null，不回退探测）。</summary>
         public string WorkspaceRoot

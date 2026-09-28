@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Dsht.Gui.Avalonia.MainWindow"
-        Title="dsh-shio — V3 预览"
+        Title="dsh-minato — V3 预览"
         Width="1320" Height="840"
         MinWidth="1080" MinHeight="640"
         WindowStartupLocation="CenterScreen"
@@ -18,7 +18,7 @@
             <Image Source="avares://dsht-gui/Assets/logo-mark.png" Stretch="UniformToFill" />
           </Border>
           <StackPanel VerticalAlignment="Center" Spacing="1">
-            <TextBlock x:Name="BrandTitle" Text="dsh-shio" FontSize="13.5" FontWeight="SemiBold" />
+            <TextBlock x:Name="BrandTitle" Text="dsh-minato" FontSize="13.5" FontWeight="SemiBold" />
             <TextBlock x:Name="BrandSub" Text="V3 · 跨平台 GUI 预览" FontSize="10.5" />
           </StackPanel>
         </StackPanel>

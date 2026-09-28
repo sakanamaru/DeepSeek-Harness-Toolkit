@@ -1,5 +1,5 @@
 {
-  "name": "dsh-shio-bridge",
+  "name": "dsh-minato-bridge",
   "version": "0.1.0",
   "description": "Optional read-only bridge: writes a small JSON snapshot of dsh session/token state for DeepSeek Harness Toolkit (the standalone Windows toolkit). No model calls, no writes to dsh state.",
   "type": "module",

@@ -1,4 +1,4 @@
-# dsh-shio-bridge（可选 · 只读桥接插件）
+# dsh-minato-bridge（可选 · 只读桥接插件）
 
 > ⚠️ 这是 **dsh 侧的可选插件**，不是工具箱本体。工具箱本体是**独立进程**（不注入 dsh、dsh 没装也能用）；
 > 装了这个插件，工具箱的「会话 / token 面板」能多拿到**实时**信息（尤其是"**当前有几个会话在运行**"）。
@@ -24,10 +24,10 @@
 
 ```bash
 # 从本地目录安装（把 <repo> 换成本仓库路径）
-dsh plugin --profile web add "<repo>/plugin/dsh-shio-bridge"
+dsh plugin --profile web add "<repo>/plugin/dsh-minato-bridge"
 
 # 卸载：还原 cordis.patch.yml 里那一行
-dsh plugin --profile web remove dsh-shio-bridge
+dsh plugin --profile web remove dsh-minato-bridge
 ```
 
 也可以用工具箱自己的**手动隔离处方**把这一行关掉（不删包）：
@@ -61,7 +61,7 @@ DeepSeek Harness Toolkit.exe profilepatch --disable shio-bridge --yes
 ## 自测（零依赖，不需要 dsh）
 
 ```bash
-cd plugin/dsh-shio-bridge
+cd plugin/dsh-minato-bridge
 node test/snapshot.test.js
 ```
 
@@ -84,8 +84,8 @@ MIT（与本仓库一致）。本插件不包含任何第三方代码，只使�
 
 **第一次：失败 ✗（真实缺陷，已修）**
 ```
-dsh: plugin tree failed to load: failed to import loader entry shio-bridge (dsh-shio-bridge):
-Cannot find package '@deepseek-ai/schemastery' imported from .../plugin/dsh-shio-bridge/index.js
+dsh: plugin tree failed to load: failed to import loader entry shio-bridge (dsh-minato-bridge):
+Cannot find package '@deepseek-ai/schemastery' imported from .../plugin/dsh-minato-bridge/index.js
 ```
 原因：`index.js` 里 `import z from "@deepseek-ai/schemastery"`（想按 dsh 官方插件做法声明配置 schema）——
 从**本地路径**安装时该导入从插件源码目录解析 → `ERR_MODULE_NOT_FOUND` → **dsh 启动直接失败**。
