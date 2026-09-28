@@ -54,6 +54,37 @@ namespace Dsht.Platform.Windows
 
         public string NpmRegistryConfig() { return WindowsShell.Capture("cmd.exe", "/c npm config get registry 2>nul"); }
 
+        /// <summary>全局安装（Windows 经 cmd.exe 包装 npm；registry 为空则用默认源）。返回退出码，-1 = 未能执行。</summary>
+        public int NpmInstallGlobal(string pkg, string registry)
+        {
+            string args = "/c npm install -g " + (string.IsNullOrEmpty(registry) ? "" : "--registry " + registry + " ") + pkg;
+            return RunExit("cmd.exe", args);
+        }
+
+        /// <summary>全局卸载 dsh。返回退出码，-1 = 未能执行。</summary>
+        public int NpmUninstallGlobal() { return RunExit("cmd.exe", "/c npm uninstall -g @deepseek-ai/dsh"); }
+
+        /// <summary>跑一个命令并返回退出码（-1 = 未能执行/超时）。</summary>
+        private static int RunExit(string file, string args)
+        {
+            try
+            {
+                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(file, args);
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
+                using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
+                {
+                    System.Threading.Tasks.Task<string> so = System.Threading.Tasks.Task.Run(delegate { return p.StandardOutput.ReadToEnd(); });
+                    System.Threading.Tasks.Task<string> se = System.Threading.Tasks.Task.Run(delegate { return p.StandardError.ReadToEnd(); });
+                    if (!p.WaitForExit(600000)) { try { p.Kill(); } catch { } return -1; }
+                    System.Threading.Tasks.Task.WaitAll(so, se);
+                    return p.ExitCode;
+                }
+            }
+            catch { return -1; }
+        }
         public string NpmViewLatest() { return WindowsShell.Capture("cmd.exe", "/c npm view @deepseek-ai/dsh version 2>nul"); }
     }
 }

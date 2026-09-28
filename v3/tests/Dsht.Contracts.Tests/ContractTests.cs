@@ -597,6 +597,13 @@ static class ContractTests
         Check("恢复：条目不存在 → entry-not-found", Dsht.Domain.Services.PatchPlanner.PlanEnable(y1, "nope").Reason == "entry-not-found");
         Check("恢复：不误伤别的条目的 disabled 行", Dsht.Domain.Services.PatchPlanner.PlanEnable("- id: a\n  disabled: true\n- id: b\n  disabled: true\n", "a").NewText.Contains("- id: b\n  disabled: true"));
         Check("HasDisabled：只有属于该 id 的 disabled 才算", Dsht.Domain.Services.PatchPlanner.HasDisabled("- id: a\n- id: b\n  disabled: true\n", "a") == false && Dsht.Domain.Services.PatchPlanner.HasDisabled("- id: a\n- id: b\n  disabled: true\n", "b"));
+        Console.WriteLine("[27] npm 返回值白名单（命令注入面）");
+        Check("白名单：正常版本号通过", Dsht.Domain.Services.NpmVersionGuard.IsSafe("1.2.3") && Dsht.Domain.Services.NpmVersionGuard.IsSafe("0.1.5-rc.2"));
+        Check("白名单：去空白与引号", Dsht.Domain.Services.NpmVersionGuard.Normalize("  1.2.3\n") == "1.2.3" && Dsht.Domain.Services.NpmVersionGuard.Normalize("\"1.2.3\"") == "1.2.3");
+        Check("白名单：拒绝命令注入字符", !Dsht.Domain.Services.NpmVersionGuard.IsSafe("1.2.3; rm -rf /") && !Dsht.Domain.Services.NpmVersionGuard.IsSafe("1.2.3 && whoami") && !Dsht.Domain.Services.NpmVersionGuard.IsSafe("$(x)"));
+        Check("白名单：拒绝空/超长/以 - 开头", !Dsht.Domain.Services.NpmVersionGuard.IsSafe("") && !Dsht.Domain.Services.NpmVersionGuard.IsSafe(null) && !Dsht.Domain.Services.NpmVersionGuard.IsSafe(new string('1', 65)) && !Dsht.Domain.Services.NpmVersionGuard.IsSafe("-1.2.3"));
+        Check("白名单：必须含数字", !Dsht.Domain.Services.NpmVersionGuard.IsSafe("abc") && Dsht.Domain.Services.NpmVersionGuard.IsSafe("v1"));
+        Check("白名单：npm 的错误输出被拒", !Dsht.Domain.Services.NpmVersionGuard.IsSafe("npm ERR! code E404"));
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
     }
