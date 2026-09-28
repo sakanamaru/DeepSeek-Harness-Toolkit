@@ -6,12 +6,14 @@
 #   C7 冒烟（status 必须输出 STATUS_ 标记）
 # -SelfTest：把发布物复制一份并篡改 1 字节 → 断言校验器**必须报错**（证明它不是"永远通过"）
 # 退出码：0=通过；1=有失败；2=环境不足
+# -Keep：保留临时发布物/篡改副本供检查（默认跑完即删——它们每次都在 %TEMP% 累积）
 param(
   [string]$Repo = ".",
   [string]$ReleaseDir,
   [string]$Version = "3.0.0-dev",
   [switch]$Build,
-  [switch]$SelfTest
+  [switch]$SelfTest,
+  [switch]$Keep
 )
 $ErrorActionPreference = "Stop"
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
@@ -103,4 +105,9 @@ if ($SelfTest) {
 
 if ($r1.fail -gt 0) { Write-Host "RESULT: FAIL"; exit 1 }
 Write-Host "RESULT: RELEASE VERIFY OK"
+if (-not $Keep) {
+    # 清理本次自建的临时目录（不清理用户用 -ReleaseDir 指定的目录）
+    if ($Build -and -not [string]::IsNullOrEmpty($ReleaseDir)) { Remove-Item -LiteralPath $ReleaseDir -Recurse -Force -ErrorAction SilentlyContinue }
+    if ($SelfTest -and -not [string]::IsNullOrEmpty($tam)) { Remove-Item -LiteralPath $tam -Recurse -Force -ErrorAction SilentlyContinue }
+}
 exit 0
