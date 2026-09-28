@@ -33,6 +33,15 @@ sealed class FakeProc : IProcessQuery
 static class ContractTests
 {
     static int _pass, _fail;
+        /// <summary>数**顶层**补丁行（行首无缩进）—— insert 块里的同名条目有缩进，不该算进来。</summary>
+        static int CountTopRows(string s)
+        {
+            int n = 0;
+            string[] lines = s.Split('\n');
+            for (int i = 0; i < lines.Length; i++) { if (lines[i].StartsWith("- id: demo", StringComparison.Ordinal)) n++; }
+            return n;
+        }
+
     static void Check(string name, bool ok)
     {
         if (ok) { _pass++; Console.WriteLine("  [PASS] " + name); }
@@ -609,12 +618,10 @@ static class ContractTests
         string rt1 = Dsht.Domain.Services.PatchPlanner.PlanDisable(rt0, "demo").NewText;
         string rt2 = Dsht.Domain.Services.PatchPlanner.PlanEnable(rt1, "demo").NewText;
         string rt3 = Dsht.Domain.Services.PatchPlanner.PlanDisable(rt2, "demo").NewText;
-        // 只数**顶层**补丁行：insert 块里的 - id: demo 有缩进，不该算进来（我第一版数错了 ✗）
-        int Count(string s) { int n = 0; foreach (string ln in s.Split('\n')) { if (ln.StartsWith("- id: demo", StringComparison.Ordinal)) n++; } return n; }
-        Check("往返：disable→enable→disable 后仍只有 1 行 - id: demo（不堆积）", Count(rt3) == 1);
+        Check("往返：disable→enable→disable 后仍只有 1 行 - id: demo（不堆积）", CountTopRows(rt3) == 1);
         Check("往返：第三次 disable 是翻转而非追加（行数不变）", rt3.Split('\n').Length == rt2.Split('\n').Length);
         Check("往返：最终状态为 disabled: true 且无 disabled: false 残留", rt3.Contains("disabled: true") && !rt3.Contains("disabled: false"));
-        Check("往返：enable→disable 再 enable 仍不堆积", Count(Dsht.Domain.Services.PatchPlanner.PlanEnable(rt3, "demo").NewText) == 1);
+        Check("往返：enable→disable 再 enable 仍不堆积", CountTopRows(Dsht.Domain.Services.PatchPlanner.PlanEnable(rt3, "demo").NewText) == 1);
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
     }
