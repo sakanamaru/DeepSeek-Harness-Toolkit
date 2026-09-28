@@ -104,6 +104,51 @@ jobs:
       - name: Run GUI logic tests (marker parsing)
         shell: pwsh
         run: dotnet run --project v3/gui/Dsht.Gui.LogicTests -c Release
+  # V3 Linux package job: the CI used to only build on ubuntu and never publish or upload anything.
+  # Depends on v3-contracts only; the v2.x release chain locked by verify_switchover is untouched.
+  # No new actions: ubuntu-latest ships .NET 8, and artifacts go up with the preinstalled gh CLI.
+  v3-linux:
+    name: V3 Linux package (linux-x64)
+    needs: v3-contracts
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/v3-linux'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2 fixed SHA
+      - name: Publish V3 CLI (small, framework-dependent)
+        run: dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -o out/fd --nologo
+      - name: Publish V3 CLI (self-contained single file)
+        run: dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o out/sc --nologo
+      - name: Publish Avalonia GUI (self-contained)
+        run: dotnet publish v3/gui/Dsht.Gui.Avalonia/Dsht.Gui.Avalonia.csproj -c Release -r linux-x64 --self-contained true -o out/gui --nologo
+      - name: Smoke test the published CLI (read-only, isolated root, never the default port)
+        run: |
+          chmod +x out/sc/dsh-minato
+          bash v3/tools/linux_smoke.sh out/sc/dsh-minato
+      - name: Assemble the Linux package
+        run: |
+          set -e
+          PKG=dsh-minato-linux-x64
+          rm -rf "$PKG" && mkdir -p "$PKG/cli-small" "$PKG/gui" "$PKG/icons/hicolor/256x256/apps"
+          cp out/sc/dsh-minato "$PKG/dsh-minato"
+          cp -r out/fd/. "$PKG/cli-small/"
+          cp -r out/gui/. "$PKG/gui/"
+          cp v3/gui/Dsht.Gui.Avalonia/Assets/logo-icon.png "$PKG/icons/hicolor/256x256/apps/dsh-minato.png"
+          cp LICENSE "$PKG/" 2>/dev/null || true
+          cp README.md "$PKG/" 2>/dev/null || true
+          cp v3/tools/linux_smoke.sh "$PKG/"
+          printf "%s\n" "[Desktop Entry]" "Type=Application" "Name=dsh-minato" "Comment=Deploy and ops kit for DeepSeek Harness (dsh)" "Exec=dsh-minato" "Icon=dsh-minato" "Terminal=true" "Categories=Utility;" > "$PKG/dsh-minato.desktop"
+          printf "%s\n" "install: put dsh-minato on PATH (e.g. ~/.local/bin) or run ./dsh-minato" "gui: ./gui/dsht-gui (self-contained, no .NET needed)" "menu entry: copy dsh-minato.desktop to ~/.local/share/applications/ and the icon to ~/.local/share/icons/hicolor/256x256/apps/" "runtime deps: iproute2 (ss), ps, and one of curl/wget/python3 plus tar when bootstrapping Node" "known gaps: see docs/LINUX-TEST.md and v3/gui/Dsht.Gui.Avalonia/README.md" > "$PKG/README-Linux.txt"
+          tar -czf "$PKG.tar.gz" "$PKG"
+          sha256sum "$PKG.tar.gz" > "$PKG.tar.gz.sha256"
+          cat "$PKG.tar.gz.sha256"
+      - name: Upload to the release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" dsh-minato-linux-x64.tar.gz dsh-minato-linux-x64.tar.gz.sha256 --clobber
+
   build:
     needs: test
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'   # M-8：发布/手动才构建产物；普通 push/PR 仅跑测试
