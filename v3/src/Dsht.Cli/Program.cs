@@ -117,6 +117,35 @@ namespace Dsht.Cli
         }
 
 
+        /// <summary>组合包版本（读该 profile 里它自己的 package.json 的 version；读不到 → 空串）。</summary>
+        private static string BundleVersion(IProfileManifestSource src, string profileName, string bundleId)
+        {
+            JNode root = JsonLite.Parse(src.ReadBundleManifest(profileName, bundleId));
+            return root == null ? "" : root.Get("version").AsString("");
+        }
+
+        /// <summary>从 cordis.patch.yml 里找出 `disabled: true` 的条目 id。
+        /// **按行扫描**（不是 YAML 解析器）：遇到 disabled: true 就向前找最近的 `id:` 行；找不到就跳过（诚实降级，不猜）。</summary>
+        private static string[] DisabledEntries(string yaml)
+        {
+            List<string> found = new List<string>();
+            if (string.IsNullOrEmpty(yaml)) return found.ToArray();
+            string[] lines = yaml.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i].Trim();
+                if (!line.StartsWith("disabled:", StringComparison.Ordinal)) continue;
+                if (line.IndexOf("true", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                for (int k = i - 1; k >= 0 && k > i - 40; k--)
+                {
+                    string prev = lines[k].Trim();
+                    if (prev.StartsWith("disabled:", StringComparison.Ordinal)) continue;
+                    if (prev.StartsWith("- id:", StringComparison.Ordinal)) { found.Add(prev.Substring("- id:".Length).Trim().Trim('\'', '"')); break; }
+                    if (prev.StartsWith("id:", StringComparison.Ordinal)) { found.Add(prev.Substring("id:".Length).Trim().Trim('\'', '"')); break; }
+                }
+            }
+            return found.ToArray();
+        }
         /// <summary>sessions（V3 独有）：会话 / token / 缓存 面板的数据源。**只读** dsh 的会话投影（明文 JSON）。
         /// 来源优先级：插件快照（存在时）→ 每会话投影文件 → 投影总表。
         /// 标记行：
@@ -234,14 +263,21 @@ namespace Dsht.Cli
                 {
                     string id = info.Bundles[b];
                     bool official = id != null && id.StartsWith("@deepseek-ai/", StringComparison.Ordinal);
-                    bundles.Add(new string[] { name, id, official ? "official" : "thirdparty" });
+                    string ver = BundleVersion(src, name, id);
+                    bundles.Add(new string[] { name, id, official ? "official" : "thirdparty", ver });
                 }
             }
             Console.WriteLine("PROFILES_OK " + rows.Count);
             for (int i = 0; i < rows.Count; i++)
                 Console.WriteLine("PROFILE " + rows[i][0] + " form=" + rows[i][1] + " bundles=" + rows[i][2] + " thirdparty=" + rows[i][3]);
             for (int i = 0; i < bundles.Count; i++)
-                Console.WriteLine("BUNDLE " + bundles[i][0] + " " + bundles[i][1] + " " + bundles[i][2]);
+                Console.WriteLine("BUNDLE " + bundles[i][0] + " " + bundles[i][1] + " " + bundles[i][2] + (bundles[i][3] == "" ? "" : " version=" + bundles[i][3]));
+            // 被隔离的条目：profile 的 cordis.patch.yml 里 disabled: true（按行扫描，向前找最近的 id:；不猜 YAML 结构）
+            for (int i = 0; i < rows.Count; i++)
+            {
+                string[] dis = DisabledEntries(src.ReadPatch(rows[i][0]));
+                for (int k = 0; k < dis.Length; k++) Console.WriteLine("DISABLED " + rows[i][0] + " " + dis[k]);
+            }
             return 0;
         }
 

@@ -29,6 +29,29 @@ namespace Dsht.Platform.Windows
             catch { return new string[0]; }
         }
 
+        public string ReadPatch(string profileName)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(profileName)) return null;
+                string p = Path.Combine(Path.Combine(ProfilesRoot, profileName), "cordis.patch.yml");
+                return File.Exists(p) ? File.ReadAllText(p) : null;
+            }
+            catch { return null; }
+        }
+
+        public string ReadBundleManifest(string profileName, string bundleId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(profileName) || string.IsNullOrEmpty(bundleId)) return null;
+                string p = Path.Combine(Path.Combine(Path.Combine(ProfilesRoot, profileName), "node_modules"), Path.Combine(bundleId.Split('/')));
+                p = Path.Combine(p, "package.json");
+                return File.Exists(p) ? File.ReadAllText(p) : null;
+            }
+            catch { return null; }
+        }
+
         public string ReadManifest(string profileName)
         {
             try

@@ -89,8 +89,77 @@ namespace Dsht.Gui.Avalonia
         public StatusSnapshot Status { get { return _status; } }
         public int ProfilesFilter { get; set; }
         public string ProfileSearch = "";
+        /// <summary>待二次确认的隔离操作（"profile|entryId"）；空=没有待确认项。写操作必须点两次。</summary>
+        public string PendingPatch = "";
+        public void Rebuild() { BuildShell(); }
 
         public void SetProfilesFilter(int mode) { ProfilesFilter = mode; BuildShell(); }
+
+        /// <summary>健康检查（profilecheck）的原始输出（懒加载一次）。</summary>
+        public string Health { get { return _health; } }
+        private string _health = "";
+        public void LoadHealth()
+        {
+            if (!string.IsNullOrEmpty(_health)) { BuildShell(); return; }
+            string core = ToolkitCore();
+            if (core == null) { _health = "未找到工具箱核心程序（DeepSeek Harness Toolkit.exe）——健康检查需要它。"; BuildShell(); return; }
+            _health = Run(core, "profilecheck");
+            BuildShell();
+        }
+
+        /// <summary>隔离/恢复一个插件条目：调用工具箱核心的 profilepatch（写操作：它会先备份、再改、失败逐字节回滚）。</summary>
+        public void PatchEntry(string profile, string entryId, bool disable)
+        {
+            string core = ToolkitCore();
+            if (core == null) { _health = "未找到工具箱核心程序（DeepSeek Harness Toolkit.exe），无法执行隔离。"; BuildShell(); return; }
+            string yaml = Path.Combine(Path.Combine(_profilesRoot, profile), "cordis.patch.yml");
+            string args = "profilepatch --file " + yaml + " --id " + entryId + (disable ? " --disable" : " --set disabled=false") + " --yes";
+            string outp = Run(core, args);
+            _health = "profilepatch " + (disable ? "--disable" : "--set disabled=false") + " " + entryId + " 的结果：" + Environment.NewLine + outp;
+            BuildShell();
+        }
+
+        /// <summary>在文件管理器里打开插件目录（Windows 资源管理器 / Linux 文件管理器）。</summary>
+        public void OpenFolder(string path)
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo(path);
+                psi.UseShellExecute = true;
+                Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                _health = "打开目录失败：" + ex.Message + Environment.NewLine + path;
+                BuildShell();
+            }
+        }
+
+        /// <summary>插件安装目录（构造即可，不需要 CLI：<profiles>/<name>/node_modules/<id>）。</summary>
+        public string BundleFolder(string profile, string bundleId)
+        {
+            string root = _profilesRoot;
+            if (string.IsNullOrEmpty(root)) return "";
+            return Path.Combine(Path.Combine(Path.Combine(root, profile), "node_modules"), bundleId.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private string _profilesRoot = "";
+        public string ProfilesRoot { get { return _profilesRoot; } }
+
+        /// <summary>找工具箱核心程序（有 profilepatch 的那个 v2.x exe）。</summary>
+        private static string ToolkitCore()
+        {
+            string env = Environment.GetEnvironmentVariable("DSHT_CORE");
+            if (!string.IsNullOrEmpty(env) && File.Exists(env)) return env;
+            string dir = AppDomain.CurrentDomain.BaseDirectory;
+            string[] names = new string[] { "DeepSeek Harness Toolkit.exe", "dsht.exe" };
+            for (int i = 0; i < names.Length; i++)
+            {
+                string p = Path.Combine(dir, names[i]);
+                if (File.Exists(p)) return p;
+            }
+            return null;
+        }
         public void SetProfileSearch(string text) { ProfileSearch = text == null ? "" : text; BuildShell(); }
         public List<SessionRowVm> Rows { get { return _rows; } }
         public int SortMode { get; set; }
@@ -246,6 +315,8 @@ namespace Dsht.Gui.Avalonia
             {
                 _rawOutput = Run(cli, "profiles");
                 _profiles = ProfilesMarkers.Parse(_rawOutput);
+                for (int i = 0; i < _rawOutput.Length && _profilesRoot.Length == 0; i++) { }
+                _profilesRoot = ProfilesRootFrom(cli);
                 BuildShell();
                 return;
             }
@@ -272,6 +343,25 @@ namespace Dsht.Gui.Avalonia
                 _rows = vms;
             }
             BuildShell();
+        }
+
+        /// <summary>从 CLI 的 SESSIONS_ROOT 风格路径推出 profiles 根（profiles 命令不直接给，这里用数据根 + profiles）。</summary>
+        private static string ProfilesRootFrom(string cli)
+        {
+            try
+            {
+                string outp = Run(cli, "sessions");
+                string[] lines = outp.Replace("\r\n", "\n").Split('\n');
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    if (!lines[i].StartsWith("SESSIONS_ROOT ", StringComparison.Ordinal)) continue;
+                    string p = lines[i].Substring("SESSIONS_ROOT ".Length).Trim();
+                    DirectoryInfo d = Directory.GetParent(p);
+                    if (d != null && d.Parent != null) return Path.Combine(d.Parent.FullName, "profiles");
+                }
+            }
+            catch { }
+            return "";
         }
 
         private static string CliPath()
