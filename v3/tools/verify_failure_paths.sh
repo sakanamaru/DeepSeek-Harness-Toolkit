@@ -63,11 +63,14 @@ if [ -n "$PB" ]; then
   [ "$(cat "$TG2/storages/p1.txt" 2>/dev/null)" = "LOCKED-ORIG" ] && ok "回滚救回了原始内容 ✓✓" || bad "回滚未救回 ✗"
 fi
 
-# ---- 3 并发备份：两个都完整 + 无 mismatch ----
-C1="$WORK/c1"; mkdir -p "$C1/storages"
-for i in $(seq 1 200); do printf 'c%d\n' "$i" > "$C1/storages/f$i.txt"; done
+# ---- 3 并发备份：**两个不同源** ✓✓ + 路径必须不同 + 内容不得互混 ----
+# 为什么用不同源：同源时即使撞名也**看不出损坏**（两边内容一样 ✓）——
+# 第 93 轮我就是用同源复现，结果掩盖了真问题 ✗；换不同源后第 2 轮就暴露 ✓✓
+C1="$WORK/c1"; C2="$WORK/c2"; mkdir -p "$C1/storages" "$C2/storages"
+for i in $(seq 1 200); do printf 'c1-%d\n' "$i" > "$C1/storages/one-f$i.txt"; done
+for i in $(seq 1 200); do printf 'c2-%d\n' "$i" > "$C2/storages/two-f$i.txt"; done
 ( DSH_HOME="$C1" $T $CLI backup > "$WORK/c-a.log" 2>&1 ) & PA=$!
-( DSH_HOME="$C1" $T $CLI backup > "$WORK/c-b.log" 2>&1 ) & PB2=$!
+( DSH_HOME="$C2" $T $CLI backup > "$WORK/c-b.log" 2>&1 ) & PB2=$!
 wait $PA; wait $PB2
 CA=$(tr -d '\r' < "$WORK/c-a.log" | awk '/BACKUP_OK/{print $2}')
 CB=$(tr -d '\r' < "$WORK/c-b.log" | awk '/BACKUP_OK/{print $2}')
@@ -75,6 +78,11 @@ CB=$(tr -d '\r' < "$WORK/c-b.log" | awk '/BACKUP_OK/{print $2}')
 [ "$CA" != "$CB" ] && ok "并发备份：包路径不同（未互相覆盖 ✓）" || bad "并发备份：路径相同 ✗✗"
 NA=$(find "$CA" -type f 2>/dev/null | wc -l); NB=$(find "$CB" -type f 2>/dev/null | wc -l)
 [ "$NA" = "200" ] && [ "$NB" = "200" ] && ok "并发备份：两个都完整（各 200 ✓✓）" || bad "并发备份：不完整（$NA / $NB）✗✗"
+# **内容不得互混** ✓✓（这才是"不同源"的价值所在 —— 撞名时两边内容会混进同一个包 ✗）
+MIX=0
+[ -n "$CA" ] && { [ -f "$CA/storages/two-f1.txt" ] && MIX=$((MIX+1)); [ -f "$CA/storages/one-f1.txt" ] || MIX=$((MIX+1)); }
+[ -n "$CB" ] && { [ -f "$CB/storages/one-f1.txt" ] && MIX=$((MIX+1)); [ -f "$CB/storages/two-f1.txt" ] || MIX=$((MIX+1)); }
+[ "$MIX" -eq 0 ] && ok "并发备份：**两个包内容互不混入** ✓✓" || bad "并发备份：**内容互混** $MIX 处 ✗✗"
 VC=$(DSH_HOME="$C1" $T $CLI backup-list --verify 2>&1 | tr -d '\r')
 echo "$VC" | grep -qE '^BACKUP_VERIFY .*mismatch' && bad "并发后出现 mismatch ✗✗" || ok "并发后无 mismatch ✓"
 
