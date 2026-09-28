@@ -321,6 +321,7 @@ namespace Dsht.Cli
             Console.WriteLine("  start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--force] [--yes]");
             Console.WriteLine("  backup | backup-list [--detail] | backup-export --path <备份> --to <目标> [--yes] | backup-delete --path <备份> [--yes] [--yes]");
             Console.WriteLine("  restore --path <备份> [--dry-run] [--apply] [--yes]");
+            Console.WriteLine("  import --path <外部备份包> [--yes] | wipe [--yes] | verify-install [--manifest <f>] [--file <f>] [--url <u>]");
             Console.WriteLine("  shortcut [--yes] | ui | 无参数 = 数字菜单");
             Console.WriteLine(T("写操作一律先打印计划，加 --yes 才执行；涉及数据根的真实恢复还要求先设置 DSH_HOME。",
                                 "Every write prints its plan first; add --yes to execute. A real restore also requires DSH_HOME."));

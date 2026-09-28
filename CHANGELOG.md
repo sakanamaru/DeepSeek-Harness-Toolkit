@@ -6,6 +6,40 @@ All notable changes to **dsh-minato** (unofficial). Full release notes, assets a
 
 ---
 
+## v3.0.0 — 未发布 / Unreleased
+
+### Added / 新增（V3 工具箱线 · 2026-09-29）
+
+- **V3 命令行（`dsh-minato`）**：31 个具名命令 + 无参数数字菜单 —— 安装/更新/卸载、起停、状态、体检、会话、profile 扫描与处方、备份/恢复/导出/删除、配置读写、引导诊断、自检、快捷方式、`about`，以及新增的 `log`、`update-info`、`import`、`wipe`、`verify-install`。
+  **V3 CLI (`dsh-minato`)**: 31 named commands plus a no-argument numeric menu, including the new `log`, `update-info`, `import`, `wipe` and `verify-install`.
+- **Linux 支持（x86-64）**：CLI 全命令可用；免 sudo 一键装 Node（curl/wget/python3 任一，按 CPU 架构选包）；一键起停按**可观测事实**判定；`shortcut` 写应用菜单项；备份/恢复**含工作区**。
+  **Linux support (x86-64)**: every CLI command works; one-click Node bootstrap without sudo (architecture aware); start/stop judged by observation; `shortcut` writes an application-menu entry; backup/restore include the workspace.
+- **跨平台一致性**：在**同一夹具**下逐命令核对标记行键集合，Windows 与 Linux **完全一致**（方法与结果见 `docs/LINUX-TEST.md`）。
+  **Cross-platform parity**: marker key sets verified command by command against the same fixture, identical on Windows and Linux.
+- **发布链**：CI 新增 `v3-linux` job（两份 CLI + 自包含 GUI + `.desktop` + 图标 + 冒烟脚本 + sha256），对产物跑冒烟与 `verify-linux.sh` 校验，Windows 发布改为**依赖该 job**（Linux 失败即拦住发布）；Linux 产物同样进入 attestation。
+  **Release chain**: a new `v3-linux` CI job publishes the Linux artifacts, smoke-tests and verifies them, and the Windows release now depends on it; Linux artifacts are attested too.
+- **诚实性修复（本版重点）**：`profilecheck` 读不到目录时**不再谎报没有问题**（改为如实报不完整，诊断行在 `--diag` 下给出）；更新**失败不再被报成成功**（判据改为观测到的版本 == 请求的版本）；`status` 拿不到 PID 时说明原因而非静默 0；`--dry-run` 预览不再把工作区指向数据根。
+  **Honesty fixes (the theme of this release)**: `profilecheck` no longer reports "no problems" when it could not read the files; a failed update is no longer reported as success; `status` explains a missing PID instead of printing a silent 0; the `--dry-run` preview no longer aims workspaces at the data root.
+- **更新安全网**：更新前自动做 `-pre-update` 备份（被替换的版本记在同级 `.version` 旁挂文件），失败自动回滚；`--version` 指定版本、`--list` 列出版本；`update_channel`（stable/rc）**真正生效**（stable 无非预发布版时**如实说明回退**，不静默交付 rc）。
+  **Update safety net**: an automatic `-pre-update` backup (with the replaced version in a sibling `.version` file) and rollback on failure; `--version` and `--list`; `update_channel` is honoured, and a stable channel with no non-prerelease version says so instead of silently handing over an rc.
+- **跨机迁移**：`import` 把外部备份包导入本机备份根（先做 `-pre-import` 安全备份），`backup-export` 产出的包在另一台机器上**可直接恢复**。
+  **Migration**: `import` brings an external package into the local backups root, so a package from `backup-export` can be restored on another machine.
+
+### Changed / 变更
+
+- **写操作一律先计划后执行**：`backup-export` / `backup-delete` / `import` / `wipe` / `restore --apply` / `profilepatch` / `start` / `stop` / `shortcut` 都需要显式 `--yes`；`wipe` 另有五重闸门（含没备份就不清、备份根在数据根内则拒绝）。
+  **Every write prints a plan first and needs `--yes`**; `wipe` carries five gates, including no backup, no wipe.
+- `keep_backups` 配置**真正生效**（此前硬编码为 3）；`.sh` 脚本行尾由 `.gitattributes` 锁定为 LF；经典 `v2.x` 线未改动（发布链不变量全绿）。
+  The `keep_backups` setting is actually honoured; `.gitattributes` pins shell scripts to LF; the classic v2.x line is untouched.
+
+### Known limitations / 已知限制
+
+- **GUI 图形面板**：Avalonia 面板可编译并运行，但**一键启动/停止、运行检查、隔离/恢复**四个动作仍调用 Windows 专有的经典核心 —— 底层 CLI 在 Linux 上已可用，属**接线**待办。
+  **GUI panel**: the Avalonia panel builds and runs, but four actions still call the Windows-only classic core; the CLI underneath already works on Linux.
+- GUI 未内嵌 CJK 字体（Linux 上可能显示方块）；日志/更新中心、托盘与快捷键目前是 CLI 形态，GUI 页面尚未接上。
+  No embedded CJK font in the GUI; the log/update centre, tray and shortcuts exist as CLI commands but are not wired into GUI pages yet.
+- 经典 v2.x 线若在 Linux 上从源码构建，`start` / `stop` / `shortcut` 接缝不可用；Linux 上请使用 V3 CLI。
+  The classic v2.x line's start/stop/shortcut seams do not work if it is built from source on Linux; use the V3 CLI there.
 ## v2.8.0 — 未发布 / Unreleased
 
 ### Docs / 文档（2026-09-28）
