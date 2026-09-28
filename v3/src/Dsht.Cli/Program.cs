@@ -995,9 +995,18 @@ namespace Dsht.Cli
             string st = before.State.ToString();
             if (ServiceControlPolicy.BeforeStart(st, before.Pid) == StartDecision.AlreadyRunning)
             {
+                // 身份校验 ✓：端口上有人监听 ≠ 那就是 dsh ✗（实测被 python http.server 占用时曾报 START_OK ✗✗）。
+                // PID 可得时必须确认是 dsh（与 stop 用同一道校验 ✓）；PID 不可得时如实说明未能确认 ✓，不默认它是 dsh ✗。
+                if (before.Pid > 0 && !reg.Get<IProcessQuery>().IsDshCommandLine(before.Pid))
+                {
+                    Console.WriteLine("START_FAIL " + T("端口被非 dsh 进程占用（PID ", "that port is held by a non-dsh process (PID ") + before.Pid + T("）；请先停掉它或换一个端口", "); stop it first or choose another port"));
+                    Console.WriteLine("START_OBSERVED " + st.ToLowerInvariant() + " " + T("（端口被占用，但不是 dsh）", "(port in use, but not by dsh)"));
+                    OpLog(reg, "ERROR", "start refused: port held by non-dsh pid " + before.Pid);
+                    return 0;
+                }
                 Console.WriteLine("START_OK " + (before.Pid > 0 ? before.Pid.ToString() : "0"));
             OpLog(reg, "INFO", "start OK (already running)");
-                Console.WriteLine("START_OBSERVED " + st.ToLowerInvariant() + " " + T("（观测到已在运行，未重复启动）", "(already running; not started again)"));
+                Console.WriteLine("START_OBSERVED " + st.ToLowerInvariant() + (before.Pid > 0 ? T("（观测到已在运行，未重复启动）", "(already running; not started again)") : T("（观测到已在运行；PID 不可得，未能确认身份）", "(already running; no PID available, identity unconfirmed)")));
                 return 0;
             }
 
