@@ -98,3 +98,33 @@ chmod +x "DeepSeek Harness Toolkit"
 - Linux 侧代码位于 `src/Platform/Linux/Program.Platform.Linux.cs`；接缝接口与持有者在 `src/Core/Program.PlatformSeams.cs`；
   Windows 实现体在 `src/Platform/Windows/Program.Platform.Windows.cs`。
 - 本地已有两道守卫可随时自查：`tests/verify_move_only.ps1`（成员签名不丢）、`tests/verify_core_portable.ps1`（核心零 Windows-only 编译期 API）。
+
+---
+
+## 附：跨平台一致性核对（2026-09-29）
+
+方法：把**同一批命令**在 Windows（win-x64 自包含）与 Linux（Ubuntu 26.04 VM，linux-x64 自包含）上各跑一遍，
+比较**标记行的键集合**（键缺失即该平台有缺口）。为避免环境差异污染结论，先做**受控对照**：
+两侧放**同一份夹具**（一个 profile 目录，含 `cordis.patch.yml` 与 `node_modules` 下的 vendor yml），
+写操作一律用**隔离数据根**，绝不触碰默认数据根或默认端口。
+
+| 命令 | Windows 键 | Linux 键 | 结论 |
+|---|---|---|---|
+| `version` | DSHT_VERSION | DSHT_VERSION | 一致 ✓ |
+| `profiles` | BUNDLE, PROFILE, PROFILES_OK | 同左 | 一致 ✓ |
+| `profilecheck --dir <同一夹具>` | PROFILECHK_OK, PROFILECHK_SKIPPED_VENDOR, PROFILECHK_TOTAL | 同左 | **一致 ✓** |
+| `profilecheck --dir <夹具> --abs` | 同上 3 键 | 同左 | **一致 ✓** |
+| `backup`（隔离根） | BACKUP_OK | BACKUP_OK | 一致 ✓ |
+| `backup-list`（隔离根） | BACKUP_LIST_OK | BACKUP_LIST_OK | 一致 ✓ |
+| `restore --dry-run`（隔离根） | 9 键（BYTES/KEEP/NEW/NOTE/OK/OVERWRITE/SCOPE/SRC/TOTAL） | **同 9 键** | **一致 ✓** |
+| `config-get` | CONFIG, CONFIGGET_OK | 同左 | 一致 ✓ |
+| `update --list` | UPDATE_VERSIONS | UPDATE_VERSIONS | 一致 ✓ |
+
+**按环境而合理不同的**（不是缺口）：`status` 的状态（Windows 上确实有 dsh 在跑 → `STATUS_UP`；VM 上没有 → `STATUS_DOWN`）、
+`doctor` 的结论行（`DOCTOR_WARN` vs `DOCTOR_ERROR`，取决于各机 dsh 数据根是否已初始化）、`doctor` 的 OS 行（按平台如实报告）。
+
+平台**本质差异**（已在 README 说明）：经典 Windows 可执行文件与 `.lnk` 不在 Linux 包内；`shortcut` 在 Linux 写应用菜单项而非桌面图标；
+`--install-node` 仅 Linux 可用。
+
+> 真机冒烟（同批次）：Linux **21/21** ✓（含备份/恢复/工作区往返、起停、更新安全网真实回滚、keep_backups、菜单）；
+> Windows **14/14** ✓（含真实 profile 树的 `PROFILECHK_SKIPPED_VENDOR 563`，与 v2.x 逐字一致）。
