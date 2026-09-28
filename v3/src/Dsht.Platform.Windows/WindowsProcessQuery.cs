@@ -26,6 +26,13 @@ namespace Dsht.Platform.Windows
             return ParsePortPid(WindowsShell.Capture("cmd.exe", "/c netstat -ano -p tcp"), port);
         }
 
+        public DateTime? StartTime(int pid)
+        {
+            if (pid <= 0) return null;
+            try { return Process.GetProcessById(pid).StartTime; }
+            catch { return null; }
+        }
+
         public bool IsDshCommandLine(int pid)
         {
             if (pid <= 0) return false;

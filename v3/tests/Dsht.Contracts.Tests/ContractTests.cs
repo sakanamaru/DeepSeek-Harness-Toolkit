@@ -24,6 +24,7 @@ sealed class FakeProc : IProcessQuery
     public bool Throw;
     public int PidListeningOn(int port) { if (Throw) throw new Exception("boom"); return Pid; }
     public bool IsDshCommandLine(int pid) { return IsDsh; }
+    public System.DateTime? StartTime(int pid) { return pid > 0 ? new System.DateTime(2026, 9, 28, 11, 53, 14) : (System.DateTime?)null; }
 }
 
 static class ContractTests
@@ -210,6 +211,16 @@ static class ContractTests
         Check("类型判定：-auto", BackupPackage.Classify("dsh-data-x-auto") == Dsht.Domain.Model.BackupKind.Auto);
         Check("类型判定：四种 pre-*", BackupPackage.Classify("x-pre-restore") == Dsht.Domain.Model.BackupKind.PreRestore && BackupPackage.Classify("x-pre-import") == Dsht.Domain.Model.BackupKind.PreImport && BackupPackage.Classify("x-pre-wipe") == Dsht.Domain.Model.BackupKind.PreWipe && BackupPackage.Classify("x-pre-update") == Dsht.Domain.Model.BackupKind.PreUpdate);
         Check("保护性备份（严格模式）仅限 pre-*", BackupPackage.IsProtective(Dsht.Domain.Model.BackupKind.PreWipe) && !BackupPackage.IsProtective(Dsht.Domain.Model.BackupKind.Auto) && !BackupPackage.IsProtective(Dsht.Domain.Model.BackupKind.Manual));
+        Console.WriteLine("[8] UptimeFormatter 运行时长（逐字对齐 v2.x FormatUptime）");
+        Check("负数 → 0 秒（时钟回拨保护）", UptimeFormatter.Format(TimeSpan.FromSeconds(-5)) == "0 秒");
+        Check("30 秒", UptimeFormatter.Format(TimeSpan.FromSeconds(30)) == "30 秒");
+        Check("59 秒", UptimeFormatter.Format(TimeSpan.FromSeconds(59)) == "59 秒");
+        Check("60 秒 → 1 分", UptimeFormatter.Format(TimeSpan.FromSeconds(60)) == "1 分");
+        Check("59 分", UptimeFormatter.Format(TimeSpan.FromMinutes(59)) == "59 分");
+        Check("1 小时 30 分", UptimeFormatter.Format(new TimeSpan(1, 30, 0)) == "1 小时 30 分");
+        Check("23 小时 59 分", UptimeFormatter.Format(new TimeSpan(0, 23, 59, 0)) == "23 小时 59 分");
+        Check("25 小时 → 1 天 1 小时", UptimeFormatter.Format(new TimeSpan(1, 1, 0, 0)) == "1 天 1 小时");
+        Check("3 天 5 小时", UptimeFormatter.Format(new TimeSpan(3, 5, 0, 0)) == "3 天 5 小时");
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;

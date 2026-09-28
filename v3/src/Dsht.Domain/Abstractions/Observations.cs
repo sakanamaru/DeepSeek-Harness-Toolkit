@@ -17,5 +17,8 @@ namespace Dsht.Domain.Abstractions
     {
         int PidListeningOn(int port);
         bool IsDshCommandLine(int pid);
+
+        /// <summary>进程启动时间（本地时间）；取不到返回 null（对应 v2.x 的 haveStart=false）。</summary>
+        System.DateTime? StartTime(int pid);
     }
 }

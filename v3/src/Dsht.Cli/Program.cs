@@ -1,6 +1,7 @@
 using System;
 using Dsht.Domain.Abstractions;
 using Dsht.Domain.Model;
+using Dsht.Domain.Services;
 using Dsht.Domain.Targets;
 using Dsht.Platform.Windows;
 
@@ -27,7 +28,15 @@ namespace Dsht.Cli
                 if (detail)
                 {
                     Console.WriteLine("STATUS_PID " + (r.Pid > 0 ? r.Pid.ToString() : "0"));
-                    // TODO(V3-3b)：STATUS_START / STATUS_UPTIME 需要进程启动时间与时长格式化，下一轮补
+                    bool haveStart = false;
+                    DateTime start = DateTime.MinValue;
+                    if (r.Pid > 0)
+                    {
+                        DateTime? s = reg.Get<IProcessQuery>().StartTime(r.Pid);
+                        if (s.HasValue) { start = s.Value; haveStart = true; }
+                    }
+                    Console.WriteLine("STATUS_START " + (haveStart ? start.ToString("yyyy-MM-dd HH:mm:ss") : ""));
+                    Console.WriteLine("STATUS_UPTIME " + (haveStart ? UptimeFormatter.Format(DateTime.Now - start) : ""));
                 }
                 return 0;
             }
