@@ -86,6 +86,7 @@ namespace Dsht.Gui.Avalonia
         public MainWindow()
         {
             InitializeComponent();
+            SetWindowIcon();
             BuildWindowChrome();
             InitChrome();
             for (int i = 0; i < 5; i++) BindShell(i);
@@ -241,6 +242,18 @@ namespace Dsht.Gui.Avalonia
                 }
             }
             catch (Exception ex) { return "执行失败：" + ex.Message; }
+        }
+        /// <summary>窗口图标（任务栏/标题栏）。资源 URI 用**程序集名** dsht-gui —— 用命名空间会静默失败。</summary>
+        private void SetWindowIcon()
+        {
+            try
+            {
+                using (System.IO.Stream s = Avalonia.Platform.AssetLoader.Open(new Uri("avares://dsht-gui/Assets/logo-icon.png")))
+                {
+                    Icon = new WindowIcon(s);
+                }
+            }
+            catch { /* 图标缺失不影响功能 */ }
         }
         private void InitializeComponent()
         {
