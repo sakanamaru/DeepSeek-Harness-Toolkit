@@ -581,7 +581,14 @@ namespace Dsht.Gui.Avalonia
         }
 
         private bool _busy;
-        public void Refresh() { if (_busy) return; _busy = true; _ = RefreshAsync(); }   // 重入保护：刷新期间再点不叠加   // 异步：CLI 调用不占 UI 线程
+        public void Refresh() { if (_busy) return; _busy = true; _ = RefreshGuardedAsync(); }   // 重入保护：刷新期间再点不叠加   // 异步：CLI 调用不占 UI 线程
+
+        /// <summary>保证 _busy 一定复位：刷新中途抛异常也不许把界面锁死成一次性。</summary>
+        private async System.Threading.Tasks.Task RefreshGuardedAsync()
+        {
+            try { await RefreshAsync(); }
+            finally { _busy = false; }
+        }
 
         private async System.Threading.Tasks.Task RefreshAsync()
         {
@@ -620,6 +627,7 @@ namespace Dsht.Gui.Avalonia
             if (!IsSessionsSection)
             {
                 _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, string.Join(" ", (_mainSection >= 0 && _mainSection < NavCli.Length && NavCli[_mainSection] != null ? NavCli[_mainSection] : new string[0]))); });
+                if (_mainSection == 5) _doctor = SummaryMarkers.ParseDoctor(_rawOutput);   // 体检页吃解析结果，不是只吃原文
                 BuildShell();
                 return;
             }
@@ -696,8 +704,10 @@ namespace Dsht.Gui.Avalonia
                     System.Threading.Tasks.Task<string> soT = System.Threading.Tasks.Task.Run(delegate { return p.StandardOutput.ReadToEnd(); });
                     System.Threading.Tasks.Task<string> seT = System.Threading.Tasks.Task.Run(delegate { return p.StandardError.ReadToEnd(); });
                     if (!p.WaitForExit(30000)) { try { p.Kill(); } catch { } return "（超时 30 秒，已结束该进程）"; }
+                    sb.Append(soT.Result);
+                    err = seT.Result;
                     if (!string.IsNullOrEmpty(err)) sb.Append(Environment.NewLine).Append("[stderr] ").Append(err);
-                    return sb.ToString();
+                    return sb.Length == 0 ? "（无输出）" : sb.ToString();
                 }
             }
             catch (Exception ex)
