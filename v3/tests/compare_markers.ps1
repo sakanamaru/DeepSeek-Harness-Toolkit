@@ -72,6 +72,8 @@ $cases = @(
     @{ name = 'restore --path (invalid, never exists)'; args = @('restore','--path',(Join-Path $Repo 'backup\dsh-data-19990101-000000000')); full = $true },
     @{ name = 'backup-delete (outside)'; args = @('backup-delete','--path','C:\nope\x'); full = $true },
     @{ name = 'backup-export (no-to)'; args = @('backup-export','--path',(Join-Path $Repo 'backup\dsh-data-1')); full = $true },
+    # restore（无参）：有受控备份时会走到"运行中拒绝"闸门（dsh 在跑 → 不写任何东西，安全可比对）
+    @{ name = 'restore (latest)'; args = @('restore'); full = $true },
     @{ name = 'config-get';          args = @('config-get'); full = $true },
     @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity '; ignoreSummary = $true }
 )

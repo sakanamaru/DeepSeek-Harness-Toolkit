@@ -488,7 +488,20 @@ namespace Dsht.Cli
                 for (int i = all.Count - 1; i >= 0; i--) { if (BackupPackage.IsValidPackage(all[i].Snapshot)) { latest = all[i].Path; break; } }
                 if (latest == null) { Console.WriteLine("RESTORE_FAIL " + T("无有效备份", "no valid backup")); return 0; }
             }
-            Console.WriteLine("RESTORE_NOT_IMPLEMENTED V3 尚未移植真实恢复（会写用户数据）；请用 restore --dry-run 预览，或用 v2.x 执行恢复。");
+            // 安全闸门（逐条对齐 v2.x 的 NIRestoreCore）：运行中拒绝 → 恢复前自动备份
+            ServiceReport sr = reg.Get<IServiceTarget>().Probe();
+            if (sr.State != ServiceState.Down)
+            {
+                Console.WriteLine("RESTORE_FAIL " + T("dsh 正在运行，无法恢复", "dsh is running; cannot restore"));
+                return 0;
+            }
+            string dstRoot = reg.Get<IPaths>().DataRoot;
+            if (reg.Get<IFileSystemQuery>().DirectoryExists(dstRoot))
+            {
+                BackupResult pre = bk.Create(dstRoot, BackupKind.PreRestore);
+                if (pre == null) { Console.WriteLine("RESTORE_FAIL " + T("恢复前自动备份失败", "pre-restore backup failed")); return 0; }
+            }
+            Console.WriteLine("RESTORE_NOT_IMPLEMENTED V3 尚未移植真实恢复（会写用户数据）；闸门已通过：请用 restore --dry-run 预览，或用 v2.x 执行恢复。");
             return 0;
         }
 

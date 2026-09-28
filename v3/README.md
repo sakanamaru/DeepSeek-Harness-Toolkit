@@ -80,7 +80,7 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_release.ps1 -Repo . -Bu
 | `config-set <key> <value>` | `CONFIGSET_OK <key>` / `CONFIGSET_FAIL <reason>` |
 | `bootdiag --from <file>` | `BOOTDIAG_OK`/`_FAIL` + `_KIND`/`_PLUGIN`/`_ENTRY`/`_FILE`/`_LINE`/`_HINT`（未识别时 `_FIRST`） |
 | `backup` | `BACKUP_OK <路径>` / `BACKUP_FAIL <原因>`（真实写盘；比对需 `-Heavy`，目录名含时间戳会归一化） |
-| `restore --path <dir>`（非 dry-run） | 校验路径 → `RESTORE_FAIL <原因>`（no-path/outside/invalid）；**校验通过后仍明确拒绝**真实写入 |
+| `restore` / `restore --path <dir>`（非 dry-run） | 校验 + **安全闸门**（无有效备份 / 运行中拒绝 / 恢复前自动备份失败）→ `RESTORE_FAIL <原因>`；**闸门通过后仍明确拒绝**真实写入 |
 | `backup-delete --path <bk>` | **真实删除**（含只读属性清理）→ `BKDEL_OK <名字>` / `BKDEL_FAIL <原因>`；隔离根下已验证（见 §7） |
 | `backup-export` | `BKEXPORT_FAIL 校验失败: <原因>`；**真实复制明确拒绝** |
 | `check` | 横幅 + `Node.js`/`npm`/`dsh`/`dsh 版本`/`dsh 最新`/`Web 服务`/`UI 语言` 七行（GUI 检查页数据源） |
@@ -88,7 +88,7 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_release.ps1 -Repo . -Bu
 | `describe`（V3 独有） | 说明"考虑过哪些形态、为什么暂时观测不到" |
 | `version`（V3 独有） | `DSHT_VERSION <版本>` |
 
-比对工具当前结论：**19/19 对齐**（另有 1 项 `backup` 需 `-Heavy`，届时 20/20）（doctor 的 Integrity 行按规则忽略，见该脚本注释）。
+比对工具当前结论：**20/20 对齐**（另有 1 项 `backup` 需 `-Heavy`，届时 21/21）（doctor 的 Integrity 行按规则忽略，见该脚本注释）。
 
 ---
 
