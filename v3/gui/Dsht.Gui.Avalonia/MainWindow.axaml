@@ -15,8 +15,7 @@
       <Grid ColumnDefinitions="Auto,*,Auto">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
           <Border x:Name="BrandMark" Width="28" Height="28" CornerRadius="8">
-            <TextBlock Text="D" Foreground="White" FontSize="13" FontWeight="Bold"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <Image Source="avares://dsht-gui/Assets/logo-mark.png" Stretch="UniformToFill" />
           </Border>
           <StackPanel VerticalAlignment="Center" Spacing="1">
             <TextBlock x:Name="BrandTitle" Text="DeepSeek Harness Toolkit" FontSize="13.5" FontWeight="SemiBold" />
