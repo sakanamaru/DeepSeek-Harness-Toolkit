@@ -19,7 +19,13 @@ namespace Dsht.Gui.Avalonia
     public partial class MainWindow : Window
     {
         /// <summary>主菜单（侧栏一级）。</summary>
-        public static readonly string[] NavItems = new string[] { "▤　状态", "◔　会话与 Token", "⚙　形态与插件", "▣　备份", "✚　体检", "≡　配置", "？　说明" };
+        public static readonly string[] NavItems = new string[] { "状态", "会话与 Token", "形态与插件", "备份", "体检", "配置", "说明" };
+        /// <summary>主菜单图标（FluentIcons，编译期检查）。</summary>
+        public static readonly FluentIcons.Common.Symbol[] NavIcons = new FluentIcons.Common.Symbol[]
+        {
+            FluentIcons.Common.Symbol.Home, FluentIcons.Common.Symbol.ChartMultiple, FluentIcons.Common.Symbol.PuzzlePiece,
+            FluentIcons.Common.Symbol.Archive, FluentIcons.Common.Symbol.Shield, FluentIcons.Common.Symbol.Settings, FluentIcons.Common.Symbol.Question
+        };
         private static readonly string[][] NavCli = new string[][]
         {
             new string[] { "status", "--detail" },
