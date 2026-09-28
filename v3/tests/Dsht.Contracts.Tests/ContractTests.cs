@@ -40,6 +40,9 @@ static class ContractTests
         return new WebTarget(p, h, q, new WebTargetOptions(3080, "http://127.0.0.1:3080/", 800, 800));
     }
 
+    static bool NoFile(string p) { return false; }
+    static bool AnyFile(string p) { return true; }
+
     static int Main()
     {
         Console.WriteLine("== V3 契约测试（领域判定 + 形态语义）==");
@@ -134,6 +137,40 @@ static class ContractTests
         Check("混合：5 份自动 + keep=3 → 删 2 份最旧，手动永不删", delMixed.Count == 2 && delMixed[0].IndexOf("20260903") > 0 && delMixed[1].IndexOf("20260904") > 0);
         Check("混合：手动备份未被选中", delMixed.IndexOf("dsh-data-20260901-100000") < 0 && delMixed.IndexOf("dsh-data-20260902-100000") < 0);
         Check("非备份前缀不参与", delMixed.IndexOf("not-a-backup-auto") < 0);
+        Console.WriteLine("[5] ProfileScanner 块级扫描（逐条对齐 v2.x ProfileCheckText）");
+        Check("需要 maxDepth 的插件名（含引号）", ProfileScanner.NeedsMaxDepthPlugin("'@deepseek-ai/dsh-tool-subagent'") && ProfileScanner.NeedsMaxDepthPlugin("@deepseek-ai/dsh-subagent-acp"));
+        Check("普通插件不需要 maxDepth", !ProfileScanner.NeedsMaxDepthPlugin("@deepseek-ai/dsh-tool-web"));
+        Check("YAML 标量：去引号+去行尾注释", ProfileScanner.CleanYamlScalar("'a-b' # note") == "a-b");
+        Check("YAML 标量：引号内 # 不当注释", ProfileScanner.CleanYamlScalar("\"a#b\"") == "a#b");
+        Check("像路径判定", ProfileScanner.LooksLikeCommandPath("C:\\x\\y.exe") && !ProfileScanner.LooksLikeCommandPath("justtext"));
+
+        string dashNoMax = "- id: subagent-acp\n  name: '@deepseek-ai/dsh-subagent-acp'\n  config:\n    someKey: 1\n";
+        System.Collections.Generic.List<Dsht.Domain.Model.ProfileFinding> fs1 = ProfileScanner.Scan(dashNoMax, "profiles/web/cordis.patch.yml", NoFile);
+        Check("dash 形式缺 maxDepth → 1 条发现", fs1.Count == 1 && fs1[0].Missing == "maxDepth");
+        Check("行号与 id 正确", fs1.Count == 1 && fs1[0].Line == 1 && fs1[0].Id == "subagent-acp");
+        Check("可自动修（对应 FIX 行）", fs1.Count == 1 && fs1[0].AutoFixable);
+        Check("Hint 指明 provider-managed", fs1.Count == 1 && fs1[0].Hint.IndexOf("provider-managed") >= 0);
+
+        string withMax = "- id: subagent-acp\n  name: '@deepseek-ai/dsh-subagent-acp'\n  config:\n    maxDepth: 'provider-managed'\n";
+        Check("config 块内有 maxDepth → 无发现", ProfileScanner.Scan(withMax, "f", NoFile).Count == 0);
+
+        string maxElsewhere = "- id: subagent-acp\n  name: '@deepseek-ai/dsh-subagent-acp'\n  maxDepth: 8\n";
+        Check("maxDepth 出现在别处（非 config 下）→ 无发现（与 v2.x 一致）", ProfileScanner.Scan(maxElsewhere, "f", NoFile).Count == 0);
+
+        string otherPlugin = "- id: web\n  name: '@deepseek-ai/dsh-tool-web'\n";
+        Check("非目标插件 → 无发现", ProfileScanner.Scan(otherPlugin, "f", NoFile).Count == 0);
+
+        string topForm = "id: subagent-acp\nname: '@deepseek-ai/dsh-tool-subagent'\n";
+        System.Collections.Generic.List<Dsht.Domain.Model.ProfileFinding> fs2 = ProfileScanner.Scan(topForm, "f", NoFile);
+        Check("顶层 id: 形式也能识别", fs2.Count == 1 && fs2[0].Id == "subagent-acp");
+
+        string mcpMissing = "- id: mcp\n  name: '@deepseek-ai/dsh-mcp-client'\n  failOnStartupError: true\n  command: C:\\nope\\missing.exe\n";
+        System.Collections.Generic.List<Dsht.Domain.Model.ProfileFinding> fs3 = ProfileScanner.Scan(mcpMissing, "f", NoFile);
+        Check("mcp command 不存在 → 1 条 command 发现", fs3.Count == 1 && fs3[0].Missing == "command");
+        Check("command 类不可自动修（只报不修）", fs3.Count == 1 && !fs3[0].AutoFixable);
+        Check("mcp command 存在 → 无发现", ProfileScanner.Scan(mcpMissing, "f", AnyFile).Count == 0);
+        Check("mcp 未开 failOnStartupError → 无发现", ProfileScanner.Scan("- id: mcp\n  name: '@deepseek-ai/dsh-mcp-client'\n  command: C:\\nope\\x.exe\n", "f", NoFile).Count == 0);
+        Check("空文本 → 无发现", ProfileScanner.Scan("", "f", NoFile).Count == 0);
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
