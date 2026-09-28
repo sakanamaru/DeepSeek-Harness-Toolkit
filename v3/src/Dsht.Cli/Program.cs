@@ -313,6 +313,15 @@ namespace Dsht.Cli
         /// <summary>doctor：七类体检。首行 DOCTOR_OK|WARN|ERROR n，其后每行 [级别] 类别 描述。逐条对齐 v2.x。
         /// 可选 `--report &lt;file&gt;`：写完整诊断报告（含配置/日志摘要，全部脱敏）→ `DOCTOR_REPORT &lt;路径&gt;`；
         /// 写失败 → `DOCTOR_WRITE_FAIL &lt;原因&gt;`。全程只读（与 v2.x 一致，报告用 UTF-8 **带 BOM** 写）。</summary>
+        /// <summary>当前操作系统名（跨平台：Linux 上不能写 "Windows" —— 真机测试抓到的 bug）。</summary>
+        private static string OsName()
+        {
+            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)) return "Windows";
+            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX)) return "macOS";
+            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux)) return "Linux";
+            return "未知系统";
+        }
+
         private static int Doctor(string[] args, ServiceRegistry reg)
         {
             List<DocItem> items = new List<DocItem>();
@@ -351,7 +360,7 @@ namespace Dsht.Cli
             IPaths paths = reg.Get<IPaths>();
             ServiceReport sr = reg.Get<IServiceTarget>().Probe();
 
-            items.Add(new DocItem("System", 0, "Windows: " + Environment.OSVersion.VersionString + " (" + (Environment.Is64BitOperatingSystem ? "x64" : "x86") + ")"));
+            items.Add(new DocItem("System", 0, OsName() + ": " + Environment.OSVersion.VersionString + " (" + (Environment.Is64BitOperatingSystem ? "x64" : "x86") + ")"));
             string node = tc.NodeVersion();
             if (string.IsNullOrWhiteSpace(node)) items.Add(new DocItem("System", 1, "Node.js 未找到（dsh 依赖 npm 安装）"));
             else items.Add(new DocItem("System", 0, "Node.js: " + node.Trim()));
