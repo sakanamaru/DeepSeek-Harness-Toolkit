@@ -15,6 +15,52 @@ Install, start, monitor and uninstall the dsh Web UI, with data backup / restore
 
 > ⚠️ This project is **unofficial** and is not affiliated with DeepSeek.
 
+## Linux support (preview)
+
+The V3 line runs on Linux (x86-64) today: the CLI is fully ported, and the Avalonia GUI builds and runs.
+This section states exactly where Linux stands, so nobody has to discover it the hard way.
+
+### What works on Linux today
+
+- The whole CLI: install / update / uninstall, start / stop, status, doctor, sessions, profiles,
+  profilecheck, profilepatch, backup / backup-list / backup-export / backup-delete, restore,
+  config-get / config-set, bootdiag, check, selftest, shortcut, ui, about, and the no-argument menu.
+- One-click install: `dsh-minato install --install-node --yes` fetches an official Node LTS into
+  `~/.local/node` without sudo (using curl, wget or python3, whichever exists) and then installs dsh
+  through npm. Node is chosen for your CPU architecture (x64 / arm64 / armv7l / x86).
+- One-click start and stop: `start --yes` launches dsh detached and reports success only after the
+  port or HTTP probe confirms it; `stop --yes` signals the whole process group and re-checks.
+- Every write prints its plan first and needs `--yes`. A real restore additionally requires `DSH_HOME`
+  (normalised to an absolute path), so it can never write your default data root.
+- The Avalonia GUI builds and runs on Linux (X11, or Wayland through XWayland).
+
+### Platform differences (by nature, not defects)
+
+- The three classic executables (`DeepSeek Harness Toolkit.exe`, `Toolkit GUI*.exe`) and `.lnk`
+  shortcuts are Windows / .NET Framework only; the Linux package does not contain them.
+- `shortcut` creates an application-menu entry (`~/.local/share/applications/dsh-minato.desktop`),
+  not a desktop icon.
+- `--install-node` is Linux-only; on Windows Node is installed by the installer.
+
+### Known gaps on Linux (tracked; being closed before 3.0)
+
+- The GUI's start/stop, profile check and quarantine buttons still call the Windows-only classic
+  core. The CLI behind them already works on Linux, so this is wiring rather than capability.
+- Workspace backup does not include workspaces yet (restore can already consume a `_workspace` section).
+- No log centre, update centre, backup import, wipe-data, tray or keyboard shortcuts yet.
+- `keep_backups` is applied as a fixed value of 3 instead of the configured number.
+- The classic v2.x line, if built from source on Linux, has broken `start` / `stop` / `shortcut` seams
+  and does not honour `$DSH_HOME`; use the V3 CLI on Linux instead.
+
+### Linux release artifacts
+
+Every release publishes `dsh-minato-linux-x64.tar.gz` containing two CLI builds (small
+framework-dependent, and self-contained single file), the self-contained GUI, a `.desktop` entry, the
+icon, a smoke script, a short README and a sha256 manifest. Verify it with
+`v3/tools/verify-linux.sh <tarball> [<tarball.sha256>]` - the same script CI runs before uploading.
+Runtime dependencies: iproute2 (`ss`), `ps`, and `tar` plus one of curl/wget/python3 when bootstrapping
+Node.
+
 ## Official downloads
 
 Only this repository's [Releases page](https://github.com/sakanamaru/dsh-minato/releases) ships official binaries — anything else (cloud-drive re-uploads, "paid / cracked / modified" editions, other websites or accounts) is **not official**. The project is free and open source (MIT); **no one is authorized to sell it**. Verify before running: `verify.ps1` checks SHA-256 against the CI-generated manifest and the GPG signature, and the GitHub artifact attestation is an **independent extra** provenance check that `verify.ps1` does not perform — attestation does not replace the GPG signature check either. The trust model, supply-chain controls and manual verification steps live in [SECURITY.md](SECURITY.md).
