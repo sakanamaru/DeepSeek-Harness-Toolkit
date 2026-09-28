@@ -6,55 +6,24 @@ All notable changes to **DeepSeek Harness Toolkit** (unofficial). Full release n
 
 ---
 
-## v2.7.3 — 2026-09-28 —（修复：Dry-Run 相对路径预览谎报 0 文件 / Fix: dry-run preview reported 0 files for a relative backup path）
-
-### Fixed / 修复
-
-- **`restore --dry-run --path <相对路径>` 谎报"0 个文件"** —— `P()`（长路径前缀规范化）对相对路径生成 `\\?\.\backup\x`，这不是合法 Win32 路径：源侧遍历抛异常后被 `PlanMergeCore` 的 `catch` 静默吞掉，于是一份**有内容**的备份被预览成 `DRYRUN_NEW 0 / DRYRUN_OVERWRITE 0 / DRYRUN_BYTES 0`（`restore` 本身会先拒绝相对路径，所以只影响预览，不影响真实恢复）。
-  现在非"完全限定"路径（`.\x`、`backup\x`、`C:x`、`\x`）先经 `Path.GetFullPath` 规范化再前缀；**绝对路径与 UNC 输入完全不受影响（零行为变化）**。实测：`.\backup\dsh-data-...` 现在报 `NEW 1 / OVERWRITE 1 / KEEP 510`，与绝对路径逐字一致。
-  **`restore --dry-run --path <relative>` reported "0 files"** — `P()` (long-path prefix normalisation) turned a relative path into `\\?\.\backup\x`, which is not a valid Win32 path: the source-side walk threw and `PlanMergeCore`'s `catch` swallowed it, so a backup **with content** previewed as `DRYRUN_NEW 0 / DRYRUN_OVERWRITE 0 / DRYRUN_BYTES 0` (`restore` itself already rejects relative paths, so only the preview was affected). Non-fully-qualified paths (`.\x`, `backup\x`, `C:x`, `\x`) are now resolved with `Path.GetFullPath` before the prefix is added; **absolute and UNC input is untouched — zero behaviour change**. Measured: `.\backup\dsh-data-...` now reports `NEW 1 / OVERWRITE 1 / KEEP 510`, identical to the absolute path.
-
-### Changed / 变更
-
-- `build_exe.cmd` 改为**递归收集源码**（与 CI 的 `Build exe from source` 步骤同一套规则），不再写死目录列表（写死的列表在核心分层后会漏文件）；同时改用 CRLF 行尾（cmd.exe 会错解 LF 批处理）。
-  `build_exe.cmd` now discovers sources **recursively** (same rule as the CI `Build exe from source` step) instead of a hard-coded directory list, which misses files once the core is split; it is also written with CRLF line endings (cmd.exe mis-parses LF batch files).
-- 文档：README（EN/zh）的单测构建命令补上 `src\**`（分层后原命令已不能编译）、`pwsh` 示例改为 `powershell -ExecutionPolicy Bypass -File`（Windows 自带的 Windows PowerShell 即可）、`verify.ps1 -Tag` 示例更新为 v2.7.3；`src/` 分层布局的说明由「不是已发布状态」改为「v2.7.3 起的发布布局」。
-  Docs: the unit-test build command in README (EN/zh) now includes `src\**` (it no longer compiled after the split); the `pwsh` example is now `powershell -ExecutionPolicy Bypass -File` (the built-in Windows PowerShell suffices); the `verify.ps1 -Tag` example points at v2.7.3; the `src/` layout note no longer says "not a released state".
-
-### Tests / 测试
-
-- 单元测试 **297 → 304**：新增 7 项覆盖 `P()` 的相对路径行为（不再产生 `\\?\.\`、尾部保留、解析为绝对路径、绝对/UNC/已加前缀输入零变化）以及一条真实临时目录的 Dry-Run 计划断言（相对 `--path` 必须看到 2 个文件）。
-  Unit tests **297 → 304**: 7 new checks for `P()` on relative paths (no `\\?\.\`, tail preserved, resolves to absolute, absolute / UNC / already-prefixed input unchanged) plus a real temp-dir dry-run plan assertion (a relative `--path` must see both files). Integration suite unchanged at **33**.
-
----
-
 ## v2.8.0 — 未发布 / Unreleased
-
-> 注：阶段 1 的**分层拆分**（及阶段 2 的 net8.0 工程）已随 **v2.7.3** 一起发布——下面的记录保留为当时的过程说明，本版号只留给后续阶段。
-> Note: the stage-1 **layering split** (and stage 2's net8.0 project) already shipped with **v2.7.3** — the record below is kept as the process note of that work; this version number is reserved for later stages.
-
-### Docs / 文档（2026-09-28）
-
-- **README 补上「插件加载失败」一节**（EN/zh）：把 `profilepatch --disable`（v2.7.2 的通用隔离处方）写进文档——此前只在发行说明里提过，README 一直缺；同时把「工具箱不是 dsh 插件（独立进程、不注入 dsh、dsh 没装也能用）」写清楚，避免被误当成插件安装。
-  **README gained a "plugin failed to load" section** (EN/zh) documenting `profilepatch --disable` (the v2.7.2 generic quarantine prescription, previously only in the release notes) and stating plainly that the toolkit is **not** a dsh plugin.
-- 仓库 description/topics 更新为**排障/数据保护**向关键词（diagnostics / troubleshooting / backup-restore / disaster-recovery / data-integrity / checksum-verification / profile / cordis）。
-  Repository description/topics now use troubleshooting and data-protection keywords.
 
 ### Changed / 变更（GUI 呈现层基座 · 2026-09-28）
 
 - **任务即信号**：GUI 新增全局信号总线（`SignalBus` / `Sig` / `SigRouting`）。任务开始/成功/失败/超时、服务状态变化、日志追加都广播为信号，"哪个信号刷新什么"变成一张**路由表**（`SigRouting.ActionsFor`），不再散落在各处直接调用（原来 `OnCaptureDone` 里硬编码了"更新按钮 + 刷新备份列表 + 弹托盘气泡"）；`SetStatus` 也不再直接驱动按钮可用性。
-  **Tasks as signals**: the GUI gained a global signal bus (`SignalBus` / `Sig` / `SigRouting`). "Which signal refreshes what" is now a **routing table** instead of hard-coded calls scattered around.
-- **设置项卡片化**：设置页由数据渲染（`SettingsCards.Default()`：4 张卡片 / 9 个设置项）。加设置项只改模型，不碰布局代码。
-  **Settings as cards**: the settings page renders from data (`SettingsCards.Default()`: 4 cards / 9 items).
-- **GUI 逻辑测试 + i18n 强制检查**（新文件 `tests\gui_logic_tests.cs`，52 项，零第三方依赖，CI 每次推送都跑）：标记行解析、信号总线、路由表、设置卡片模型，以及**源码级 i18n 强制检查**（`L10N._()` 用到的键必须有定义；不能有死键；中英文不能为空；**L10N 字典之外不允许出现中文字符串字面量**）。
-  **GUI logic tests + i18n enforcement** (new `tests\gui_logic_tests.cs`, 52 checks, zero third-party deps, run by CI on every push).
+  **Tasks as signals**: the GUI gained a global signal bus (`SignalBus` / `Sig` / `SigRouting`). Task start/ok/fail/timeout, service-state changes and log appends are broadcast as signals, and "which signal refreshes what" is now a **routing table** (`SigRouting.ActionsFor`) instead of hard-coded calls scattered around.
+- **设置项卡片化**：设置页由数据渲染（`SettingsCards.Default()`：4 张卡片 / 9 个设置项，含配置键、文案键、控件形态与取值）。加设置项只改模型，不碰布局代码。
+  **Settings as cards**: the settings page renders from data (`SettingsCards.Default()`: 4 cards / 9 items with config key, label key, control kind and options).
+- **GUI 逻辑测试 + i18n 强制检查**（新文件 `tests\gui_logic_tests.cs`，零第三方依赖，CI 每次推送都跑）：标记行解析、信号总线（含"一个订阅者抛异常不影响其他订阅者"）、路由表、设置卡片模型，以及**源码级 i18n 强制检查**（`L10N._()` 用到的键必须有定义；定义过的键不能是死键；中英文都不能为空；**L10N 字典之外不允许出现中文字符串字面量**）。
+  **GUI logic tests + i18n enforcement** (new `tests\gui_logic_tests.cs`, zero third-party deps, run by CI on every push): marker parsing, the signal bus (incl. "one throwing subscriber must not break the others"), the routing table, the settings card model, and **source-level i18n enforcement**.
 
 ### Fixed / 修复（GUI）
 
-- **导出/删除备份、保存设置后界面一直显示"失败"** —— 标记行名单漏了 `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK`（以及 `DRYRUN_*` / `DOCTOR_*` 等），`FindMarker` 找不到标记 → 判定为失败，托盘成功气泡也不会弹。已知标记行现在集中成一张表（`Markers`）。
-  **Export/delete backup and saving settings always reported "failed"** — the marker list was missing `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK` (and `DRYRUN_*` / `DOCTOR_*`). Known markers now live in one table (`Markers`).
-- **两处硬编码中文**：关于页署名两行、以及"已在运行。"提示在英文界面下仍是中文 → 补 `about.credits` / `app.alreadyrunning`（由 i18n 强制检查兜住）。
-  **Two hard-coded Chinese strings** (About credits, "already running") → new `about.credits` / `app.alreadyrunning` keys.
+- **导出/删除备份、保存设置后界面一直显示"失败"** —— 标记行名单漏了 `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK`（以及 `DRYRUN_*` / `DOCTOR_*` 等），`FindMarker` 找不到标记 → 判定为失败，托盘成功气泡也不会弹。现在已知标记行集中成一张表（`Markers`），并加了回归测试。
+  **Export/delete backup and saving settings always reported "failed"** — the marker list was missing `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK` (and `DRYRUN_*` / `DOCTOR_*`), so `FindMarker` returned nothing and the UI treated it as a failure. Known markers now live in one table (`Markers`) with regression tests.
+- **两处硬编码中文**：关于页的署名两行、以及"已在运行。"提示在英文界面下仍是中文 → 已补 `about.credits` / `app.alreadyrunning` 两个 L10N 键（由上面的 i18n 强制检查兜住）。
+  **Two hard-coded Chinese strings**: the About page credits and the "already running" message stayed Chinese in the English UI → new `about.credits` / `app.alreadyrunning` keys (now guarded by the i18n enforcement test).
+
 ### Changed / 变更（重构 · 阶段 1：分层，已完成 · 2026-09-21）
 
 - **单文件核心拆成 Core / Platform / Cli 三层**（落地：`dsh_v2.cs` 4212 行 → **1344 行** + `src/**` 9 个文件共约 3050 行；提交 `ee36ac0`，CI 绿）（`dsh_v2.cs` → `dsh_v2.cs` + `src/**`）。这是**只搬不改**的重构：用 `partial class Program` 把同一个类分散到多个文件，**不改变任何调用点、签名、字符串、注释或行为**，也不引入任何依赖或 Unix 代码。

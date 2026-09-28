@@ -17,7 +17,7 @@ if ($base -eq "") { Write-Host "SKIP: 基线不可用（需要 v2.7.2 tag 或 05
 $baseText = [System.IO.File]::ReadAllText($base)
 Remove-Item $base -Force -ErrorAction SilentlyContinue
 
-$files = @((Join-Path $Repo 'dsh_v2.cs')) + (Get-ChildItem (Join-Path $Repo 'src') -Recurse -Filter *.cs | ForEach-Object FullName)
+$files = @((Join-Path $Repo 'dsh_v2.cs')) + (Get-ChildItem (Join-Path $Repo 'src') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
 $curText = ""
 foreach ($f in $files) { $curText += [System.IO.File]::ReadAllText($f) + "`n" }
 

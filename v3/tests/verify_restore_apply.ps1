@@ -80,7 +80,7 @@ try {
     $csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
     if (-not (Test-Path -LiteralPath $csc)) { Write-Host ("找不到 csc: " + $csc); exit 2 }
     if (Test-Path -LiteralPath $exe) { Remove-Item -LiteralPath $exe -Force }   # 绝不留下旧 exe 造成"假通过"
-    $src = @(Get-ChildItem -LiteralPath $v3src -Recurse -Filter *.cs | ForEach-Object { $_.FullName })
+    $src = @(Get-ChildItem -LiteralPath $v3src -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object { $_.FullName })
     $build = (& $csc /nologo /target:exe /warn:4 "/out:$exe" $src 2>&1 | Out-String)
     Check ("构建成功（" + $src.Count + " 个源文件）") (Test-Path -LiteralPath $exe)
     if (-not (Test-Path -LiteralPath $exe)) { Write-Host $build; exit 2 }

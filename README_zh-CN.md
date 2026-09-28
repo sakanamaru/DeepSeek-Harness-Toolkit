@@ -71,7 +71,7 @@ GUI **更新**页只读可视化整幅更新图景：当前 dsh 版本、最新�
 
 GUI **设置**页把工具箱自身配置（`launcher.config`，仍是明文 `key=value`）分成四组：**Harness**（Web 主机 / 工作区路径）、**备份**（自动备份保留份数，≥3）、**更新**（启动更新检查 / dsh 更新检测 / 更新通道）、**工具箱**（界面语言 / 菜单倒计时自动启动 / 关闭主窗口时）。**保存只提交你真正改动过的键**，越界值由核心侧白名单拒绝——打错字不会悄悄写坏配置。无界面对应命令：`config-get`（读全部键）、`config-set <键> <值>`（白名单写入）。
 
-### dsh 起不来 / 插件加载失败怎么办——从报错到那一行处方
+### dsh 起不来怎么办——从报错到那一行处方
 
 真实故障（2026-09-15）：`dsh web` 启动失败，报
 
@@ -101,20 +101,9 @@ DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <条目> --set maxD
 DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed --yes
 ```
 
-**不止 `maxDepth`：任何坏插件都能先隔离掉。** 上面那行处方让插件**继续可用**；当坏插件身份不明、或你只想先让 dsh 起来时，可以往补丁文件**末尾追加**一个顶层条目把这一行关掉（**只追加**，不改动你 profile 里任何已有字符）：
-
-```powershell
-DeepSeek Harness Toolkit.exe profilepatch --disable <条目 id>          # 预览（PROFILEPATCH_DRYRUN，零写入）
-DeepSeek Harness Toolkit.exe profilepatch --disable <条目 id> --yes    # 先备份 → 追加 → 复检 → 失败逐字节回滚
-```
-
-`disabled: true` 是 **dsh 自己补丁层的一等字段**（`@deepseek-ai/cordis-plugin-include` 的 `PatchOptions.disabled`），dsh 自己关遥测行就用它——所以这是"关掉那一行"的正统写法，不是重写你的 profile。它**只做手动操作、绝不自动执行**，幂等（已隔离 → `PROFILEPATCH_NOOP`），id 走字符集白名单（`[A-Za-z0-9._@/-]`，防 YAML 注入），复检失败则逐字节回滚。
-
 GUI 里对应体检页的**配置自检**按钮：运行 `profilecheck`，发现可修风险时弹框确认，确认后经 `profilepatch` 先备份再修复，随后复扫。
 
 **诚实边界：从「正在失败的启动」里自动发现问题——做不到。** 工具看不到你那次崩溃，需要你二选一：主动跑一次 `profilecheck`（对 `~/.dsh/profiles/**/*.yaml|*.yml` 的静态只读扫描），或把启动失败输出存成文件后跑 `bootdiag --from <文件>`（它绝不猜：识别不了就报 `BOOTDIAG_KIND unknown` + 第一条错误行）。写入路径必须显式 `--yes`，永远先备份、只加这一行、复扫校验、失败自动回滚；全程不碰凭据、不联网、默认不改 `node_modules` 下的任何文件。维护者本机实测：7 个 profile 文件中查出 1 处真实遗留问题（`subagent-acp-kimi` 缺 `maxDepth`），同时跳过 `node_modules` 下 563 个包内文件；`bootdiag` 把真实捕获堆栈解析为 `@deepseek-ai/dsh-tool-subagent` / `tool-subagent-kimi` / `cordis.patch.yml` 第 20 行；`profilepatch` 在副本上只加了一行，第二次运行报 NOOP。
-
-**本工具在插件生态里的位置。** 工具箱**不是** dsh 插件：它是一个独立 Windows 可执行程序，不注入 dsh、不跑在 dsh 的插件树里、dsh 没装也能用。它读的是 dsh 插件层读的**同一批 profile 文件**（写入必须显式 `--yes`），这正是它为什么能诊断并隔离"dsh 自己都起不来"的那个插件。
 
 ### 日志中心——筛选、搜索、导出
 
@@ -254,7 +243,7 @@ DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不
 
 或双击本目录 `build_exe.cmd`。GUI 由同规则的单文件 `gui_v2.cs` 编译（一份源码 → 附加版与集成版两种形态；集成版多一个 `/resource:<核心exe>,DSHCore.exe`）。
 
-> 上面命令里的 `src\` 通配符属于 **v2.8 阶段 1 的布局（2026-09-21 已完成）**——**move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（见「目录结构」）。**已发布的 v2.7.3** 核心即由这套分层布局编译（v2.7.2 及更早是单文件 `dsh_v2.cs`，重编它们时去掉那三个 `src\` 通配符）。`csc.exe` 自身不展开通配符——需要显式文件清单时，用 `Get-ChildItem src -Recurse -Filter *.cs` 展开。
+> 上面命令里的 `src\` 通配符属于 **v2.8 阶段 1 的布局（2026-09-21 已完成）**——**move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（见「目录结构」）。**已发布的 v2.7.3** 核心即由这套分层布局编译（v2.7.2 及更早是单文件 `dsh_v2.cs`）。`csc.exe` 自身不展开通配符——需要显式文件清单时，用 `Get-ChildItem src -Recurse -Filter *.cs` 展开。
 
 **可复现发布（源码即产物）**：每个 GitHub Release 的 exe 均由 **GitHub Actions CI** 从本仓库源码自动编译生成，并在同一流水线里重新生成 `hashes.txt` 且完成 **GPG 签名**。标签构建另会发布 **GitHub 构建溯源证明（attestation）**——这是独立的额外溯源检查，需用 `gh` 单独验证；`verify.ps1` **不**验证它，它也不能替代 GPG 签名校验。仓库自身不存放任何二进制文件。
 
@@ -262,19 +251,20 @@ DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不
 
 无需任何测试框架或第三方依赖：
 
-- **单元测试（304 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
+- **单元测试（318 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs tests\unit_tests.cs
   unittests.exe
   ```
-  退出码 0=全过。覆盖：路径往返（含 UNC / 中文空格）、工作区黑名单、dsh 数据目录标记、根标记严格性、备份目录校验、日志轮转、备份命名 + 保留策略、服务三态判定、版本比较 / 发布解析 / 更新探测、netstat PID 解析、Dry-Run 合并/删除计划（含恢复侧跳过规则一致性）、备份类型解析、导出 / 删除校验、回滚候选查询、配置白名单（含 `close_action` / `auto_start` 键）、状态栏 `FormatUptime`、profile 静态扫描 / `bootdiag` 输出解析 / 受控单行修复（一行计划、幂等 NOOP、备份、复扫校验与回滚）。
+  退出码 0=全过。覆盖：路径往返（含 UNC / 中文空格与**相对路径**）、工作区黑名单、dsh 数据目录标记、根标记严格性、备份目录校验、日志轮转、备份命名 + 保留策略、服务三态判定、版本比较 / 发布解析 / 更新探测、netstat PID 解析、Dry-Run 合并/删除计划（含恢复侧跳过规则一致性）、备份类型解析、导出 / 删除校验、回滚候选查询、配置白名单（含 `close_action` / `auto_start` 键）、状态栏 `FormatUptime`、profile 静态扫描 / `bootdiag` 输出解析 / 受控单行修复（一行计划、幂等 NOOP、备份、复扫校验与回滚）。
 
 - **GUI 逻辑测试（52 项）**：与 `gui_v2.cs` 同程序集编译，零第三方依赖；CI 每次推送都跑：
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /main:GuiLogicTests /out:guilogictests.exe gui_v2.cs tests\gui_logic_tests.cs
   guilogictests.exe
   ```
-  覆盖呈现层基座：标记行解析（含此前漏掉的 `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK`）、信号总线（含"一个订阅者抛异常不影响其他订阅者"）、信号→界面动作路由表（`SigRouting`）、设置卡片模型（`SettingsCards`），以及**源码级 i18n 强制检查**（`L10N._()` 用到的键必须有定义、不能有死键、中英文不能为空、**L10N 字典之外不允许出现中文字符串字面量**）。
+  覆盖呈现层基座：标记行解析（含此前漏掉的 `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK`）、信号总线（`SignalBus`——含"一个订阅者抛异常不影响其他订阅者"）、信号→界面动作路由表（`SigRouting`）、设置卡片模型（`SettingsCards`），以及**源码级 i18n 强制检查**（`L10N._()` 用到的键必须有定义、定义过的键不能是死键、中英文不能为空、**L10N 字典之外不允许出现中文字符串字面量**）。
+
 - **集成测试（33 个用例）**：打桩端到端矩阵（变体 A/C，真实探测 3080；覆盖保留策略、运行中禁止恢复/导入、双语断言等）：
   ```
   powershell -ExecutionPolicy Bypass -File tests\integration.ps1
@@ -306,14 +296,14 @@ keys/                维护者 GPG 公钥
 SECURITY.md          安全策略、数据与网络边界声明
 CHANGELOG.md         更新日志（双语）
 hashes.txt           SHA-256 校验清单（CI 每次发布重新生成）
-tests/               单元（304）/ 集成（33）测试——无第三方依赖
+tests/               单元（297）/ 集成（33）测试——无第三方依赖
 docs/screenshots/    README 截图
 .github/workflows/   CI：push/PR 跑测试；标签/手动触发构建发布 + GPG 签名
 .dsh_launcher_root   安装标记（随包分发；误删保护）
 backup/  logs/       运行时目录（已被 .gitignore 排除，切勿提交）
 ```
 
-> **上面的 `src/` 各行即 v2.7.3 起的发布布局。** 它来自 **move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（同一程序集内的 `partial`，因此调用点、签名与行为零改动），已完成于 2026-09-21（提交 ee36ac0，CI 绿）。已发布的 **v2.7.3** 即由这套布局编译。拆分不动 `gui_v2.cs`、`tests/unit_tests.cs`、`verify.ps1`。
+> **上面的 `src/` 各行即 v2.7.3 起的发布布局。** 阶段 1 是 **move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（同一程序集内的 `partial`，因此调用点、签名与行为零改动），已完成于 2026-09-21（提交 ee36ac0，CI 绿）。已发布的 **v2.7.3** 即由这套布局编译。阶段 1 不动 `gui_v2.cs`、`tests/unit_tests.cs`、`verify.ps1`。
 
 ## 错误日志
 
@@ -326,7 +316,7 @@ backup/  logs/       运行时目录（已被 .gitignore 排除，切勿提交�
 - **下载后先核验再运行（约 20 秒）**：
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.3 -OutDir D:\verify
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.0 -OutDir D:\verify
   ```
 
   `verify.ps1`（发布包内）自动完成：下载指定 release 的全部产物（三个版本 + `hashes.txt`）→ 对照 CI 生成的 `hashes.txt` 做 SHA-256 核验 → 用**临时隔离钥匙串**把 `hashes.txt.asc` 的签名**钉死比对维护者指纹**（不信任本机钥匙串：换任何别的钥匙签出的"好签名"都会被拒绝）→ 打印 **Release → Tag → Commit** 溯源链（tag 对象 / commit / commit 链接）。只读，不安装任何东西。带 `-Tag` 时走固定下载链接、完全不调 GitHub API（不怕匿名限速）；不带 `-Tag` 时通过 API 解析最新 release（网络受限可选传 `-Token`）。

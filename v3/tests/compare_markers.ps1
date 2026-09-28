@@ -14,7 +14,7 @@ if (-not (Test-Path $csc)) { Write-Host "SKIP: 找不到 csc（需 Windows + .NE
 $v2 = Join-Path $Repo 'DeepSeek Harness Toolkit.exe'
 if (-not (Test-Path $v2)) { Write-Host "SKIP: 找不到 v2.x exe（$v2）——先在仓库根构建 v2.x"; exit 2 }
 $v3exe = Join-Path $Repo 'dsht_v3_contract.exe'          # 与 v2.x 同目录 → 状态目录一致
-$files = @(Get-ChildItem (Join-Path $Repo 'v3\src') -Recurse -Filter *.cs | ForEach-Object FullName)
+$files = @(Get-ChildItem (Join-Path $Repo 'v3\src') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
 & $csc /nologo /target:exe /warn:4 ("/out:" + $v3exe) $files | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: V3 编译失败"; exit 2 }
 
@@ -96,12 +96,13 @@ $cases = @(
     # needsService：**只有服务在运行时才允许跑**——否则 v2.x 会真的把受控备份恢复进真实 ~/.dsh。
     @{ name = 'restore (latest)'; args = @('restore'); full = $true; needsService = $true },
     @{ name = 'config-get';          args = @('config-get'); full = $true },
-    @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity '; ignoreSummary = $true },
+    @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity |^\[(OK|WARN|ERROR)\] Network '; ignoreSummary = $true },
     # doctor --report：比对**报告正文**（postFile 模式）。
     # 忽略：生成时间/Toolkit/系统三行（时间戳与版本必然不同）、自身完整性条目（v2.x 的 exe 在清单里但本地构建
-    # 哈希不匹配 → ERROR；V3 的临时 exe 名不在清单 → 跳过）、结果行（汇总数受被忽略条目影响）。
+    # 哈希不匹配 → ERROR；V3 的临时 exe 名不在清单 → 跳过）、npm registry 可达性（网络抖动会让两侧不同 → 假失败）、
+    # 结果行（汇总数受被忽略条目影响）。
     # 掩码：日志摘要行（两次运行之间日志会增长，且内容含时间戳）——掩码后仍能验证"该行两侧都存在且前缀一致"。
-    @{ name = 'doctor --report (body)'; args = @('doctor','--report',(Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt')); postFile = (Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt'); ignore = '^(生成时间|Toolkit|系统)\s*:|^\[(OK|WARN|ERROR)\] (自身 exe 与随包|旁无 hashes\.txt)|^结果\s*:'; mask = '共 \d+ 行；最近: .*' }
+    @{ name = 'doctor --report (body)'; args = @('doctor','--report',(Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt')); postFile = (Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt'); ignore = '^(生成时间|Toolkit|系统)\s*:|^\[(OK|WARN|ERROR)\] (自身 exe 与随包|旁无 hashes\.txt|npm registry )|^结果\s*:'; mask = '共 \d+ 行；最近: .*' }
 )
 $fail = 0
 $skipped = 0

@@ -38,7 +38,7 @@ $forbidden = @(
     'Environment.GetEnvironmentVariable',
     'DateTime.Now', 'DateTime.UtcNow', 'DateTimeOffset.Now', 'Thread.Sleep'
 )
-$files = @(Get-ChildItem $dir -Recurse -Filter *.cs -ErrorAction SilentlyContinue | ForEach-Object FullName)
+$files = @(Get-ChildItem $dir -Recurse -Filter *.cs -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
 $viol = New-Object System.Collections.Generic.List[string]
 foreach ($f in $files) {
     $txt = Strip-Comments ([System.IO.File]::ReadAllText($f))
