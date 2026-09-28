@@ -1,106 +1,33 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Dsht.Gui.Avalonia.MainWindow"
-        Title="DeepSeek Harness Toolkit（跨平台 GUI）"
-        Width="1180" Height="720"
-        MinWidth="860" MinHeight="520">
-  <Grid RowDefinitions="Auto,*,Auto">
-
-    <!-- 顶部：非官方声明（与 CLI/README 文案一致） -->
-    <Border Grid.Row="0" Background="#FFF4E5" Padding="12,6">
-      <TextBlock Text="⚠ 非官方工具，由社区独立开发，与 DeepSeek 官方无关。只读本地状态，不联网（余额查询除外，需显式开启）。"
-                 Foreground="#8A5300" TextWrapping="Wrap" />
-    </Border>
-
-    <Grid Grid.Row="1" ColumnDefinitions="210,*">
-      <!-- 左：页面导航（对应 CLI 命令；GUI 只做呈现） -->
-      <Border Grid.Column="0" BorderThickness="0,0,1,0" BorderBrush="#DDDDDD">
-        <StackPanel Margin="8">
-          <TextBlock Text="页面" FontWeight="Bold" Margin="4,4,4,8" />
-          <ListBox x:Name="NavList" SelectedIndex="1" Background="Transparent">
-            <ListBoxItem Content="状态 / Status" Tag="status --detail" />
-            <ListBoxItem Content="会话与 Token / Sessions" Tag="sessions" />
-            <ListBoxItem Content="形态与插件 / Profiles" Tag="profiles" />
-            <ListBoxItem Content="备份 / Backups" Tag="backup-list --detail" />
-            <ListBoxItem Content="体检 / Doctor" Tag="doctor" />
-            <ListBoxItem Content="配置 / Config" Tag="config-get" />
-            <ListBoxItem Content="说明 / Describe" Tag="describe" />
-          </ListBox>
-        </StackPanel>
-      </Border>
-
-      <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto">
-        <TextBlock Grid.Row="0" x:Name="PageTitle" Margin="12,10,12,4" FontSize="15" FontWeight="Bold" Text="会话与 Token / Sessions" />
-
-        <!-- ============ 会话 / Token 面板（结构化界面） ============ -->
-        <Grid Grid.Row="1" x:Name="SessionsPane" RowDefinitions="Auto,Auto,*,Auto" Margin="12,0,12,8">
-          <!-- 汇总条 -->
-          <Border Grid.Row="0" Background="#F2F6FF" CornerRadius="4" Padding="10,8">
-            <StackPanel Orientation="Horizontal" Spacing="18">
-              <TextBlock x:Name="SumSessions" FontWeight="Bold" Text="会话 —" />
-              <TextBlock x:Name="SumLive" Text="运行中 —" />
-              <TextBlock x:Name="SumTokens" Text="token —" />
-              <TextBlock x:Name="SumHit" Text="缓存命中 —" />
-              <TextBlock x:Name="SumDecode" Text="解码 —" />
-            </StackPanel>
+        Title="DeepSeek Harness Toolkit — 布局框架对比"
+        Width="1280" Height="820"
+        MinWidth="1000" MinHeight="600"
+        Background="#F3F4F6">
+  <Grid RowDefinitions="Auto,Auto,*">
+    <Border Grid.Row="0" Background="#4D6BFE" Padding="16,10">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10">
+          <TextBlock Text="◆" Foreground="White" FontSize="16" VerticalAlignment="Center" />
+          <TextBlock Text="DeepSeek Harness Toolkit" Foreground="White" FontSize="15" FontWeight="Bold" VerticalAlignment="Center" />
+          <Border Background="#3A55D9" CornerRadius="9" Padding="7,2" VerticalAlignment="Center">
+            <TextBlock Text="布局框架对比 · 本地预览" Foreground="White" FontSize="11" />
           </Border>
-
-          <!-- 表头 -->
-          <Grid Grid.Row="1" Margin="0,8,0,2" ColumnDefinitions="84,74,60,168,104,92,104,104,96,86">
-            <TextBlock Grid.Column="0" Text="会话" FontWeight="Bold" Foreground="#555555" />
-            <TextBlock Grid.Column="1" Text="状态" FontWeight="Bold" Foreground="#555555" />
-            <TextBlock Grid.Column="2" Text="轮次" FontWeight="Bold" Foreground="#555555" />
-            <TextBlock Grid.Column="3" Text="最后活动 (UTC)" FontWeight="Bold" Foreground="#555555" />
-            <TextBlock Grid.Column="4" Text="输入 token" FontWeight="Bold" Foreground="#555555" />
-            <TextBlock Grid.Column="5" Text="输出 token" FontWeight="Bold" Foreground="#555555" />
-            <TextBlock Grid.Column="6" Text="缓存命中" FontWeight="Bold" Foreground="#555555" />
-            <TextBlock Grid.Column="7" Text="解码速度" FontWeight="Bold" Foreground="#555555" />
-            <TextBlock Grid.Column="8" Text="首 token" FontWeight="Bold" Foreground="#555555" />
-            <TextBlock Grid.Column="9" Text="上下文压力" FontWeight="Bold" Foreground="#555555" />
-          </Grid>
-
-          <!-- 会话行 -->
-          <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto">
-            <ItemsControl x:Name="SessionList">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Grid ColumnDefinitions="84,74,60,168,104,92,104,104,96,86" Margin="0,1">
-                    <TextBlock Grid.Column="0" Text="{Binding ShortId}" FontFamily="Cascadia Mono,Consolas,monospace" />
-                    <TextBlock Grid.Column="1" Text="{Binding LiveText}" />
-                    <TextBlock Grid.Column="2" Text="{Binding Turns}" />
-                    <TextBlock Grid.Column="3" Text="{Binding LastText}" />
-                    <TextBlock Grid.Column="4" Text="{Binding InText}" />
-                    <TextBlock Grid.Column="5" Text="{Binding OutText}" />
-                    <TextBlock Grid.Column="6" Text="{Binding HitText}" />
-                    <TextBlock Grid.Column="7" Text="{Binding DecodeText}" />
-                    <TextBlock Grid.Column="8" Text="{Binding TtftText}" />
-                    <TextBlock Grid.Column="9" Text="{Binding CtxText}" />
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
-
-          <!-- 数据来源与诚实边界 -->
-          <TextBlock Grid.Row="3" x:Name="SessionsSource" Margin="0,8,0,0" Foreground="#666666" TextWrapping="Wrap" Text="数据来源：—" />
-        </Grid>
-
-        <!-- ============ 其它页面：原样展示标记行 ============ -->
-        <TextBox Grid.Row="1" x:Name="Output" Margin="12,0,12,8" IsReadOnly="True"
-                 AcceptsReturn="True" TextWrapping="NoWrap"
-                 FontFamily="Cascadia Mono,Consolas,monospace" />
-
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="12,0,12,10" Spacing="8">
-          <Button x:Name="RefreshBtn" Content="刷新 / Refresh" />
-          <TextBlock x:Name="StatusLine" VerticalAlignment="Center" Foreground="#666666" Text="" />
         </StackPanel>
+        <TextBlock Grid.Column="2" Text="⚠ 非官方 · 只读本地状态 · 不联网" Foreground="#DCE4FF" FontSize="12" VerticalAlignment="Center" />
       </Grid>
-    </Grid>
-
-    <!-- 底部：架构说明 -->
-    <Border Grid.Row="2" Background="#F5F5F5" Padding="12,4">
-      <TextBlock x:Name="Footer" Foreground="#666666"
-                 Text="数据来自工具箱 CLI 的标记行契约；GUI 不引用核心程序集（呈现层与核心解耦）。" />
     </Border>
+    <Border Grid.Row="1" Background="White" BorderThickness="0,0,0,1" BorderBrush="#E5E7EB" Padding="16,8">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="布局框架" Foreground="#6B7280" FontSize="12" VerticalAlignment="Center" />
+        <Button x:Name="Shell0" Content="① 侧栏式" />
+        <Button x:Name="Shell1" Content="② 顶部标签式" />
+        <Button x:Name="Shell2" Content="③ 卡片网格仪表盘" />
+        <Button x:Name="Shell3" Content="④ 主从式（列表+详情）" />
+        <TextBlock x:Name="ShellHint" Foreground="#9CA3AF" FontSize="12" VerticalAlignment="Center" Margin="10,0,0,0" Text="" />
+      </StackPanel>
+    </Border>
+    <ContentControl Grid.Row="2" x:Name="Body" />
   </Grid>
 </Window>

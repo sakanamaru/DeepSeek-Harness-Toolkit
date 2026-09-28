@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Dsht.Gui.Avalonia.Markers;
 
 namespace Dsht.Gui.LogicTests
@@ -42,11 +43,21 @@ namespace Dsht.Gui.LogicTests
             Check("行：ttft 原值", a.TtftMs == 187588);
             Check("行：live/blank 标记", a.Live && !a.Blank && a.LiveText == "运行中");
             Check("行：时间戳保留 ISO 文本", a.Created == "2026-09-23T01:48:28Z" && a.Last == "2026-09-23T01:48:28Z");
-            Check("行：数字显示带千分位（InvariantCulture，不受区域设置影响）", a.InText == "5,161,243" && a.OutText == "68,886" && a.CacheReadText == "4,964,096");
+            Check("行：token 用人读格式（K/M，InvariantCulture）", a.InText == "5.2M" && a.OutText == "68.9K" && a.CacheReadText == "5.0M");
             SessionRow b = s.Rows[1];
-            Check("行：unknown 一律为 -1 / 空串（不假装 0）", b.HitPercent < 0 && b.DecodeTps < 0 && b.CtxPercent < 0 && b.TtftMs == -1 && b.Last == "" && b.LastText == "unknown");
+            Check("行：unknown 一律为 -1 / 空串（不假装 0）", b.HitPercent < 0 && b.DecodeTps < 0 && b.CtxPercent < 0 && b.TtftMs == -1 && b.Last == "" && b.LastShort == "unknown");
             Check("行：unknown 的显示文本", b.HitText == "unknown" && b.DecodeText == "unknown" && b.TtftText == "unknown" && b.CtxText == "unknown");
             Check("行：空会话标记与文案", b.Blank && !b.Live && b.LiveText == "空会话");
+            Check("行：短时间与状态语义", a.LastShort == "09-23 01:48" && a.StatusKind == 0 && b.StatusKind == 2);
+            Check("行：等级与条形（命中 96.2 → 高/96；压力 0 → 低/0）", a.HitLevel == 3 && a.HitBar == 96 && a.CtxLevel == 1 && a.CtxBar == 0);
+            Check("行：首 token 超 1 秒按秒显示", a.TtftText == "187.6 s");
+            Check("行：unknown 的等级/条形不假装", b.HitLevel == 0 && b.HitBar == 0 && b.CtxLevel == 0);
+            List<SessionRow> f1 = SessionsView.Filter(s.Rows, SessionsView.FilterNonBlank);
+            List<SessionRow> f2 = SessionsView.Filter(s.Rows, SessionsView.FilterLive);
+            Check("过滤：非空 1 条 / 运行中 1 条 / 全部 2 条", f1.Count == 1 && f2.Count == 1 && SessionsView.Filter(s.Rows, SessionsView.FilterAll).Count == 2);
+            Check("排序：按输入 token 降序时第一条是量大的那条", SessionsView.Sort(s.Rows, 1)[0].In == 5161243);
+            SessionsView.AttachBars(s.Rows);
+            Check("条形：最大者为 100，未知/零不越界", s.Rows[0].TokenBar == 100 && s.Rows[1].TokenBar == 0);
             Check("汇总：总量与加权命中率/速度", s.TotalIn == 5161243 && s.TotalOut == 68886 && s.TotalCacheRead == 4964096 && Math.Abs(s.TotalHitPercent - 97.1) < 0.001 && Math.Abs(s.TotalDecodeTps - 108.6) < 0.001);
 
             SessionsSnapshot fail = SessionsMarkers.Parse("SESSIONS_FAIL 没有可读的会话投影（dsh 未初始化）");
