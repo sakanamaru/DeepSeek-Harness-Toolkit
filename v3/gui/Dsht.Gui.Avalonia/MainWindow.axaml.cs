@@ -248,7 +248,7 @@ namespace Dsht.Gui.Avalonia
         {
             try
             {
-                using (System.IO.Stream s = Avalonia.Platform.AssetLoader.Open(new Uri("avares://dsht-gui/Assets/logo-icon.png")))
+                using (System.IO.Stream s = global::Avalonia.Platform.AssetLoader.Open(new Uri("avares://dsht-gui/Assets/logo-icon.png")))
                 {
                     Icon = new WindowIcon(s);
                 }
