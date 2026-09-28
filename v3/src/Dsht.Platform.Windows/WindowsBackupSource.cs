@@ -200,6 +200,9 @@ namespace Dsht.Platform.Windows
                 Directory.CreateDirectory(dstDir);
                 string target = Path.Combine(dstDir, Path.GetFileName(src.TrimEnd('\\', '/')));
                 CopyTree(src, target, true);
+                // 同级旁挂文件一起带走 ✓✓ —— 否则导出后**完成标记丢失** ✗，包到了别处无法核对完整性 ✓（迁移时最需要可信的一刻 ✓）
+                CopySibling(src, target, ".manifest");
+                CopySibling(src, target, ".version");
                 return target;
             }
             catch { return null; }
@@ -327,6 +330,18 @@ namespace Dsht.Platform.Windows
             try { ds = Directory.GetDirectories(dir); } catch { return total; }
             for (int i = 0; i < ds.Length; i++) total += DirSizeForManifest(ds[i]);
             return total;
+        }
+        /// <summary>复制备份包的**同级旁挂文件**（.manifest / .version ✓）：存在才复制 ✓ 尽力而为 ✓。
+        /// 不这么做的话，export 之后标记就丢了 ✗ → 包到了别处无法核对完整性 ✓。</summary>
+        private static void CopySibling(string srcPkg, string dstPkg, string suffix)
+        {
+            try
+            {
+                string from = srcPkg.TrimEnd('\\', '/') + suffix;
+                if (!System.IO.File.Exists(from)) return;
+                System.IO.File.Copy(from, dstPkg.TrimEnd('\\', '/') + suffix, true);
+            }
+            catch { }
         }
         private static int CopyTree(string src, string dst, bool skipLocked)
         {

@@ -591,6 +591,9 @@ namespace Dsht.Cli
             try
             {
                 int files = CopyDirDeep(srcFull, dest, 0);
+                // 把**同级旁挂文件**（完成标记 / 版本记录）一起导入 ✓✓ —— 否则迁移到新机器后无法核对完整性 ✓
+                CopySiblingFile(srcFull, dest, ".manifest");
+                CopySiblingFile(srcFull, dest, ".version");
                 OpLog(reg, "INFO", "import OK " + srcFull + " -> " + dest + " (" + files + " files)");
                 Console.WriteLine("IMPORT_OK " + dest + " " + files);
                 Console.WriteLine("IMPORT_NEXT " + T("下一步：restore --path ", "next: restore --path ") + dest + T(" --dry-run 先预览，再去掉 --dry-run 执行", " --dry-run to preview, then drop --dry-run to apply"));
@@ -600,6 +603,17 @@ namespace Dsht.Cli
         }
 
         /// <summary>递归复制目录（导入用 ✓；深度上限兜底，避免符号链接环 ✗）。返回复制文件数。</summary>
+        /// <summary>复制备份包的**同级旁挂文件**（存在才复制 ✓ 尽力而为 ✓）。</summary>
+        private static void CopySiblingFile(string srcPkg, string dstPkg, string suffix)
+        {
+            try
+            {
+                string from = srcPkg.TrimEnd('\\', '/') + suffix;
+                if (!System.IO.File.Exists(from)) return;
+                System.IO.File.Copy(from, dstPkg.TrimEnd('\\', '/') + suffix, true);
+            }
+            catch { }
+        }
         private static int CopyDirDeep(string from, string to, int depth)
         {
             if (depth > 32) return 0;
