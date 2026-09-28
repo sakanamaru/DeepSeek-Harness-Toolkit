@@ -86,7 +86,15 @@ namespace Dsht.Platform.Linux
             {
                 string t = raw.Trim();
                 if (t.Length == 0) continue;
-                if (t.IndexOf(":" + port, StringComparison.Ordinal) < 0) continue;
+                // 端口必须**精确匹配** ✗：子串匹配会让 "127.0.0.1:30800" 命中 3080 → 取到错 PID → stop 杀错进程
+                // （平台缝审计抓到的阻塞项 ✗）。ss -ltnp 行格式：State Recv-Q Send-Q Local:Port Peer:Port Process
+                string[] cols = Regex.Split(t, @"\s+");
+                if (cols.Length < 5) continue;
+                string local = cols[3];
+                int colon = local.LastIndexOf(':');
+                if (colon < 0) continue;
+                int localPort;
+                if (!int.TryParse(local.Substring(colon + 1), out localPort) || localPort != port) continue;
                 Match m = Regex.Match(t, @"pid=(\d+)");
                 if (!m.Success) continue;
                 int pid;
@@ -107,9 +115,12 @@ namespace Dsht.Platform.Linux
                 using (Process p = Process.Start(psi))
                 {
                     if (p == null) return "";
-                    string outp = p.StandardOutput.ReadToEnd();
-                    p.StandardError.ReadToEnd();
-                    if (!p.WaitForExit(5000)) { try { p.Kill(); } catch { } return outp; }
+                    // 并发读两个流 ✗：先读完 stdout 再读 stderr 会死锁（stderr 写满时互等 → 超时 → 空结果）
+                    System.Threading.Tasks.Task<string> soT = System.Threading.Tasks.Task.Run(delegate { return p.StandardOutput.ReadToEnd(); });
+                    System.Threading.Tasks.Task<string> seT = System.Threading.Tasks.Task.Run(delegate { return p.StandardError.ReadToEnd(); });
+                    if (!p.WaitForExit(15000)) { try { p.Kill(); } catch { } return soT.IsCompleted ? soT.Result : ""; }
+                    string outp = soT.Result;
+                    seT.Wait(2000);
                     return outp;
                 }
             }
