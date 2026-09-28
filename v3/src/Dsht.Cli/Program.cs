@@ -1566,7 +1566,8 @@ namespace Dsht.Cli
 
         /// <summary>工作区解析（对齐 v2.x 的 WorkspaceRoot）：`ws=` 配置优先——配置了但目录不存在 → null
         /// （**不回退自动探测**，避免误备份/误恢复）；未配置 → 用平台自动探测（Windows：exe 上两级 + 合理性判定；
-        /// Linux：诚实返回 null）。dry-run 与真实恢复都走这里，保证两处目标一致。</summary>
+        /// Linux：**当前工作目录**（B2 修复后的事实 ✓；此处原写"诚实返回 null" ✗ 已过时 ✓ —— 那是修 cwd 基准之前的行为 ✗）。
+        /// dry-run 与真实恢复都走这里，保证两处目标一致。</summary>
         private static string WorkspaceRoot(ServiceRegistry reg)
         {
             return WorkspaceResolver.Resolve(_cfg == null ? null : _cfg.Workspace, reg.Get<IPaths>().WorkspaceRoot,
