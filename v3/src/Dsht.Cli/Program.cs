@@ -22,8 +22,9 @@ namespace Dsht.Cli
             if (cmd == "status") return Status(reg, Has(args, "--detail"));
             if (cmd == "describe") return Describe(reg);
             if (cmd == "profilecheck") return ProfileCheck(args);
+            if (cmd == "backup-list") return BackupList(args);
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [--dir X] [--file Y] [--vendor] [--abs]");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail]");
             return 2;
         }
 
@@ -89,6 +90,35 @@ namespace Dsht.Cli
                     if (f.Missing == "maxDepth") Console.WriteLine("PROFILECHK_FIX " + f.File + "|" + f.Line + "|" + f.Id + "|" + f.Missing);
             }
             if (fs.Count == 0) Console.WriteLine("PROFILECHK_OK");
+            return 0;
+        }
+
+
+        /// <summary>backup-list：标记行与裸路径行逐条对齐 v2.x 的 NIBackupList。</summary>
+        private static int BackupList(string[] args)
+        {
+            bool detail = Has(args, "--detail");
+            IBackupSource src = new WindowsBackupSource();
+            List<BackupEntry> all = src.ListRaw();
+            List<BackupEntry> valid = new List<BackupEntry>();
+            for (int i = 0; i < all.Count; i++)
+            {
+                if (BackupPackage.IsValidPackage(all[i].Snapshot)) valid.Add(all[i]);
+            }
+            // v2.x：升序后反转 → 最新在前
+            valid.Reverse();
+            Console.WriteLine("BACKUP_LIST_OK " + valid.Count);
+            foreach (BackupEntry e in valid)
+            {
+                Console.WriteLine(e.Path);
+                if (detail)
+                {
+                    long bytes = src.DirSize(e.Path);
+                    DateTime? mt = src.LastWrite(e.Path);
+                    string mts = mt.HasValue ? mt.Value.ToString("yyyy-MM-dd HH:mm:ss") : "(unknown)";
+                    Console.WriteLine("BACKUP_ITEM " + e.Name + " " + BackupPackage.KindLabel(BackupPackage.Classify(e.Name)) + " " + bytes + " " + mts);
+                }
+            }
             return 0;
         }
 

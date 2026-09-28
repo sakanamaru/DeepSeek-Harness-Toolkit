@@ -227,6 +227,15 @@ static class ContractTests
         Check("普通路径不命中", !ProfileScanner.IsVendorPath("C:\\x\\profiles\\web\\cordis.patch.yml"));
         Check("大小写不敏感", ProfileScanner.IsVendorPath("C:\\x\\NODE_MODULES\\a.yml"));
         Check("空/空串不命中", !ProfileScanner.IsVendorPath("") && !ProfileScanner.IsVendorPath(null));
+        Console.WriteLine("[10] 备份类型显示标签（逐字对齐 v2.x BackupKindName）");
+        Check("Manual", BackupPackage.KindLabel(Dsht.Domain.Model.BackupKind.Manual) == "Manual");
+        Check("Auto", BackupPackage.KindLabel(Dsht.Domain.Model.BackupKind.Auto) == "Auto");
+        Check("PreRestore/PreImport/PreUpdate/PreWipe",
+            BackupPackage.KindLabel(Dsht.Domain.Model.BackupKind.PreRestore) == "PreRestore"
+            && BackupPackage.KindLabel(Dsht.Domain.Model.BackupKind.PreImport) == "PreImport"
+            && BackupPackage.KindLabel(Dsht.Domain.Model.BackupKind.PreUpdate) == "PreUpdate"
+            && BackupPackage.KindLabel(Dsht.Domain.Model.BackupKind.PreWipe) == "PreWipe");
+        Check("标签与 Classify 往返一致", BackupPackage.KindLabel(BackupPackage.Classify("dsh-data-x-pre-update")) == "PreUpdate");
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;

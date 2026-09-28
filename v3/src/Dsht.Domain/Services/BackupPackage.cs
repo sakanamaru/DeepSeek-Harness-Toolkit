@@ -75,6 +75,17 @@ namespace Dsht.Domain.Services
             return BackupKind.Manual;
         }
 
+        /// <summary>类型显示标签。逐字对齐 v2.x 的 BackupKindName（英文、不本地化）。</summary>
+        public static string KindLabel(BackupKind k)
+        {
+            if (k == BackupKind.PreRestore) return "PreRestore";
+            if (k == BackupKind.PreImport) return "PreImport";
+            if (k == BackupKind.PreUpdate) return "PreUpdate";
+            if (k == BackupKind.PreWipe) return "PreWipe";
+            if (k == BackupKind.Auto) return "Auto";
+            return "Manual";
+        }
+
         /// <summary>是否保护性备份（严格模式：任一文件复制失败即整体失败）。</summary>
         public static bool IsProtective(BackupKind k)
         {
