@@ -1341,7 +1341,20 @@ namespace Dsht.Cli
                     mismatch++;
                     Console.WriteLine("BACKUP_VERIFY " + name + " mismatch " + T("标记 ", "marker ") + want + T(" 个文件，实际 ", " files, actual ") + have + T(" 个 —— 该备份不完整，不要依赖它", " - this backup is incomplete, do not rely on it"));
                 }
-                else { complete++; Console.WriteLine("BACKUP_VERIFY " + name + " complete " + have); }
+                else
+                {
+                    complete++;
+                    // 把标记里的 failed= 一并带出来 ✓✓ —— 否则事后复查只看到 "complete" ✗
+                    // 而 "包自身一致" 与 "源里有没有少备" 是**两个问题** ✓（--verify 回答前者 ✓ 这里补上后者 ✓）
+                    int failedInMarker = -1;
+                    try
+                    {
+                        string[] ml = System.IO.File.ReadAllLines(mf);
+                        for (int k = 0; k < ml.Length; k++) { if (ml[k].StartsWith("failed=", StringComparison.Ordinal)) int.TryParse(ml[k].Substring(7).Trim(), out failedInMarker); }
+                    }
+                    catch { }
+                    Console.WriteLine("BACKUP_VERIFY " + name + " complete " + have + (failedInMarker > 0 ? T(" ；但源里有 ", " ; but ") + failedInMarker + T(" 项未能备份（不完整 ✓）", " items could not be backed up (incomplete)") : ""));
+                }
             }
             Console.WriteLine("BACKUP_VERIFY_TOTAL " + all.Count + " complete=" + complete + " incomplete=" + incomplete + " mismatch=" + mismatch);
             return 0;
