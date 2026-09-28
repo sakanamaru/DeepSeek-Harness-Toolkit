@@ -97,6 +97,23 @@ Launch detects the service state — **running / starting / stopped** (TCP + HTT
 
 One-click **full backup** of the dsh data directory (`~/.dsh`) into `backup\` next to the exe; list-restore with confirmation, open-backup-folder; manual backups are kept forever, automatic ones follow the retention policy; every dangerous operation (restore / import / wipe / update) **auto-backs up first**.
 
+### Backups that can prove they are complete
+
+Every backup now carries a completion marker next to it (`<package>.manifest`), written last, recording the
+file count, the byte count and a SHA-256 over the package's contents. Three things follow from that:
+
+- **An interrupted backup is detectable.** The marker is written only after the copy finishes, so a package
+  without one was never completed - `backup-list --verify` reports it as `incomplete` instead of quietly
+  listing it as a usable backup.
+- **Altered or damaged content is detectable.** `backup-list --verify` recomputes the hash and reports
+  `mismatch` with an explicit "do not rely on this backup" when it differs, which catches a file copied only
+  halfway - something a file count cannot see.
+- **Restoring from a broken backup is refused.** `restore` and `restore --dry-run` check the marker before
+  touching anything and refuse with the counts spelled out; add `--force` if you really mean it.
+
+The marker travels with the package through `backup-export` and `import`, so a backup moved to another
+machine can still be checked there. Packages written before this feature have no marker; they are treated as
+"unknown" rather than rejected, so nothing old breaks.
 ### Migrate dsh to another PC
 
 Copy the backup folder to the new machine and use **Import** — multi-workspace aware (`_workspace\name\`), compatible with old backup formats, long-path safe (`\\?\`, >260 chars).
