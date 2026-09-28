@@ -286,6 +286,30 @@ static class ContractTests
             Check("Linux BackupsRoot = StateDir/backup", new Dsht.Platform.Linux.LinuxPaths().BackupsRoot.EndsWith("backup"));
         }
         finally { Environment.SetEnvironmentVariable("DSH_HOME", oldDshHome); }
+        Console.WriteLine("[13] 组合服务目标与预留形态（桌面端驱动的核心语义）");
+        FakePort cp = new FakePort(); FakeHttp ch = new FakeHttp(); FakeProc cq = new FakeProc();
+        WebTarget web = Make(cp, ch, cq);
+        ReservedTarget hd = new ReservedTarget(AppKind.Headless, "test");
+        ReservedTarget dt = new ReservedTarget(AppKind.Desktop, "test");
+        CompositeServiceTarget comp = new CompositeServiceTarget(new IServiceTarget[] { web, hd, dt });
+
+        cp.Open = true; ch.Ready = true;
+        ServiceReport cr1 = comp.Probe();
+        Check("web 就绪 → 组合选 web", cr1.Kind == AppKind.Web && cr1.State == ServiceState.Ready);
+        Check("组合 Kind 反映所选形态", comp.Kind == AppKind.Web);
+
+        ch.Ready = false; cq.Pid = 9; cq.IsDsh = true;
+        Check("web Listening/Ready 优先于预留形态", comp.Probe().Kind == AppKind.Web);
+
+        cp.Open = false;
+        ServiceReport cr2 = comp.Probe();
+        Check("web 停 + 预留形态全 Down → 报 Unknown/Down（不假装 Ready）", cr2.Kind == AppKind.Unknown && cr2.State == ServiceState.Down);
+        Check("组合 Basis 说明已尝试的形态", cr2.Basis.IndexOf("Headless") >= 0 && cr2.Basis.IndexOf("Desktop") >= 0);
+        Check("组合 Describe 列出各形态", comp.Describe().IndexOf("dsh web") >= 0 && comp.Describe().IndexOf("Desktop") >= 0);
+
+        Check("预留形态永不 Ready", hd.Probe().State == ServiceState.Down && !hd.IsAvailable());
+        Check("预留形态 Basis 说明原因", hd.Probe().Basis.IndexOf("预留") >= 0);
+        Check("空组合 → Unknown/Down", new CompositeServiceTarget(new IServiceTarget[0]).Probe().Kind == AppKind.Unknown);
         Console.WriteLine();
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;

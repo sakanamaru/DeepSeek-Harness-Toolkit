@@ -20,6 +20,20 @@ namespace Dsht.Cli
             return Path.DirectorySeparatorChar == '\\';
         }
 
+
+        /// <summary>组合服务目标：web 用真实观测；headless/acp/desktop 是**预留形态**（当前无可观测事实）。
+        /// 这样"未识别形态"在 CLI 里是一等公民——不假装 Ready，也不假装"没在跑"。</summary>
+        private static IServiceTarget Composite(IPortProbe port, IHttpProbe http, IProcessQuery proc)
+        {
+            return new CompositeServiceTarget(new IServiceTarget[]
+            {
+                new WebTarget(port, http, proc, new WebTargetOptions(WebPort, WebUrl, 800, 800)),
+                new ReservedTarget(AppKind.Headless, "无监听端口可观测；需要进程枚举能力（待接入）"),
+                new ReservedTarget(AppKind.Acp, "ACP 走 stdio/管道，当前无可观测入口（待 dsh 侧形态明确）"),
+                new ReservedTarget(AppKind.Desktop, "桌面端形态待观测（进程名/IPC 未知）")
+            });
+        }
+
         public static ServiceRegistry Compose()
         {
             ServiceRegistry reg = new ServiceRegistry();
@@ -38,7 +52,7 @@ namespace Dsht.Cli
                 reg.Add<IIntegritySource>(new WindowsIntegritySource());
                 reg.Add<IProfileSource>(new WindowsProfileSource(paths));
                 reg.Add<IBackupSource>(new WindowsBackupSource(paths));
-                reg.Add<IServiceTarget>(new WebTarget(port, http, proc, new WebTargetOptions(WebPort, WebUrl, 800, 800)));
+                reg.Add<IServiceTarget>(Composite(port, http, proc));
             }
             else
             {
@@ -55,7 +69,7 @@ namespace Dsht.Cli
                 reg.Add<IIntegritySource>(new LinuxIntegritySource());
                 reg.Add<IProfileSource>(new LinuxProfileSource(paths));
                 reg.Add<IBackupSource>(new LinuxBackupSource(paths));
-                reg.Add<IServiceTarget>(new WebTarget(port, http, proc, new WebTargetOptions(WebPort, WebUrl, 800, 800)));
+                reg.Add<IServiceTarget>(Composite(port, http, proc));
             }
             return reg;
         }
