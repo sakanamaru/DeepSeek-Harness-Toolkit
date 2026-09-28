@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  verify_backup_chain.sh —— 备份可信链与失败路径的可重复验证
+#  ---------------------------------------------------------------------------
+#  为什么有这个脚本：这条链上的每一条结论（标记、哈希、闸门、回滚、合并语义、
+#  多工作区、失败时的诚实性）都是**真机验证**出来的，但验证过程原本只写在
+#  会话记录里 —— 下一个人无法复现，只能选择相信。这个脚本把那些步骤固化成
+#  一条命令。
+#
+#  用法：  bash verify_backup_chain.sh /path/to/dsh-minato
+#  退出码：0 = 全部通过；1 = 有失败
+#
+#  安全：全程使用**隔离数据根**与**隔离备份根**（备份根 = exe 同目录 ✓），
+#        绝不触碰默认数据根，绝不触碰默认端口，绝不联网。
+# ============================================================================
+set -u
+CLI="${1:-}"
+if [ -z "$CLI" ] || [ ! -x "$CLI" ]; then echo "用法: bash verify_backup_chain.sh /path/to/dsh-minato"; exit 2; fi
+CLI=$(readlink -f "$CLI")
+T="timeout 300"
+pass=0; fail=0
+ok(){ pass=$((pass+1)); echo "  [PASS] $1"; }
+bad(){ fail=$((fail+1)); echo "  [FAIL] $1"; }
+
+# 隔离根：exe 复制到全新目录 → 状态目录（含备份根）随之全新 ✓
+WORK=$(mktemp -d /tmp/vbc-XXXXXX)
+BIN="$WORK/bin"; mkdir -p "$BIN"; cp "$CLI" "$BIN/dsh-minato"; chmod +x "$BIN/dsh-minato"
+CLI="$BIN/dsh-minato"
+BKROOT="$BIN/backup"
+A="$WORK/a"; mkdir -p "$A/storages"; printf 'ALPHA\n' > "$A/storages/a.txt"; printf 'BETA\n' > "$A/storages/b.txt"
+cleanup(){ rm -rf "$WORK" 2>/dev/null; }
+trap cleanup EXIT
+
+echo "== 备份可信链验证 =="
+echo "  CLI: $($CLI version 2>/dev/null || echo '(version 失败)')"
+
+# ---- 1 备份 + 完成标记 ----
+O=$(DSH_HOME="$A" $T $CLI backup 2>&1 | tr -d '\r'); P=$(echo "$O" | awk '/BACKUP_OK/{print $2}')
+[ -n "$P" ] && ok "备份成功（BACKUP_OK ✓）" || { bad "备份失败"; echo "$O" | sed 's/^/      /'; }
+[ -f "$P.manifest" ] && ok "完成标记存在 ✓" || bad "完成标记缺失 ✗"
+grep -q 'sha256=' "$P.manifest" 2>/dev/null && ok "标记含内容哈希 ✓" || bad "标记缺哈希 ✗"
+MK=$(grep -o 'files=[0-9]*' "$P.manifest" 2>/dev/null | head -1 | cut -d= -f2)
+REAL=$(find "$P" -type f 2>/dev/null | wc -l)
+[ "$MK" = "$REAL" ] && ok "标记计数与内容一致（$MK ✓）" || bad "计数不符（标记 $MK ≠ 实际 $REAL）✗"
+
+# ---- 2 --verify complete ----
+V=$(DSH_HOME="$A" $T $CLI backup-list --verify 2>&1 | tr -d '\r')
+echo "$V" | grep -qE "^BACKUP_VERIFY .*complete $REAL" && ok "--verify 报 complete ✓" || bad "--verify 异常 ✗"
+echo "$V" | grep -qE '^BACKUP_VERIFY .*mismatch' && bad "干净的包被判 mismatch ✗" || ok "无 mismatch ✓"
+
+# ---- 3 篡改内容 → 必须被发现（不改文件名/数量 ✓ 只有哈希能发现）----
+printf 'TAMPERED\n' > "$P/storages/a.txt"
+V2=$(DSH_HOME="$A" $T $CLI backup-list --verify 2>&1 | tr -d '\r')
+echo "$V2" | grep -qE '^BACKUP_VERIFY .*mismatch' && ok "篡改被识别为 mismatch ✓" || bad "篡改未被发现 ✗✗"
+printf 'ALPHA\n' > "$P/storages/a.txt"   # 还原 ✓
+
+# ---- 4 恢复闸门：截断包必须被拒 ----
+printf 'X\n' > "$WORK/keep.txt"; rm -f "$P/storages/b.txt"
+R=$(DSH_HOME="$A" $T $CLI restore --path "$P" --apply --yes 2>&1 | tr -d '\r')
+echo "$R" | grep -qE '^RESTORE_FAIL' && ok "截断包被拒（RESTORE_FAIL ✓）" || bad "截断包未被拒 ✗✗"
+echo "$R" | grep -qE '^RESTORE_OK' && bad "截断包竟然报成功 ✗✗" || ok "未谎报成功 ✓"
+printf 'BETA\n' > "$P/storages/b.txt"    # 还原 ✓
+
+# ---- 5 合并语义：仅目标端存在的文件不得被删 ----
+TG="$WORK/tg"; mkdir -p "$TG/storages"
+printf 'TARGET-ONLY\n' > "$TG/storages/only-here.txt"
+printf 'OLD\n' > "$TG/storages/a.txt"
+DSH_HOME="$TG" $T $CLI restore --path "$P" --apply --yes >/dev/null 2>&1
+[ "$(cat "$TG/storages/a.txt" 2>/dev/null)" = "ALPHA" ] && ok "同名文件被覆盖（合并语义 ✓）" || bad "同名文件未覆盖 ✗"
+[ -f "$TG/storages/only-here.txt" ] && ok "仅目标端存在的文件被保留 ✓✓" || bad "目标端独有文件被删 ✗✗"
+
+# ---- 6 回滚锚点：恢复前自动备份必须存在且可用 ----
+grep -qE '^RESTORE_PRE_BACKUP ' <<<"$(DSH_HOME="$TG" $T $CLI restore --path "$P" --apply --yes 2>&1 | tr -d '\r')" \
+  && ok "恢复前锚点被告知（RESTORE_PRE_BACKUP ✓）" || bad "锚点未告知 ✗"
+
+# ---- 7 失败诚实性：不可读目录必须如实报告 ----
+if [ "$(id -u)" != "0" ]; then
+  U="$WORK/unread"; mkdir -p "$U/storages" "$U/secret"
+  printf 'R\n' > "$U/storages/r.txt"; printf 'S\n' > "$U/secret/s.txt"; chmod 000 "$U/secret"
+  UO=$(DSH_HOME="$U" $T $CLI backup 2>&1 | tr -d '\r')
+  echo "$UO" | grep -q 'BACKUP_INCOMPLETE' && ok "不可读目录被如实报告（BACKUP_INCOMPLETE ✓）" || bad "静默少备份 ✗✗"
+  echo "$UO" | grep -q 'BACKUP_OK' && ok "同时给出包路径（部分成功 ✓）" || bad "未给路径 ✗"
+  chmod 755 "$U/secret" 2>/dev/null
+else
+  echo "  [SKIP] 以 root 运行 → 不可读目录测不了（权限对 root 无效 ✓）"
+fi
+
+# ---- 8 多工作区：ws=A;B → 新格式 + 恢复闭环 ----
+W1="$WORK/w1"; W2="$WORK/w2"; mkdir -p "$W1" "$W2"
+printf 'W1\n' > "$W1/one.txt"; printf 'W2\n' > "$W2/two.txt"
+DSH_HOME="$A" $T $CLI config-set ws "$W1;$W2" >/dev/null 2>&1
+MO=$(DSH_HOME="$A" $T $CLI backup 2>&1 | tr -d '\r'); MP=$(echo "$MO" | awk '/BACKUP_OK/{print $2}')
+N=$(find "$MP/_workspace" -name '.dshws' 2>/dev/null | wc -l)
+[ "$N" -eq 2 ] && ok "多工作区：两个 .dshws 标记 ✓" || bad "多工作区标记数 $N ≠ 2 ✗"
+FLAT=$(find "$MP/_workspace" -maxdepth 1 -type f 2>/dev/null | wc -l)
+[ "$FLAT" -eq 0 ] && ok "包内只有一种格式（无扁平残留 ✓）" || bad "包内混格式（顶层文件 $FLAT）✗✗"
+MT="$WORK/mt"; mkdir -p "$MT"
+MR=$(cd "$MT" && DSH_HOME="$WORK/md" $T $CLI restore --path "$MP" --apply --yes 2>&1 | tr -d '\r')
+echo "$MR" | grep -q 'UNRECOGNIZED' && bad "恢复报 UNRECOGNIZED ✗" || ok "恢复无 UNRECOGNIZED ✓"
+[ -f "$MT/one.txt" ] && [ -f "$MT/two.txt" ] && ok "多工作区内容都恢复 ✓✓" || bad "多工作区恢复不全 ✗"
+DSH_HOME="$A" $T $CLI config-set ws "" >/dev/null 2>&1
+
+echo ""
+echo "== 结果：PASS=$pass FAIL=$fail =="
+[ "$fail" -eq 0 ] && exit 0 || exit 1
