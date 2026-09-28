@@ -364,6 +364,30 @@ namespace Dsht.Cli
             string a = Console.ReadLine();
             return a != null && a.Trim().ToLowerInvariant() == "y";
         }
+        /// <summary>按更新通道选版本 ✓（配置 update_channel，经典版同名设置项 ✓）：
+        /// stable = 最新**非预发布**版 ✓；rc = 最新版（含预发布 ✓，即 npm 的 latest 标签）。
+        /// npm view versions 的输出是**升序**的 ✓，所以取最后一个匹配项即最新 ✓（不自己比版本号 ✗，避免 0.1.7 vs 0.1.10 这类字典序陷阱 ✗）。
+        /// 列表取不到时回退到 latest ✓；调用方须如实说明来源 ✓。</summary>
+        private static string VersionForChannel(IToolchainQuery tc, string channel)
+        {
+            string latest = NpmVersionGuard.Normalize(tc.NpmViewLatest());
+            if (string.IsNullOrEmpty(channel) || channel != "stable") return latest;
+            string list = tc.NpmViewVersions();
+            if (string.IsNullOrEmpty(list)) return latest;
+            System.Text.RegularExpressions.MatchCollection ms = System.Text.RegularExpressions.Regex.Matches(list, "[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.]+)?");
+            string best = "";
+            for (int i = 0; i < ms.Count; i++)
+            {
+                string v = ms[i].Value;
+                if (v.IndexOf((char)45) >= 0) continue;   // 预发布跳过 ✓
+                if (!NpmVersionGuard.IsSafe(v)) continue;
+                best = v;                                  // npm 输出升序 → 最后一个即最新 ✓
+            }
+            if (best.Length > 0) return best;
+            // 没有任何非预发布版（dsh 至今全是 -rc.x ✓）→ 如实说明这次回退 ✓，不静默把 rc 当 stable 交付 ✗
+            Console.WriteLine("CHANNEL_NOTE " + T("stable 通道下没有任何非预发布版，已回退到最新预发布版 ", "no non-prerelease version exists on the stable channel; falling back to the newest prerelease ") + latest);
+            return latest;
+        }
         /// <summary>verify-install（V3 独有）：核对本机文件与发布清单的 SHA-256 ✓ —— 经典版「验证此安装」的 CLI 对应物 ✓。
         /// 默认核对**正在运行的自身** ✓；清单默认取自身旁边的 hashes.txt ✓，或用 --manifest 指定，或用 --url 从发布页取 ✓。
         /// **清单拿不到时绝不说 OK** ✗✓：只报 VERIFY_MANIFEST_MISSING 并说明如何取得 ✓。
@@ -598,7 +622,8 @@ namespace Dsht.Cli
                 if (string.IsNullOrEmpty(tc.WhichDsh())) { Console.WriteLine("UPDATEINFO_INSTALLED not-installed"); Console.WriteLine("UPDATEINFO_LATEST unknown"); Console.WriteLine("UPDATEINFO_STATE unknown"); return 0; }
             }
             Console.WriteLine("UPDATEINFO_INSTALLED " + (string.IsNullOrEmpty(installed) ? "unknown" : installed));
-            string latest = NpmVersionGuard.Normalize(tc.NpmViewLatest());
+            Console.WriteLine("UPDATEINFO_CHANNEL " + (string.IsNullOrEmpty(_cfg == null ? null : _cfg.UpdateChannel) ? "rc" : _cfg.UpdateChannel));
+            string latest = VersionForChannel(tc, _cfg == null ? "rc" : _cfg.UpdateChannel);
             Console.WriteLine("UPDATEINFO_LATEST " + (latest.Length == 0 ? "unknown" : latest));
             string reg2 = tc.NpmRegistryConfig();
             Console.WriteLine("UPDATEINFO_REGISTRY " + (string.IsNullOrEmpty(reg2) ? "default" : reg2.Trim()));
@@ -860,7 +885,9 @@ namespace Dsht.Cli
                 Console.WriteLine(verb + "_OBSERVED " + (installed.Length > 0 ? installed : "not-installed"));
                 return 0;
             }
-            string latest = wantVersion.Length > 0 ? wantVersion : NpmVersionGuard.Normalize(tc.NpmViewLatest());
+            string channel = _cfg == null ? "rc" : _cfg.UpdateChannel;
+            string latest = wantVersion.Length > 0 ? wantVersion : VersionForChannel(tc, channel);
+            if (wantVersion.Length == 0) Console.WriteLine(verb + "_CHANNEL " + (string.IsNullOrEmpty(channel) ? "rc" : channel) + " -> " + (latest.Length == 0 ? "unknown" : latest));
             if (!NpmVersionGuard.IsSafe(latest))
             {
                 Console.WriteLine(verb + "_FAIL " + T("拿不到可信的最新版本（离线，或 npm 返回值未通过白名单）", "no trustworthy latest version (offline, or the npm value failed the whitelist)"));
