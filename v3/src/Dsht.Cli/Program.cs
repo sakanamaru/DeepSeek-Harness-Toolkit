@@ -35,6 +35,7 @@ namespace Dsht.Cli
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
             if (cmd == "profilepatch") return ProfilePatch(args, reg);
             if (cmd == "profiles") return Profiles(reg);
+            if (cmd == "log") return LogCmd(args, reg);
             if (cmd == "about") return AboutCmd();
             if (cmd == "shortcut") return ShortcutCmd(args);
             if (cmd == "ui") return UiCmd();
@@ -309,7 +310,8 @@ namespace Dsht.Cli
             Console.WriteLine(T("dsh-minato 命令速查：", "dsh-minato commands:"));
             Console.WriteLine("  status [--detail] | describe | doctor | bootdiag | check | selftest | version | about");
             Console.WriteLine("  profiles | profilecheck [--dir <d>] [--file <yaml>] [--diag] | profilepatch --profile <name> --id <entry> [--enable] [--yes]");
-            Console.WriteLine("  sessions | config-get | config-set <key> <value>");
+            Console.WriteLine("  sessions | log [--lines <n>] [--level info|warn|error] [--grep <text>] [--export <file> [--yes]]");
+            Console.WriteLine("  config-get | config-set <key> <value>");
             Console.WriteLine("  install [--install-node] [--yes] | update [--yes] | uninstall [--yes]");
             Console.WriteLine("  start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--force] [--yes]");
             Console.WriteLine("  backup | backup-list [--detail] | backup-export --path <备份> --to <目标> [--yes] | backup-delete --path <备份> [--yes] [--yes]");
@@ -356,6 +358,53 @@ namespace Dsht.Cli
             Console.Write(T("将执行：", "will run: ") + what + T("　确认？(y/N) ", "  confirm? (y/N) "));
             string a = Console.ReadLine();
             return a != null && a.Trim().ToLowerInvariant() == "y";
+        }
+        /// <summary>log（V3 独有）：查看/筛选/导出操作日志 —— 经典版「日志中心」的 CLI 对应物 ✓。
+        /// 用法：log [--lines &lt;n&gt;] [--level info|warn|error] [--grep &lt;text&gt;] [--export &lt;file&gt; [--yes]]
+        /// 标记行：LOG_OK &lt;n&gt; / LOG_LINE &lt;原文&gt; / LOG_EMPTY / LOG_EXPORT &lt;路径&gt; &lt;n&gt; / LOG_FAIL &lt;原因&gt;。</summary>
+        private static int LogCmd(string[] args, ServiceRegistry reg)
+        {
+            string text = reg.Get<ILogSource>().ReadLog();
+            if (text == null)
+            {
+                Console.WriteLine("LOG_EMPTY " + T("还没有日志（状态目录/logs/launcher.log 不存在）", "no log yet (state dir/logs/launcher.log does not exist)"));
+                return 0;
+            }
+            string level = FlagOf(args, "--level").Trim().ToLowerInvariant();
+            string grep = FlagOf(args, "--grep");
+            int maxLines = 0;
+            string linesArg = FlagOf(args, "--lines");
+            if (linesArg.Length > 0) int.TryParse(linesArg, out maxLines);
+            List<string> picked = new List<string>();
+            string[] all = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            for (int i = 0; i < all.Length; i++)
+            {
+                string l = all[i];
+                if (level.Length > 0 && l.IndexOf(level, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                if (grep.Length > 0 && l.IndexOf(grep, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                picked.Add(l);
+            }
+            while (picked.Count > 0 && picked[picked.Count - 1].Trim().Length == 0) picked.RemoveAt(picked.Count - 1);   // 去掉末尾空行（日志文件常以换行结尾）
+            if (maxLines > 0 && picked.Count > maxLines) picked.RemoveRange(0, picked.Count - maxLines);
+            string export = FlagOf(args, "--export");
+            if (export.Length > 0)
+            {
+                if (!Has(args, "--yes"))
+                {
+                    Console.WriteLine("LOG_EXPORT_PLAN " + T("将把筛选结果写入 ", "will write the filtered result to ") + export + T("（会写盘）—— 确认请加 --yes", " (writes to disk) - add --yes to confirm"));
+                    return 0;
+                }
+                try
+                {
+                    System.IO.File.WriteAllText(export, string.Join(Environment.NewLine, picked.ToArray()));
+                    Console.WriteLine("LOG_EXPORT " + export + " " + picked.Count);
+                }
+                catch (Exception ex) { Console.WriteLine("LOG_FAIL " + ex.Message); }
+                return 0;
+            }
+            Console.WriteLine("LOG_OK " + picked.Count);
+            for (int i = 0; i < picked.Count; i++) Console.WriteLine("LOG_LINE " + picked[i]);
+            return 0;
         }
         /// <summary>about（V3 独有）：版本、定位、许可与"非官方"声明。纯文本，不联网。</summary>
         /// <summary>shortcut（V3 独有）：创建桌面/应用菜单入口。
