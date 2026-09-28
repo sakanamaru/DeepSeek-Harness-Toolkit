@@ -24,8 +24,9 @@ namespace Dsht.Cli
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
             if (cmd == "backup-list") return BackupList(args, reg);
             if (cmd == "doctor") return Doctor(reg);
+            if (cmd == "version") { Console.WriteLine("DSHT_VERSION " + ToolkitVersion); return 0; }
 
-            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor");
+            Console.WriteLine("usage: dsht status [--detail] | describe | profilecheck [...] | backup-list [--detail] | doctor | version");
             return 2;
         }
 
@@ -224,6 +225,9 @@ namespace Dsht.Cli
             else if (verdict == IntegrityVerdict.Mismatch) items.Add(new DocItem("Integrity", 2, "自身 exe 与随包 hashes.txt 不一致！（可能被篡改或替换，请从官方 Release 重新下载）"));
             else items.Add(new DocItem("Integrity", 0, "旁无 hashes.txt，跳过自身校验（单独复制 exe 或源码编译属正常；如需校验请使用官方发布包）"));
         }
+
+        /// <summary>工具箱版本（源码常量：保证 csc 与 dotnet 两种构建报告一致）。</summary>
+        internal const string ToolkitVersion = "3.0.0-dev";
 
         private const string NpmOfficial = "https://registry.npmjs.org";
 
