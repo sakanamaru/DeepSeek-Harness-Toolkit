@@ -72,6 +72,7 @@ namespace Dsht.Gui.Avalonia
         {
             InitializeComponent();
             for (int i = 0; i < 5; i++) BindShell(i);
+            for (int i = 0; i < 4; i++) BindStyle(i);
             Refresh();
         }
 
@@ -86,6 +87,14 @@ namespace Dsht.Gui.Avalonia
         public ProfilesSnapshot Profiles { get { return _profiles; } }
         public List<SessionRowVm> Rows { get { return _rows; } }
         public int SortMode { get; set; }
+        public int StyleKind { get { return Palette.StyleKind; } }
+
+        /// <summary>切换视觉 demo（A/B/C/D）：换配色与密度后重画外壳。</summary>
+        public void SetStyle(int kind)
+        {
+            Palette.Apply(kind);
+            BuildShell();
+        }
         public int MainSection { get { return _mainSection; } }
         public int SubTab { get { return _subTab; } }
         public bool IsSessionsSection { get { return _mainSection == 1; } }
@@ -180,6 +189,13 @@ namespace Dsht.Gui.Avalonia
             Shells.Shells.FillDetail(DetailHost, vm);
         }
 
+        private void BindStyle(int id)
+        {
+            Button b = this.FindControl<Button>("Style" + id);
+            if (b == null) return;
+            b.Click += delegate(object s, RoutedEventArgs e) { SetStyle(id); };
+        }
+
         private void BindShell(int id)
         {
             Button b = this.FindControl<Button>("Shell" + id);
@@ -196,7 +212,7 @@ namespace Dsht.Gui.Avalonia
             ContentControl body = this.FindControl<ContentControl>("Body");
             if (body == null) return;
             TextBlock hint = this.FindControl<TextBlock>("ShellHint");
-            if (hint != null) hint.Text = "当前：" + Shells.Shells.Name(_shell) + "　（点按钮切换布局；左侧主菜单 + 顶部子菜单都已接通）";
+            if (hint != null) hint.Text = "布局：" + Shells.Shells.Name(_shell) + "　风格：" + Palette.StyleName(Palette.StyleKind);
             DetailHost = null;
             body.Content = Shells.Shells.Build(_shell, this);
         }
