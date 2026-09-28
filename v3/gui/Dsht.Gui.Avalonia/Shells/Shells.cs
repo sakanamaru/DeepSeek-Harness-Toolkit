@@ -561,7 +561,14 @@ namespace Dsht.Gui.Avalonia.Shells
 
         private static Control TextPane(MainWindow host)
         {
-            return new Border { Margin = PageMargin, Child = RawCard(host, "原始输出", "CLI 标记行原文") };
+            {
+                // 说明页 = 关于信息（logo 已从标题栏移到这里 ✓）+ CLI 原始输出
+                global::Avalonia.Controls.StackPanel wrap = new global::Avalonia.Controls.StackPanel();
+                wrap.Spacing = 4;
+                wrap.Children.Add(AboutCard());
+                wrap.Children.Add(new Border { Margin = PageMargin, Child = RawCard(host, "原始输出", "CLI 标记行原文") });
+                return wrap;
+            }
         }
 
         /// <summary>按当前主菜单项选内容（带外层滚动）：会话页=面板，形态页=profile 卡片，状态页=图形化概览，其余=标记行原文。</summary>
@@ -571,6 +578,48 @@ namespace Dsht.Gui.Avalonia.Shells
         }
 
         /// <summary>同 <see cref="SectionBody"/> 但不自带滚动（供已经有滚动容器的外壳用）。</summary>
+        /// <summary>关于卡片：整图 logo + 品牌 + 非官方声明（logo 从标题栏移到关于页 ✓）。
+        /// 全部用全限定名 —— 这个文件里 Avalonia.* 前缀会被解析成 Dsht.Gui.Avalonia.* ✗（踩过）。</summary>
+        private static global::Avalonia.Controls.Control AboutCard()
+        {
+            global::Avalonia.Controls.StackPanel sp = new global::Avalonia.Controls.StackPanel();
+            sp.Spacing = 8;
+            try
+            {
+                using (System.IO.Stream s = global::Avalonia.Platform.AssetLoader.Open(new Uri("avares://dsht-gui/Assets/logo-full.png")))
+                {
+                    global::Avalonia.Controls.Image img = new global::Avalonia.Controls.Image();
+                    img.Source = new global::Avalonia.Media.Imaging.Bitmap(s);
+                    img.Width = 200; img.Height = 200;
+                    img.Stretch = global::Avalonia.Media.Stretch.Uniform;
+                    img.HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center;
+                    sp.Children.Add(img);
+                }
+            }
+            catch { }
+            global::Avalonia.Controls.TextBlock name = new global::Avalonia.Controls.TextBlock();
+            name.Text = "dsh-minato";
+            name.FontSize = 20;
+            name.FontWeight = global::Avalonia.Media.FontWeight.SemiBold;
+            name.HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center;
+            sp.Children.Add(name);
+            global::Avalonia.Controls.TextBlock tag = new global::Avalonia.Controls.TextBlock();
+            tag.Text = "社区版 DeepSeek Harness (dsh) 本机部署运维套件：安装 / 启动 / 监控 / 备份恢复 / 插件诊断与隔离";
+            tag.TextWrapping = global::Avalonia.Media.TextWrapping.Wrap;
+            tag.Opacity = 0.85;
+            sp.Children.Add(tag);
+            global::Avalonia.Controls.TextBlock un = new global::Avalonia.Controls.TextBlock();
+            un.Text = "非官方工具，与 DeepSeek 官方无关。图标为社区自制（AI 生成），不适用本项目的 MIT 许可。";
+            un.TextWrapping = global::Avalonia.Media.TextWrapping.Wrap;
+            un.Opacity = 0.7;
+            sp.Children.Add(un);
+            global::Avalonia.Controls.Border card = new global::Avalonia.Controls.Border();
+            card.Padding = new global::Avalonia.Thickness(16);
+            card.CornerRadius = new global::Avalonia.CornerRadius(10);
+            card.Margin = PageMargin;
+            card.Child = sp;
+            return card;
+        }
         private static Control SectionInner(MainWindow host)
         {
             if (host.IsSessionsSection) return SessionsContent(host);
@@ -580,7 +629,14 @@ namespace Dsht.Gui.Avalonia.Shells
             if (host.MainSection == 4) return BackupContent(host);
             if (host.MainSection == 5) return HealthContent(host);
             if (host.MainSection == 6) return SettingsContent(host);
-            return new Border { Margin = PageMargin, Child = RawCard(host, "原始输出", "CLI 标记行原文") };
+            {
+                // 说明页 = 关于信息（logo 已从标题栏移到这里 ✓）+ CLI 原始输出
+                global::Avalonia.Controls.StackPanel wrap = new global::Avalonia.Controls.StackPanel();
+                wrap.Spacing = 4;
+                wrap.Children.Add(AboutCard());
+                wrap.Children.Add(new Border { Margin = PageMargin, Child = RawCard(host, "原始输出", "CLI 标记行原文") });
+                return wrap;
+            }
         }
 
         // ================================================================ 会话与 Token
