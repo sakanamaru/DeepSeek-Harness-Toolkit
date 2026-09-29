@@ -43,6 +43,14 @@ $gline = ($g | Select-String -Pattern '标记行契约' | Select-Object -Last 1)
 $gtext = if ($gline) { $gline.ToString().Trim() } else { '(无输出)' }
 Step 'gate1 标记行契约' ($gtext -match '(\d+)/\1 对齐') $gtext
 
+# gate1 的 -Fixtures 模式：夹具覆盖**有效性过滤**（含一个故意无效的受控备份 ✓）
+# —— 第 111 轮我就是只跑了默认模式，漏掉了"新加的行在夹具里会出现"这件事 ✗ → 契约被破坏 ✓
+# 现在默认就两种模式都跑 ✓（-Fixtures 会临时造夹具并自动清理 ✓）
+$gf = & powershell -ExecutionPolicy Bypass -File $cmp -Repo $Repo -Fixtures 2>&1
+$gfline = ($gf | Select-String -Pattern '标记行契约' | Select-Object -Last 1)
+$gftext = if ($gfline) { $gfline.ToString().Trim() } else { '(无输出)' }
+Step 'gate1（-Fixtures 夹具模式）' ($gftext -match '(\d+)/\1 对齐') $gftext
+
 # ---- ③ 修复复核 ----
 $vf = Join-Path $Repo 'v3\tests\verify_fixes.ps1'
 $v = & powershell -ExecutionPolicy Bypass -File $vf -Repo $Repo 2>&1
