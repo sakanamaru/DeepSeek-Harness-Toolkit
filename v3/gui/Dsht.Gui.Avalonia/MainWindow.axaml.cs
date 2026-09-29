@@ -685,6 +685,39 @@ namespace Dsht.Gui.Avalonia
                 string p = Path.Combine(dir, names[i]);
                 if (File.Exists(p)) return p;
             }
+            // 只在**同级**找是不够的 ✗：发布包里 GUI 在 <包>\gui\，而 CLI 在 <包>\ 与 <包>\cli-small\
+            // → 真机反馈"未找到 CLI" ✓ 就是这个原因。改为向上、向已知子目录、以及 PATH 都找 ✓✓。
+            string[] extraDirs = new string[]
+            {
+                Path.Combine(dir, ".."),                    // 包根（GUI 在 gui\ 时 ✓）
+                Path.Combine(dir, "..", ".."),              // 再上一层（GUI 嵌得更深时 ✓）
+                Path.Combine(dir, "cli-small"),             // 包内的小体积版 ✓
+                Path.Combine(dir, "..", "cli-small"),
+                Path.Combine(dir, "..", "..", "cli-small")
+            };
+            for (int d = 0; d < extraDirs.Length; d++)
+            {
+                string ed;
+                try { ed = Path.GetFullPath(extraDirs[d]); } catch { continue; }
+                for (int i = 0; i < names.Length; i++)
+                {
+                    try { string p = Path.Combine(ed, names[i]); if (File.Exists(p)) return p; } catch { }
+                }
+            }
+            // 兜底：PATH 里找（用户可能已经把 CLI 装到 PATH ✓）
+            string pathEnv = Environment.GetEnvironmentVariable("PATH");
+            if (!string.IsNullOrEmpty(pathEnv))
+            {
+                string[] parts = pathEnv.Split(Path.PathSeparator);
+                for (int d = 0; d < parts.Length; d++)
+                {
+                    if (string.IsNullOrEmpty(parts[d])) continue;
+                    for (int i = 0; i < names.Length; i++)
+                    {
+                        try { string p = Path.Combine(parts[d], names[i]); if (File.Exists(p)) return p; } catch { }
+                    }
+                }
+            }
             return null;
         }
 
