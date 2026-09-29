@@ -130,5 +130,12 @@ Write-Host ("  [SELF] 命令面：代码里 " + $inCode.Count + " 个 ；检查�
 if ($onlyCode.Count -gt 0) { foreach ($x in $onlyCode) { $miss += ("命令面缺检查：" + $x) }; Write-Host ("  [MISS] 代码里有但表里没有：" + ($onlyCode -join ', ')) }
 if ($onlyTable.Count -gt 0) { foreach ($x in $onlyTable) { $miss += ("命令面多余检查：" + $x) }; Write-Host ("  [MISS] 表里有但代码里没有：" + ($onlyTable -join ', ')) }
 if ($onlyCode.Count -eq 0 -and $onlyTable.Count -eq 0) { Write-Host "  [OK]   命令面一一对应 ✓" }
+# #43：**总项数下限**断言 ✓✓ —— 否则"删掉一条非命令类检查"**无人会察觉** ✗
+# （命令面有"一一对应"自检 ✓ 但总项数一直没有断言 ✗ —— 本轮补上 ✓）
+$EXPECTED_MIN_CHECKS = 67
+if ($checks.Count -lt $EXPECTED_MIN_CHECKS) {
+    $miss += ("检查表项数不足：" + $checks.Count + " < " + $EXPECTED_MIN_CHECKS)
+    Write-Host ("  [MISS] 检查表项数不足：只有 " + $checks.Count + " 项（需 >= " + $EXPECTED_MIN_CHECKS + "）")
+}
 if ($miss.Count -eq 0) { Write-Host ("== 修复复核：" + $checks.Count + "/" + $checks.Count + " 全部仍在代码里 =="); exit 0 }
 Write-Host ("== 修复复核：缺失 " + $miss.Count + " 项：" + ($miss -join ', ') + " =="); exit 1

@@ -112,4 +112,11 @@ rm -rf "$RT"
 
 echo ""
 echo "== 结果：PASS=$pass FAIL=$fail =="
+# #43：**项数下限**断言 ✓✓ —— 否则"删掉一条检查"脚本仍报 PASS 但项数变少 ✗（与 chain 脚本同一做法 ✓）
+EXPECTED_MIN=23
+echo "== 结果：PASS=$pass FAIL=$fail（声明最少 $EXPECTED_MIN 项）=="
+if [ "$pass" -lt "$EXPECTED_MIN" ]; then
+  echo "  [FAIL] 项数不足：实跑 $pass < 声明 $EXPECTED_MIN（有检查被删掉或没执行到）"
+  fail=$((fail+1))
+fi
 [ "$fail" -eq 0 ] && exit 0 || exit 1
