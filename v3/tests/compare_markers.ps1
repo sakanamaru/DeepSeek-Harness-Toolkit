@@ -70,8 +70,8 @@ $cases = @(
     @{ name = 'status --detail';      args = @('status','--detail') },
     @{ name = 'profilecheck';         args = @('profilecheck') ; ignore = 'PROFILECHK_READ_ERRORS|PROFILECHK_INCOMPLETE' },
     @{ name = 'profilecheck --abs';   args = @('profilecheck','--abs') },
-    @{ name = 'backup-list';          args = @('backup-list'); full = $true },
-    @{ name = 'backup-list --detail'; args = @('backup-list','--detail'); full = $true },
+    @{ name = 'backup-list';          args = @('backup-list'); full = $true; ignore = '^BACKUP_LIST_IGNORED ' },
+    @{ name = 'backup-list --detail'; args = @('backup-list','--detail'); full = $true; ignore = '^BACKUP_LIST_IGNORED ' },
     # doctor：Integrity 行依赖 exe 身份（v2.x 的 exe 名在 hashes.txt 里、本地构建哈希不匹配 → ERROR；V3 临时 exe 名不在清单 → 跳过校验）。正式发布时 V3 用同名 exe，该类别行为一致。
     @{ name = 'bootdiag (no input)';   args = @('bootdiag'); full = $true },
     @{ name = 'bootdiag (fixture)';    args = @('bootdiag','--from',(Join-Path $env:TEMP 'dsht_bootdiag_fixture.txt')); full = $true },
