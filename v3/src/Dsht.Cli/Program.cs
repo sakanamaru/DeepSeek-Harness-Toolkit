@@ -1308,6 +1308,9 @@ namespace Dsht.Cli
         {
             IBackupSource bk = reg.Get<IBackupSource>();
             List<BackupEntry> all = bk.ListRaw();
+            // 独立统计"不是有效备份"的条目 ✓（不碰下面的既有逻辑 ✓）→ 在 TOTAL 前**仅当 >0** 时说明 ✓✓
+            int notValidPkg = 0;
+            for (int k = 0; k < all.Count; k++) { if (!BackupPackage.IsValidPackage(all[k].Snapshot)) notValidPkg++; }
             int complete = 0, incomplete = 0, mismatch = 0;
             for (int i = 0; i < all.Count; i++)
             {
@@ -1356,6 +1359,7 @@ namespace Dsht.Cli
                     Console.WriteLine("BACKUP_VERIFY " + name + " complete " + have + (failedInMarker > 0 ? T(" ；但源里有 ", " ; but ") + failedInMarker + T(" 项未能备份（不完整 ✓）", " items could not be backed up (incomplete)") : ""));
                 }
             }
+            if (notValidPkg > 0) Console.WriteLine("BACKUP_VERIFY_NOTE " + notValidPkg + T(" 项不是有效备份（不会被 backup-list 列出，也不会被 restore 选中）", " entries are not valid backups (not listed by backup-list, not selected by restore)"));
             Console.WriteLine("BACKUP_VERIFY_TOTAL " + all.Count + " complete=" + complete + " incomplete=" + incomplete + " mismatch=" + mismatch);
             return 0;
         }
@@ -1373,6 +1377,11 @@ namespace Dsht.Cli
             // v2.x：升序后反转 → 最新在前
             valid.Reverse();
             Console.WriteLine("BACKUP_LIST_OK " + valid.Count);
+            // 备份根里"不是有效备份"的条目 → **仅在存在时**说明 ✓✓（用户往 backup/ 放了自己的东西、
+            // 或留下名字像备份但内容不是的目录时 ✓ 静默忽略会让他以为"我的备份还在" ✗）
+            // 仅当 >0 时打印 ✓ → 比对夹具（受控 3 个备份 ✓）不受影响 ✓ 契约安全 ✓
+            if (all.Count > valid.Count)
+                Console.WriteLine("BACKUP_LIST_IGNORED " + (all.Count - valid.Count) + T(" 项在备份根里但不是有效备份（不会被列出，也不会被恢复选中）", " entries in the backups root are not valid backups (not listed, not selected by restore)"));
             foreach (BackupEntry e in valid)
             {
                 Console.WriteLine(e.Path);
