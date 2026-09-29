@@ -200,10 +200,10 @@ namespace Dsht.Gui.Avalonia
         public string ActionLog { get { return _actionLog; } }
 
         /// <summary>一键启动 dsh（调用工具箱核心的 `start`：非交互，GUI 用）。</summary>
-        public void StartDsh() { RunCoreAction("start", "启动"); }
+        public void StartDsh() { RunCliAction("start --yes", "启动"); }
 
         /// <summary>停止 dsh（核心的 `stop`）。</summary>
-        public void StopDsh() { RunCoreAction("stop", "停止"); }
+        public void StopDsh() { RunCliAction("stop --yes", "停止"); }
 
         private void RunCoreAction(string verb, string label)
         {
@@ -381,21 +381,21 @@ namespace Dsht.Gui.Avalonia
         public void LoadHealth()
         {
             if (!string.IsNullOrEmpty(_health)) { BuildShell(); return; }
-            string core = ToolkitCore();
-            if (core == null) { _health = CoreMissingText(); BuildShell(); return; }
-            _health = Run(core, "profilecheck");
-            _doctor = SummaryMarkers.ParseDoctor(Run(core, "doctor"));
+            string cli = CliPath();
+            if (cli == null) { _health = "未找到工具箱 CLI。"; BuildShell(); return; }
+            _health = Run(cli, "profilecheck");
+            _doctor = SummaryMarkers.ParseDoctor(Run(cli, "doctor"));
             BuildShell();
         }
 
         /// <summary>隔离/恢复一个插件条目：调用工具箱核心的 profilepatch（写操作：它会先备份、再改、失败逐字节回滚）。</summary>
         public void PatchEntry(string profile, string entryId, bool disable)
         {
-            string core = ToolkitCore();
-            if (core == null) { _actionLog = "无法执行隔离：" + CoreMissingText(); BuildShell(); return; }
+            string cli = CliPath();
+            if (cli == null) { _actionLog = "无法执行隔离：未找到工具箱 CLI。"; BuildShell(); return; }
             string yaml = Path.Combine(Path.Combine(_profilesRoot, profile), "cordis.patch.yml");
             string args = "profilepatch --file " + yaml + " --id " + entryId + (disable ? " --disable" : " --set disabled=false") + " --yes";
-            string outp = Run(core, args);
+            string outp = Run(cli, args);
             _health = "profilepatch " + (disable ? "--disable" : "--set disabled=false") + " " + entryId + " 的结果：" + Environment.NewLine + outp;
             BuildShell();
         }
@@ -405,8 +405,10 @@ namespace Dsht.Gui.Avalonia
         {
             try
             {
-                ProcessStartInfo psi = new ProcessStartInfo(path);
-                psi.UseShellExecute = true;
+                bool win = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+                ProcessStartInfo psi = win
+                    ? new ProcessStartInfo(path) { UseShellExecute = true }
+                    : new ProcessStartInfo("xdg-open", "\"" + path + "\"") { UseShellExecute = false };
                 Process.Start(psi);
             }
             catch (Exception ex)
@@ -662,7 +664,7 @@ namespace Dsht.Gui.Avalonia
                     if (!lines[i].StartsWith("SESSIONS_ROOT ", StringComparison.Ordinal)) continue;
                     string p = lines[i].Substring("SESSIONS_ROOT ".Length).Trim();
                     DirectoryInfo d = Directory.GetParent(p);
-                    if (d != null && d.Parent != null) return Path.Combine(d.Parent.FullName, "profiles");
+                    if (d != null) return Path.Combine(d.FullName, "profiles");
                 }
             }
             catch { }
