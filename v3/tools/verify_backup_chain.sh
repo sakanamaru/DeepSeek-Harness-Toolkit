@@ -58,6 +58,8 @@ printf 'ALPHA\n' > "$P/storages/a.txt"   # 还原 ✓
 printf 'X\n' > "$WORK/keep.txt"; rm -f "$P/storages/b.txt"
 R=$(DSH_HOME="$A" $T $CLI restore --path "$P" --apply --yes 2>&1 | tr -d '\r')
 echo "$R" | grep -qE '^RESTORE_FAIL' && ok "截断包被拒（RESTORE_FAIL ✓）" || bad "截断包未被拒 ✗✗"
+# #40：断言失败原因（只断言"出现 FAIL"会把"因别的理由失败"也算通过）
+echo "$R" | grep -qE '不完整|哈希' && ok "截断包：原因正确（不完整/哈希 ✓✓）" || bad "截断包：原因不是不完整/哈希 ✗"
 echo "$R" | grep -qE '^RESTORE_OK' && bad "截断包竟然报成功 ✗✗" || ok "未谎报成功 ✓"
 printf 'BETA\n' > "$P/storages/b.txt"    # 还原 ✓
 

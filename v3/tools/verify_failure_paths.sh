@@ -40,6 +40,8 @@ rm -rf "$TG1"; mkdir -p "$TG1/storages"; printf 'ORIG\n' > "$TG1/storages/keep.t
 chmod 555 "$TG1" "$TG1/storages"
 O=$(DSH_HOME="$TG1" $T $CLI restore --path "$P" --apply --yes 2>&1 | tr -d '\r')
 echo "$O" | grep -qE '^RESTORE_FAIL' && ok "只读目标：如实失败 ✓" || bad "只读目标未如实失败 ✗"
+# #40：断言原因是权限类（只断言 FAIL 会把"无效备份目录"也算通过）
+echo "$O" | grep -qiE 'denied|Access|Permission|权限|拒绝' && ok "只读目标：原因是权限类 ✓✓" || bad "只读目标：原因不是权限类 ✗"
 echo "$O" | grep -qE '^RESTORE_OK' && bad "只读目标竟报成功 ✗✗" || ok "只读目标：未谎报 ✓"
 echo "$O" | grep -qE '^RESTORE_PRE_BACKUP ' && ok "只读目标：仍告知回滚锚点 ✓" || bad "只读目标：锚点未告知 ✗"
 [ "$(cat "$TG1/storages/keep.txt" 2>/dev/null)" = "ORIG" ] && ok "只读目标：原有文件未被改 ✓" || bad "只读目标：原有文件被改 ✗"
@@ -54,6 +56,8 @@ rm -rf "$TG2"; mkdir -p "$TG2/storages"; printf 'LOCKED-ORIG\n' > "$TG2/storages
 chmod 444 "$TG2/storages/p1.txt"
 O3=$(DSH_HOME="$TG2" $T $CLI restore --path "$P" --apply --yes 2>&1 | tr -d '\r')
 echo "$O3" | grep -qE '^RESTORE_FAIL' && ok "目标文件只读：如实失败 ✓" || bad "目标文件只读未失败 ✗"
+# #40：同上
+echo "$O3" | grep -qiE 'denied|Access|Permission|权限|拒绝' && ok "目标文件只读：原因是权限类 ✓✓" || bad "目标文件只读：原因不是权限类 ✗"
 PB=$(echo "$O3" | grep -oP '^RESTORE_PRE_BACKUP \K\S+' | head -1)
 [ -n "$PB" ] && ok "目标文件只读：锚点被告知 ✓" || bad "目标文件只读：锚点未告知 ✗"
 chmod 644 "$TG2/storages/p1.txt"
