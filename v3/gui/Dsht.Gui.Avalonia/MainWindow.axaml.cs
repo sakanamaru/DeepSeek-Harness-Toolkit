@@ -194,6 +194,10 @@ namespace Dsht.Gui.Avalonia
             string outp = cli == null ? "未找到工具箱 CLI。" : await System.Threading.Tasks.Task.Run(delegate { return Run(cli, args); });
             _actionLog = label + "结果：" + Environment.NewLine + outp.Trim();
             Refresh();
+            // 启动成功后**自动打开浏览器** ✓✓（用户点"启动"就是想用它 ✓）
+            // 失败时不打开 ✗；"已在运行"也算成功 ✓（那时打开正好能用 ✓）
+            if (args != null && args.StartsWith("start", StringComparison.Ordinal) && outp.IndexOf("START_FAIL", StringComparison.Ordinal) < 0)
+                OpenUrl("http://127.0.0.1:3080");
         }
         /// <summary>看板上的操作日志（一键启动/停止的结果，原样展示给用户）。</summary>
         private string _actionLog = "";
@@ -401,6 +405,22 @@ namespace Dsht.Gui.Avalonia
         }
 
         /// <summary>在文件管理器里打开插件目录（Windows 资源管理器 / Linux 文件管理器）。</summary>
+        /// <summary>用系统默认程序打开一个 URL（Windows: ShellExecute ✓；Linux: xdg-open ✓）。</summary>
+        public void OpenUrl(string url)
+        {
+            try
+            {
+                bool win = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+                ProcessStartInfo psi = win
+                    ? new ProcessStartInfo(url) { UseShellExecute = true }
+                    : new ProcessStartInfo("xdg-open", "\"" + url + "\"") { UseShellExecute = false };
+                Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                _actionLog = "打开浏览器失败：" + ex.Message + Environment.NewLine + url;
+            }
+        }
         public void OpenFolder(string path)
         {
             try
