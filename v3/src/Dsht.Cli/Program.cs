@@ -332,12 +332,24 @@ namespace Dsht.Cli
             while (true)
             {
                 Console.WriteLine();
-                Console.WriteLine("dsh-minato " + ToolkitVersion + T("　输入数字选择，q 退出", "  type a number, q to quit"));
-                Console.WriteLine(T("   1 安装/升级 dsh        2 启动 dsh           3 停止 dsh", "   1 install / update     2 start dsh        3 stop dsh"));
-                Console.WriteLine(T("   4 状态                 5 会话与 token       6 形态与插件", "   4 status               5 sessions         6 profiles"));
-                Console.WriteLine(T("   7 立即备份             8 备份清单           9 恢复预览（dry-run）", "   7 backup               8 backup list      9 restore (dry-run)"));
-                Console.WriteLine(T("  10 体检                11 备份目录           12 全部命令", "  10 doctor              11 backup folder   12 all commands"));
-                Console.Write(T("选择：", "choice: "));
+                // 与经典版（v2.x）同风格：青色框 + 白色条目 + ▍小标题 + 彩色提示 ✓
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine("  ==============================================");
+                Console.WriteLine("  dsh-minato " + ToolkitVersion);
+                Console.WriteLine("  ==============================================");
+                Console.ResetColor();
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.WriteLine(T("  ▍ 常用操作", "  ▍ common"));
+                Console.ResetColor();
+                Console.WriteLine("    1  安装/升级 dsh        2  启动 dsh           3  停止 dsh");
+                Console.WriteLine("    4  状态                 5  会话与 token       6  形态与插件");
+                Console.WriteLine("    7  立即备份             8  备份清单           9  恢复预览（dry-run）");
+                Console.WriteLine("   10  体检                11  备份目录          12  全部命令");
+                Console.WriteLine("    q  退出");
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write(T("  请输入数字：", "  choice: "));
+                Console.ResetColor();
                 string line = Console.ReadLine();
                 if (line == null) return 0;
                 line = line.Trim().ToLowerInvariant();
