@@ -44,7 +44,17 @@ namespace Dsht.Platform.Windows
                         }
                         catch { }
                         string env = Environment.GetEnvironmentVariable("DSH_MINATO_BACKUP_DIR");
-                        if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
+                        // G1 FIX (CLI audit MAJOR): the value was returned as-is while the Linux side
+                // normalises it and names this exact attack. A relative DSH_HOME like ".dsh"
+                // resolved against the current directory, so running from the home directory made
+                // the effective root equal the real default one, and the restore --apply isolation
+                // gate - which compares strings - let a real write through.
+                if (!string.IsNullOrWhiteSpace(env))
+                {
+                    string rawEnv = env.Trim();
+                    try { return System.IO.Path.GetFullPath(rawEnv); }
+                    catch { return rawEnv; }
+                }
                         return Path.Combine(_stateDir, "backup");
                     }
                 }
@@ -57,7 +67,17 @@ namespace Dsht.Platform.Windows
             get
             {
                 string env = Environment.GetEnvironmentVariable("DSH_HOME");
-                if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
+                // G1 FIX (CLI audit MAJOR): the value was returned as-is while the Linux side
+                // normalises it and names this exact attack. A relative DSH_HOME like ".dsh"
+                // resolved against the current directory, so running from the home directory made
+                // the effective root equal the real default one, and the restore --apply isolation
+                // gate - which compares strings - let a real write through.
+                if (!string.IsNullOrWhiteSpace(env))
+                {
+                    string rawEnv = env.Trim();
+                    try { return System.IO.Path.GetFullPath(rawEnv); }
+                    catch { return rawEnv; }
+                }
                 string[] candidates = DefaultDataRoots();
                 for (int i = 0; i < candidates.Length; i++)
                 {
