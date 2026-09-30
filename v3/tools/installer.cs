@@ -68,8 +68,20 @@ internal static class Installer
             else if (a.StartsWith("--dir=", StringComparison.Ordinal)) dirArg = a.Substring(6).Trim('"');
             else if (a == "--install") installExplicit = true;   // ✓ 叫 uninstall.exe 时想装回来，加这个 ✓
             else if (a == "--force") ForceInstall = true;        // ✓ 审计 C1：显式允许装进非空目录 ✓
+            else if (a == "--dir" || a == "-dir")
+            {
+                // ✓ m5：支持**空格形式** ✓（原来只认 `--dir=` ✗ → `--dir C:\x` 被静默忽略 ✓
+                //   → 装到默认位置还返回 0 ✗✗ 对 CI/Scoop/winget 是"静默装错地方 + 报成功" ✓）
+                if (i + 1 < args.Length) { i++; dirArg = (args[i] == null ? "" : args[i].Trim()).Trim('"'); }
+                else { Log("参数错误：--dir 后面没有值 ✓"); return 2; }
+            }
+            else
+            {
+                // ✓ m5：**未知参数不能静默忽略** ✗（拼错一个字母就装到默认位置 ✓ 还报成功 ✗✗）
+                Log("未知参数 ✗ " + a + " → 拒绝执行（退出码 2 ✓）");
+                return 2;
+            }
         }
-        Log("=== dsh-minato installer " + (uninstall ? "(uninstall)" : "(install)") + " ===");
         Log("args: " + string.Join(" ", args));
         try
         {
@@ -186,6 +198,35 @@ internal static class Installer
         }
         Log("载荷校验通过 ✓ 每个文件的指纹都与包内清单一致 ✓");
 
+        // ★★ **M8 修复（审计 MAJOR）** ✓✓
+        //   ✗ ARP key（`Uninstall\dsh-minato`）· 开始菜单目录 · InstallToken 全是**每用户单例** ✗
+        //     → 装到 A 再装到 B：B 覆盖 A 的快捷方式与 ARP ✓ → 卸载 B 时
+        //       **A 的注册也没了、token 也对不上** ✗✗ → **A 永远卸不掉**（孤儿目录 ✓ 确定性复现 ✓）
+        //   ✓ 修：检测到**已装在另一个目录** → **拒绝**（除非 --force ✓ 或先卸载 ✓）
+        //     这符合"每用户单例"的现实 ✓✓（要并存请用便携版 zip ✓ 它不写注册表 ✓）
+        if (!ForceInstall)
+        {
+            string already = ReadInstalled();
+            if (!string.IsNullOrEmpty(already))
+            {
+                string[] parts = already.Split('|');
+                string loc = parts.Length > 1 ? parts[1] : "";
+                bool sameDir = false;
+                try { sameDir = string.Equals(Path.GetFullPath(loc).TrimEnd('\\'), Path.GetFullPath(target).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase); } catch { }
+                if (!string.IsNullOrEmpty(loc) && !sameDir)
+                {
+                    Log("拒绝安装：已有一个安装在其他目录 ✓ " + loc);
+                    throw new InvalidOperationException(
+                        "**已经装过一份了。**" + Environment.NewLine + Environment.NewLine +
+                        "已安装在：" + loc + Environment.NewLine +
+                        "本次要装到：" + target + Environment.NewLine + Environment.NewLine +
+                        "「应用和功能」的注册、开始菜单快捷方式和身份令牌都是**每用户唯一**的 ✓" + Environment.NewLine +
+                        "装第二份会**覆盖第一份的注册**，导致第一份**卸载不掉** ✗" + Environment.NewLine + Environment.NewLine +
+                        "请先卸载旧的那份，或者用便携版 zip（它不写注册表 ✓ 可以并存 ✓）。" + Environment.NewLine +
+                        "确实要强装请加 --force ✓");
+                }
+            }
+        }
         Directory.CreateDirectory(target);   // ✓ 校验已通过 ✓ 现在才建 ✓
         // ⑤ 就位：**先改名旧的，再改名新的** ✓（旧目录即使有文件被占用也能改名成功 ✓）
         Report(progress, 78, "就位…");
@@ -227,7 +268,15 @@ internal static class Installer
                 }
                 Directory.Move(vgui, tgui);
             }
-            Log("稳定入口已就位（dsh-minato.exe / dsh-minato-gui.exe / gui\\）");
+            // ✓ m3 修复：**真的把 `bin\` 建出来** ✓
+            //   ✗ 原来 `AddToUserPath(target\bin)` 因为**这个目录从不创建**而永远返回 false ✗
+            //     → PATH 从未被改 ✓ 而完成页却说"PATH 已更新" ✗✗（UI 撒谎 ✓）
+            //   ✓ 现在：`bin\` 放一份 CLI 副本 ✓ → PATH 选项**真的生效** ✓✓
+            string binDir = Path.Combine(target, "bin");
+            Directory.CreateDirectory(binDir);
+            CopyFile(Path.Combine(verDir, "dsh-minato.exe"), Path.Combine(binDir, "dsh-minato.exe"));
+            Log("命令行目录已就位 ✓ " + binDir);
+            Log("稳定入口已就位（dsh-minato.exe / dsh-minato-gui.exe / gui\\ / bin\\）");
         }
         catch (Exception ex)
         {
