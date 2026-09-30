@@ -458,3 +458,12 @@ If this tool helped you, a ⭐ on the repo's top right would mean a lot — it k
 ## 资产许可
 
 本项目的 MIT 许可只覆盖**代码**；图标等非代码资产的来源与许可范围见 [ASSETS.md](ASSETS.md)。
+
+---
+
+## 图标与署名（Credits）
+
+鲸鱼娘（Whale-chan）形象来自 DeepSeek 社区同人创作。
+本项目图标为生成式 AI 产出（工具：Kimi），提示词由本项目维护者编写。
+本项目为非官方、非商业的开源工具，与 DeepSeek 官方无关，不使用任何官方标识。
+来源与许可详见仓库根目录 ASSETS.md。
