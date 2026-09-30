@@ -710,7 +710,9 @@ namespace Dsht.Gui.Avalonia.Shells
             s.Children.Add(KpiStrip(host));
             s.Children.Add(Toolbar(host));
             s.Children.Add(new TextBlock { Text = host.FocusText, Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap });
-            s.Children.Add(host.SubTab == 1 ? StatsBody(host) : SessionList(host));
+            // 三视图 ✓：0=整体（全部，子代理随后归类进父会话）1=父会话 2=子代理 3=统计 ✓
+            if (host.SubTab == 3) s.Children.Add(StatsBody(host));
+            else s.Children.Add(SessionList(host, host.SubTab));
             s.Children.Add(Explain());
             if (!string.IsNullOrEmpty(host.ActionLog))
                 s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
@@ -722,7 +724,7 @@ namespace Dsht.Gui.Avalonia.Shells
             SessionsSnapshot d = host.Data;
             Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
             g.Children.Add(KpiCard(Symbol.ChatMultiple, "会话总数", d == null ? "—" : d.Count.ToString(),
-                "非空 " + (d == null ? "—" : d.NonBlank.ToString()) + " · 运行中 " + (d == null ? "—" : d.Live.ToString()), Palette.Text, 0, -1));
+                "非空 " + (d == null ? "—" : d.NonBlank.ToString()) + " · 运行中 " + (d == null ? "—" : d.Live.ToString()) + " · 子代理 " + (d == null ? "—" : d.SubAgentCount.ToString()) + " / 根 " + (d == null ? "—" : d.RootCount.ToString()), Palette.Text, 0, -1));
             g.Children.Add(KpiCard(Symbol.Database, "缓存命中率（越高越省钱）", PctText(d == null ? -1 : d.TotalHitPercent),
                 "缓存读 " + (d == null ? "—" : SessionRow.Human(d.TotalCacheRead)), Palette.Good, 1, d == null ? -1 : d.TotalHitPercent));
             g.Children.Add(KpiCard(Symbol.Gauge, "解码速度（生成 token 的速度）", TpsText(d == null ? -1 : d.TotalDecodeTps),
@@ -790,19 +792,32 @@ namespace Dsht.Gui.Avalonia.Shells
         }
 
         /// <summary>按当前风格选会话列表形态：C=紧凑行（密度优先），D=大条形卡片，其余=标准卡片。</summary>
-        private static Control SessionList(MainWindow host)
+        /// <summary>会话列表 ✓ mode：0=整体 1=父会话（有子会话的）2=子代理（有父会话的）✓✓</summary>
+        private static Control SessionList(MainWindow host, int mode)
         {
+            // 过滤 ✓（vm.Row 就是 SessionRow ✓ 解析层已带 IsSubAgent ✓）
+            List<SessionRowVm> src = host.Rows;
+            if (mode == 1 || mode == 2)
+            {
+                src = new List<SessionRowVm>();
+                for (int fi = 0; fi < host.Rows.Count; fi++)
+                {
+                    bool sub = host.Rows[fi].Row != null && host.Rows[fi].Row.IsSubAgent;
+                    if ((mode == 2) == sub) src.Add(host.Rows[fi]);
+                }
+            }
+            host.SetListSource(src);
             if (Palette.Compact)
             {
                 ItemsControl list = new ItemsControl();
-                list.ItemsSource = host.Rows;
+                list.ItemsSource = host.ListSource;   // 过滤后的 ✓
                 list.ItemTemplate = new FuncDataTemplate<SessionRowVm>(delegate(SessionRowVm vm, INameScope ns) { return SessionRowCompact(vm); });
                 Border card = Card(list, new Thickness(0), new Thickness(0));
                 card.ClipToBounds = true;
                 return card;
             }
             ItemsControl cards = new ItemsControl();
-            cards.ItemsSource = host.Rows;
+            cards.ItemsSource = host.ListSource;   // 过滤后的 ✓
             cards.ItemTemplate = new FuncDataTemplate<SessionRowVm>(delegate(SessionRowVm vm, INameScope ns)
             {
                 return Palette.StyleKind == 3 ? SessionCardDash(vm) : SessionCard(vm);
