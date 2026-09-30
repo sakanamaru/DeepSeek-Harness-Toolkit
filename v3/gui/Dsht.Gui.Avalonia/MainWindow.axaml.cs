@@ -435,7 +435,7 @@ namespace Dsht.Gui.Avalonia
                 bool win = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
                 ProcessStartInfo psi = win
                     ? new ProcessStartInfo(url) { UseShellExecute = true }
-                    : new ProcessStartInfo("xdg-open", "\"" + url + "\"") { UseShellExecute = false };
+                    : new ProcessStartInfo("xdg-open", url) { UseShellExecute = false };   // ✗ 不加引号：没有 shell 参与，引号反而会弄坏 URL ✓
                 Process.Start(psi);
             }
             catch (Exception ex)
