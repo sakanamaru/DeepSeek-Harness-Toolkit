@@ -78,7 +78,14 @@ internal static class Launcher
             for (int i = 0; i < names.Length; i++)
             {
                 if (!File.Exists(paths[i])) continue;
-                string want = FindHash(lines, names[i]);
+                // ★★ **审计 M10 + 用户实测** ✓✓：basename 匹配会**取错条目** ✗
+                //   ✗ 清单里有 `gui\dsht-gui.exe`（我们要的 ✓）和 `app-3.0.0\gui\dsht-gui.exe`（副本 ✗）
+                //     而清单**按完整路径排序** ✓ → 副本排在前面 ✗ → 取到副本 → **哈希不符 → 拒绝启动** ✗✗
+                //     （用户实测："打不开" ✓ 启动器弹警告框卡住 ✓）
+                //   ✓ 现在：**先按"从安装根算起的相对路径"精确找** ✓ 找不到才退回 basename ✓✓
+                string rel = paths[i].Substring(dir.Length).TrimStart('\\');   // 例: gui\dsht-gui.exe
+                string want = FindHashExact(lines, rel);
+                if (string.IsNullOrEmpty(want)) want = FindHash(lines, names[i]);
                 if (string.IsNullOrEmpty(want)) continue;   // 清单里没这个文件 → 跳过 ✓
                 string got = Sha256(paths[i]);
                 if (string.IsNullOrEmpty(got)) continue;    // 取不到哈希 → 放行 ✓（不能让校验把工具变成砖 ✓）
@@ -90,6 +97,24 @@ internal static class Launcher
             return null;
         }
         catch { return null; }   // 校验本身出错 → 放行 ✓
+    }
+
+    /// <summary>按**完整相对路径**精确找哈希 ✓✓（优先于 basename ✓
+    /// 审计 M10 + 用户实测：basename 匹配会取到 `app-3.0.0\` 里的**副本** ✗ → 误判被篡改 → 拒绝启动 ✗）。</summary>
+    private static string FindHashExact(string[] lines, string relPath)
+    {
+        if (string.IsNullOrEmpty(relPath)) return null;
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string t = lines[i] == null ? "" : lines[i].Trim();
+            if (t.Length == 0 || t.StartsWith("#", StringComparison.Ordinal)) continue;
+            int sp = t.IndexOf(' ');
+            if (sp <= 0) continue;
+            string name = t.Substring(sp + 1).Trim().Replace('/', '\\');
+            if (string.Equals(name, relPath, StringComparison.OrdinalIgnoreCase))
+                return t.Substring(0, sp).Trim().ToLowerInvariant();
+        }
+        return null;
     }
 
     private static string FindHash(string[] lines, string fileName)
