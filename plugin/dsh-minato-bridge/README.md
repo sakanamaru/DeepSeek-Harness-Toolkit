@@ -45,7 +45,7 @@ DeepSeek Harness Toolkit.exe profilepatch --disable shio-bridge --yes
   "sessions": [
     {
       "id": "…", "live": true, "title": "…", "cwd": "D:\\work",
-      "createdAt": 1788517824758, "lastPromptAt": 1788517999999, "blank": false,
+      "createdAt": "2026-09-10T00:26:40.000Z", "lastPromptAt": "2026-09-10T00:27:40.000Z", "blank": false,
       "turns": 2, "steps": 9, "llmMs": 1000, "toolMs": 500, "ttftMs": 300,
       "decodeMs": 2000, "decodeTokens": 400,
       "uncachedInputTokens": 100, "outputTokens": 50, "cacheReadTokens": 900, "cacheWriteTokens": 10,
@@ -55,7 +55,8 @@ DeepSeek Harness Toolkit.exe profilepatch --disable shio-bridge --yes
 }
 ```
 
-- 时间戳是 **epoch 毫秒**（与 dsh 投影一致）；工具箱会转成 UTC ISO 显示
+- 时间戳是 **ISO 8601 字符串**（如 `2026-09-10T00:26:40.000Z`）—— **不是数字** ✗
+  （C# 侧的 `Str()` **只认字符串** ✓ 写数字会被丢成空串 ✓ → 面板显示 `unknown` ✓ 且默认排序退化 ✓✓）
 - `formatVersion` 不匹配时工具箱**不解析**（诚实降级，不猜）
 
 ## 自测（零依赖，不需要 dsh）

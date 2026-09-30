@@ -93,7 +93,11 @@ export function buildSnapshot(sessions, generatedAt) {
 		if (!s) continue;
 		const v = s.values || {};
 		const stats = unitValue(v, "sessionStats") || {};
-		const totals = (unitValue(v, "tokenUsage") || {}).totals || {};
+		// P2 FIX (plugin audit MAJOR): the registry hands back the unit's WIRE VIEW, and for
+	// tokenUsage that view is already state.totals - not the state object. Reading .totals
+	// on the view yielded {} and all four counters were dropped. Accept either shape.
+	const tu = unitValue(v, "tokenUsage") || {};
+	const totals = tu.totals || tu;
 		const pressure = unitValue(v, "contextPressure") || {};
 		const meta = unitValue(v, "sessionListMetadata") || {};
 		const header = s.header || {};
@@ -175,14 +179,44 @@ export async function collectSessions(ctx) {
 		}
 		// ✓ F2：`for...of` **必须在 try 内** ✗（原来在外面 → Promise 不可迭代 → 抛 → 静默 ✓）
 		if (!raw || typeof raw[Symbol.iterator] !== "function") return list;
+
+		// ★★★ **P1 修复（插件审计 CRITICAL —— 装了插件反而更糟）** ✓✓
+		//   ✗✗ `sessionProjections.snapshot()` **需要一个**活的 Session** ✗ ——
+		//     它内部调用 `session.snapshotEvents()` / `session.seq`（dsh 自己的实现 ✓）
+		//     而 `sessionQuery.listSessions()` 给的是 **`SessionRecord = { header, live, persisted }`** ✗
+		//     → `snapshot(record)` **抛 TypeError** ✗ → 被下面的 try/catch 吞掉 → `values = {}` ✗✗
+		//     → **真实 dsh 里所有统计值全丢** ✗（只有 id/live/cwd/createdAt ✓）
+		//     → 而工具箱**优先用快照**（非空就不用磁盘投影 ✗）→ **token 面板全 unknown** ✗✗
+		//        **比不装插件更糟** ✓（审计实测确认 ✓）
+		//   ✓ 现在：**从 `ctx.sessions.list()` 建一份「id → 活 Session」索引** ✓✓
+		//     投影只喂**索引里的活 Session** ✓；纯持久化（不在 store 里）的会话**没有投影单元** ✓
+		//     → **如实留空** ✓（不是错误 ✓ 也不是假装 0 ✓✓）
+		const liveById = new Map();
+		try {
+			if (ctx.sessions && typeof ctx.sessions.list === "function") {
+				const live = (await ctx.sessions.list()) || [];
+				if (live && typeof live[Symbol.iterator] === "function") {
+					for (const s of live) {
+						const sid =
+							strOrUndef(s && s.header && s.header.id) || strOrUndef(s && s.id) || "";
+						if (sid) liveById.set(sid, s);
+					}
+				}
+			}
+		} catch {
+			/* 取不到活会话 → 索引为空 ✓ 投影留空 ✓ 绝不抛 ✓ */
+		}
+
 		for (const item of raw) {
 			const n = normalize(item, fromStore);
 			if (!n) continue;
 			let values = {};
 			try {
+				// ✓ P1：**只把活 Session 交给 snapshot()** ✓（record 不行 ✗）
+				const target = liveById.get(n.id) || (fromStore ? n.session : null);
 				const snap =
-					ctx.sessionProjections && typeof ctx.sessionProjections.snapshot === "function"
-						? await ctx.sessionProjections.snapshot(n.session)
+					target && ctx.sessionProjections && typeof ctx.sessionProjections.snapshot === "function"
+						? await ctx.sessionProjections.snapshot(target)
 						: null;
 				values = (snap && snap.values) || {};
 			} catch {
@@ -207,12 +241,21 @@ export function apply(ctx, config) {
 	// ✓ F6：非字符串 outFile 会让 `.trim()` 抛 → **插件加载期崩** ✗（正是头注释说绝不能发生的 ✓）
 	const cfgOut = typeof cfg.outFile === "string" ? cfg.outFile.trim() : "";
 	const outFile = cfgOut.length > 0 ? cfgOut : defaultOutFile(process.env);
-	const interval = Math.max(1000, Number(cfg.intervalMs) || 3000);
+	// P4 FIX (plugin audit MINOR): Node clamps a delay above 2 to the 31st to 1 ms, so a
+	// config of 1e21 or Infinity (YAML .inf) made the bridge write about a thousand
+	// snapshots per second. Clamp to a sane range instead.
+	const rawInterval = Number(cfg.intervalMs);
+	const interval = Number.isFinite(rawInterval) ? Math.min(Math.max(1000, rawInterval), 3600000) : 3000;
 	let disposed = false;
 	const tick = async () => {
+		// P3 FIX (plugin audit MAJOR): disposed was only checked on entry, so a tick already
+		// awaiting listSessions resumed after the dispose handler cleared the live flags and
+		// wrote live:true back - the exact stale state that handler exists to prevent.
+		// It is re-checked after the await below.
 		if (disposed) return;
 		try {
 			const sessions = await collectSessions(ctx);
+			if (disposed) return;   // P3 FIX: re-check after the await
 			// ✓ 零会话**不写** ✓（避免用空数据覆盖上一份好的 ✓）
 			if (sessions.length === 0) return;
 			writeSnapshot(outFile, buildSnapshot(sessions, new Date().toISOString()));
