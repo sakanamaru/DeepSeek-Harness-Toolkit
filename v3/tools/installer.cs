@@ -212,6 +212,14 @@ internal static class Installer
                 string exe = Path.Combine(target, "dsh-minato-gui.exe");
                 CreateShortcut(StartMenuDir(), AppName, exe, target, "dsh-minato — DeepSeek Harness 工具箱（非官方）");
                 CreateShortcut(StartMenuDir(), AppName + "（卸载）", Path.Combine(target, "uninstall.exe"), target, "卸载 dsh-minato");
+                // 桌面快捷方式 ✓（**默认不建** ✓ 用户在选项里勾了才建 ✓ 用户要求："添加创建快捷方式询问或者选项框" ✓）
+                if (InstallerForm.WantDesktopShortcut)
+                {
+                    string desk = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                    CreateShortcut(desk, AppName, Path.Combine(target, "dsh-minato-gui.exe"), target, "dsh-minato — DeepSeek Harness 工具箱（非官方）");
+                    Log("桌面快捷方式已建（用户勾选 ✓）: " + Path.Combine(desk, AppName + ".lnk"));
+                }
+                else Log("桌面快捷方式：未勾选 → 不建 ✓");
                 Log("开始菜单快捷方式已建（桌面快捷方式默认不建 ✓ 减少杂乱 ✓）");
             }
             catch (Exception ex) { Log("快捷方式失败（不致命）: " + ex.Message); }
@@ -588,7 +596,7 @@ internal static class Installer
         {
             if (k == null) return false;
             // 第 3 参是 RegistryValueOptions 不是 Kind ✓；DoNotExpand 才能**原样读写**别人的 PATH ✓✓
-            string cur = k.GetValue("Path", "", RegistryValueOptions.DoNotExpandEnvironmentNames) as string;;
+            string cur = k.GetValue("Path", "", RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
             if (cur == null) cur = "";
             foreach (string part in cur.Split(';'))
                 if (string.Equals(part.Trim().TrimEnd('\\'), dir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
@@ -607,7 +615,7 @@ internal static class Installer
             {
                 if (k == null) return;
                 // 第 3 参是 RegistryValueOptions 不是 Kind ✓；DoNotExpand 才能**原样读写**别人的 PATH ✓✓
-            string cur = k.GetValue("Path", "", RegistryValueOptions.DoNotExpandEnvironmentNames) as string;;
+            string cur = k.GetValue("Path", "", RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
                 if (string.IsNullOrEmpty(cur)) return;
                 StringBuilder sb = new StringBuilder();
                 foreach (string part in cur.Split(';'))
@@ -678,7 +686,7 @@ internal sealed class InstallerForm : Form
     public int ExitCode = 0;
     private readonly string _dirArg;
     private TextBox _dirBox;
-    private CheckBox _chkPath, _chkShortcuts;
+    private CheckBox _chkPath, _chkShortcuts, _chkDesktop;
     private Button _btnMain, _btnCancel, _btnCopyLog;
     private ProgressBar _bar;
     private Label _status, _title, _sub;
@@ -721,12 +729,14 @@ internal sealed class InstallerForm : Form
             }
         };
         _chkShortcuts = new CheckBox { Text = "在开始菜单创建快捷方式（快捷方式名为 dsh-minato）", Checked = true, AutoSize = true, Location = new Point(30, 70), ForeColor = Color.FromArgb(60, 60, 70) };
-        _chkPath = new CheckBox { Text = "把命令行工具加入 PATH（**默认不勾** ✓ 勾了要**新开终端**才生效）", Checked = false, AutoSize = true, Location = new Point(30, 96), ForeColor = Color.FromArgb(60, 60, 70) };
+        // 桌面快捷方式 ✓（**默认不勾** ✓ 用户要求："添加创建快捷方式询问或者选项框" ✓）
+        _chkDesktop = new CheckBox { Text = "同时在**桌面**创建快捷方式（默认不勾 ✓ 减少杂乱 ✓）", Checked = false, AutoSize = true, Location = new Point(30, 94), ForeColor = Color.FromArgb(60, 60, 70) };
+        _chkPath = new CheckBox { Text = "把命令行工具加入 PATH（**默认不勾** ✓ 勾了要**新开终端**才生效）", Checked = false, AutoSize = true, Location = new Point(30, 120), ForeColor = Color.FromArgb(60, 60, 70) };
         // —— 已装检测 + 版本校验 ✓✓（用户要求："安装好后也可以再点安装，安装器也加个版本校验吧，比如有更新或者非官方" ✓）——
         _installed = Installer.ReadInstalled();   // 静态成员要带类名 ✓
         _installedLabel = new Label
         {
-            AutoSize = false, Size = new Size(560, 34), Location = new Point(30, 96 + 26),
+            AutoSize = false, Size = new Size(560, 34), Location = new Point(30, 146),
             ForeColor = Color.FromArgb(150, 90, 20), Font = new Font("Microsoft YaHei UI", 9f, FontStyle.Bold)
         };
         _installedLabel.Text = DescribeInstalled(_installed);
@@ -739,10 +749,10 @@ internal sealed class InstallerForm : Form
                    "· 安装是**当前用户级**的 ✓ 不写系统目录 ✓ 不弹 UAC ✓ 卸载干净 ✓" + Environment.NewLine +
                    "· **不会碰你的数据** ✓（~/.dsh 是 dsh 自己的，本工具只读）" + Environment.NewLine +
                    "· 每个文件都带官方指纹，启动时会自校验 ✓ 被改动就拒绝运行 ✓",
-            ForeColor = Color.FromArgb(120, 120, 130), AutoSize = false, Size = new Size(560, 100), Location = new Point(30, 166)
+            ForeColor = Color.FromArgb(120, 120, 130), AutoSize = false, Size = new Size(560, 100), Location = new Point(30, 190)
         };
         _page1.Controls.Add(ld); _page1.Controls.Add(_dirBox); _page1.Controls.Add(browse);
-        _page1.Controls.Add(_chkShortcuts); _page1.Controls.Add(_chkPath); _page1.Controls.Add(note);
+        _page1.Controls.Add(_chkShortcuts); _page1.Controls.Add(_chkDesktop); _page1.Controls.Add(_chkPath); _page1.Controls.Add(note);
         Controls.Add(_page1);
 
         // ---- 第二页：进度 ----
@@ -761,7 +771,7 @@ internal sealed class InstallerForm : Form
         // ---- 底部按钮 ----
         _btnMain = new Button { Text = DescribeAction(), Location = new Point(410, 428), Size = new Size(90, 34), BackColor = Color.FromArgb(64, 110, 220), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
         _btnMain.FlatAppearance.BorderSize = 0;
-        _btnMain.Click += delegate { StartInstall(); };
+        _btnMain.Click += delegate { if (_done) { Close(); return; } StartInstall(); };   // ✓ 单一处理器 ✓ 装完就只关窗 ✓✓
         _btnCancel = new Button { Text = "取消", Location = new Point(508, 428), Size = new Size(80, 34), DialogResult = DialogResult.Cancel };
         Controls.Add(_btnMain); Controls.Add(_btnCancel);
         CancelButton = _btnCancel;
@@ -795,6 +805,10 @@ internal sealed class InstallerForm : Form
     }
 
     private bool _running;
+    private bool _done;   // ✓ 装完了 → 按钮变成"完成"（**只挂一个处理器** ✓ 不会重复安装 ✓✓）
+    /// <summary>要不要建**桌面**快捷方式 ✓（用户要求："添加创建快捷方式询问或者选项框" ✓）。
+    /// 默认 **false** ✓（评审建议：桌面快捷方式默认不勾 ✓ 减少杂乱 ✓ OneDrive 同步目录里更该少放 ✓）。</summary>
+    internal static bool WantDesktopShortcut = false;
     private void StartInstall()
     {
         string dir = _dirBox.Text == null ? "" : _dirBox.Text.Trim();
@@ -825,8 +839,10 @@ internal sealed class InstallerForm : Form
                 _sub.Text = (_chkPath.Checked ? "PATH 已更新 —— **请新开一个终端** ✓ 旧终端看不到变化 ✓" : "已创建开始菜单快捷方式（名为 dsh-minato）✓");
                 _btnMain.Text = "完成";
                 _btnMain.Enabled = true;
-                _btnMain.Click -= delegate { };
-                _btnMain.Click += delegate { Close(); };
+                // ✗✗ 原来这两行：`-= delegate { }` 是**空操作** ✗ 解绑不了任何东西 ✓
+                //    → 成功分支又挂了一个 Close ✓ 而 StartInstall 还在 ✗✗ → **点"完成"会再装一遍** ✓（用户实测 ✓）
+                // ✓ 正解：用一个状态标志 ✓ 按钮只挂**一个**处理器 ✓✓
+                _done = true;
                 _btnCancel.Visible = false;
             }
             else
