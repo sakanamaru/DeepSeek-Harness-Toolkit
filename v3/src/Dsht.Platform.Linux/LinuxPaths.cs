@@ -33,7 +33,23 @@ namespace Dsht.Platform.Linux
 
         public string StateDir { get { return _stateDir; } }
 
-        public string BackupsRoot { get { return Path.Combine(_stateDir, "backup"); } }
+                public string BackupsRoot
+                {
+                    get
+                    {
+                        // ★★★ **用户要求（2026-09-30）**：「第一次备份必须手动设置目录，避免卸载时删掉备份」✓✓
+                        //   背景：默认备份根是 `StateDir/backup` ✓ 而 **Windows 上 StateDir 就是安装目录** ✗
+                        //     → 备份**物理上躺在安装目录里** ✓（真机确认：575 个文件就在那里 ✓）
+                        //     → 卸载时**理论上**会连它一起清 ✗（安装器侧已加保险：显式跳过 backup/ ✓✓）
+                        //   现在：**可用 `DSH_MINATO_BACKUP_DIR` 指定备份根** ✓✓
+                        //     · 设置后 → 备份放到你指定的地方 ✓ 放在安装目录之外才真正稳妥 ✓
+                        //     · 未设置 → **保持原行为** ✓（向后兼容 ✓ 已有备份不会突然找不到 ✓✓）
+                        //     · `backup --to <目录>` 会在本次运行里设置它 ✓✓（一次性的"手动指定目录" ✓）
+                        string env = Environment.GetEnvironmentVariable("DSH_MINATO_BACKUP_DIR");
+                        if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
+                        return Path.Combine(_stateDir, "backup");
+                    }
+                }
 
         public string DataRoot
         {

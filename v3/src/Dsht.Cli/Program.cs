@@ -74,7 +74,7 @@ namespace Dsht.Cli
             if (cmd == "restore") return Restore(args, reg);
             if (cmd == "selftest") return SelfTest(args, reg);
             if (cmd == "check") return Check(reg);
-            if (cmd == "backup") return Backup(reg);
+            if (cmd == "backup") return Backup(args, reg);
             if (cmd == "backup-export") return BackupExport(args, reg);
             if (cmd == "backup-delete") return BackupDelete(args, reg);
             if (cmd == "autostart") return AutoStartCmd(args, reg);
@@ -620,7 +620,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 if (line == "4") { Status(reg, true); Describe(reg); continue; }
                 if (line == "5") { Sessions(reg); continue; }
                 if (line == "6") { Profiles(reg); continue; }
-                if (line == "7") { if (Confirm("backup")) Backup(reg); continue; }
+                if (line == "7") { if (Confirm("backup")) Backup(new string[0], reg); continue; }
                 if (line == "8") { BackupList(new string[] { "--detail" }, reg); continue; }
                 if (line == "9") { Restore(new string[] { "--dry-run" }, reg); continue; }
                 if (line == "10") { Doctor(new string[0], reg); continue; }
@@ -2481,8 +2481,23 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             catch { }
         }
 
-        private static int Backup(ServiceRegistry reg)
+        private static int Backup(string[] args, ServiceRegistry reg)
         {
+            // ★★ **用户要求（2026-09-30）**：「第一次备份必须手动设置目录」✓✓
+            //   ✓ `--to <目录>` → **本次运行把备份根指定到那里** ✓✓（放在安装目录之外才稳妥 ✓）
+            //   ✓ 没给 `--to` → 走默认根 ✓ 但**若默认根在安装/状态目录内 → 明确警告** ✓
+            string toDir = (Flag(args, "--to") ?? "").Trim().Trim('"');
+            if (!string.IsNullOrEmpty(toDir))
+            {
+                try
+                {
+                    string full = System.IO.Path.GetFullPath(toDir);
+                    System.IO.Directory.CreateDirectory(full);
+                    Environment.SetEnvironmentVariable("DSH_MINATO_BACKUP_DIR", full);
+                    Console.WriteLine("BACKUP_TO " + full + " " + T("本次备份写到这个目录 ✓（放在安装目录之外才稳妥 ✓）", "this backup goes here"));
+                }
+                catch (Exception ex) { Console.WriteLine("BACKUP_FAIL " + T("无法使用 --to 指定的目录：" + ex.Message, "cannot use --to dir: " + ex.Message)); return 0; }
+            }
             WarnIfBackupsInsideInstall(reg);   // ✓ 用户要求：备份放在安装目录内要明确警告 ✓✓
             IPaths paths = reg.Get<IPaths>();
             IBackupSource bk = reg.Get<IBackupSource>();
