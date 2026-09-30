@@ -736,6 +736,16 @@ namespace Dsht.Gui.Avalonia
                 if (!wantAuto) return;
                 string st = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "status"); });
                 bool down = st != null && st.IndexOf("STATUS_DOWN", StringComparison.Ordinal) >= 0;
+                // ✗✗ 关键修正：**只有桌面端在跑时，status 也报 STATUS_DOWN**（它只探 3080 ✓）
+                // → 于是 auto-start 会**再起一个 webui** ✗ → 两个同时跑 ✓（用户实测反馈 ✓）
+                // → 检测到桌面端就**不再起 web** ✓✓（用户在用桌面端 ✓ 不需要 web ✓）
+                bool desktopUp = st != null && st.IndexOf("STATUS_DESKTOP", StringComparison.Ordinal) >= 0;
+                if (desktopUp)
+                {
+                    _actionLog = "检测到官方桌面端正在运行 → **不启动 webui**（避免两个同时跑；要用 web 请先在侧栏点「停止」或关掉桌面端）";
+                    BuildShell();
+                    return;
+                }
                 if (!down) return;   // 已经在跑 → 不动它 ✓
                 _actionLog = "auto_start=on → 正在自动启动 dsh…";
                 BuildShell();

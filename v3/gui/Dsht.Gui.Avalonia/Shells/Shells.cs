@@ -505,11 +505,13 @@ namespace Dsht.Gui.Avalonia.Shells
             };
             Grid.SetColumn(dot, 0);
             // 桌面端在跑 → 说清"桌面端运行中"✓（本工具**停不了它** ✓ 不能假装能 ✓）
-            TextBlock label = T(deskUp && st.State != 0 ? "桌面端运行中（本工具不停它）" : (up ? "停止 dsh" : "一键启动 dsh"), 13, up ? Palette.Accent : Palette.OnAccent, FontWeight.SemiBold);
+            // 三种状态都要说清 ✓：只有 web / 只有桌面端 / **两个都在** ✓✓（用户："两个可能同时开着" ✓）
+            string stText = st.State == 0 && deskUp ? "web 与桌面端都在运行" : (deskUp ? "桌面端运行中（本工具不停它）" : (up ? "停止 dsh" : "一键启动 dsh"));
+            TextBlock label = T(stText, 13, up ? Palette.Accent : Palette.OnAccent, FontWeight.SemiBold);
             label.Margin = new Thickness(10, 0, 0, 0);
             label.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(label, 1);
-            TextBlock state = T(up ? "运行中" : "未运行", 10.5, up ? Palette.Good : Palette.OnAccent);
+            TextBlock state = T(st.State == 0 && deskUp ? "web+桌面端" : (up ? "运行中" : "未运行"), 10.5, up ? Palette.Good : Palette.OnAccent);
             state.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(state, 2);
             row.Children.Add(dot); row.Children.Add(label); row.Children.Add(state);
