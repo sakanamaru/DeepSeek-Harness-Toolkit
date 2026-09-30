@@ -1268,15 +1268,14 @@ namespace Dsht.Gui.Avalonia.Shells
                 acts.Children.Add(dr);
                 Button ap = GhostButton(T("应用恢复（仅隔离数据根）", 11.5, Palette.Text), delegate { host.ApplyRestore(b.Name); }, true);
                 acts.Children.Add(ap);
-                string key = "del:" + b.Name;
-                bool armed = host.PendingDelete == key;
-                Button del = GhostButton(T(armed ? "再点一次确认删除" : "删除", 11.5, armed ? Brushes.White : Palette.Warn), delegate
+                // ✓ 用户要求：**删除要弹窗输入当前时间** ✓ → 对话框本身就是确认 ✓ 不再需要两次点击 ✓✓
+                // ✓ 用户要求：**删除要弹窗输入当前时间** ✓✓ → **对话框本身就是确认** ✓ 不再需要两次点击 ✓
+                //   （`DeleteBackup` 内部会弹输入框 ✓ 输入的时间与真实时间相差 >120 秒 → CLI 拒绝 ✓✓）
+                Button del = GhostButton(T("删除（需输入当前时间确认）", 11.5, Palette.Warn), delegate
                 {
-                    if (host.PendingDelete != key) { host.PendingDelete = key; host.Rebuild(); return; }
-                    host.PendingDelete = "";
                     host.DeleteBackup(b.Name);
                 }, true);
-                del.Background = armed ? Palette.Bad : Palette.WarnSoft;
+                del.Background = Palette.WarnSoft;
                 acts.Children.Add(del);
                 row.Children.Add(acts);
                 s.Children.Add(Card(row, new Thickness(0), new Thickness(16, 14)));

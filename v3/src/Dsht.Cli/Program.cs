@@ -2451,6 +2451,30 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             string reason = PathValidator.ValidateDeletePath(Flag(args, "--path"), bk.BackupsRoot,
                 delegate(string p) { return fs.DirectoryExists(p); });
             if (reason != null) { Console.WriteLine("BKDEL_FAIL " + T("删除校验失败: " + reason, "delete validation failed: " + reason)); return 0; }
+            // ★★★ **用户要求（2026-09-30）**：「删除弹窗输入当前时间才执行」✓✓
+            //   → 删除是**不可逆**的 ✓ → 光有 `--yes` 太容易误点 ✓
+            //   → **必须输入当前时间**（`yyyy-MM-dd HH:mm:ss` ✓ 本地时间 ✓）且与真实时间相差 ≤ 120 秒 ✓✓
+            //   → 这样"手滑点两下"不可能删掉 ✓ 必须**看着时间手打一遍** ✓✓
+            string ct = (Flag(args, "--confirm-time") ?? "").Trim().Trim('"');
+            if (string.IsNullOrEmpty(ct))
+            {
+                Console.WriteLine("BKDEL_PLAN " + T("删除备份需要输入**当前时间**确认 ✓ 请加 `--confirm-time \"" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\"` ✓（照抄上面这个时间 ✓）",
+                                                     "deleting a backup needs the current time: add --confirm-time \"" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\""));
+                return 0;
+            }
+            DateTime ctParsed;
+            if (!DateTime.TryParse(ct, out ctParsed))
+            {
+                Console.WriteLine("BKDEL_FAIL " + T("时间格式不对 ✓ 应为 yyyy-MM-dd HH:mm:ss ✓（现在：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " ✓）", "bad time format"));
+                return 0;
+            }
+            double ctDiff = Math.Abs((DateTime.Now - ctParsed).TotalSeconds);
+            if (ctDiff > 120)
+            {
+                Console.WriteLine("BKDEL_FAIL " + T("输入的时间与当前时间相差 " + (int)ctDiff + " 秒（超过 120 秒 ✓）→ 拒绝删除 ✓ 现在：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " ✓",
+                                                     "the time you typed is " + (int)ctDiff + "s away from now - refused"));
+                return 0;
+            }
             if (!Has(args, "--yes")) { Console.WriteLine("BKDEL_PLAN " + T("将删除该备份目录（会丢数据）—— 确认请加 --yes", "will delete that backup directory (data loss) - add --yes to confirm")); return 0; }
             string src = PathValidator.ResolveBackupPath((Flag(args, "--path") ?? "").Trim().Trim('"'), bk.BackupsRoot);
             try
@@ -2507,9 +2531,35 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     string full = System.IO.Path.GetFullPath(toDir);
                     System.IO.Directory.CreateDirectory(full);
                     Environment.SetEnvironmentVariable("DSH_MINATO_BACKUP_DIR", full);
+                    // ✓ **记住这个选择** ✓✓（用户要求"第一次弹窗选择" ✓ 但**不该每次都问** ✗）
+                    //   → 写进 `<StateDir>/.backup-dir` ✓ 之后所有命令都用它 ✓✓
+                    try { System.IO.File.WriteAllText(System.IO.Path.Combine(reg.Get<IPaths>().StateDir, ".backup-dir"), full, new System.Text.UTF8Encoding(false)); }
+                    catch { }
                     Console.WriteLine("BACKUP_TO " + full + " " + T("本次备份写到这个目录 ✓（放在安装目录之外才稳妥 ✓）", "this backup goes here"));
                 }
                 catch (Exception ex) { Console.WriteLine("BACKUP_FAIL " + T("无法使用 --to 指定的目录：" + ex.Message, "cannot use --to dir: " + ex.Message)); return 0; }
+            }
+            // ★★★ **用户要求（2026-09-30）**：「第一次备份弹窗选择」✓✓
+            //   → **第一次备份**（备份根里还没有任何有效备份 ✓）**必须指定目录** ✓✓
+            //   → 没给 `--to` 就**拒绝** ✓ 并说清怎么给 ✓（放在安装目录之外才稳妥 ✓）
+            //   → 已有备份 → **沿用上次的根** ✓ 不再每次追问 ✓✓
+            if (string.IsNullOrEmpty(toDir))
+            {
+                bool hasAny = false;
+                try
+                {
+                    string br = reg.Get<IBackupSource>().BackupsRoot;   // ✓ 这里 `bk` 还没声明 ✓ 直接取 ✓
+                    hasAny = System.IO.Directory.Exists(br) && System.IO.Directory.GetDirectories(br, "dsh-data-*").Length > 0;
+                }
+                catch { }
+                if (!hasAny)
+                {
+                    Console.WriteLine("BACKUP_FAIL " + T(
+                        "**第一次备份必须指定目录** ✓ 请加 `--to <目录>` ✓（建议放在安装目录之外 ✓ 例如 D:\\dsh-backups ✓）"
+                        + "；GUI 里第一次点「立即备份」也会弹窗让你选 ✓✓",
+                        "the first backup needs an explicit folder - add --to <dir>, preferably outside the install folder"));
+                    return 0;
+                }
             }
             WarnIfBackupsInsideInstall(reg);   // ✓ 用户要求：备份放在安装目录内要明确警告 ✓✓
             IPaths paths = reg.Get<IPaths>();
