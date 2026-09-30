@@ -225,6 +225,9 @@ namespace Dsht.Gui.Avalonia
         public int StartMode = 0;
         /// <summary>看板图表的日期范围（天 ✓ 7/14/30 可切 ✓）。</summary>
         public int ChartDays = 14;
+        // —— 排障开关的值（从 CLI 的 config-get 读 ✓ 用户要求的那三个 ✓）——
+        public string BrowserMode = "auto";
+        public bool UiParallel = true;
         public void SetChartDays(int d) { ChartDays = d; BuildShell(); }
         public void SetStartMode(int m) { StartMode = m; BuildShell(); }
 
@@ -526,6 +529,10 @@ namespace Dsht.Gui.Avalonia
                 // ✗✗ 第三层（真机实测 2026-09-30）：snap firefox 还**必须有 `WAYLAND_DISPLAY`** ✓✓
                 //    报错原文：Missing Wayland display, WAYLAND_DISPLAY is empty ✓
                 //    → 如果 GUI 自己的环境里没有它（例如被非常规方式启动 ✗）→ **替它探测出来** ✓✓
+                // 排障开关 ✓：browser_mode 决定**走哪条路**（用户可切换 ✓ 真的接线 ✓）
+                bool trySnap = BrowserMode == "auto" || BrowserMode == "snap";
+                bool tryDirect = BrowserMode == "auto" || BrowserMode == "direct";
+                bool tryXdg = BrowserMode == "auto" || BrowserMode == "xdg";
                 string wd = Environment.GetEnvironmentVariable("WAYLAND_DISPLAY");
                 if (string.IsNullOrEmpty(wd))
                 {
@@ -546,19 +553,26 @@ namespace Dsht.Gui.Avalonia
                     }
                     catch { }
                 }
-                try
+                if (trySnap)
                 {
-                    ProcessStartInfo sp = new ProcessStartInfo("snap", "run firefox \"" + url + "\"") { UseShellExecute = false };
-                    if (!string.IsNullOrEmpty(wd)) sp.Environment["WAYLAND_DISPLAY"] = wd;   // 补上它 ✓✓
-                    Process p0 = Process.Start(sp);
-                    if (p0 != null) return;   // snap 不在的话会抛异常 ✓ 落到下面的候选 ✓
+                    try
+                    {
+                        ProcessStartInfo sp = new ProcessStartInfo("snap", "run firefox \"" + url + "\"") { UseShellExecute = false };
+                        if (!string.IsNullOrEmpty(wd)) sp.Environment["WAYLAND_DISPLAY"] = wd;   // 补上它 ✓✓
+                        Process p0 = Process.Start(sp);
+                        if (p0 != null) return;   // snap 不在的话会抛异常 ✓ 落到下面的候选 ✓
+                    }
+                    catch { }
                 }
-                catch { }
                 string[] browsers0 = new string[] { "firefox", "chromium", "chromium-browser", "google-chrome", "epiphany" };
-                for (int bi0 = 0; bi0 < browsers0.Length; bi0++)
+                if (tryDirect)
                 {
-                    try { Process.Start(new ProcessStartInfo(browsers0[bi0], url) { UseShellExecute = false }); return; } catch { }
+                    for (int bi0 = 0; bi0 < browsers0.Length; bi0++)
+                    {
+                        try { Process.Start(new ProcessStartInfo(browsers0[bi0], url) { UseShellExecute = false }); return; } catch { }
+                    }
                 }
+                if (!tryXdg) return;   // browser_mode 指定了别的路 → 不走 xdg ✓
                 bool opened = false;
                 try
                 {
@@ -776,6 +790,20 @@ namespace Dsht.Gui.Avalonia
         ///               ② **只在服务没在跑时** ✓（STATUS_DOWN 才起 ✓ 不重复启动 ✓）
         ///               ③ `auto_start=off` 时**什么都不做** ✓✓</summary>
         private bool _autoStartTried = false;
+        /// <summary>解析排障开关（`CONFIG browser_mode …` / `CONFIG ui_parallel …` ✓）。
+        /// 解析失败就保持默认 ✓ 不猜 ✓。</summary>
+        private void ParseTroubleshootSwitches(string cfg)
+        {
+            if (string.IsNullOrEmpty(cfg)) return;
+            string[] ls = cfg.Replace("\r\n", "\n").Split('\n');
+            for (int i = 0; i < ls.Length; i++)
+            {
+                string t2 = ls[i] == null ? "" : ls[i].Trim();
+                if (t2.StartsWith("CONFIG browser_mode ", StringComparison.Ordinal)) BrowserMode = t2.Substring("CONFIG browser_mode ".Length).Trim();
+                else if (t2.StartsWith("CONFIG ui_parallel ", StringComparison.Ordinal)) UiParallel = t2.Substring("CONFIG ui_parallel ".Length).Trim() != "off";
+            }
+        }
+
         private async System.Threading.Tasks.Task AutoStartOnceAsync(string cli)
         {
             if (_autoStartTried) return;
@@ -833,13 +861,26 @@ namespace Dsht.Gui.Avalonia
                 // 概览页顺带把这几样也取回来（都很快，且都是只读）
                 // ✗ 原来是**串行** await 三次 → 每次切页都等 3×100~200ms ≈ 0.5~1 秒 ✗（用户反馈"切换卡片响应不及时" ✓）
                 // 现在**并行** ✓✓ —— 三者互相独立（profiles / sessions / backup-list ✓）→ 总耗时 = 最慢那个 ✓
+                // 先读一次排障开关 ✓（必须**在读之前** ✓ 否则 UiParallel 永远是默认值 ✗ —— 我上一轮就是漏了这步 ✓）
+                string cfgText2 = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "config-get"); });
+                ParseTroubleshootSwitches(cfgText2);
+                if (!UiParallel)
+                {
+                    // 排障开关 off → **回到老行为（串行）** ✓ 真的接线 ✓ 不做摆设 ✗
+                    _profiles = ProfilesMarkers.Parse(await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "profiles"); }));
+                    _data = SessionsMarkers.Parse(await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "sessions"); }));
+                    _backups = SummaryMarkers.ParseBackups(await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "backup-list"); }));
+                }
+                else
+                {
                 System.Threading.Tasks.Task<string> tPf = System.Threading.Tasks.Task.Run(delegate { return Run(cli, "profiles"); });
                 System.Threading.Tasks.Task<string> tSe = System.Threading.Tasks.Task.Run(delegate { return Run(cli, "sessions"); });
                 System.Threading.Tasks.Task<string> tBk = System.Threading.Tasks.Task.Run(delegate { return Run(cli, "backup-list"); });
                 await System.Threading.Tasks.Task.WhenAll(tPf, tSe, tBk);
                 _profiles = ProfilesMarkers.Parse(tPf.Result);
                 _data = SessionsMarkers.Parse(tSe.Result);
-                _backups = SummaryMarkers.ParseBackups(tBk.Result);   // ✗ 原来带 --detail → 每份备份都要算目录大小（重 I/O ✗）→ 概览每次刷新都卡几秒 ✓✓ 这里只要 Count/Latest ✓ 不需要大小 ✓（方案 A ✓）
+                _backups = SummaryMarkers.ParseBackups(tBk.Result);
+                }   // ✗ 原来带 --detail → 每份备份都要算目录大小（重 I/O ✗）→ 概览每次刷新都卡几秒 ✓✓ 这里只要 Count/Latest ✓ 不需要大小 ✓（方案 A ✓）
                 if (_doctor == null) _doctor = new DoctorSummary();
                 BuildShell();
                 return;
