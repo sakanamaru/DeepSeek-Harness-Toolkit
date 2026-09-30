@@ -1245,10 +1245,10 @@ internal sealed class InstallerForm : Form
                 if (fb.ShowDialog(this) == DialogResult.OK) _dirBox.Text = fb.SelectedPath;
             }
         };
-        _chkShortcuts = new CheckBox { Text = "在开始菜单创建快捷方式（快捷方式名为 dsh-minato）", Checked = true, AutoSize = true, Location = new Point(30, 70), ForeColor = Color.FromArgb(60, 60, 70) };
+        _chkShortcuts = new CheckBox { Text = "在开始菜单创建快捷方式", Checked = true, AutoSize = true, Location = new Point(30, 70), ForeColor = Color.FromArgb(60, 60, 70) };
         // 桌面快捷方式 ✓（**默认不勾** ✓ 用户要求："添加创建快捷方式询问或者选项框" ✓）
-        _chkDesktop = new CheckBox { Text = "同时在**桌面**创建快捷方式（默认不勾 ✓ 减少杂乱 ✓）", Checked = false, AutoSize = true, Location = new Point(30, 94), ForeColor = Color.FromArgb(60, 60, 70) };
-        _chkPath = new CheckBox { Text = "把命令行工具加入 PATH（**默认不勾** ✓ 勾了要**新开终端**才生效）", Checked = false, AutoSize = true, Location = new Point(30, 120), ForeColor = Color.FromArgb(60, 60, 70) };
+        _chkDesktop = new CheckBox { Text = "同时在桌面创建快捷方式", Checked = false, AutoSize = true, Location = new Point(30, 94), ForeColor = Color.FromArgb(60, 60, 70) };
+        _chkPath = new CheckBox { Text = "把命令行工具加入 PATH", Checked = false, AutoSize = true, Location = new Point(30, 120), ForeColor = Color.FromArgb(60, 60, 70) };
         // —— 已装检测 + 版本校验 ✓✓（用户要求："安装好后也可以再点安装，安装器也加个版本校验吧，比如有更新或者非官方" ✓）——
         _installed = Installer.ReadInstalled();   // 静态成员要带类名 ✓
         _installedLabel = new Label
@@ -1262,10 +1262,9 @@ internal sealed class InstallerForm : Form
         _page1.Controls.Add(_installedLabel);
         Label note = new Label
         {
-            Text = "说明：" + Environment.NewLine +
-                   "· 安装是**当前用户级**的 ✓ 不写系统目录 ✓ 不弹 UAC ✓ 卸载干净 ✓" + Environment.NewLine +
-                   "· **不会碰你的数据** ✓（~/.dsh 是 dsh 自己的，本工具只读）" + Environment.NewLine +
-                   "· 每个文件都带官方指纹，启动时会自校验 ✓ 被改动就拒绝运行 ✓",
+            Text = "· 当前用户级安装，不弹 UAC" + Environment.NewLine +
+                   "· 不会碰你的数据（~/.dsh 属于 dsh，本工具只读）" + Environment.NewLine +
+                   "· 每个文件带指纹，启动时自校验，被改动就拒绝运行",
             ForeColor = Color.FromArgb(120, 120, 130), AutoSize = false, Size = new Size(560, 100), Location = new Point(30, 190)
         };
         _page1.Controls.Add(ld); _page1.Controls.Add(_dirBox); _page1.Controls.Add(browse);
@@ -1342,13 +1341,27 @@ internal sealed class InstallerForm : Form
         _btnCancel.Enabled = true;
         _btnCancel.Click += delegate
         {
-            _cancelRequested = true;
-            _btnCancel.Text = "正在取消…";
-            _btnCancel.Enabled = false;
-            _status.Text = "正在取消…（等当前步骤结束 ✓ 不会留下半个安装 ✓）";
+            // ✓ 用户要求：「取消按钮应该是**关闭安装器**，或者是**退一步**」
+            //   ✗ 原来只靠 `DialogResult = Cancel` ✗ —— 选项页能关 ✓
+            //     但**进度页**点了只设标志 ✓ 而安装只要 ~1.7 秒 ✓ 点的时候**往往已经装完** ✗
+            //     → 成功分支又把按钮隐藏了 ✓ → **表现为"点了没反应"** ✓✓（用户实测 ✓）
+            //   ✓ 现在：**明确分两种** ✓
+            //     ① 正在安装 → **中止** ✓（进度回调检查标志 ✓ 清理 staging ✓ 如实报告 ✓）
+            //     ② 没在安装 → **直接关闭安装器** ✓✓
+            if (_running)
+            {
+                _cancelRequested = true;
+                _btnCancel.Text = "正在取消…";
+                _btnCancel.Enabled = false;
+                _status.Text = "正在取消…";
+            }
+            else
+            {
+                Close();
+            }
         };
         _title.Text = "正在安装…";
-        _sub.Text = "窗口在解压前就已经显示出来了 ✓（冻结的窗口最像恶意软件 ✗）";
+        _sub.Text = "正在安装…";
         bool wantPath = _chkPath.Checked, wantSc = _chkShortcuts.Checked;
         // ✗✗ 审计 m4：`_chkDesktop.Checked` **从来没被读过** ✗ → 勾了没用 ✓（用户专门要求的功能 ✗）
         // ✓ 修：把桌面选项**真的传下去** ✓
@@ -1371,7 +1384,7 @@ internal sealed class InstallerForm : Form
                 _title.Text = "安装完成 ✓";
                 _bar.Value = 100;
                 _status.Text = "已安装到：" + dir + (string.IsNullOrEmpty(Installer.LastVerifyResult) ? "　✓ 安装包指纹已校验：全部一致" : ("　✗ 校验异常：" + Installer.LastVerifyResult));
-                _sub.Text = (_chkPath.Checked ? "PATH 已更新 —— **请新开一个终端** ✓ 旧终端看不到变化 ✓" : "已创建开始菜单快捷方式（名为 dsh-minato）✓");
+                _sub.Text = (_chkPath.Checked ? "PATH 已更新，请新开一个终端" : "已创建开始菜单快捷方式");
                 _btnMain.Text = "完成";
                 _btnMain.Enabled = true;
                 // ✗✗ 原来这两行：`-= delegate { }` 是**空操作** ✗ 解绑不了任何东西 ✓
