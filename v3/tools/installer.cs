@@ -37,6 +37,9 @@ internal static class Installer
     internal static string InstallToken = "";
     /// <summary>--force：允许装进非空目录 ✓（审计 C1 的显式逃生口 ✓ 默认关闭 ✓）。</summary>
     internal static bool ForceInstall = false;
+    /// <summary>最近一次失败的原因 ✓（GUI 要显示给用户 ✓
+    /// 审计 m8：原来只显示"安装失败（代码 9）" ✗ → **篡改警告这种关键信息用户根本看不到** ✗✗）。</summary>
+    internal static string LastFailureReason = "";
     private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "dsh-minato-install.log");
     private static readonly StringBuilder LogBuf = new StringBuilder();
 
@@ -100,6 +103,8 @@ internal static class Installer
         catch (Exception ex)
         {
             Log("FATAL " + ex);
+            // ✓ m8：**把真实原因留下** ✓ → GUI 要显示给用户 ✓（篡改警告就是这么传出去的 ✓✓）
+            LastFailureReason = ex.Message;
             if (!silent) MessageBox.Show(ex.Message, AppName + " 安装失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 9;
         }
@@ -249,9 +254,16 @@ internal static class Installer
             Directory.Move(staging, verDir);
             Log("版本目录: " + verDir);
             // 稳定入口：把启动器与 CLI 复制到 target 根 ✓（快捷方式指向它们 ✓ 升级时路径不变 ✓）
-            CopyFile(Path.Combine(verDir, "dsh-minato.exe"), Path.Combine(target, "dsh-minato.exe"));
-            CopyFile(Path.Combine(verDir, "dsh-minato-gui.exe"), Path.Combine(target, "dsh-minato-gui.exe"));
-            if (File.Exists(Path.Combine(verDir, "hashes.txt"))) CopyFile(Path.Combine(verDir, "hashes.txt"), Path.Combine(target, "hashes.txt"));
+            // ✓ M7：**检查每一处复制** ✓ 任何一处失败都让安装失败 ✓（不再假装成功 ✗）
+            bool okCli = CopyFile(Path.Combine(verDir, "dsh-minato.exe"), Path.Combine(target, "dsh-minato.exe"));
+            bool okGui = CopyFile(Path.Combine(verDir, "dsh-minato-gui.exe"), Path.Combine(target, "dsh-minato-gui.exe"));
+            bool okHash = true;
+            if (File.Exists(Path.Combine(verDir, "hashes.txt"))) okHash = CopyFile(Path.Combine(verDir, "hashes.txt"), Path.Combine(target, "hashes.txt"));
+            if (!okCli || !okGui || !okHash)
+                throw new InvalidOperationException(
+                    "稳定入口写入失败 ✗ 可能有程序正在运行（" +
+                    (!okCli ? "dsh-minato.exe " : "") + (!okGui ? "dsh-minato-gui.exe " : "") + (!okHash ? "hashes.txt " : "") +
+                    "）✗ 请先关掉本工具与 dsh，然后重新安装 ✓（已中止，不会留下混合版本 ✓）");
             string vgui = Path.Combine(verDir, "gui");
             if (Directory.Exists(vgui))
             {
@@ -274,7 +286,8 @@ internal static class Installer
             //   ✓ 现在：`bin\` 放一份 CLI 副本 ✓ → PATH 选项**真的生效** ✓✓
             string binDir = Path.Combine(target, "bin");
             Directory.CreateDirectory(binDir);
-            CopyFile(Path.Combine(verDir, "dsh-minato.exe"), Path.Combine(binDir, "dsh-minato.exe"));
+            if (!CopyFile(Path.Combine(verDir, "dsh-minato.exe"), Path.Combine(binDir, "dsh-minato.exe")))
+                throw new InvalidOperationException("命令行目录写入失败 ✗ 请先关掉正在运行的本工具 ✓");
             Log("命令行目录已就位 ✓ " + binDir);
             Log("稳定入口已就位（dsh-minato.exe / dsh-minato-gui.exe / gui\\ / bin\\）");
         }
@@ -898,9 +911,19 @@ internal static class Installer
         return false;
     }
 
-    private static void CopyFile(string from, string to)
+    /// <summary>复制一个文件 ✓。**返回是否成功** ✓（审计 M7：
+    /// ✗ 原来吞掉失败 ✗ → 正在运行的 exe 无法覆盖 → 复制失败只记日志 → **仍然 return 0** ✗✗
+    ///   → 完成页说"安装完成" ✓ 而**根启动器还是旧的**（gui\ 是新的）= **混合版本** ✗✗
+    /// ✓ 现在调用方**检查返回值** ✓ 任何一处失败都让安装失败 ✓✓）。</summary>
+    private static bool CopyFile(string from, string to)
     {
-        try { if (File.Exists(from)) File.Copy(from, to, true); } catch (Exception ex) { Log("复制失败 " + from + " → " + ex.Message); }
+        try
+        {
+            if (!File.Exists(from)) { Log("复制源不存在 ✗ " + from); return false; }
+            File.Copy(from, to, true);
+            return true;
+        }
+        catch (Exception ex) { Log("复制失败 ✗ " + from + " → " + ex.Message); return false; }
     }
     private static void TryDelete(string dir)
     {
@@ -1272,7 +1295,10 @@ internal sealed class InstallerForm : Form
             else
             {
                 _title.Text = "安装未完成 ✗";
-                _status.Text = "安装失败（代码 " + rc + "）。可以把日志发给我。";
+                // ✓ m8：**显示真实原因** ✓（原来只有"代码 9" ✗ → **篡改警告看不到** ✗✗）
+                _status.Text = "安装失败（代码 " + rc + "）。" +
+                    (string.IsNullOrEmpty(Installer.LastFailureReason) ? "" : Installer.LastFailureReason + "　") +
+                    "可以把日志发给我。";
                 _btnCopyLog.Visible = true;
                 _btnMain.Text = "重试"; _btnMain.Enabled = true;
                 _btnCancel.Text = "关闭"; _btnCancel.Visible = true;

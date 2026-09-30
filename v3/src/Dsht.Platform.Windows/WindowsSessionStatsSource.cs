@@ -16,7 +16,10 @@ namespace Dsht.Platform.Windows
 
         public string AggregatePath { get { return Path.Combine(Path.Combine(_dataRoot, "storages"), "session_projcache.json"); } }
 
-        public string SnapshotPath { get { return Path.Combine(Path.Combine(_dataRoot, "toolkit-bridge"), "sessions.json"); } }
+        // ★★ **必须与桥接插件的写入位置一致** ✓✓（曾经不一致 ✗：
+        //   CLI 读 `toolkit-bridge/` ✗ 而插件写 `shio-bridge/` ✗✗ → **CLI 永远读不到快照** ✓
+        //   而 `shio-bridge` 是插件的 cordis id（`name = "shio-bridge"` ✓）→ **以它为准** ✓✓）
+        public string SnapshotPath { get { return Path.Combine(Path.Combine(_dataRoot, "shio-bridge"), "sessions.json"); } }
 
         public string[] ListSessionFiles()
         {
