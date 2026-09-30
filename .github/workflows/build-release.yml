@@ -296,7 +296,12 @@ jobs:
             '',
             'This is an unofficial third-party tool and is not affiliated with DeepSeek.'
           )
-          Get-ChildItem START-GUI.cmd, START-CLI.cmd, READ-ME-FIRST.txt | ForEach-Object { $_.Name }      - name: Pack upload zip (16 files)
+          Get-ChildItem START-GUI.cmd, START-CLI.cmd, READ-ME-FIRST.txt | ForEach-Object { $_.Name }
+
+      # m-2a FIX (CI audit MAJOR): the step header below used to be on the SAME line as the last
+      # statement of the previous step's run script, which is a PowerShell parse error and left the
+      # step with two run: keys - the whole v2 build job could not run at all.
+      - name: Pack upload zip (16 files)
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
@@ -492,9 +497,37 @@ jobs:
         run: |
           # 自解压安装器 ✓✓（**必须进 CI** ✗ 否则发版产物里没有它 ✓ 用户拿不到"双击即装" ✓）
           # build_installer.ps1 自己探测 Roslyn ✓（windows runner 自带 VS2022 ✓）
-          pwsh -File v3/tools/build_installer.ps1 -PayloadDir "dsh-minato-win-x64" -Version "${{ github.ref_name }}" -Out "dsh-minato-${{ github.ref_name }}-win-x64-setup.exe"
-          $setup = "dsh-minato-${{ github.ref_name }}-win-x64-setup.exe"
+          # m-2b FIX (CI audit MAJOR): on workflow_dispatch from a branch, ref_name is the BRANCH
+          # ("main" / "v3-linux"), and build_installer.ps1 rejects a version that is not numeric
+          # dotted - so the windows job could only ever succeed on a tag. Normalise the same way
+          # the packaging steps above already do.
+          $vtag = "${{ github.ref_name }}"
+          if ($vtag -in @('main','master','')) { $vtag = "${{ inputs.release_tag }}" }
+          if ($vtag -eq '') { $vtag = '3.0.0' }
+          if ($vtag -notmatch '^\d+(\.\d+){1,3}$') { $vtag = '3.0.0' }   # branch or non-tag ref -> dev version
+          Write-Output "installer version: $vtag (ref: ${{ github.ref_name }})"
+          pwsh -File v3/tools/build_installer.ps1 -PayloadDir "dsh-minato-win-x64" -Version "$vtag" -Out "dsh-minato-$vtag-win-x64-setup.exe"
+          $setup = "dsh-minato-$vtag-win-x64-setup.exe"
           if (-not (Test-Path $setup)) { throw "安装器没有生成 ✗" }
+          # m-2c FIX (CI audit MAJOR): this step only checked that a file existed and hashed it,
+          # which is why the bug where the uninstaller deleted NOTHING reached users - nothing
+          # here ever ran the installer. Install silently into a scratch folder, confirm the
+          # payload and the marker landed, then uninstall and confirm our own files are gone.
+          $smoke = Join-Path $env:TEMP ("dsht-smoke-" + [guid]::NewGuid().ToString("N").Substring(0,8))
+          Write-Output "smoke: installing into $smoke"
+          & $setup --silent "--dir=$smoke"
+          if ($LASTEXITCODE -ne 0) { throw "smoke: the installer exited $LASTEXITCODE" }
+          if (-not (Test-Path (Join-Path $smoke "dsh-minato.exe"))) { throw "smoke: dsh-minato.exe is missing" }
+          if (-not (Test-Path (Join-Path $smoke ".dsh-minato-install"))) { throw "smoke: the install marker is missing" }
+          $smokeUninst = Join-Path $smoke "uninstall.exe"
+          if (-not (Test-Path $smokeUninst)) { throw "smoke: uninstall.exe is missing" }
+          & $smokeUninst --uninstall --silent
+          $rc = $LASTEXITCODE
+          Write-Output "smoke: the uninstaller exited $rc"
+          if (Test-Path (Join-Path $smoke "dsh-minato.exe")) { throw "smoke: the uninstaller left dsh-minato.exe behind - the exact bug that shipped once" }
+          if (Test-Path (Join-Path $smoke "gui")) { throw "smoke: the uninstaller left the gui folder behind" }
+          Write-Output "smoke: OK - install and uninstall both did what they should"
+          Remove-Item $smoke -Recurse -Force -ErrorAction SilentlyContinue
           $h = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
           "$h  $setup" | Set-Content -Path "$setup.sha256" -Encoding ascii
           "安装器 $([Math]::Round((Get-Item $setup).Length/1MB,1)) MB · sha256 $($h.Substring(0,16))…"
