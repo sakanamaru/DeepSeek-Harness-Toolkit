@@ -77,9 +77,9 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_restore_apply.ps1 -Repo
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File v3\tests\verify_switchover.ps1 -Repo .
-# gate1 标记行契约 22/22（含受控备份模式）  gate2 契约测试 252/252
+# gate1 标记行契约 21/21（含受控备份模式）  gate2 契约测试 334/334
 # gate3 Win/Linux 双跑：已在 CI 真跑通过（run 36385480118）  gate4 发布物校验（含篡改自证）
-# gate5 真实写操作可验证 24/24（隔离根真实写盘 + 零越界）
+# gate5 真实写操作可验证 25/25（隔离根真实写盘 + 零越界）
 # 不变量：发布链未动（verify.ps1 / 16 项清单 / csc 步骤）· v2.x 发布构建可编译 · 含非 ASCII 的 .ps1 都带 BOM · 领域层纯净度
 ```
 
@@ -111,7 +111,7 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_switchover.ps1 -Repo .
 | `describe`（V3 独有） | 说明"考虑过哪些形态、为什么暂时观测不到" |
 | `version`（V3 独有） | `DSHT_VERSION <版本>` |
 
-比对工具当前结论：**22/22 对齐**（另有 1 项 `backup` 需 `-Heavy`，届时 23/23）。按规则忽略的行：`doctor` 的 Integrity 条目、`doctor --report` 的报告头三行（时间戳/版本/系统）与结果行、报告里的日志摘要行（两次运行之间日志会增长）——理由都写在脚本注释里。
+比对工具当前结论：**21/21 对齐**（另有 2 项 `backup` / 真实 `restore` 需 `-Heavy` 与运行中的服务，届时 23/23）。按规则忽略的行：`doctor` 的 Integrity 条目、`doctor --report` 的报告头三行（时间戳/版本/系统）与结果行、报告里的日志摘要行（两次运行之间日志会增长）、以及 **V3 有意新增的两个标记**（`BACKUP_ITEM_INVALID` 无效条目提示、`BACKUP_NEEDS_DIR` 首次备份需选目录）与 exe 自身的 `INTEGRITY_SKIPPED` 诊断——理由都写在脚本注释里。
 
 ---
 
