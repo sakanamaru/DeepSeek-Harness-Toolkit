@@ -437,17 +437,56 @@ namespace Dsht.Gui.Avalonia.Shells
 
         private static Control MainMenu(MainWindow host)
         {
-            Grid g = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+            Grid g = new Grid { RowDefinitions = new RowDefinitions("*,Auto,Auto") };
             Control inner = MainMenuInner(host);
             Grid.SetRow(inner, 0);
             g.Children.Add(inner);
+            Control mode = StartModeRow(host);          // 启动方式：webui / desktop ✓（用户要求 ✓）
+            Grid.SetRow(mode, 1);
+            g.Children.Add(mode);
             Control start = StartStopButton(host);
-            Grid.SetRow(start, 1);
+            Grid.SetRow(start, 2);
             g.Children.Add(start);
             return g;
         }
 
         /// <summary>侧栏最底下的一键启动/停止（用户要求放这里，不放看板）。未运行=实心 accent 主按钮；运行中=柔色底+绿点，状态就在按钮里。</summary>
+        /// <summary>一键启动按钮**上面**的启动方式切换（webui / desktop ✓）。
+        /// 用户要求："一键启动按钮底下可选默认启动 desktop 还是 webui" ✓✓</summary>
+        private static Control StartModeRow(MainWindow host)
+        {
+            StackPanel s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(12, 0, 12, 6) };
+            int cur = host.StartMode;
+            string[] names = new string[] { "webui", "desktop" };
+            for (int i = 0; i < names.Length; i++)
+            {
+                int idx = i;
+                bool on = cur == i;
+                Button b = new Button
+                {
+                    Content = T(names[i], 11, on ? Palette.OnAccent : Palette.TextDim),
+                    Background = on ? Palette.Accent : Palette.CardHover,
+                    BorderThickness = new Thickness(0),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(10, 4)
+                };
+                b.Click += delegate { host.SetStartMode(idx); };
+                s.Children.Add(b);
+            }
+            s.Children.Add(T(cur == 1 ? "（启动官方桌面端）" : "（启动 dsh web）", 10.5, Palette.TextFaint));
+            Button dep = new Button
+            {
+                Content = T(cur == 1 ? "一键部署：官网下载" : "一键部署 dsh", 11, Palette.Text),
+                Background = Palette.CardHover,
+                BorderThickness = new Thickness(0),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(10, 4),
+                Margin = new Thickness(6, 0, 0, 0)
+            };
+            dep.Click += delegate { host.DeployForMode(); };
+            s.Children.Add(dep);
+            return s;
+        }
         private static Control StartStopButton(MainWindow host)
         {
             StatusSnapshot st = host.Status;
