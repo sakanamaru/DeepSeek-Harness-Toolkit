@@ -52,8 +52,13 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || die "--prefix 后面要跟一个目录"
             case "$2" in -*) die "--prefix 的值看起来是另一个开关：$2" ;; esac
             PREFIX="$2"; shift ;;
-        --prefix=*) PREFIX="${1#--prefix=}" ;;   # ✓ F10：支持 = 形式 ✓
-        --help|-h) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --prefix=*)
+            # S7 FIX (Linux audit MINOR): an empty value fell through to $(pwd), so running
+            # from an empty directory installed into it. The guard below never fired because
+            # the value was no longer empty by then.
+            PREFIX="${1#--prefix=}"
+            [ -n "$PREFIX" ] || die "--prefix= 后面要跟一个目录 ✓（空值会装到当前目录 ✗ 已拒绝 ✓）" ;;
+        --help|-h) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;   # S11 FIX: the usage comment ends at line 20; 24 also printed set -eu and APP="
         *) die "未知参数：$1（用 --help 看用法）" ;;   # ✓ 未知参数**不能静默忽略** ✓
     esac
     shift
@@ -101,7 +106,16 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
         die "拒绝卸载：安装标记里**没有记录安装位置** ✓ → 无法确认这个目录是我们装的 ✓ **一个字节都不删** ✓"
     fi
     if [ "$recorded" != "$PREFIX" ]; then
-        die "拒绝卸载：标记里记录的安装位置是「$recorded」，与本次的「$PREFIX」不一致 ✓ **一个字节都不删** ✓"
+        # S3 FIX (Linux audit MAJOR): --force was only ever read by the install path, so a
+        # directory that had been moved or renamed could never be uninstalled - a permanent
+        # lockout, with the launcher left dangling. --force now overrides the location check,
+        # loudly, and only that check: the marker and the file list are still required.
+        if [ "$FORCE" -eq 1 ]; then
+            warn "**--force：跳过安装位置校验** ✓ 标记里写的是「$recorded」，本次是「$PREFIX」✓ 仍然只删清单里的文件 ✓"
+        else
+            die "拒绝卸载：标记里记录的安装位置是「$recorded」，与本次的「$PREFIX」不一致 ✓ **一个字节都不删** ✓
+  如果你确实移动过安装目录，可以用 --force 强制卸载 ✓（仍然只删清单里的文件 ✓）"
+        fi
     fi
 
     # 符号链接：**只删指向我们的** ✓（F7：用户自己的链接不能动 ✗）
@@ -254,13 +268,53 @@ if [ "$stg_n" -eq 0 ]; then die "复制后暂存目录是空的 ✗"; fi
 chmod +x "$STAGING/$APP" 2>/dev/null || true
 [ -f "$STAGING/gui/dsht-gui" ] && chmod +x "$STAGING/gui/dsht-gui" 2>/dev/null || true
 
+# ---- 命令链接前置检查 (S1 FIX: must run before the install) ----
+#   The audit found this check AFTER the landing move. Two consequences:
+#     - a plain file at the target made the script exit 1 after the install was already done
+#     - a foreign symlink there meant the old prefix had already been moved aside and removed,
+#       taking any user files inside it, and a half-finished install was left behind
+#   It now runs before anything is touched, so a refusal changes nothing on disk.
+# ✗✗ F7：原来直接 `ln -sf` → **覆盖用户自己的符号链接** ✗
+#   （审计实测：用户建的 `$BINDIR/dsh-minato -> /etc/hostname` 被装掉、然后被卸掉 ✓✗）
+# ✓ 修：**安装时**就检查 ✓ —— 已存在且不指向我们 → **拒绝** ✓✓（卸载侧检查太晚 ✓）
+if [ -L "$BINDIR/$APP" ]; then
+    _tgt=$(readlink "$BINDIR/$APP" 2>/dev/null || true)
+    case "$_tgt" in
+        "$PREFIX"/*) : ;;   # 指向我们（重装 ✓）→ 可以覆盖 ✓
+        *) die "拒绝：$BINDIR/$APP 已经是一个指向「$_tgt」的符号链接 ✓
+  它不是本工具建的 ✓ 为了不动别人的东西，请先自行处理它（或换 DSH_MINATO_BINDIR ✓）" ;;
+    esac
+elif [ -e "$BINDIR/$APP" ]; then
+    die "$BINDIR/$APP 已存在且不是符号链接 ✓ 请先处理它 ✓"
+fi
 # ---- 就位：先改名旧的，再改名新的 ✓（与 Windows 侧同一套原子性做法 ✓）----
 if [ -d "$PREFIX" ]; then
     OLD="$PREFIX.old.$$"
     rm -rf "$OLD" 2>/dev/null || true
     if mv "$PREFIX" "$OLD" 2>/dev/null; then
-        rm -rf "$OLD" 2>/dev/null || warn "旧目录没能完全删掉：$OLD"
-        ok "已替换旧版本"
+        # S2 FIX (Linux audit MAJOR): rm -rf on the old prefix destroyed anything the user had
+        # put there (a note in gui/, their own app-mine/ folder, a script at the root). The
+        # uninstall path already deletes selectively from the recorded file list, so the
+        # replacement path now does the same and keeps the rest.
+        if [ -f "$OLD/$MARKER" ] && [ -f "$OLD/.dsh-minato-files" ]; then
+            while IFS= read -r rel; do
+                [ -n "$rel" ] || continue
+                case "$rel" in
+                    /*|*..*) continue ;;
+                esac
+                rm -f "$OLD/$rel" 2>/dev/null || true
+            done < "$OLD/.dsh-minato-files"
+            find "$OLD" -type d -empty -delete 2>/dev/null || true
+            if [ -n "$(ls -A "$OLD" 2>/dev/null || true)" ]; then
+                warn "旧目录里**还有不属于本工具的文件** ✓ → 保留在 $OLD ✓（没有删 ✗ 你可以自己看 ✓）"
+            else
+                rm -rf "$OLD" 2>/dev/null || true
+                ok "已替换旧版本"
+            fi
+        else
+            # no list to work from (very old install) - be conservative and keep it
+            warn "旧目录里没有文件清单 ✓ → **不删它** ✓ 保留在 $OLD ✓（请自行确认后删除 ✓）"
+        fi
     else
         warn "旧目录改名失败（可能有程序占用）→ 就地覆盖 ✓"
     fi
@@ -286,19 +340,6 @@ find "$PREFIX" -type f 2>/dev/null | sed "s:^$PREFIX/::" > "$PREFIX/.dsh-minato-
 
 # ---- 命令链接 ✓ ----
 mkdir -p "$BINDIR" || die "建不了 $BINDIR"
-# ✗✗ F7：原来直接 `ln -sf` → **覆盖用户自己的符号链接** ✗
-#   （审计实测：用户建的 `$BINDIR/dsh-minato -> /etc/hostname` 被装掉、然后被卸掉 ✓✗）
-# ✓ 修：**安装时**就检查 ✓ —— 已存在且不指向我们 → **拒绝** ✓✓（卸载侧检查太晚 ✓）
-if [ -L "$BINDIR/$APP" ]; then
-    _tgt=$(readlink "$BINDIR/$APP" 2>/dev/null || true)
-    case "$_tgt" in
-        "$PREFIX"/*) : ;;   # 指向我们（重装 ✓）→ 可以覆盖 ✓
-        *) die "拒绝：$BINDIR/$APP 已经是一个指向「$_tgt」的符号链接 ✓
-  它不是本工具建的 ✓ 为了不动别人的东西，请先自行处理它（或换 DSH_MINATO_BINDIR ✓）" ;;
-    esac
-elif [ -e "$BINDIR/$APP" ]; then
-    die "$BINDIR/$APP 已存在且不是符号链接 ✓ 请先处理它 ✓"
-fi
 ln -sf "$PREFIX/$APP" "$BINDIR/$APP"
 ok "已链接 $BINDIR/$APP"
 case ":$PATH:" in
