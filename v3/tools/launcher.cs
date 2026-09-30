@@ -100,7 +100,14 @@ internal static class Launcher
             if (t.Length == 0 || t.StartsWith("#", StringComparison.Ordinal)) continue;
             int sp = t.IndexOf(' ');
             if (sp <= 0) continue;
-            if (string.Equals(t.Substring(sp + 1).Trim(), fileName, StringComparison.OrdinalIgnoreCase))
+            // ✗✗ 审计 #5：原来拿清单里的**整段名字**与裸文件名比 ✗
+                //   而新清单写的是 `gui\dsht-gui.exe`（带反斜杠路径 ✓）→ **永远不相等** ✗
+                //   → `gui\dsht-gui.exe` **再也不被校验** ✗✗ ← 正是"银狐给 GUI 打补丁"那个场景 ✓
+                // ✓ 修：**取 basename 比对** ✓（`gui\dsht-gui.exe` 与 `dsht-gui.exe` 都认 ✓）
+                string nameInManifest = t.Substring(sp + 1).Trim().Replace('/', '\\');
+                int bs = nameInManifest.LastIndexOf('\\');
+                string baseInManifest = bs >= 0 ? nameInManifest.Substring(bs + 1) : nameInManifest;
+                if (string.Equals(baseInManifest, fileName, StringComparison.OrdinalIgnoreCase))
                 return t.Substring(0, sp).Trim().ToLowerInvariant();
         }
         return null;
