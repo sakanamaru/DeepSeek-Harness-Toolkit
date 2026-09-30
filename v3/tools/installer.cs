@@ -195,7 +195,16 @@ internal static class Installer
         {
             // 把暂存里的内容搬进一个版本化目录 ✓
             string verDir = Path.Combine(target, "app-" + ShortVersion());
-            if (Directory.Exists(verDir)) { Directory.Delete(verDir, true); }
+            // ✗✗ 审计 M2：原来**先删掉 verDir** ✗ —— 同版本重装时 verDir **就是活的安装** ✓
+            //   里面有文件被占用（程序在跑 / AV / shell 停在里面）→ `Directory.Delete(…,true)`
+            //   **删掉能删的再抛错** ✗ → catch → `TryDelete(staging)` → **旧安装被毁 + 新载荷也被删** ✗✗
+            // ✓ 修：**先改名让开**（改名不会因文件被占用而失败 ✓）→ 新载荷就位 ✓ → **成功后才删旧的** ✓
+            //   失败则**改名回来** ✓ → 回滚 ✓✓
+            if (Directory.Exists(verDir))
+            {
+                try { Directory.Move(verDir, verDir + ".old-" + DateTime.Now.ToString("HHmmss")); }
+                catch (Exception mv) { Log("旧版本目录改名失败（不致命 ✓ 稍后会被新载荷替换）: " + mv.Message); }
+            }
             Directory.Move(staging, verDir);
             Log("版本目录: " + verDir);
             // 稳定入口：把启动器与 CLI 复制到 target 根 ✓（快捷方式指向它们 ✓ 升级时路径不变 ✓）
@@ -206,7 +215,16 @@ internal static class Installer
             if (Directory.Exists(vgui))
             {
                 string tgui = Path.Combine(target, "gui");
-                if (Directory.Exists(tgui)) { try { Directory.Move(tgui, old); hadOld = true; } catch { } TryDelete(tgui); }
+                // ✗✗ 审计 M2(b)：原来改名失败后 `catch { }` 落到 `TryDelete(tgui)` ✗
+                //   = **递归删除旧安装的 gui** ✗ → 若那次删除也只是部分成功 ✓ → 下一行 Move 抛错 ✓
+                //   → staging 被删 ✓ 旧 gui 滞留在 `<target>.old-HHmmss` ✓（因为 220 行被 return 跳过 ✓）
+                //   → **根启动器已换新、gui 缺失 = 混合坏安装** ✗✗
+                // ✓ 修：**改名失败就抛** ✓ → 走 catch → 回滚 ✓✓（绝不删旧 gui ✗）
+                if (Directory.Exists(tgui))
+                {
+                    try { Directory.Move(tgui, old); hadOld = true; }
+                    catch (Exception gmv) { throw new InvalidOperationException("旧 gui 目录改名失败（可能有程序占用 ✓）→ 已中止，未做任何破坏 ✓: " + gmv.Message); }
+                }
                 Directory.Move(vgui, tgui);
             }
             Log("稳定入口已就位（dsh-minato.exe / dsh-minato-gui.exe / gui\\）");
@@ -215,9 +233,23 @@ internal static class Installer
         {
             Log("就位失败: " + ex.Message);
             TryDelete(staging);
+            // ✓ M2 回滚：把刚才改名让开的旧版本目录**改回来** ✓
+            //   （否则用户的活安装就"消失"了 ✗ 只剩一个 `app-<ver>.old-HHmmss` ✓）
+            try
+            {
+                string vd = Path.Combine(target, "app-" + ShortVersion());
+                if (!Directory.Exists(vd))
+                {
+                    string[] olds = Directory.GetDirectories(target, "app-" + ShortVersion() + ".old-*");
+                    if (olds.Length > 0) { Directory.Move(olds[0], vd); Log("已回滚旧版本目录 ✓ " + vd); }
+                }
+            }
+            catch (Exception rb) { Log("回滚旧版本目录失败（请手动查看 ✓）: " + rb.Message); }
             return 4;
         }
         if (hadOld) TryDelete(old);
+        // ✓ M2：**走到这里说明新载荷已就位** ✓ 才清掉改名让开的旧版本目录 ✓
+        try { foreach (string od in Directory.GetDirectories(target, "app-" + ShortVersion() + ".old-*")) TryDelete(od); } catch { }
 
         // ④ 持久化卸载器 ✓✓（下载的 SFX 会被用户删掉 ✗ 不能靠它 ✓）
         Report(progress, 84, "写入卸载器…");
@@ -464,8 +496,56 @@ internal static class Installer
         string doomed = target + ".removing-" + DateTime.Now.ToString("HHmmss");
             string parent = Path.GetDirectoryName(target);
             string mover = Path.Combine(parent == null ? Path.GetTempPath() : parent, Path.GetFileName(doomed));
+            // ★★★ **C1 的另一半（审计 CRITICAL）** ✓✓
+            //   ✗ 原来 `TryDelete(mover)` = `Directory.Delete(target, true)` → **递归删整棵树** ✗✗
+            //     → 用户后来放进这个目录的任何东西**一起没** ✓
+            //     （marker 只证明"我们在这装过" ✗ **不证明"这里的东西都是我们的"** ✓✓）
+            //   ✓ 修：**只删我们自己的** ✓✓
+            //     ① `hashes.txt` 列出了我们装的每个文件 ✓ → 只删这些 ✓
+            //     ② 加上已知生成物（uninstall.exe / marker / app-* / gui/）✓
+            //     ③ **目录空了才删目录** ✓；还有别人的东西 → **保留 + 如实报告** ✓✓
+            System.Collections.Generic.List<string> ourFiles = new System.Collections.Generic.List<string>();
+            try
+            {
+                string mf2 = Path.Combine(target, "hashes.txt");
+                if (File.Exists(mf2))
+                {
+                    foreach (string ln in File.ReadAllLines(mf2))
+                    {
+                        if (ln == null) continue;
+                        string s = ln.Trim();
+                        if (s.Length == 0 || s.StartsWith("#", StringComparison.Ordinal)) continue;
+                        int sp2 = s.IndexOf(' ');
+                        if (sp2 <= 0) continue;
+                        ourFiles.Add(s.Substring(sp2 + 1).Trim());
+                    }
+                }
+            }
+            catch { }
             try { Directory.Move(target, mover); } catch { mover = target; }
-            TryDelete(mover);
+            int removedOur = 0;
+            foreach (string rel in ourFiles)
+            {
+                try { string fp = Path.Combine(mover, rel); if (File.Exists(fp)) { File.Delete(fp); removedOur++; } } catch { }
+            }
+            foreach (string gen in new string[] { "uninstall.exe", ".dsh-minato-install", "hashes.txt" })
+            {
+                try { string fp = Path.Combine(mover, gen); if (File.Exists(fp)) { File.Delete(fp); removedOur++; } } catch { }
+            }
+            try { foreach (string dd in Directory.GetDirectories(mover, "app-*")) { try { Directory.Delete(dd, true); removedOur++; } catch { } } } catch { }
+            try { string g2 = Path.Combine(mover, "gui"); if (Directory.Exists(g2)) { Directory.Delete(g2, true); removedOur++; } } catch { }
+            Log("已删我们自己的 " + removedOur + " 项 ✓（清单 " + ourFiles.Count + " 条 ✓）");
+            bool leftover = false;
+            try { leftover = Directory.Exists(mover) && Directory.GetFileSystemEntries(mover).Length > 0; } catch { }
+            if (leftover)
+            {
+                try { if (!string.Equals(mover, target, StringComparison.OrdinalIgnoreCase)) Directory.Move(mover, target); } catch { }
+                Log("目录里**还有不属于本工具的文件** ✓ → 目录**保留** ✓ 只删了我们自己的 " + removedOur + " 项 ✓");
+            }
+            else
+            {
+                TryDelete(mover);
+            }
             bool gone = !Directory.Exists(target);
             // ✓ M8：没删干净 → **把 marker 写回去** ✓ 让用户能重试（配合"先关程序再卸载" ✓）
             if (!gone && markerBackup.Length > 0)
