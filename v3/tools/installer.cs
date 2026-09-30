@@ -262,6 +262,23 @@ internal static class Installer
         string target = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
         Log("卸载目录: " + target);
 
+        // ★★ **先做两道安全检查，再考虑自我迁移** ✓✓
+        //   ✗ 原来检查在迁移**之后** → 拒绝时父进程已返回 0 ✗ → **自动化会误读**（以为卸载成功了 ✓）
+        //   ✓ 现在拒绝**当场返回 2** ✓ 不迁移 ✓ 行为与退出码一致 ✓✓
+        string preTarget = Environment.GetEnvironmentVariable("DSHT_UNINSTALL_TARGET");
+        if (!string.IsNullOrEmpty(preTarget)) preTarget = preTarget.TrimEnd('\\'); else preTarget = target;
+        if (IsDangerousPath(preTarget)) { Log("拒绝（迁移前检查）：目录可疑 " + preTarget); return 2; }
+        if (!File.Exists(Path.Combine(preTarget, ".dsh-minato-install")))
+        {
+            Log("拒绝（迁移前检查）：目录里没有安装标记 → 不像安装目录 ✓ **一个字节都不删** ✓");
+            if (!silent) MessageBox.Show(
+                "拒绝卸载。" + Environment.NewLine + Environment.NewLine +
+                "这个目录里没有 dsh-minato 的安装标记：" + Environment.NewLine + preTarget + Environment.NewLine + Environment.NewLine +
+                "所以它看起来**不是**本工具的安装目录 ✓ 为了安全，**什么都不会删** ✓",
+                AppName + " 卸载", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return 2;
+        }
+
         // ✗✗ 实测：卸载器**自己就跑在目标目录里** ✗ → Windows 不允许删除"正在运行的程序所在目录" ✓
         //    → 所以**先把自己复制到 %TEMP% 再从那里重启** ✓✓（标准做法 ✓ 零依赖 ✓）
         if (Environment.GetEnvironmentVariable("DSHT_UNINSTALL_RELOCATED") != "1")
