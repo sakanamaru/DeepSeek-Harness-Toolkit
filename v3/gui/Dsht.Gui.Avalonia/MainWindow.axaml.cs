@@ -518,6 +518,18 @@ namespace Dsht.Gui.Avalonia
                 //    → dsh 对它的请求返回 401 ✗ → gio 报 "Unauthorized" 就**放弃** ✗ → 浏览器永远打不开 ✓✓
                 //    （URL 本身是对的 ✓ 带 token ✓ —— 问题在 xdg-open 的实现 ✗）
                 // → 所以 Linux 上**先直接试浏览器** ✓✓（装了哪个用哪个 ✓）；xdg-open 只给 2 秒做兜底 ✓
+                // ✗✗ 真机实测（2026-09-30）第二层原因：这台机器上 **firefox 是 snap 包** ✓
+                //    → snap 应用有 **cgroup 限制** ✗：非会话启动器直接跑 `firefox` 会报
+                //      "…is not a snap cgroup for tag snap.firefox.firefox" ✓✓
+                //    → **`snap run firefox` 能自建正确的 cgroup** ✓✓ 实测只差 DISPLAY ✓（GUI 在会话内有 ✓✓）
+                // → 所以 Linux 上顺序：snap run firefox → firefox → chromium 系 → xdg-open ✓
+                try
+                {
+                    ProcessStartInfo sp = new ProcessStartInfo("snap", "run firefox \"" + url + "\"") { UseShellExecute = false };
+                    Process p0 = Process.Start(sp);
+                    if (p0 != null) return;   // snap 不在的话会抛异常 ✓ 落到下面的候选 ✓
+                }
+                catch { }
                 string[] browsers0 = new string[] { "firefox", "chromium", "chromium-browser", "google-chrome", "epiphany" };
                 for (int bi0 = 0; bi0 < browsers0.Length; bi0++)
                 {
