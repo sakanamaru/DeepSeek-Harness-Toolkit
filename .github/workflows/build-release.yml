@@ -257,14 +257,53 @@ jobs:
             Write-Output "hashes.txt unchanged; nothing to commit"
           }
 
-      - name: Pack upload zip (16 files)
+      - name: Add obvious entry points to the release folder
+        shell: pwsh
+        run: |
+          # Two files a user can double-click, so nobody has to work out which of a directory of
+          # seventeen items is the one to run. Generated here so they are reproducible.
+          Set-Content -Path 'START-GUI.cmd' -Encoding ascii -Value @(
+            '@echo off',
+            'chcp 65001 >nul',
+            'cd /d "%~dp0"',
+            'if not exist "Toolkit GUI.exe" ( echo   [X] Toolkit GUI.exe not found. Extract the whole archive. & pause & exit /b 1 )',
+            'start "" "Toolkit GUI.exe"'
+          )
+          Set-Content -Path 'START-CLI.cmd' -Encoding ascii -Value @(
+            '@echo off',
+            'chcp 65001 >nul',
+            'cd /d "%~dp0"',
+            'if not exist "DeepSeek Harness Toolkit.exe" ( echo   [X] DeepSeek Harness Toolkit.exe not found. Extract the whole archive. & pause & exit /b 1 )',
+            '"DeepSeek Harness Toolkit.exe"',
+            'pause'
+          )
+          Set-Content -Path 'READ-ME-FIRST.txt' -Encoding utf8 -Value @(
+            'DeepSeek Harness Toolkit - which file do I run?',
+            '===============================================',
+            '',
+            '  Graphical interface : double-click START-GUI.cmd',
+            '  Command line        : double-click START-CLI.cmd',
+            '',
+            'Everything else in this folder supports those two, or is there so you can check the',
+            'download yourself:',
+            '',
+            '  DeepSeek Harness Toolkit.exe    command line tool',
+            '  Toolkit GUI.exe                 graphical interface',
+            '  Toolkit GUI Standalone.exe      graphical interface, embeds the core exe',
+            '  hashes.txt / hashes.txt.asc     checksums and their signature',
+            '  verify.ps1                      verifies a download against those checksums',
+            '  dsh_v2.cs, build_exe.cmd, src/  the source, if you want to build it yourself',
+            '',
+            'This is an unofficial third-party tool and is not affiliated with DeepSeek.'
+          )
+          Get-ChildItem START-GUI.cmd, START-CLI.cmd, READ-ME-FIRST.txt | ForEach-Object { $_.Name }      - name: Pack upload zip (16 files)
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           if ($tag -in @('main','master','')) { $tag = "${{ inputs.release_tag }}" }
           if ($tag -eq '') { $tag = 'dev' }
           $zipName = "DeepSeek-Harness-Toolkit_${tag}_upload-package.zip"
-          $items = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.gitignore','hashes.txt','hashes.txt.asc','.dsh_launcher_root','src')
+          $items = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','START-GUI.cmd','START-CLI.cmd','READ-ME-FIRST.txt','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.gitignore','hashes.txt','hashes.txt.asc','.dsh_launcher_root','src')
           Compress-Archive -Path $items -DestinationPath $zipName -CompressionLevel Optimal
           Write-Output ("zip: " + [math]::Round((Get-Item $zipName).Length/1KB,1) + " KB")
 
