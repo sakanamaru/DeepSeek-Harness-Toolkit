@@ -137,8 +137,12 @@ jobs:
           cp LICENSE "$PKG/" 2>/dev/null || true
           cp README.md "$PKG/" 2>/dev/null || true
           cp v3/tools/linux_smoke.sh "$PKG/"
+          # O1 FIX (Linux final review): the package shipped the smoke test but NOT the installer, so a
+          # user who unpacked the tarball had no supported way to install or uninstall - the readme told
+          # them to copy files by hand. Ship the script the project actually maintains.
+          cp v3/tools/install.sh "$PKG/"
           printf "%s\n" "[Desktop Entry]" "Type=Application" "Name=dsh-minato" "Comment=Deploy and ops kit for DeepSeek Harness (dsh)" "Exec=dsh-minato" "Icon=dsh-minato" "Terminal=true" "Categories=Utility;" > "$PKG/dsh-minato.desktop"
-          printf "%s\n" "install: put dsh-minato on PATH (e.g. ~/.local/bin) or run ./dsh-minato" "gui: ./gui/dsht-gui (self-contained, no .NET needed)" "menu entry: copy dsh-minato.desktop to ~/.local/share/applications/ and the icon to ~/.local/share/icons/hicolor/256x256/apps/" "runtime deps: iproute2 (ss), ps, and one of curl/wget/python3 plus tar when bootstrapping Node" "known gaps: see docs/LINUX-TEST.md and v3/gui/Dsht.Gui.Avalonia/README.md" > "$PKG/README-Linux.txt"
+          printf "%s\n" "install: ./install.sh            (adds a command link; --prefix <dir> to choose where)" "uninstall: ./install.sh --uninstall" "gui: ./gui/dsht-gui (self-contained, no .NET needed)" "menu entry: install.sh writes one unless you pass --no-desktop" "runtime deps: iproute2 (ss), ps, and one of curl/wget/python3 plus tar when bootstrapping Node" "known gaps: see docs/LINUX-TEST.md and v3/gui/Dsht.Gui.Avalonia/README.md" > "$PKG/README-Linux.txt"
           tar -czf "$PKG.tar.gz" "$PKG"
           sha256sum "$PKG.tar.gz" > "$PKG.tar.gz.sha256"
           cat "$PKG.tar.gz.sha256"
