@@ -823,13 +823,18 @@ namespace Dsht.Gui.Avalonia.Shells
                 s.Children.Add(Card(err, new Thickness(0), new Thickness(18, 16)));
                 return s;
             }
+            // GUI final review: KpiStrip reads host.ListSource, which the list builder sets - so the builder has
+            // to run FIRST even though the cards are displayed above the list. Building them in display order made
+            // the strip read the previous page's subset (or none), so its tag and figures disagreed with the rows.
+            Control listCtl;
+            if (host.SubTab == 3) listCtl = StatsBody(host);
+            else if (host.SubTab == 0) listCtl = SessionListGrouped(host);   // 整体：子代理**折叠进父会话**（下拉框 ✓✓ 用户要求 ✓）
+            else listCtl = SessionList(host, host.SubTab);
             s.Children.Add(KpiStrip(host));
             s.Children.Add(Toolbar(host));
             s.Children.Add(new TextBlock { Text = host.FocusText, Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap });
             // 三视图 ✓：0=整体（全部，子代理随后归类进父会话）1=父会话 2=子代理 3=统计 ✓
-            if (host.SubTab == 3) s.Children.Add(StatsBody(host));
-            else if (host.SubTab == 0) s.Children.Add(SessionListGrouped(host));   // 整体：子代理**折叠进父会话**（下拉框 ✓✓ 用户要求 ✓）
-            else s.Children.Add(SessionList(host, host.SubTab));
+            s.Children.Add(listCtl);
             s.Children.Add(Explain());
             // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）
             return s;
