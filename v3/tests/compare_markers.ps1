@@ -1,6 +1,13 @@
 ﻿# compare_markers.ps1 —— V3 与 v2.x 的「标记行契约」比对（目标切换门槛之一）
 # 默认只比对机器可读标记行（^STATUS_/PROFILECHK_/...）；full=$true 的命令比对整份输出（含裸路径行）。
 # -Fixtures：临时造 3 个受控备份（覆盖 backup-list --detail 分支与有效性过滤），跑完即清理。
+# ★★★ **已知缺陷（实测发现）：`-Fixtures` 模式不稳定** ✗✗
+#   · 它打开的两个 `restore --dry-run` 用例会**枚举真实数据根**（`~\.dsh` ✓ 输出里 `DRYRUN_SCOPE data …` ✓）
+#   · 而 dsh 正在运行时那个目录**一直在变** → 两次调用之间文件计数不同 → **随机 FAIL** ✗
+#     （同一份代码连续跑：真仓库 21/21 ✓ 之后 19/21 ✗ · 全新副本 19/21 ✗ —— 取决于运气 ✓）
+#   · **纯模式（不加 -Fixtures）是确定的** ✓ 全新副本上连跑三次都是 21/21 rc=0 ✓✓
+#   · 所以 **CI 用纯模式** ✓；`-Fixtures` 只在"确定 dsh 没在跑"时手动用 ✓
+#   · 要彻底修需要给那两个用例隔离 DSH_HOME ✓（未做 ✓ 如实记在这里 ✓）
 # 关键：V3 exe 必须与 v2.x exe **同目录**——因为两者都把状态目录解析为 exe 所在目录（备份根 = 状态目录/backup）。
 # 退出码：0=全部对齐；1=有差异；2=环境不足（缺 v2.x exe 或 csc）
 param([string]$Repo = ".", [switch]$Fixtures, [switch]$Heavy)
