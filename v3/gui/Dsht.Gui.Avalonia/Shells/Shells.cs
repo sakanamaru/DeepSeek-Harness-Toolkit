@@ -1457,6 +1457,7 @@ namespace Dsht.Gui.Avalonia.Shells
             StackPanel lines = new StackPanel { Spacing = 1 };
             string[] all = raw.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
             int shown = 0;
+            bool inStderr = false;   // N13 FIX: a [stderr] block spans several lines
             for (int i = 0; i < all.Length; i++)
             {
                 string l = all[i] == null ? "" : all[i].TrimEnd();
@@ -1468,6 +1469,12 @@ namespace Dsht.Gui.Avalonia.Shells
                 else if (l.StartsWith("LOG_EXPORT", StringComparison.Ordinal)) continue;    // 导出回执 ✓ 由 toast 显示
                 else if (l.StartsWith("LOG_EMPTY", StringComparison.Ordinal)) continue;     // 空状态 ✓ 上面已处理
                 else if (l.StartsWith("INTEGRITY_", StringComparison.Ordinal)) continue;    // 完整性提示 ✓ 不属于日志正文
+                // ★★★ **N13 修复（GUI 复审 MINOR —— stderr 多行只跳过第一行）** ✓✓
+                //   ✗ `Run()` 把 stderr 作为**一整块**追加 ✓ 只有**第一行**带 `[stderr]` 前缀 ✗
+                //     → 后续行**照旧被当成日志记录渲染** ✗ 还让"共 N 行"多算 ✓
+                //   ✓ 现在：**遇到 `[stderr]` 就进入跳过模式** ✓✓ 直到块结束 ✓
+                else if (l.StartsWith("[stderr]", StringComparison.Ordinal)) { inStderr = true; continue; }
+                else if (inStderr) { if (l.StartsWith("LOG_", StringComparison.Ordinal)) inStderr = false; else continue; }
                 else if (l.StartsWith("[stderr]", StringComparison.Ordinal)) continue;   // F17 FIX: stderr text is not a log record
                 if (l.Trim().Length == 0) continue;
                 IBrush fg = Palette.Text;
@@ -2219,6 +2226,7 @@ namespace Dsht.Gui.Avalonia.Shells
             if (d == null || !d.Ok) return;
             string q = (host.ProfileSearch ?? "").Trim();
             int shown = 0;
+            bool inStderr = false;   // N13 FIX: a [stderr] block spans several lines
             for (int i = 0; i < d.Profiles.Count; i++)
             {
                 ProfileCard p = d.Profiles[i];

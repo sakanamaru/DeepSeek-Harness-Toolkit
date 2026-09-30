@@ -66,8 +66,8 @@ namespace Dsht.Gui.Avalonia
         };
         _box.KeyDown += delegate(object sender, KeyEventArgs e)
             {
-                if (e.Key == Key.Enter) { _result = _box.Text; Close(); }
-                else if (e.Key == Key.Escape) { _result = null; Close(); }
+                if (e.Key == Key.Enter) { _result = _box.Text; Close(); e.Handled = true; }   // N14 FIX: the window handler would otherwise fire too
+                else if (e.Key == Key.Escape) { _result = null; Close(); e.Handled = true; }
             };
             s.Children.Add(_box);
 

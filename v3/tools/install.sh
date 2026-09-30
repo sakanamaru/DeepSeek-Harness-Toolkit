@@ -143,14 +143,17 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
     if [ -L "$BINDIR/$APP" ]; then
         tgt=$(readlink "$BINDIR/$APP" 2>/dev/null || true)
         case "$tgt" in
+            # N3 FIX (Linux audit MINOR): under --force the prefix in the marker is the OLD
+            # location, so a link pointing at it was treated as "not ours" and left dangling.
             "$PREFIX"/*) rm -f "$BINDIR/$APP" && ok "已删命令链接 $BINDIR/$APP" ;;
+            "$recorded"/*) rm -f "$BINDIR/$APP" && ok "已删命令链接 $BINDIR/$APP（指向标记里的旧位置 ✓ --force ✓）" ;;
             *) warn "跳过 $BINDIR/$APP：它指向 $tgt ✓ 不是我们建的 ✓ 不动它 ✓" ;;
         esac
     fi
     # 菜单项：**只删内容是我们的** ✓（F7）
         # S10 FIX (Linux audit MINOR): an unescaped prefix is a basic regex, so a '[' in the
     # path made grep fail and the stale menu entry was never removed. -F is literal.
-    if [ -f "$DESKTOP_DIR/$APP.desktop" ] && grep -qF "$PREFIX" "$DESKTOP_DIR/$APP.desktop" 2>/dev/null; then
+    if [ -f "$DESKTOP_DIR/$APP.desktop" ] && { grep -qF "$PREFIX" "$DESKTOP_DIR/$APP.desktop" 2>/dev/null || { [ -n "$recorded" ] && grep -qF "$recorded" "$DESKTOP_DIR/$APP.desktop" 2>/dev/null; }; }; then   # N3 FIX: also accept the recorded path under --force
         rm -f "$DESKTOP_DIR/$APP.desktop" && ok "已删菜单项"
     fi
     command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
@@ -337,7 +340,27 @@ if [ -d "$PREFIX" ]; then
                 [ -d "$OLD/$_kd" ] && rmdir "$OLD/$_kd" 2>/dev/null || true
             done
             if [ -n "$(ls -A "$OLD" 2>/dev/null || true)" ]; then
-                warn "旧目录里**还有不属于本工具的文件** ✓ → 保留在 $OLD ✓（没有删 ✗ 你可以自己看 ✓）"
+                # N2 FIX (Linux audit MINOR): these used to be left in $PREFIX.old.<pid> for ever -
+                # the marker and the file list know nothing about that folder, the uninstall never
+                # removes it, and every reinstall added another one. Move what is left back into the
+                # freshly installed prefix, keeping our own files as they are now.
+                _moved=0
+                for _f in $(find "$OLD" -mindepth 1 2>/dev/null); do
+                    _rel=${_f#"$OLD"/}
+                    case "$_rel" in
+                        gui|bin|icons|cli-small|plugin|app-*) continue ;;
+                    esac
+                    if [ -e "$PREFIX/$_rel" ]; then continue; fi
+                    if mkdir -p "$(dirname -- "$PREFIX/$_rel")" 2>/dev/null && mv -- "$_f" "$PREFIX/$_rel" 2>/dev/null; then
+                        _moved=$((_moved + 1))
+                    fi
+                done
+                if [ "$_moved" -gt 0 ]; then
+                    ok "已把 $_moved 项你自己的文件**搬回新安装目录** ✓（不再留在 $OLD ✓）"
+                fi
+                if [ -n "$(ls -A "$OLD" 2>/dev/null || true)" ]; then
+                    warn "旧目录里**还有搬不动的东西** ✓ → 保留在 $OLD ✓（没有删 ✗ 你可以自己看 ✓）"
+                fi
             else
                 rm -rf "$OLD" 2>/dev/null || true
                 ok "已替换旧版本"

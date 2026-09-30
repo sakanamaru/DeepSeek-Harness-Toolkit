@@ -94,7 +94,7 @@ Cannot find package '@deepseek-ai/schemastery' imported from .../plugin/dsh-mina
 
 **第二次：通过 ✓**
 ```
-index.js 语法检查 ✓ · 自测 15/15 ✓ · index.js 不再含任何 @deepseek-ai 导入 ✓
+index.js 语法检查 ✓ · 自测 19/19 ✓ · index.js 不再含任何 @deepseek-ai 导入 ✓
 dsh --profile bridgetest --port 3999 启动成功（3999 监听）✓ · 输出无 "plugin tree failed" ✓
 用户正在跑的 3080 实例（PID 16748）全程未被触碰 ✓
 ```
