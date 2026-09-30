@@ -25,6 +25,20 @@ namespace Dsht.Platform.Linux
                         //     · 设置后 → 备份放到你指定的地方 ✓ 放在安装目录之外才真正稳妥 ✓
                         //     · 未设置 → **保持原行为** ✓（向后兼容 ✓ 已有备份不会突然找不到 ✓✓）
                         //     · `backup --to <目录>` 会在本次运行里设置它 ✓✓（一次性的"手动指定目录" ✓）
+                        // ✓ **持久化的选择** ✓✓（`backup --to <目录>` 会写这个文件 ✓）
+                        //   ✗ 原来 `--to` 只影响**那一次运行** ✗ → 下次就"忘了" ✓
+                        //     → 第二次备份又被要求给 `--to` ✓ · 删除备份报 `not-found` ✗✗（校验查的是默认根 ✓）
+                        //   ✓ 现在：**选择的目录被记住** ✓✓ 之后所有命令都用它 ✓
+                        try
+                        {
+                            string sel = Path.Combine(_stateDir, ".backup-dir");
+                            if (File.Exists(sel))
+                            {
+                                string chosen = File.ReadAllText(sel).Trim();
+                                if (chosen.Length > 0) return chosen;
+                            }
+                        }
+                        catch { }
                         string env = Environment.GetEnvironmentVariable("DSH_MINATO_BACKUP_DIR");
                         if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
                         return Path.Combine(_stateDir, "backup");

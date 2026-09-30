@@ -174,7 +174,52 @@ namespace Dsht.Gui.Avalonia
         }
         // ---------------- 备份 / 设置 的操作（都走 CLI，异步，不阻塞界面） ----------------
 
-        public void CreateBackup() { RunCliAction("backup", "立即备份"); }
+        /// <summary>立即备份 ✓✓。**用户要求（2026-09-30）**：「第一次备份弹窗选择」✓✓
+        ///   流程：**先跑一次 `backup`** ✓
+        ///     · 成功 → 完事 ✓（已有备份时 CLI 会**沿用**上次的目录 ✓ 不追问 ✓）
+        ///     · 返回「第一次备份必须指定目录」→ **弹文件夹选择器** ✓ → 再跑 `backup --to <选中的目录>` ✓✓
+        ///   为什么这样：**判据放在 CLI 里** ✓ 界面不用自己猜"是不是第一次" ✓✓（单一事实来源 ✓）</summary>
+        public async void CreateBackup()
+        {
+            string outp = await System.Threading.Tasks.Task.Run(delegate { return Run(CliPath(), "backup"); });
+            if (outp != null && outp.IndexOf("第一次备份必须指定目录", StringComparison.Ordinal) < 0)
+            {
+                _actionLog = "立即备份结果：" + Environment.NewLine + outp.Trim();
+                BuildShell(); ShowToast(_actionLog);
+                return;
+            }
+            // 第一次 → 让用户选目录 ✓✓
+            string dir = await PickFolder("选择备份目录（建议放在安装目录之外，例如 D:\\dsh-backups）");
+            if (string.IsNullOrEmpty(dir))
+            {
+                _actionLog = "已取消备份 ✓（第一次备份需要先选一个目录 ✓）";
+                BuildShell(); ShowToast(_actionLog);
+                return;
+            }
+            RunCliAction("backup --to \"" + dir + "\"", "立即备份（第一次，写到 " + dir + "）");
+        }
+
+        /// <summary>弹系统文件夹选择器 ✓✓（Avalonia 的 StorageProvider ✓ 取消返回空串 ✓ 不猜 ✓）。</summary>
+        // ★★ **注意（今晚第四次踩）**：本项目的命名空间是 `Dsht.Gui.Avalonia` ✗
+        //   所以写 `Avalonia.Platform.Storage.X` 会被**相对解析**成 `Dsht.Gui.Avalonia.Platform.Storage.X` ✗✗
+        //   → **凡是 `Avalonia.*` 都要写成 `global::Avalonia.*`** ✓✓（`Avalonia.Threading` / `Avalonia.Controls.Primitives` 都栽过 ✓）
+        private async System.Threading.Tasks.Task<string> PickFolder(string title)
+        {
+            try
+            {
+                TopLevel top = TopLevel.GetTopLevel(this);
+                if (top == null) return "";
+                System.Collections.Generic.IReadOnlyList<global::Avalonia.Platform.Storage.IStorageFolder> res =
+                    await top.StorageProvider.OpenFolderPickerAsync(new global::Avalonia.Platform.Storage.FolderPickerOpenOptions
+                    {
+                        Title = title,
+                        AllowMultiple = false
+                    });
+                if (res == null || res.Count == 0) return "";
+                return res[0].Path.LocalPath;
+            }
+            catch { return ""; }
+        }
 
         public void ExportBackup(string name) { RunCliAction("backup-export --path " + name + " --to " + Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "export"), "导出备份"); }
 
@@ -189,7 +234,19 @@ namespace Dsht.Gui.Avalonia
         /// 不装 → 那一格显示 unknown ✓ 其余功能不缺 ✓✓
         /// 写操作 → 走**两次点击确认**（house style ✓ 与删除备份/清除数据一致 ✓）✓</summary>
         public void InstallBridge() { RunCliAction("bridge-install --yes", "安装桥接插件"); }
-        public void DeleteBackup(string name) { RunCliAction("backup-delete --path " + name + " --yes", "删除备份"); }
+        /// <summary>删除备份 ✓✓。**用户要求（2026-09-30）**：「删除弹窗输入当前时间才执行」✓✓
+        ///   理由：删除**不可逆** ✓ 光"再点一次"太容易手滑 ✓ → **必须看着时间手打一遍** ✓
+        ///   CLI 侧同样有闸门 ✓（`--confirm-time` 与真实时间相差 &gt;120 秒 → 拒绝 ✓✓）</summary>
+        public async void DeleteBackup(string name)
+        {
+            string now = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            string typed = await PromptDialog.Ask(this, "删除备份",
+                "删除「" + name + "」**不可恢复** ✓ 请输入**当前时间**以确认：",
+                "打开时已全选 ✓ 可直接 Ctrl+C 复制上面提示的时间再粘贴 ✓ 格式 yyyy-MM-dd HH:mm:ss ✓",
+                now);
+            if (typed == null) { _actionLog = "已取消删除 ✓"; BuildShell(); ShowToast(_actionLog); return; }
+            RunCliAction("backup-delete --path " + name + " --yes --confirm-time \"" + typed.Trim() + "\"", "删除备份");
+        }
 
         public void DryRunRestore(string name) { RunCliAction("restore --dry-run --path " + name, "恢复预览"); }
 
