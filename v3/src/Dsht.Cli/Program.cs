@@ -2442,7 +2442,6 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             {
                 Console.WriteLine("PROFILEPATCH_FAIL usage: profilepatch --profile <name> --id <entry> [--enable] [--yes]");
                 return 0;
-            }
             // I4 FIX (CLI audit MINOR): the profile name is joined into a path, so a value like
             // "..\..\x" could rewrite any file named cordis.patch.yml outside the data root (the
             // fixed file name limits the blast radius, and --yes is required, but it is still a
