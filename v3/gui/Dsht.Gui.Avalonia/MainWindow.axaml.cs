@@ -24,13 +24,13 @@ namespace Dsht.Gui.Avalonia
     public partial class MainWindow : Window
     {
         /// <summary>主菜单（侧栏一级）。</summary>
-        public static readonly string[] NavItems = new string[] { "概览", "看板", "会话与 Token", "形态与插件", "备份", "体检", "设置", "说明", "更新" };
+        public static readonly string[] NavItems = new string[] { "概览", "看板", "会话与 Token", "形态与插件", "备份", "体检", "设置", "说明", "更新", "日志" };
         /// <summary>主菜单图标（FluentIcons，编译期检查）。</summary>
         public static readonly FluentIcons.Common.Symbol[] NavIcons = new FluentIcons.Common.Symbol[]
         {
             FluentIcons.Common.Symbol.Home, FluentIcons.Common.Symbol.DataBarVertical, FluentIcons.Common.Symbol.ChatMultiple,
             FluentIcons.Common.Symbol.PuzzlePiece, FluentIcons.Common.Symbol.Archive, FluentIcons.Common.Symbol.Shield,
-            FluentIcons.Common.Symbol.Settings, FluentIcons.Common.Symbol.Question, FluentIcons.Common.Symbol.ArrowSync
+            FluentIcons.Common.Symbol.Settings, FluentIcons.Common.Symbol.Question, FluentIcons.Common.Symbol.ArrowSync, FluentIcons.Common.Symbol.DocumentText
         };
         private static readonly string[][] NavCli = new string[][]
         {
@@ -42,7 +42,8 @@ namespace Dsht.Gui.Avalonia
             new string[] { "doctor" },
             new string[] { "config-get" },
             new string[] { "describe" },
-            new string[] { "update-center" }
+            new string[] { "update-center" },
+            new string[] { "log", "--lines", "500" }
         };
         private static readonly string[][] NavSubs = new string[][]
         {
@@ -54,7 +55,8 @@ namespace Dsht.Gui.Avalonia
             new string[] { "原始输出" },
             new string[] { "原始输出" },
             new string[] { "原始输出" },
-            new string[] { "检查" }
+            new string[] { "检查" },
+            new string[] { "日志" }
         };
         private static readonly string[][] NavDesc = new string[][]
         {
@@ -66,7 +68,8 @@ namespace Dsht.Gui.Avalonia
             new string[] { "体检：配置、日志、网络与安装完整性检查。" },
             new string[] { "当前配置项（脱敏后）。" },
             new string[] { "工具箱对当前安装的判断与依据。" },
-            new string[] { "webui / 官方桌面端 / 本工具 / 已装插件 的版本与更新状态（**检查是只读的** ✓）。" }
+            new string[] { "webui / 官方桌面端 / 本工具 / 已装插件 的版本与更新状态（**检查是只读的** ✓）。" },
+            new string[] { "工具箱的操作日志（级别筛选 / 关键词 / 行数 / 导出）。筛选由 CLI 完成 ✓ 这里只显示。" }
         };
 
         private SessionsSnapshot _data;
@@ -313,6 +316,33 @@ namespace Dsht.Gui.Avalonia
 
         /// <summary>打开官方桌面端安装页 ✓（用户指定：desktop 走 https://www.deepseek.com/en/harness/ ✓）。</summary>
         public void OpenDesktopPage() { OpenUrl("https://www.deepseek.com/en/harness/"); }
+
+        // —— 日志中心的筛选状态 ✓✓（roadmap Phase 2："CLI 已有 log，缺 GUI 表面" ✓）
+        //   筛选**走 CLI 的参数** ✓（--level / --grep / --lines ✓）→ 与"GUI 只调 CLI"架构一致 ✓
+        public string LogFilter = "";
+        public int LogLines = 500;
+        public string LogGrep = "";
+
+        /// <summary>拼出 log 命令（带当前筛选 ✓）。空筛选不加对应参数 ✓。</summary>
+        public string LogArgs()
+        {
+            StringBuilder sb = new StringBuilder("log --lines " + LogLines);
+            if (!string.IsNullOrEmpty(LogFilter)) sb.Append(" --level ").Append(LogFilter);
+            if (!string.IsNullOrEmpty(LogGrep)) sb.Append(" --grep \"").Append(LogGrep.Replace("\"", "")).Append("\"");
+            return sb.ToString();
+        }
+
+        public void SetLogFilter(string v) { LogFilter = v; Refresh(); }
+        public void SetLogLines(int n) { LogLines = n; Refresh(); }
+        public void SetLogGrep(string v) { LogGrep = v; Refresh(); }
+
+        /// <summary>导出日志 ✓（走 CLI 的 `--export` ✓ **CLI 自己带 --yes 闸门** ✓ 这里显式加 --yes ✓
+        /// 导出到临时目录 ✓ 结果路径进右下角 toast ✓）。</summary>
+        public void ExportLog()
+        {
+            string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsh-minato-log-export.txt");
+            RunCliAction(LogArgs() + " --export \"" + path + "\" --yes", "导出日志到 " + path);
+        }
 
         /// <summary>执行更新 ✓（CLI 的 `update` ✓ **先备份再更新** ✓ 有回滚点 ✓；结果进 toast ✓）。</summary>
         public void RunUpdate() { RunCliAction("update --yes", "更新 dsh"); }
@@ -983,7 +1013,9 @@ namespace Dsht.Gui.Avalonia
             }
             if (!IsSessionsSection)
             {
-                _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, string.Join(" ", (_mainSection >= 0 && _mainSection < NavCli.Length && NavCli[_mainSection] != null ? NavCli[_mainSection] : new string[0]))); });
+                // 日志页要带**当前筛选** ✓ 用动态命令 ✓（其余页用 NavCli 的固定命令 ✓）
+                string sectionCmd = _mainSection == 9 ? LogArgs() : await System.Threading.Tasks.Task.Run(delegate { return Run(cli, string.Join(" ", (_mainSection >= 0 && _mainSection < NavCli.Length && NavCli[_mainSection] != null ? NavCli[_mainSection] : new string[0]))); });
+                _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, sectionCmd); });
                 if (_mainSection == 5) _doctor = SummaryMarkers.ParseDoctor(_rawOutput);   // 体检页吃解析结果，不是只吃原文
                 BuildShell();
                 return;
