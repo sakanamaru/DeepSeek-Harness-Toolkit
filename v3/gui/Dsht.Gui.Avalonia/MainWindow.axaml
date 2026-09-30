@@ -5,7 +5,8 @@
         Width="1320" Height="840"
         MinWidth="1080" MinHeight="640"
         WindowStartupLocation="CenterScreen"
-          ExtendClientAreaToDecorationsHint="True"
+          SystemDecorations="None"
+  ExtendClientAreaToDecorationsHint="True"
           ExtendClientAreaChromeHints="NoChrome"
           ExtendClientAreaTitleBarHeightHint="-1">
   <!-- 颜色全部由 code-behind 的 ApplyChrome() 按 Palette 设置（风格切换时重刷），这里不写死任何颜色。 -->
