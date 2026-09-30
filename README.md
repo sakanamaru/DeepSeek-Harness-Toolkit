@@ -35,6 +35,57 @@ it.
 
 Anything not on this list is not a guarantee. In particular, packages written before the completion marker
 existed have no marker and are reported as unknown rather than assumed good.
+## Which version: V2 or V3?
+
+**两条线都在维护，但目标用户不同。**
+
+| | **V2.x（经典版）** | **V3（当前主线）** |
+|---|---|---|
+| 平台 | **仅 Windows** | **Windows + Linux** |
+| 界面 | WinForms 面板（七页） | Avalonia 跨平台 GUI + 完整 CLI |
+| 运行时 | 依赖系统 .NET Framework（**体积小**） | **自包含**，不依赖系统运行时（体积大） |
+| 安装 | 解压即用 | **自包含安装器**（Win）· **POSIX 脚本**（Linux） |
+| 完整性校验 | 无 | **有**：启动时核对自身指纹，**被改动就拒绝运行** |
+
+**怎么选：**
+
+- **只在 Windows 上用，想要最小、最省事** → **V2.x**
+- **要用 Linux** → **V3**（经典版在 Linux 上从源码构建时 `start` / `stop` / `shortcut` 三处接缝是坏的，且不认 `$DSH_HOME`）
+- **要自动化 / 脚本化 / 完整性校验** → **V3**
+- **不确定** → **V3**（主线，功能是 V2 的超集）
+
+> 两条线的**数据是同一份**：都只读 `~/.dsh`，都不修改 dsh 自己的文件。
+> 换线不需要迁移数据，卸载任何一条也**不会删除**你的数据。
+
+## Major version history
+
+### V3（当前主线，跨平台重写）
+
+- **跨平台**：CLI 完整移植到 Linux；GUI 从 WinForms 重写为 **Avalonia**，同一套代码跑两个平台
+- **零第三方运行时依赖**：CLI / GUI 自包含发布；安装器只用 Windows 系统组件（.NET Framework 属系统组件）
+- **自解压安装器**（Windows）：单文件、定制界面、**不需要管理员权限**、注册到「应用和功能」
+- **POSIX 安装脚本**（Linux）：纯 `sh`、零依赖、免 `sudo`，装到 `~/.local/share`
+- **完整性校验**：CLI / GUI 启动器 / 安装器在运行前核对 `hashes.txt` 指纹，**不一致就拒绝运行**
+- **卸载安全**：默认**不删用户数据**；且**拒绝删除**"不像安装目录"的目录（四层防护）
+- **更新中心**：一处查看 web / 官方桌面端 / 本工具 / 已装插件的版本与更新状态
+- **工程质量**：334 个契约测试 + 九项发布门槛（含**篡改自证**：故意改一个字节，验证器必须报错）
+
+### V2.x（经典版，仅 Windows）
+
+按发布顺序：
+
+| 版本 | 里程碑 |
+|---|---|
+| **v2.7.x** | 配置自检 `profilecheck`（只读扫描 `~/.dsh/profiles/**/*.yaml`，报出会让 dsh 起不来的问题）；`auto_start` 可控倒计时 |
+| **v2.6.0** | （见 Releases） |
+| **v2.5.0** | （见 Releases） |
+| **v2.4.x** | **自 v2.4.1 起提供图形面板**（WinForms）；发布物含三种形态，按需取用 |
+| **v2.3.0** | （见 Releases） |
+| **v2.1.x** | （见 Releases） |
+| **v2.0.0** | 重构封装起点 |
+
+> 完整的逐版说明见 [Releases](https://github.com/sakanamaru/dsh-minato/releases) 与 [tags](https://github.com/sakanamaru/dsh-minato/tags)。
+> v2.8 阶段 1 做了 **move-only** 拆分（把 4000+ 行单文件 `dsh_v2.cs` 拆开，行为不变）。
 ## Linux support (preview)
 
 The V3 line runs on Linux (x86-64) today: the CLI is fully ported, and the Avalonia GUI builds and runs.
@@ -87,7 +138,40 @@ icon, a smoke script, a short README and a sha256 manifest. Verify it with
 Runtime dependencies: iproute2 (`ss`), `ps`, and `tar` plus one of curl/wget/python3 when bootstrapping
 Node.
 
-## Official downloads
+## Three ways to install
+
+**Windows - the installer** (recommended if you do not live in a terminal)
+
+Download `dsh-minato-<version>-win-x64-setup.exe` from Releases and run it. It installs to
+`%LOCALAPPDATA%\Programs\dsh-minato` without administrator rights, adds a Start Menu shortcut (desktop
+shortcut and PATH are offered but off by default), registers itself under Apps and features, and verifies the
+SHA-256 of every file in the package before installing anything - a mismatch refuses the install and names the
+file. Uninstalling leaves your data alone and writes a note on the desktop saying where it is.
+
+**Windows - portable**
+
+Download `dsh-minato-win-x64.zip`, extract it, run `dsh-minato-gui.exe`.
+
+**Linux - one command**
+
+```sh
+tar xzf dsh-minato-linux-x64.tar.gz && cd dsh-minato-linux-x64 && ./install.sh
+```
+
+Plain POSIX shell, no third-party dependencies, no sudo: it installs into `~/.local/share/dsh-minato`, links
+`~/.local/bin/dsh-minato`, and writes a desktop entry. `./install.sh --uninstall` removes what it added and
+leaves your data untouched.
+
+## Integrity checking (it refuses to run if modified)
+
+Releases ship a `hashes.txt` with the SHA-256 of each executable. The CLI, the GUI launcher and the installer
+all check it before doing anything: a match passes silently, a mismatch **refuses to run** and prints both
+fingerprints with the official download address, and a missing manifest passes while saying plainly that the
+check was skipped.
+
+This targets static infection - a trojan patching a legitimate executable changes the file, so the fingerprint
+stops matching. It does not defend against an attacker replacing `hashes.txt` as well, or against in-memory
+injection; for those, compare against the fingerprints published on the official releases page.## Official downloads
 
 Only this repository's [Releases page](https://github.com/sakanamaru/dsh-minato/releases) ships official binaries — anything else (cloud-drive re-uploads, "paid / cracked / modified" editions, other websites or accounts) is **not official**. The project is free and open source (MIT); **no one is authorized to sell it**. Verify before running: `verify.ps1` checks SHA-256 against the CI-generated manifest and the GPG signature, and the GitHub artifact attestation is an **independent extra** provenance check that `verify.ps1` does not perform — attestation does not replace the GPG signature check either. The trust model, supply-chain controls and manual verification steps live in [SECURITY.md](SECURITY.md).
 
@@ -366,7 +450,7 @@ gui_v2.cs            GUI source (WinForms; one file → attached + standalone va
 app.manifest         GUI manifest (DPI awareness / compat)
 build_exe.cmd        Rebuild script (core)
 icon.ico             Program icon
-logo.png             Product logo (1536×1536)
+logo.png             Product logo (512x512, same character as the app icon)
 verify.ps1           One-click release verification (SHA-256 + GPG)
 keys/                Maintainer GPG public key
 SECURITY.md          Security policy, data & network boundaries
