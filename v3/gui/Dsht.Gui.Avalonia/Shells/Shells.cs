@@ -1233,6 +1233,18 @@ namespace Dsht.Gui.Avalonia.Shells
             return "";
         }
 
+        /// <summary>从 CLI 的 `CONFIG update_channel <v>` 读当前更新通道 ✓（读不到就说"读不到" ✓ 不猜 ✗）。</summary>
+        private static string UpdateChannelText(string raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return "读不到";
+            string[] ls = raw.Replace("\r\n", "\n").Split('\n');
+            for (int i = 0; i < ls.Length; i++)
+            {
+                string t2 = ls[i] == null ? "" : ls[i].Trim();
+                if (t2.StartsWith("CONFIG update_channel ", StringComparison.Ordinal)) return t2.Substring("CONFIG update_channel ".Length).Trim();
+            }
+            return "读不到";
+        }
         private static Control SettingsContent(MainWindow host)
         {
             StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 12 };
@@ -1243,6 +1255,18 @@ namespace Dsht.Gui.Avalonia.Shells
                 s.Children.Add(Card(T("没有读到配置项（CLI 未返回 CONFIG 行）。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));
                 return s;
             }
+            // —— 更新中心 ✓✓（用户问："web 更新选项/检查更新按钮在哪里" ✓ 答案是**之前没有** ✗ → 现在有 ✓）——
+            // CLI 早就有 `update-info`（**只读** ✓ 报已装/通道/最新/状态/更新前备份/回滚 ✓）
+            // 和 `update`（**执行** ✓ 含更新前备份 + 回滚 ✓）—— 只是 GUI 一个按钮都没接 ✗
+            StackPanel upd = new StackPanel { Spacing = 8 };
+            upd.Children.Add(T("更新", 12.5, Palette.Text, FontWeight.SemiBold));
+            upd.Children.Add(T("检查更新是**只读**的 ✓（只查已装版本、更新通道、最新版本，不动任何东西）；更新会**先备份再更新** ✓ 并保留回滚点 ✓", 11, Palette.TextDim));
+            StackPanel updRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            updRow.Children.Add(PrimaryButton("检查更新", delegate { host.CheckUpdate(); }));
+            updRow.Children.Add(GhostButton(T("执行更新（会先备份）", 11.5, Palette.Text), delegate { host.RunUpdate(); }, true));
+            updRow.Children.Add(T("更新通道：" + (UpdateChannelText(host.RawOutput)), 11, Palette.TextFaint));
+            upd.Children.Add(updRow);
+            s.Children.Add(Card(upd, new Thickness(0), new Thickness(16, 14)));
             int roCount = 0; int swCount = 0;
             for (int ci = 0; ci < items.Count; ci++) { if (items[ci].ReadOnly) roCount++; else if (items[ci].IsSwitch) swCount++; }
             StackPanel sum = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
