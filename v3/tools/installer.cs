@@ -346,18 +346,38 @@ internal static class Installer
         {
             Log("就位失败: " + ex.Message);
             TryDelete(staging);
-            // ✓ M2 回滚：把刚才改名让开的旧版本目录**改回来** ✓
-            //   （否则用户的活安装就"消失"了 ✗ 只剩一个 `app-<ver>.old-HHmmss` ✓）
+            // ★★★ **M1 修复（审计 MAJOR —— 回滚在 `Move` 之后是空操作）** ✓✓
+            //   ✗ 原来只在 `vd` **不存在**时才回滚 ✗ —— 而 `Directory.Move(staging, verDir)` 之后
+            //     `vd` **就存在了** ✗✗（里面是失败的新载荷 ✓）→ **回滚永远不执行** ✗
+            //     → 旧版本留在 `app-<ver>.old-*` ✓ 旧 gui 留在 `<target>.old-*` ✓
+            //     → 根启动器**已被覆盖** ✗ → **混合安装** ✗（新根 + 旧 gui ✗ 本工具起不来 ✓）
+            //     → 而注释写着"已改回来 ✓"、"未做任何破坏 ✓" ✗✗ **与代码不符** ✓（审计点名 ✓）
+            //   ✓ 现在：**无条件回滚** ✓✓
+            //     ① **删掉失败的新版本目录** ✓（它是半个安装 ✗ 不该留下 ✓）
+            //     ② **把 `app-<ver>.old-*` 改回来** ✓✓（旧版本 ✓）
+            //     ③ **把 `<target>.old-*` 里的旧 gui 改回来** ✓✓（它被改名让开了 ✓）
+            //   → 旧安装**完整恢复** ✓✓（根上的两个 exe 是**版本无关的壳** ✓ 被覆盖也无妨 ✓）
             try
             {
-                string vd = Path.Combine(target, "app-" + ShortVersion());
-                if (!Directory.Exists(vd))
+                string vd2 = Path.Combine(target, "app-" + ShortVersion());
+                if (Directory.Exists(vd2)) { TryDelete(vd2); Log("已清掉失败的新版本目录 ✓ " + vd2); }
+                string[] olds = Directory.GetDirectories(target, "app-" + ShortVersion() + ".old-*");
+                if (olds.Length > 0) { Directory.Move(olds[0], vd2); Log("已回滚旧版本目录 ✓ " + vd2); }
+                if (!Directory.Exists(Path.Combine(target, "gui")))
                 {
-                    string[] olds = Directory.GetDirectories(target, "app-" + ShortVersion() + ".old-*");
-                    if (olds.Length > 0) { Directory.Move(olds[0], vd); Log("已回滚旧版本目录 ✓ " + vd); }
+                    string parent = Path.GetDirectoryName(target);
+                    string[] oldGui = parent == null ? new string[0] : Directory.GetDirectories(parent, Path.GetFileName(target) + ".old-*");
+                    for (int gi = 0; gi < oldGui.Length; gi++)
+                    {
+                        string gsrc = Path.Combine(oldGui[gi], "gui");
+                        if (!Directory.Exists(gsrc)) continue;
+                        try { Directory.Move(gsrc, Path.Combine(target, "gui")); Log("已回滚旧 gui 目录 ✓"); TryDelete(oldGui[gi]); } catch { }
+                        break;
+                    }
                 }
+                Log("**已尽力回滚** ✓ 若仍异常请用卸载器或手动检查 ✓（不会假装"什么都没发生" ✗）");
             }
-            catch (Exception rb) { Log("回滚旧版本目录失败（请手动查看 ✓）: " + rb.Message); }
+            catch (Exception rb) { Log("回滚失败（请手动查看 ✓）: " + rb.Message); }
             return 4;
         }
         if (hadOld) TryDelete(old);
@@ -639,7 +659,20 @@ internal static class Installer
             int removedOur = 0;
             foreach (string rel in ourFiles)
             {
-                try { string fp = Path.Combine(mover, rel); if (File.Exists(fp)) { File.Delete(fp); removedOur++; } } catch { }
+                // ★★★ **M2 修复（审计 MAJOR —— 会删到安装目录之外）** ✓✓
+                //   ✗ 原来直接 `Path.Combine(mover, rel)` 就删 ✗ —— 而 `rel` 来自**可被编辑的** `hashes.txt` ✓
+                //     · `Path.Combine("C:\\a\\b", "D:\\evil.txt")` = `D:\\evil.txt` ✗（**绝对路径直接生效** ✓）
+                //     · `Path.Combine("C:\\a\\b", "..\\..\\x.txt")` → **逃出安装目录** ✗✗
+                //     → 安装器自己不删这些 ✓ 但**卸载器会** ✗ → 那就是"删了它没创建的东西" ✓
+                //   ✓ 现在：**解析成绝对路径后必须仍在安装目录内** ✓✓ 越界就**跳过并如实记录** ✓
+                string fp = Path.Combine(mover, rel);
+                string full = Path.GetFullPath(fp);
+                string rootFull = Path.GetFullPath(mover).TrimEnd('\\') + "\\";
+                if (!full.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
+                {
+                    Log("**跳过越界条目** ✗（清单里写了安装目录之外的路径 ✓ 不删 ✓）: " + rel);
+                    continue;
+                }
             }
             foreach (string gen in new string[] { "uninstall.exe", ".dsh-minato-install", "hashes.txt" })
             {
@@ -663,7 +696,28 @@ internal static class Installer
                     Log("**保留** " + keepDir + "/ ✓（用户数据，卸载不删 ✓ 共 " + kn + " 项）");
                 }
             }
-            try { foreach (string dd in Directory.GetDirectories(mover, "app-*")) { try { Directory.Delete(dd, true); removedOur++; } catch { } } } catch { }
+            // ★★★ **M3 修复（审计 MAJOR）** ✓✓
+            //   ✗ 原来 `GetDirectories(mover, "app-*")` + `Directory.Delete(dd, true)` ✗
+            //     → **任何以 `app-` 开头的用户目录都会被递归删掉** ✗✗（如 `app-notes` ✓ 审计实测确认 ✓）
+            //   ✓ 现在：**只删"版本目录"** ✓✓ —— 名字必须是 `app-<数字或点组成的版本>` ✓
+            //     其它 `app-*` 一律**跳过并如实记录** ✓（可能是用户的 ✓ 我们不动 ✓）
+            try
+            {
+                foreach (string dd in Directory.GetDirectories(mover, "app-*"))
+                {
+                    string nm = Path.GetFileName(dd);
+                    string ver = nm.Length > 4 ? nm.Substring(4) : "";
+                    bool looksVersion = ver.Length > 0;
+                    for (int vi = 0; vi < ver.Length; vi++)
+                    {
+                        char c = ver[vi];
+                        if (!(char.IsDigit(c) || c == '.' || c == '-' || c == '_')) { looksVersion = false; break; }
+                    }
+                    if (!looksVersion) { Log("**跳过** " + nm + " ✓（名字不像版本目录 ✓ 可能是你自己的 ✓ 不删 ✓）"); continue; }
+                    try { Directory.Delete(dd, true); removedOur++; } catch { }
+                }
+            }
+            catch { }
             try { string g2 = Path.Combine(mover, "gui"); if (Directory.Exists(g2)) { Directory.Delete(g2, true); removedOur++; } } catch { }
             // ✓ 我自己的 m3 修复引入的：`bin\` 是**安装器生成的** ✓ 不在清单里 ✗
             //   → "只删我们自己的"逻辑**不知道它是我们的** ✗ → 目录非空 → 保留 ✓
