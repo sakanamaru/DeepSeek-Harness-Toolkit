@@ -208,7 +208,13 @@ namespace Dsht.Gui.Avalonia.Shells
                 b.Click += delegate { pick(idx); };
                 inner.Children.Add(b);
             }
-            return new Border
+            // ★★ **用户反馈（2026-09-30）**：「子菜单在不同布局可能不显示」✓✓
+            //   ✗ 原来直接返回 Border + HorizontalAlignment=Left ✗ → **一行排不下就被裁掉** ✗
+            //     （会话页的「整体/父会话/子代理/统计」✓ 窄窗口 / 高 DPI 放大 / 标题变长时右边会缺 ✓）
+            //   ✓ 现在：**外面包一层横向 ScrollViewer** ✓✓
+            //     · 排得下 → 外观**完全不变** ✓（Border 与 Left 对齐都保留 ✓）
+            //     · 排不下 → **出现横向滚动条** ✓ 所有子项**都点得到** ✓✓
+            Border box = new Border
             {
                 Background = Palette.InsetBg,
                 BorderBrush = Palette.Border,
@@ -217,6 +223,13 @@ namespace Dsht.Gui.Avalonia.Shells
                 Padding = new Thickness(3),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Child = inner
+            };
+            return new ScrollViewer
+            {
+                Content = box,
+                HorizontalScrollBarVisibility = global::Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = global::Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                HorizontalAlignment = HorizontalAlignment.Left
             };
         }
 
