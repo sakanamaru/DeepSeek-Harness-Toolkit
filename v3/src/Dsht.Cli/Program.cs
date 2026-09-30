@@ -1703,9 +1703,13 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             bool wrote = false;
             try
             {
-                string unitPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "systemd", "user", "dsh-minato-autostart.service");
-                string unit2 = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "dsh-minato.cmd");
-                wrote = System.IO.File.Exists(unitPath) || System.IO.File.Exists(unit2);
+                // ★★★ **F-A 修复（CLI 复审 HIGH —— 检查的路径不是写入的那个）** ✓✓
+                //   ✗ 我修 N1 时改了**检查**里的文件名 ✗ 但**真正写入的是 `path`** ✗✗
+                //     → Windows 上写的是 `…\Startup\dsh-minato-autostart.cmd` ✓
+                //       而检查找 `…\Startup\dsh-minato.cmd` ✗ → **永远 FAIL** ✗✗
+                //     → 用户看到"写入后没有找到自启文件" ✓ 而**文件其实写好了** ✗（假报失败 ✓）
+                //   ✓ 现在：**直接检查 `path`** ✓✓（那是真正写下去的那个 ✓ 平台无关 ✓）
+                wrote = System.IO.File.Exists(path);
             }
             catch { }
             if (!wrote) { Console.WriteLine("AUTOSTART_FAIL " + T("写入后**没有找到自启文件** ✓ 请检查权限 ✓", "no autostart file was found after writing")); return 0; }

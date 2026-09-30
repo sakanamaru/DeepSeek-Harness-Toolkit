@@ -313,69 +313,91 @@ if [ -L "$BINDIR/$APP" ]; then
 elif [ -e "$BINDIR/$APP" ]; then
     die "$BINDIR/$APP 已存在且不是符号链接 ✓ 请先处理它 ✓"
 fi
-# ---- 就位：先改名旧的，再改名新的 ✓（与 Windows 侧同一套原子性做法 ✓）----
+# ============================================================================
+# 就位 + 旧版本处理  **顺序很关键** ✓✓
+#   ★★★ **NB1/NB2 修复（最终复审 CRITICAL —— 我的上一版把顺序搞反了）** ✓✓
+#     ✗ 上一版：改名 → **先从 OLD 搬回用户文件**（`mkdir -p` **创建了 `$PREFIX`** ✗）
+#       → `mv "$STAGING" "$PREFIX"` **把整个载荷嵌套进 prefix** ✗✗
+#         （`$PREFIX/dsh-minato` 不存在 ✓ 载荷在 `$PREFIX/.dsh-minato.staging.*/` ✓ 启动器悬空 ✓
+#          而**日志还报"已安装到"** ✗ —— **零用户文件也会触发** ✓ 因为 `icons/hicolor` 让 `rmdir` 失败 ✓）
+#     ✗ 而且清单是在**搬回之后**从 `$PREFIX` 生成的 ✗ → **用户文件被记成我们的** ✗✗
+#       → **下一次卸载把它们 `rm -f` 掉** ✓（实测数据丢失 ✓）
+#   ✓ 正确顺序：
+#       ① **先从 `$STAGING` 生成清单** ✓（那时里面**只有我们的文件** ✓✓）
+#       ② 改名旧 prefix 让开 ✓
+#       ③ `mv "$STAGING" "$PREFIX"` ✓（此时 `$PREFIX` **还不存在** ✓ 不会嵌套 ✓）
+#       ④ 从 `$OLD` 删掉清单里属于我们的文件 ✓
+#       ⑤ **再把剩下的用户文件搬进新 prefix** ✓（这一步在清单之后 ✓ 不会被误记 ✓✓）
+#       ⑥ 删掉空的 `$OLD` ✓（NB6 ✓）
+# ============================================================================
+
+# ① **先记清单** ✓✓（`$STAGING` 里只有我们的文件 ✓ 这是 NB2 的关键 ✓）
+( cd "$STAGING" && find . -type f 2>/dev/null | sed 's|^\./||' ) > "$STAGING/.dsh-minato-files" 2>/dev/null \
+    && ok "已记录安装文件清单（$(wc -l < "$STAGING/.dsh-minato-files" | tr -d ' ') 个文件 ✓ 从暂存目录生成 ✓ 不含用户文件 ✓）" \
+    || warn "记录文件清单失败（卸载会更保守 ✓）"
+
+# ②③ 改名旧的 + 新载荷就位（**此时 `$PREFIX` 不存在** ✓ 不会嵌套 ✓）
+OLD=""
 if [ -d "$PREFIX" ]; then
     OLD="$PREFIX.old.$$"
     rm -rf "$OLD" 2>/dev/null || true
-    if mv "$PREFIX" "$OLD" 2>/dev/null; then
-        # S2 FIX (Linux audit MAJOR): rm -rf on the old prefix destroyed anything the user had
-        # put there (a note in gui/, their own app-mine/ folder, a script at the root). The
-        # uninstall path already deletes selectively from the recorded file list, so the
-        # replacement path now does the same and keeps the rest.
-        if [ -f "$OLD/$MARKER" ] && [ -f "$OLD/.dsh-minato-files" ]; then
-            while IFS= read -r rel; do
-                [ -n "$rel" ] || continue
-                case "$rel" in
-                    /*|*..*) continue ;;
-                esac
-                rm -f "$OLD/$rel" 2>/dev/null || true
-            done < "$OLD/.dsh-minato-files"
-            # N1 FIX (Linux audit MINOR): the uninstall path deliberately refuses to sweep user
-            # directories, but this one ran a global find -empty -delete and removed empty dirs
-            # the user had created. Only remove dirs inside our own layout.
-            for _kd in gui bin icons cli-small plugin; do
-                [ -d "$OLD/$_kd" ] && rmdir "$OLD/$_kd" 2>/dev/null || true
-            done
-            for _kd in app-*; do
-                [ -d "$OLD/$_kd" ] && rmdir "$OLD/$_kd" 2>/dev/null || true
-            done
-            if [ -n "$(ls -A "$OLD" 2>/dev/null || true)" ]; then
-                # N2 FIX (Linux audit MINOR): these used to be left in $PREFIX.old.<pid> for ever -
-                # the marker and the file list know nothing about that folder, the uninstall never
-                # removes it, and every reinstall added another one. Move what is left back into the
-                # freshly installed prefix, keeping our own files as they are now.
-                _moved=0
-                for _f in $(find "$OLD" -mindepth 1 2>/dev/null); do
-                    _rel=${_f#"$OLD"/}
-                    case "$_rel" in
-                        gui|bin|icons|cli-small|plugin|app-*) continue ;;
-                    esac
-                    if [ -e "$PREFIX/$_rel" ]; then continue; fi
-                    if mkdir -p "$(dirname -- "$PREFIX/$_rel")" 2>/dev/null && mv -- "$_f" "$PREFIX/$_rel" 2>/dev/null; then
-                        _moved=$((_moved + 1))
-                    fi
-                done
-                if [ "$_moved" -gt 0 ]; then
-                    ok "已把 $_moved 项你自己的文件**搬回新安装目录** ✓（不再留在 $OLD ✓）"
-                fi
-                if [ -n "$(ls -A "$OLD" 2>/dev/null || true)" ]; then
-                    warn "旧目录里**还有搬不动的东西** ✓ → 保留在 $OLD ✓（没有删 ✗ 你可以自己看 ✓）"
-                fi
-            else
-                rm -rf "$OLD" 2>/dev/null || true
-                ok "已替换旧版本"
-            fi
-        else
-            # no list to work from (very old install) - be conservative and keep it
-            warn "旧目录里没有文件清单 ✓ → **不删它** ✓ 保留在 $OLD ✓（请自行确认后删除 ✓）"
-        fi
-    else
+    if ! mv "$PREFIX" "$OLD" 2>/dev/null; then
         warn "旧目录改名失败（可能有程序占用）→ 就地覆盖 ✓"
+        OLD=""
     fi
 fi
 mv "$STAGING" "$PREFIX" || die "就位失败（暂存目录留在 $STAGING，可以手动看）"
 STAGING=""     # 已就位 ✓ trap 不用再清理 ✓
 ok "已安装到 $PREFIX"
+
+# ④⑤⑥ 旧目录：删我们的 ✓ 搬回用户的 ✓ 删空的 ✓
+if [ -n "$OLD" ] && [ -d "$OLD" ]; then
+    if [ -f "$OLD/$MARKER" ] && [ -f "$OLD/.dsh-minato-files" ]; then
+        while IFS= read -r rel; do
+            [ -n "$rel" ] || continue
+            case "$rel" in
+                /*|*..*) continue ;;
+            esac
+            rm -f "$OLD/$rel" 2>/dev/null || true
+        done < "$OLD/.dsh-minato-files"
+        # 只清**我们自己布局内**的空目录 ✓（N1 ✓ 不用全局 find -empty ✓）
+        for _kd in gui bin icons cli-small plugin; do
+            [ -d "$OLD/$_kd" ] && rmdir "$OLD/$_kd" 2>/dev/null || true
+        done
+        # NB5 FIX: 这个 glob 原来在**当前目录**展开 ✗（不是 `$OLD` ✓）→ 我们自己的 `app-*` 从没被清 ✓
+        for _kd in "$OLD"/app-*; do
+            [ -d "$_kd" ] && rmdir "$_kd" 2>/dev/null || true
+        done
+        # ⑤ 剩下的都是**用户的东西** → 搬进新 prefix ✓（**在清单之后** ✓ 不会被误记 ✓✓）
+        _moved=0
+        # NB4 FIX: 用 `-print0` + `read -d` ✓（原来的 `$(find …)` 没引号 ✓ 含空格的 prefix 会造垃圾树 ✗）
+        while IFS= read -r -d "" _f; do
+            [ -n "$_f" ] || continue
+            _rel=${_f#"$OLD"/}
+            case "$_rel" in
+                gui|bin|icons|cli-small|plugin|app-*) continue ;;
+                */*) ;;
+            esac
+            if [ -e "$PREFIX/$_rel" ]; then continue; fi
+            if mkdir -p "$(dirname -- "$PREFIX/$_rel")" 2>/dev/null && mv -- "$_f" "$PREFIX/$_rel" 2>/dev/null; then
+                _moved=$((_moved + 1))
+            fi
+        done <<EOF_FIND
+$(find "$OLD" -mindepth 1 -print0 2>/dev/null)
+EOF_FIND
+        if [ "$_moved" -gt 0 ]; then
+            ok "已把 $_moved 项你自己的文件**搬回新安装目录** ✓（不再留在 $OLD ✓）"
+        fi
+    else
+        warn "旧目录里没有文件清单 ✓ → **不删它** ✓ 保留在 $OLD ✓（请自行确认后删除 ✓）"
+    fi
+    # ⑥ NB6 FIX: 搬空了就**删掉 OLD** ✓（原来只有"本来就空"的分支会删 ✗ 干净重装也会留一个空目录 ✗）
+    if [ -z "$(ls -A "$OLD" 2>/dev/null || true)" ]; then
+        rmdir "$OLD" 2>/dev/null && ok "已删掉空的旧目录 ✓ $OLD" || true
+    else
+        warn "旧目录里**还有搬不动的东西** ✓ → 保留在 $OLD ✓（没有删 ✗ 你可以自己看 ✓）"
+    fi
+fi
 
 # ---- 安装标记 ✓（F1 的前提 ✓ 卸载时靠它认身份 ✓）----
 {
@@ -393,9 +415,11 @@ ok "已安装到 $PREFIX"
     # character left absolute paths in the file. Uninstall then deleted only the four fixed
     # names and reported nine of our own files as the user's. Running from inside the prefix
     # avoids both problems entirely.
-    ( cd "$PREFIX" && find . -type f 2>/dev/null | sed 's|^\./||' ) > "$PREFIX/.dsh-minato-files" 2>/dev/null \
-    && ok "已记录安装文件清单（$(wc -l < "$PREFIX/.dsh-minato-files" | tr -d ' ') 个文件 ✓）" \
-    || warn "记录文件清单失败（卸载会更保守 ✓）"
+    # ★★★ **NB2 修复（最终复审 CRITICAL —— 清单必须从 `$STAGING` 生成）** ✓✓
+    #   ✗ 这里原来**又从 `$PREFIX` 生成了一遍** ✗ → 而**用户文件已经搬进来了** ✗✗
+    #     → **它们被记成我们的** ✓ → **下一次卸载 `rm -f` 掉** ✓（审计实测数据丢失 ✓）
+    #   ✓ 现在：**清单只在 `$STAGING`（搬进来之前）生成一次** ✓✓ 见上面 ✓
+    #     → 只含**我们的**文件 ✓ 用户文件永远不在清单里 ✓✓
 
 # ---- 命令链接 ✓ ----
 mkdir -p "$BINDIR" || die "建不了 $BINDIR"
