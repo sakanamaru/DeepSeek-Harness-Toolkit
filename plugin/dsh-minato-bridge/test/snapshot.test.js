@@ -1,23 +1,37 @@
 /**
  * 零依赖自测（只用 node 内置 assert / fs / os / path）。
  * 运行：node test/snapshot.test.js   （在 plugin/dsh-minato-bridge 目录下）
- * 覆盖：纯函数 buildSnapshot 的字段映射与两种投影形状、防御式 collectSessions、
- *       原子写、defaultOutFile 的 DSH_HOME 语义、apply 的首帧写入与 enabled:false。
- * 注意：这里**不验证真实 dsh 的 ctx 形状**（那需要跑一次 dsh）——本测试只保证我们自己的逻辑与契约。
+ *
+ * ★★ 2026-09-30 子代理审计后的重写（F10：「**测试绿但测的是错的契约**」✗）：
+ *   旧测试的四个问题，都会让"绿"变成假绿 ✗：
+ *     ① mock 了**同步**的 `listSessions` ✗ —— 而真实 dsh 返回 **Promise** ✓
+ *        （正因如此，F2 那个"真实环境永远不写文件"的缺陷，测试**完全测不出来** ✓✓）
+ *     ② mock 的记录形状是 `{ id, live, session }` ✗ —— 而真实是
+ *        `SessionRecord = { header, live, persisted }` ✓ / `Session = { header, id, surface, seq }` ✓
+ *     ③ 断言时间戳是**数字** ✗ —— 而 C# 的 `Str()` 只认**字符串** ✓ → 数字会被丢成空串 ✓
+ *     ④ 断言缺字段 → **0** ✗ —— 而工具箱的诚实边界是"**缺字段就不假装 0**" ✓
+ *        → 全 0 快照会**遮蔽**好的磁盘投影 ✗✗
+ *   现在：**按 C# 侧真正读的字段与类型做契约测试** ✓✓
+ *   （字段表逐条对应 `v3/src/Dsht.Domain/Services/SessionStats.cs` 的 `ParseSnapshot` ✓）
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { buildSnapshot, collectSessions, defaultOutFile, writeSnapshot, apply, SNAPSHOT_FORMAT_VERSION } from "../snapshot.js";
+import { name as pluginName, inject as pluginInject } from "../index.js";
 
 let pass = 0;
-function check(name, fn) {
+let fail = 0;
+const failures = [];
+async function check(name, fn) {
 	try {
-		fn();
+		await fn();
 		pass++;
 		console.log("  [PASS] " + name);
 	} catch (e) {
+		fail++;
+		failures.push(name);
 		console.log("  [FAIL] " + name + " -> " + e.message);
 		process.exitCode = 1;
 	}
@@ -25,119 +39,165 @@ function check(name, fn) {
 
 console.log("== dsh-minato-bridge 自测（零依赖）==");
 
-// ---- buildSnapshot：字段映射 ----
-const bare = {
-	id: "s1",
-	live: true,
-	identity: { cwd: "D:\\work", createdAt: 1788517824758 },
-	values: {
-		sessionStats: { turns: 2, steps: 9, llmMs: 1000, toolMs: 500, ttftMs: 300, decodeMs: 2000, decodeTokens: 400 },
-		tokenUsage: { totals: { uncachedInputTokens: 100, outputTokens: 50, cacheReadTokens: 900, cacheWriteTokens: 10 } },
-		contextPressure: { surfaceTokens: 500, contextWindow: 1000, pressureTokens: 250 },
-		sessionListMetadata: { blank: false, lastPromptAt: 1788517999999 },
-		title: "hello",
-	},
+// ---- ① 契约：C# 侧 `ParseSnapshot` 读的每个字段与类型 ✓✓ ----
+// 逐条对应 SessionStats.cs:86-106（字段名、大小写、类型都必须一致 ✓）
+const CONTRACT = {
+	id: "string",
+	live: "boolean",
+	title: "string",
+	cwd: "string",
+	createdAt: "string",        // ✗ 不是数字：C# 用 Str() 读，数字会变空串 ✓
+	lastPromptAt: "string",     // ✗ 同上
+	blank: "boolean",
+	turns: "number",
+	steps: "number",
+	llmMs: "number",
+	toolMs: "number",
+	ttftMs: "number",
+	decodeMs: "number",
+	decodeTokens: "number",
+	uncachedInputTokens: "number",
+	outputTokens: "number",
+	cacheReadTokens: "number",
+	cacheWriteTokens: "number",
+	contextWindow: "number",
+	pressureTokens: "number",
+	surfaceTokens: "number",
 };
-const snap = buildSnapshot([bare], "2026-09-28T00:00:00Z");
-check("格式版本为 2", () => assert.equal(snap.formatVersion, SNAPSHOT_FORMAT_VERSION));
-check("generatedAt 由调用方传入（纯函数不读时钟）", () => assert.equal(snap.generatedAt, "2026-09-28T00:00:00Z"));
-check("会话数与 live 标记", () => assert.equal(snap.sessions.length, 1) && assert.equal(snap.sessions[0].live, true));
-check("token 四个字段", () => {
-	const s = snap.sessions[0];
-	assert.equal(s.uncachedInputTokens, 100);
-	assert.equal(s.outputTokens, 50);
-	assert.equal(s.cacheReadTokens, 900);
-	assert.equal(s.cacheWriteTokens, 10);
-});
-check("会话统计与上下文压力", () => {
-	const s = snap.sessions[0];
-	assert.equal(s.turns, 2);
-	assert.equal(s.steps, 9);
-	assert.equal(s.ttftMs, 300);
-	assert.equal(s.decodeMs, 2000);
-	assert.equal(s.decodeTokens, 400);
-	assert.equal(s.contextWindow, 1000);
-	assert.equal(s.pressureTokens, 250);
-});
-check("identity / title / 时间戳", () => {
-	const s = snap.sessions[0];
-	assert.equal(s.cwd, "D:\\work");
-	assert.equal(s.createdAt, 1788517824758);
-	assert.equal(s.lastPromptAt, 1788517999999);
-	assert.equal(s.title, "hello");
-	assert.equal(s.blank, false);
-});
 
-// ---- buildSnapshot：磁盘投影形状（{ver,seq,val}）也要认 ----
-const diskish = { id: "s2", live: false, values: { sessionStats: { ver: 1, seq: 2, val: { turns: 5 } }, tokenUsage: { val: { totals: { outputTokens: 7 } } } } };
-check("兼容磁盘投影的 {ver,seq,val} 形状", () => {
-	const s = buildSnapshot([diskish], "t").sessions[0];
+/** 真实形状 ①：`sessionQuery.listSessions()` → **Promise**`<SessionRecord[]>` ✓
+ *  `SessionRecord = { header, live, persisted }` ✓（F2b） */
+function realRecordCtx() {
+	const rec = {
+		header: { id: "sess-1", cwd: "D:\\work", createdAt: 1788517824758, title: "hello" },
+		live: true,
+		persisted: true,
+	};
+	return {
+		sessionQuery: { listSessions: async () => [rec] },   // ✓ **异步** —— 与真实 dsh 一致 ✓
+		sessionProjections: {
+			snapshot: async () => ({
+				values: {
+					sessionStats: { turns: 2, steps: 9, llmMs: 1000, toolMs: 500, ttftMs: 300, decodeMs: 2000, decodeTokens: 400 },
+					tokenUsage: { totals: { uncachedInputTokens: 100, outputTokens: 50, cacheReadTokens: 900, cacheWriteTokens: 10 } },
+					contextPressure: { surfaceTokens: 500, contextWindow: 1000, pressureTokens: 250 },
+					sessionListMetadata: { blank: false, lastPromptAt: 1788517999999 },
+					title: "hello",
+				},
+			}),
+		},
+	};
+}
+
+// ---- buildSnapshot：契约字段与类型 ----
+const built = buildSnapshot(
+	[{ id: "s1", live: true, header: { cwd: "D:\\work", createdAt: 1788517824758, title: "hello" },
+	   values: { sessionStats: { turns: 2, steps: 9 }, tokenUsage: { totals: { outputTokens: 50 } },
+	             contextPressure: { contextWindow: 1000 }, sessionListMetadata: { lastPromptAt: 1788517999999 } } }],
+	"2026-09-28T00:00:00Z"
+);
+const row = built.sessions[0];
+
+await check("格式版本为 2", () => assert.equal(built.formatVersion, SNAPSHOT_FORMAT_VERSION));
+await check("generatedAt 由调用方传入（纯函数不读时钟）", () => assert.equal(built.generatedAt, "2026-09-28T00:00:00Z"));
+await check("**契约字段类型正确** ✓（存在时必须类型对 ✓；缺字段是**设计** ✓）", () => {
+	// ✗ 第一版断言"所有字段都必须存在" ✗ —— **太严** ✓：
+	//   `buildSnapshot` 只在**有值**时才写那个字段 ✓（F5：不假装 0 ✓）
+	//   而 C# 侧正是用「字段存在性」判 `HasStats/HasTokens/HasPressure` ✓✓ **设计如此** ✓
+	//   → 所以缺字段**不是**缺陷 ✓ 缺字段却写错类型才是 ✓
+	for (const [k, t] of Object.entries(CONTRACT)) {
+		if (!(k in row)) continue;   // ✓ 缺字段 = 数据确实没有 ✓ 合法 ✓
+		assert.equal(typeof row[k], t, "类型不符：" + k + " 应为 " + t + " 实为 " + typeof row[k]);
+	}
+	// id 与 live 是**结构必需** ✓（C# 靠它们标识与判运行态 ✓）
+	assert.ok("id" in row, "id 必须有 ✓");
+	assert.ok("live" in row, "live 必须有 ✓（哪怕是 false ✓）");
+});
+await check("**时间戳是 ISO 字符串** ✓（不是数字 —— 数字会被 C# 丢成空串 ✗）", () => {
+	assert.equal(row.createdAt, new Date(1788517824758).toISOString());
+	assert.equal(row.lastPromptAt, new Date(1788517999999).toISOString());
+	assert.ok(!Number.isFinite(row.createdAt), "不能是数字 ✓");
+});
+await check("数值字段的值正确", () => {
+	assert.equal(row.turns, 2);
+	assert.equal(row.steps, 9);
+	assert.equal(row.outputTokens, 50);
+	assert.equal(row.contextWindow, 1000);
+});
+await check("**缺字段就省略** ✓（不写 0 —— C# 用「存在性」判 Has* ✓ 写 0 会假装有数据 ✗）", () => {
+	const thin = buildSnapshot([{ id: "s3", live: false, values: {} }], "t").sessions[0];
+	assert.ok(!("turns" in thin), "turns 不该出现 ✗");
+	assert.ok(!("createdAt" in thin), "createdAt 不该出现 ✗");
+	assert.ok(!("outputTokens" in thin), "outputTokens 不该出现 ✗");
+	assert.equal(thin.live, false);
+});
+await check("兼容磁盘投影的 {ver,seq,val} 形状", () => {
+	const s = buildSnapshot([{ id: "s2", live: false, values: { sessionStats: { ver: 1, seq: 2, val: { turns: 5 } }, tokenUsage: { val: { totals: { outputTokens: 7 } } } } }], "t").sessions[0];
 	assert.equal(s.turns, 5);
 	assert.equal(s.outputTokens, 7);
 });
-check("缺字段/空值 → 0 与空串（不抛）", () => {
-	const s = buildSnapshot([{ id: "s3" }], "t").sessions[0];
-	assert.equal(s.turns, 0);
-	assert.equal(s.live, false);
-	assert.equal(s.title, "");
-	assert.equal(s.createdAt, 0);
-});
-check("null/空列表 → 空 sessions", () => {
+await check("null/空列表 → 空 sessions", () => {
 	assert.equal(buildSnapshot(null, "t").sessions.length, 0);
 	assert.equal(buildSnapshot([null, undefined], "t").sessions.length, 0);
 });
 
-// ---- defaultOutFile ----
-check("defaultOutFile 跟随 DSH_HOME", () => {
+// ---- defaultOutFile：目录名必须与 C# 的 SnapshotPath 一致 ✓✓ ----
+await check("**快照目录名与 C# 侧一致** ✓（曾经 CLI 读 toolkit-bridge 而这里写 shio-bridge ✗✗）", () => {
 	const p = defaultOutFile({ DSH_HOME: path.join("X:", "iso", "home") });
 	assert.equal(p, path.join("X:", "iso", "home", "shio-bridge", "sessions.json"));
+	assert.ok(p.includes("shio-bridge"), "必须是 shio-bridge ✓（插件的 cordis id 也是它 ✓）");
+	assert.ok(!p.includes("toolkit-bridge"), "不能是 toolkit-bridge ✗");
 });
-check("defaultOutFile：DSH_HOME 为空 → 退回主目录 .dsh", () => {
-	const p = defaultOutFile({ DSH_HOME: "   " });
-	assert.ok(p.endsWith(path.join(".dsh", "shio-bridge", "sessions.json")));
+await check("defaultOutFile：DSH_HOME 为空 → 退回主目录 .dsh", () => {
+	assert.ok(defaultOutFile({ DSH_HOME: "   " }).endsWith(path.join(".dsh", "shio-bridge", "sessions.json")));
 });
 
 // ---- 原子写 ----
-check("writeSnapshot 写文件且不留 .tmp", () => {
+await check("writeSnapshot 写文件且不留 .tmp", () => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-test-"));
 	const file = path.join(dir, "sub", "sessions.json");
-	writeSnapshot(file, snap);
-	const back = JSON.parse(fs.readFileSync(file, "utf8"));
-	assert.equal(back.formatVersion, SNAPSHOT_FORMAT_VERSION);
-	const leftovers = fs.readdirSync(path.dirname(file)).filter((n) => n.includes(".tmp-"));
-	assert.equal(leftovers.length, 0);
+	writeSnapshot(file, built);
+	assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).formatVersion, SNAPSHOT_FORMAT_VERSION);
+	assert.equal(fs.readdirSync(path.dirname(file)).filter((n) => n.includes(".tmp-")).length, 0);
 	fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// ---- collectSessions：防御式 ----
-check("collectSessions：listSessions + snapshot 正常路径", () => {
-	const ctx = {
-		sessionQuery: { listSessions: () => [{ id: "a", live: true, session: { id: "a", meta: { cwd: "C:\\w" } } }] },
-		sessionProjections: { snapshot: () => ({ values: { sessionStats: { turns: 3 } } }) },
-	};
-	const list = collectSessions(ctx);
-	assert.equal(list.length, 1);
-	assert.equal(list[0].id, "a");
+// ---- collectSessions：**真实形状**（异步 ✓ 记录是 {header,live} ✓）----
+await check("**collectSessions：异步 listSessions + 真实 SessionRecord 形状** ✓✓（F2/F2b）", async () => {
+	const list = await collectSessions(realRecordCtx());
+	assert.equal(list.length, 1, "异步路径必须收集到 1 条 ✗（旧版在这里静默失败 ✓）");
+	assert.equal(list[0].id, "sess-1");
 	assert.equal(list[0].live, true);
-	assert.equal(list[0].identity.cwd, "C:\\w");
-	assert.equal(list[0].values.sessionStats.turns, 3);
+	assert.equal(list[0].header.cwd, "D:\\work");
+	assert.equal(list[0].values.sessionStats.turns, 2);
 });
-check("collectSessions：服务缺失/抛异常 → 空数组（不抛）", () => {
-	assert.equal(collectSessions({}).length, 0);
-	assert.equal(collectSessions({ sessionQuery: { listSessions: () => { throw new Error("boom"); } } }).length, 0);
-	assert.equal(collectSessions({ sessionQuery: { listSessions: () => [{ id: "" }] } }).length, 0);
+await check("**collectSessions：store 路径（Session 没有 live 字段）→ live 视为 true** ✓（F4）", async () => {
+	const sess = { header: { id: "sess-2", cwd: "/x", createdAt: 1789000000000 }, id: "sess-2", surface: "web", seq: 5 };
+	const list = await collectSessions({ sessions: { list: () => [sess] }, sessionProjections: { snapshot: () => ({ values: {} }) } });
+	assert.equal(list.length, 1);
+	assert.equal(list[0].live, true, "store 里的会话按定义都是活的 ✓（报 false 会让面板显示「已结束」✗）");
+});
+await check("collectSessions：服务缺失/抛异常 → 空数组（不抛）", async () => {
+	assert.equal((await collectSessions({})).length, 0);
+	assert.equal((await collectSessions({ sessionQuery: { listSessions: async () => { throw new Error("boom"); } } })).length, 0);
+	assert.equal((await collectSessions({ sessionQuery: { listSessions: async () => [{ header: { id: "" } }] } })).length, 0);
+	assert.equal((await collectSessions({ sessionQuery: { listSessions: () => Promise.reject(new Error("rej")) } })).length, 0);
+});
+
+// ---- index.js 的 cordis 声明（旧测试完全没覆盖 ✗）----
+await check("**index.js 的 cordis 声明** ✓（name 与 patch 的 id 一致 ✓ inject 是真实服务 ✓）", () => {
+	assert.equal(pluginName, "shio-bridge");
+	assert.deepEqual(pluginInject, ["sessions", "sessionProjections"]);
 });
 
 // ---- apply ----
-check("apply：首帧同步写快照；enabled:false 不写", () => {
+await check("apply：首帧写快照（**异步** ✓）；enabled:false 不写", async () => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-apply-"));
 	const file = path.join(dir, "sessions.json");
-	const ctx = {
-		sessionQuery: { listSessions: () => [{ id: "a", live: false }] },
-		sessionProjections: { snapshot: () => ({ values: { sessionStats: { turns: 1 } } }) },
-		on: () => {},
-	};
+	const ctx = realRecordCtx();
+	ctx.on = () => {};
 	apply(ctx, { outFile: file, intervalMs: 100000 });
+	await new Promise((r) => setTimeout(r, 400));   // ✓ 首帧现在是异步的 ✓ 等一下 ✓
 	assert.ok(fs.existsSync(file), "首帧应已写出快照");
 	assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).sessions.length, 1);
 	const off = path.join(dir, "off.json");
@@ -145,5 +205,25 @@ check("apply：首帧同步写快照；enabled:false 不写", () => {
 	assert.equal(fs.existsSync(off), false, "enabled:false 不应写文件");
 	fs.rmSync(dir, { recursive: true, force: true });
 });
+await check("**apply：非字符串 outFile 不抛** ✓（F6：加载期崩会拖垮 dsh ✗）", () => {
+	apply({ sessions: { list: () => [] } }, { enabled: true, outFile: 123, intervalMs: 100000 });
+});
+await check("**dispose 时清掉 live 标记** ✓（F8：否则 dsh 退出后面板永远显示运行中 ✗）", async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-dispose-"));
+	const file = path.join(dir, "sessions.json");
+	let disposeFn = null;
+	const ctx = realRecordCtx();
+	ctx.on = (ev, fn) => { if (ev === "dispose") disposeFn = fn; };
+	apply(ctx, { outFile: file, intervalMs: 100000 });
+	await new Promise((r) => setTimeout(r, 400));
+	assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).sessions[0].live, true);
+	assert.ok(disposeFn, "应注册 dispose 钩子");
+	disposeFn();
+	const after = JSON.parse(fs.readFileSync(file, "utf8"));
+	assert.equal(after.sessions[0].live, false, "dispose 后 live 应为 false ✓");
+	assert.equal(after.sessions.length, 1, "其余数据应保留 ✓");
+	fs.rmSync(dir, { recursive: true, force: true });
+});
 
-console.log("\n== " + pass + " passed ==");
+console.log("\n== " + pass + " passed, " + fail + " failed ==");
+if (fail > 0) console.log("失败：" + failures.join(" / "));
