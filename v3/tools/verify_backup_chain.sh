@@ -26,7 +26,12 @@ bad(){ fail=$((fail+1)); echo "  [FAIL] $1"; }
 WORK=$(mktemp -d /tmp/vbc-XXXXXX)
 BIN="$WORK/bin"; mkdir -p "$BIN"; cp "$CLI" "$BIN/dsh-minato"; chmod +x "$BIN/dsh-minato"
 CLI="$BIN/dsh-minato"
-BKROOT="$BIN/backup"
+# ★★★ **CI 红修复（真机复现）**：备份根**必须在 exe 目录之外** ✓✓
+#   ✗ 原来 `BKROOT="$BIN/backup"` ✗ —— 而 Linux 的 StateDir 是 XDG ✓
+#     启动时的一次性迁移会把 `<exe 目录>/backup` **搬进 XDG** ✗✗
+#     → **刚建好的备份当场被搬走** ✗ → 调用方手里的路径失效 → 4 条连锁 FAIL ✓
+#   ✓ 现在放在 `$WORK/bk`（exe 目录的**外面** ✓）→ 迁移没有东西可搬 ✓✓
+BKROOT="$WORK/bk"
 A="$WORK/a"; mkdir -p "$A/storages"; printf 'ALPHA\n' > "$A/storages/a.txt"; printf 'BETA\n' > "$A/storages/b.txt"
 cleanup(){ rm -rf "$WORK" "${MT:-/nonexistent}" 2>/dev/null; }
 trap cleanup EXIT
