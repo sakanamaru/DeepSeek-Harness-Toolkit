@@ -1277,7 +1277,12 @@ namespace Dsht.Gui.Avalonia.Shells
             StackPanel bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             Button mk = PrimaryButton("＋ 立即备份", delegate { host.CreateBackup(); });   // 统一到工厂 ✓
             bar.Children.Add(mk);
-            bar.Children.Add(T("共 " + items.Count + " 份（" + (host.Backups != null && host.Backups.Ok ? "backup-list 有效包" : "未读到清单") + "）", 12, Palette.TextDim));
+            // Honesty fix (GUI final review): the parser keeps invalid entries visible so the two pages agree on the
+// count, but this label says "valid packages" - so it must count only the valid ones, or it contradicts
+// the summary card. Invalid rows stay listed and are marked individually.
+            int validCount = 0;
+            for (int vi = 0; vi < items.Count; vi++) if (!items[vi].Invalid) validCount++;
+            bar.Children.Add(T("共 " + validCount + " 份（" + (host.Backups != null && host.Backups.Ok ? "backup-list 有效包" : "未读到清单") + "）", 12, Palette.TextDim));
             s.Children.Add(Card(bar, new Thickness(0), new Thickness(16, 14)));
 
             // ✓✓ **用户要求（2026-10-01）**：「备份路径在备份页面里设置并且显示吧」✓✓
@@ -1884,7 +1889,9 @@ namespace Dsht.Gui.Avalonia.Shells
                 //    现在居中说明 ✓ —— 而且**不假造数据** ✓ 与项目诚实原则一致 ✓
                 StackPanel es = new StackPanel { Spacing = 5, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
                 es.Children.Add(T("暂无数据", 13.5, Palette.TextDim, FontWeight.SemiBold));
-                es.Children.Add(T("这个区间里没有可统计的记录（是没有，不是 0）", 11, Palette.TextFaint));
+                // GUI final review: every caller passed a `unit` and this method never read it. Using it in the
+                // empty state makes that state say what is missing in the same unit the chart would have used.
+                es.Children.Add(T("这个区间里没有可统计的记录（单位：" + unit + "；是没有，不是 0）", 11, Palette.TextFaint));
                 return new Border { Height = 132, Child = es };
             }
 
@@ -2239,7 +2246,6 @@ namespace Dsht.Gui.Avalonia.Shells
             if (d == null || !d.Ok) return;
             string q = (host.ProfileSearch ?? "").Trim();
             int shown = 0;
-            bool inStderr = false;   // N13 FIX: a [stderr] block spans several lines
             for (int i = 0; i < d.Profiles.Count; i++)
             {
                 ProfileCard p = d.Profiles[i];
