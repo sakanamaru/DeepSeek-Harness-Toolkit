@@ -139,11 +139,28 @@ internal static class Installer
         Report(progress, 84, "写入卸载器…");
         try
         {
-            string self = Process.GetCurrentProcess().MainModule.FileName;
+            // ✗✗ 原来直接 File.Copy(自己) → 卸载器**也带上 73MB 载荷** ✗（实测装出来 302MB ✗ 评审警告过 ✓）
+            // ✓ 现在：从**内嵌资源 uninstall.exe** 取（同一个源码编两遍 ✓ 不带载荷那份只有 ~40KB ✓✓）
             string un = Path.Combine(target, "uninstall.exe");
-            if (!string.Equals(Path.GetFullPath(self), Path.GetFullPath(un), StringComparison.OrdinalIgnoreCase))
-                File.Copy(self, un, true);
-            Log("卸载器: " + un);
+            bool wrote = false;
+            Assembly asm2 = Assembly.GetExecutingAssembly();
+            foreach (string rn in asm2.GetManifestResourceNames())
+            {
+                if (!rn.EndsWith("uninstall.exe", StringComparison.OrdinalIgnoreCase)) continue;
+                using (Stream rs = asm2.GetManifestResourceStream(rn))
+                using (FileStream fs = File.Create(un))
+                { rs.CopyTo(fs); wrote = true; }
+                break;
+            }
+            if (!wrote)
+            {
+                // 兜底：老办法（会大 ✗ 但至少能用 ✓）
+                string self = Process.GetCurrentProcess().MainModule.FileName;
+                if (!string.Equals(Path.GetFullPath(self), Path.GetFullPath(un), StringComparison.OrdinalIgnoreCase))
+                    File.Copy(self, un, true);
+                Log("卸载器：内嵌资源缺失 → 回退为复制自身（会大 ✗）");
+            }
+            Log("卸载器: " + un + "（" + new FileInfo(un).Length + " 字节 ✓）");
         }
         catch (Exception ex) { Log("卸载器写入失败（不致命）: " + ex.Message); }
 
@@ -183,9 +200,49 @@ internal static class Installer
     {
         string target = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
         Log("卸载目录: " + target);
+
+        // ✗✗ 实测：卸载器**自己就跑在目标目录里** ✗ → Windows 不允许删除"正在运行的程序所在目录" ✓
+        //    → 所以**先把自己复制到 %TEMP% 再从那里重启** ✓✓（标准做法 ✓ 零依赖 ✓）
+        if (Environment.GetEnvironmentVariable("DSHT_UNINSTALL_RELOCATED") != "1")
+        {
+            try
+            {
+                string me = Process.GetCurrentProcess().MainModule.FileName;
+                string tmp = Path.Combine(Path.GetTempPath(), "dsh-minato-uninstall-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".exe");
+                File.Copy(me, tmp, true);
+                ProcessStartInfo psi = new ProcessStartInfo(tmp, "--uninstall" + (silent ? " --silent" : ""));
+                psi.UseShellExecute = false;
+                psi.EnvironmentVariables["DSHT_UNINSTALL_RELOCATED"] = "1";
+                psi.EnvironmentVariables["DSHT_UNINSTALL_TARGET"] = target;
+                Process.Start(psi);
+                Log("已迁移到 " + tmp + " 并从那里继续 ✓（这样目标目录才能被删掉 ✓）");
+                return 0;
+            }
+            catch (Exception ex) { Log("自我迁移失败 → 就地卸载（可能有文件删不掉 ✓ 会如实报告 ✓）: " + ex.Message); }
+        }
+        string t2 = Environment.GetEnvironmentVariable("DSHT_UNINSTALL_TARGET");
+        if (!string.IsNullOrEmpty(t2)) target = t2.TrimEnd('\\');
         if (IsDangerousPath(target)) { Log("拒绝：目录可疑 " + target); return 2; }
         try
         {
+            // 检测在跑的程序 ✓（评审建议 ✓：别让用户对着"删不掉"发呆 ✓ 先提示关闭 ✓）
+            bool running = false;
+            try
+            {
+                foreach (string pn in new string[] { "dsht-gui", "DeepSeek Harness" })
+                    if (Process.GetProcessesByName(pn).Length > 0) running = true;
+            }
+            catch { }
+            if (running && !silent)
+            {
+                DialogResult dr = MessageBox.Show(
+                    "检测到 dsh-minato 或 DeepSeek Harness 正在运行。" + Environment.NewLine + Environment.NewLine +
+                    "现在卸载的话，**正在使用的文件可能删不掉**（不会损坏数据 ✓ 但目录里可能剩几个文件 ✓）。" + Environment.NewLine + Environment.NewLine +
+                    "建议先关掉它们再卸载。" + Environment.NewLine + Environment.NewLine +
+                    "要**先卸载、剩下的重启后再删**吗？",
+                    AppName + " 卸载", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+                if (dr != DialogResult.Yes) { Log("用户选择先关闭程序再卸载"); return 0; }
+            }
             RemoveShortcuts();
             RemoveFromUserPath(Path.Combine(target, "bin"));
             RemoveArp();
@@ -197,7 +254,10 @@ internal static class Installer
             string mover = Path.Combine(parent == null ? Path.GetTempPath() : parent, Path.GetFileName(doomed));
             try { Directory.Move(target, mover); } catch { mover = target; }
             TryDelete(mover);
-            Log("卸载完成 ✓（**你的数据没有被删除** ✓ 见桌面说明文档 ✓）");
+            bool gone = !Directory.Exists(target);
+            Log(gone
+                ? "卸载完成 ✓（目录已删干净 ✓ **你的数据没有被删除** ✓ 见桌面说明文档 ✓）"
+                : "卸载完成（但目录里还有文件被占用 ✓ 已如实报告 ✗ 不假报干净 ✗）：" + target);
             if (!silent) MessageBox.Show(
                 "卸载完成。" + Environment.NewLine + Environment.NewLine +
                 "**你的数据没有被删除** ✓" + Environment.NewLine +
