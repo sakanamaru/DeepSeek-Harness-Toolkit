@@ -533,7 +533,24 @@ internal static class Installer
                 psi.EnvironmentVariables["DSHT_UNINSTALL_TARGET"] = target;
                 Process.Start(psi);
                 Log("已迁移到 " + tmp + " 并从那里继续 ✓（这样目标目录才能被删掉 ✓）");
-                return 0;
+                // ★★★ **M5 修复（审计 MAJOR —— 卸载器报成功但其实什么都没做）** ✓✓
+                //   ✗ 原来 `Process.Start(psi); … return 0;` ✗ —— **子进程的退出码被丢掉** ✗✗
+                //     → 身份校验拒绝（返回 2 ✓）· 用户点了"否"（返回 2 ✓）· 删除失败（返回 5 ✓）
+                //       **在父进程看来全是 0** ✗ → winget / ARP 的 QuietUninstallString 会认为卸载成功 ✓
+                //       而实际上**一个字节都没删** ✗✗ —— 这正是本项目最不该有的"假报成功" ✓
+                //   ✓ 现在：**等子进程结束并原样返回它的退出码** ✓✓
+                //     （父进程已自我迁移到 %TEMP% ✓ 所以等着不会挡住子进程删安装目录 ✓）
+                try
+                {
+                    using (Process child = Process.Start(psi))
+                    {
+                        if (child == null) { Log("无法启动迁移后的卸载器 ✗"); return 9; }
+                        child.WaitForExit();
+                        Log("迁移后的卸载器退出码: " + child.ExitCode + "（原样返回 ✓ 不吞 ✓）");
+                        return child.ExitCode;
+                    }
+                }
+                catch (Exception ex) { Log("等待迁移后的卸载器失败 ✗: " + ex.Message); return 9; }
             }
             catch (Exception ex) { Log("自我迁移失败 → 就地卸载（可能有文件删不掉 ✓ 会如实报告 ✓）: " + ex.Message); }
         }

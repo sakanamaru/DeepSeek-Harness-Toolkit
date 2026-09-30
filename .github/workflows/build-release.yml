@@ -454,6 +454,21 @@ jobs:
             "",
             "Version shows 3.0.0-dev until a release tag is cut."
           )
+          # ✓✓ **M9 修复（审计 MAJOR）**：**zip 里必须带 hashes.txt** ✓✓
+          #   ✗ 上面 `Remove-Item $pkg -Recurse -Force` 会**连构建脚本刚写的清单一起删掉** ✗
+          #     → 这个 zip 里**没有清单** ✗ → `launcher.cs` 的
+          #       `if (!File.Exists(manifest)) return null;` → **反篡改校验完全失效** ✗✗
+          #     → 用户从 zip 装的那份**被改了也不会拒绝启动** ✓（与安装器装的那份行为不一致 ✗）
+          #   ✓ 现在：**打包前重新生成一份** ✓✓
+          #     · 相对路径 + 反斜杠 ✓（与启动器 `FindHashExact` 的查找方式一致 ✓✓）
+          #     · 排除清单自身 ✓（与构建脚本同一规则 ✓）
+          $pkgFull = (Resolve-Path $pkg).Path.TrimEnd('\')
+          $mfiles = @(Get-ChildItem $pkg -Recurse -File | Where-Object { $_.Name -ne 'hashes.txt' } | Sort-Object FullName)
+          $mlines = @()
+          foreach ($mf in $mfiles) { $mlines += ((Get-FileHash $mf.FullName -Algorithm SHA256).Hash.ToLower() + '  ' + $mf.FullName.Substring($pkgFull.Length).TrimStart('\')) }
+          [System.IO.File]::WriteAllLines((Join-Path $pkgFull 'hashes.txt'), $mlines, (New-Object System.Text.UTF8Encoding($false)))
+          Write-Output ("payload manifest: " + $mlines.Count + " files")
+
           # Zip with forward-slash entry names: Compress-Archive writes backslashes on Windows,
           # and those break extraction on Linux, macOS and WSL.
           $zip = "$pkg.zip"
