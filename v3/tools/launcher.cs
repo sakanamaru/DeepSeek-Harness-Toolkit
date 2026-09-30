@@ -122,21 +122,15 @@ internal static class Launcher
         catch { return null; }
     }
 
-    /// <summary>用 cmd 的 mshta 弹一个**没有第三方依赖**的提示框 ✓（winexe 下没有控制台可用 ✗）。</summary>
+    /// <summary>弹一个提示框 ✓。
+    /// ✗ 原来用 `mshta` + javascript → **实测没弹出来** ✗（进程 0 个 ✓ 用户被拒绝后什么都看不到 ✗✗）
+    /// ✓ 改用 WinForms 的 MessageBox ✓ —— .NET Framework 的**系统程序集** ✓ 不算第三方依赖 ✓✓</summary>
     private static void Show(string title, string body)
     {
         try
         {
-            // mshta 的 VBScript MsgBox ✓（Windows 自带 ✓ 零依赖 ✓）
-            string safeTitle = title.Replace("\"", "'");
-            string safeBody = body.Replace("\"", "'");
-            string script = "mshta \"javascript:var sh=new ActiveXObject('WScript.Shell');sh.Popup('" +
-                safeBody.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\r", "").Replace("\n", "\\n") +
-                "',0,'" + safeTitle + "',48);close();\"";
-            ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c " + script);
-            psi.UseShellExecute = false;
-            psi.CreateNoWindow = true;
-            Process.Start(psi);
+            System.Windows.Forms.MessageBox.Show(body, title,
+                System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Warning);
         }
         catch { }
     }
