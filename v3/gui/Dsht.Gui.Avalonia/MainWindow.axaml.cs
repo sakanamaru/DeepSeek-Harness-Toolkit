@@ -242,6 +242,40 @@ namespace Dsht.Gui.Avalonia
         /// <summary>删除备份 ✓✓。**用户要求（2026-09-30）**：「删除弹窗输入当前时间才执行」✓✓
         ///   理由：删除**不可逆** ✓ 光"再点一次"太容易手滑 ✓ → **必须看着时间手打一遍** ✓
         ///   CLI 侧同样有闸门 ✓（`--confirm-time` 与真实时间相差 &gt;120 秒 → 拒绝 ✓✓）</summary>
+        // ================================================================ 备份位置
+
+        /// <summary>当前备份位置 ✓✓（从 `backup-list` 的 `BACKUP_DIR <路径>` 行读 ✓ 读不到返回空 ✓ 不猜 ✓）。</summary>
+        public string BackupDirText
+        {
+            get
+            {
+                try
+                {
+                    string raw = RawOutput ?? "";
+                    string[] ls = raw.Replace("\r\n", "\n").Split('\n');
+                    for (int i = 0; i < ls.Length; i++)
+                    {
+                        string l = ls[i] == null ? "" : ls[i].Trim();
+                        if (l.StartsWith("BACKUP_DIR ", StringComparison.Ordinal)) return l.Substring("BACKUP_DIR ".Length).Trim();
+                    }
+                }
+                catch { }
+                return "";
+            }
+        }
+
+        /// <summary>改备份位置 ✓✓（用户要求：「备份路径在备份页面里设置并且显示吧」✓）。
+        /// 弹系统文件夹选择器 ✓ → `backup-dir --set <目录>` ✓ → CLI 会校验并持久化 ✓✓。</summary>
+        public async void ChangeBackupDir()
+        {
+            string dir = await PickFolder("选择备份位置（建议放在安装目录之外，例如 D:\\dsh-backups）");
+            if (string.IsNullOrEmpty(dir)) { _actionLog = "已取消更改备份位置 ✓"; BuildShell(); ShowToast(_actionLog); return; }
+            RunCliAction("backup-dir --set \"" + dir + "\"", "更改备份位置");
+        }
+
+        /// <summary>恢复默认备份位置 ✓✓（删掉持久化文件 ✓ 回到 `StateDir/backup` ✓）。</summary>
+        public void ResetBackupDir() { RunCliAction("backup-dir --reset", "恢复默认备份位置"); }
+
         public async void DeleteBackup(string name)
         {
             string now = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");

@@ -1260,6 +1260,26 @@ namespace Dsht.Gui.Avalonia.Shells
             bar.Children.Add(T("共 " + items.Count + " 份（" + (host.Backups != null && host.Backups.Ok ? "backup-list 有效包" : "未读到清单") + "）", 12, Palette.TextDim));
             s.Children.Add(Card(bar, new Thickness(0), new Thickness(16, 14)));
 
+            // ✓✓ **用户要求（2026-10-01）**：「备份路径在备份页面里设置并且显示吧」✓✓
+            //   · **显示**：从 `backup-list` 的 `BACKUP_DIR <路径>` 行读 ✓（`host.BackupDirText` ✓）
+            //   · **设置**：「更改位置…」→ 系统文件夹选择器 → `backup-dir --set <目录>` ✓✓
+            //   · **恢复默认**：`backup-dir --reset` ✓（回到 `StateDir/backup` ✓）
+            //   · **诚实说明**：已有备份**不会被移动** ✓ 仍在原处 ✓ 只有以后的备份写到新位置 ✓
+            //     （避免用户以为"改了位置旧备份就过去了" ✗ 那是错的 ✓）
+            {
+                StackPanel loc = new StackPanel { Spacing = 6 };
+                loc.Children.Add(T("备份位置", 12.5, Palette.Text, FontWeight.SemiBold));
+                string bd = host.BackupDirText;
+                bool known = !string.IsNullOrEmpty(bd);
+                loc.Children.Add(Mono(known ? bd : "（读不到路径 —— 点一下「立即备份」或换页刷新后会显示）", 11.5, known ? Palette.Text : Palette.Warn));
+                StackPanel lb = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                lb.Children.Add(GhostButton(T("更改位置…", 11.5, Palette.Text), delegate { host.ChangeBackupDir(); }, true));
+                lb.Children.Add(GhostButton(T("恢复默认", 11.5, Palette.TextDim), delegate { host.ResetBackupDir(); }, true));
+                loc.Children.Add(lb);
+                loc.Children.Add(T("已有备份**不会被移动** ✓ 仍在原处 ✓ 只有以后的备份写到新位置 ✓（放在安装目录之外更稳妥 ✓）", 11, Palette.TextFaint));
+                s.Children.Add(Card(loc, new Thickness(0), new Thickness(16, 14)));
+            }
+
             if (items.Count == 0)
                 s.Children.Add(Card(T("还没有备份。点「立即备份」创建第一份（空数据根不会被算作有效备份，这是刻意的规则）。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));
             for (int i = 0; i < items.Count; i++)

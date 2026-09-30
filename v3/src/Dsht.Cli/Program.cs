@@ -66,6 +66,7 @@ namespace Dsht.Cli
             if (cmd == "stop") return StopCmd(args, reg);
             if (cmd == "sessions") return Sessions(reg);
             if (cmd == "backup-list") return BackupList(args, reg);
+            if (cmd == "backup-dir") return BackupDirCmd(args, reg);   // ✓ 备份位置查看/设置 ✓（用户要求"备份路径在备份页面里设置并且显示" ✓）
             if (cmd == "doctor") return Doctor(args, reg);
             if (cmd == "version") { Console.WriteLine("DSHT_VERSION " + ToolkitVersion); return 0; }
             if (cmd == "config-get") return ConfigGet();
@@ -2092,6 +2093,64 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             Console.WriteLine("BACKUP_VERIFY_TOTAL " + all.Count + " complete=" + complete + " incomplete=" + incomplete + " mismatch=" + mismatch);
             return 0;
         }
+        /// <summary>查看 / 设置**备份位置** ✓✓（用户要求：「备份路径在备份页面里设置并且显示吧」✓）。
+        ///
+        /// 语义：
+        ///   · 不带参数 → **只显示**当前备份根 ✓（标记行 `BACKUP_DIR <路径>` ✓）
+        ///   · `--set <目录>` → **改到那里** ✓（写 `<StateDir>/.backup-dir` ✓ 之后所有命令都用它 ✓✓）
+        ///   · `--reset` → **恢复默认**（删掉那个文件 ✓ 回到 `StateDir/backup` ✓）
+        ///
+        /// 为什么要有它：默认备份根在 **Windows 上就是安装目录内**（`StateDir` = exe 所在目录 ✗）
+        ///   → 卸载时**理论上**会被一起清 ✗（安装器已加保险：显式跳过 backup/ ✓✓）
+        ///   → 但**放在安装目录之外才真正稳妥** ✓ → 用户需要一个**看得见、改得动**的入口 ✓✓
+        ///
+        /// 标记行：BACKUP_DIR / BACKUP_DIR_OK / BACKUP_DIR_RESET / BACKUP_DIR_FAIL</summary>
+        private static int BackupDirCmd(string[] args, ServiceRegistry reg)
+        {
+            IBackupSource bk = reg.Get<IBackupSource>();
+            IPaths paths = reg.Get<IPaths>();
+            string sel = "";
+            try { sel = System.IO.Path.Combine(paths.StateDir, ".backup-dir"); } catch { }
+
+            if (Has(args, "--reset"))
+            {
+                try { if (!string.IsNullOrEmpty(sel) && System.IO.File.Exists(sel)) System.IO.File.Delete(sel); } catch { }
+                Console.WriteLine("BACKUP_DIR_RESET " + bk.BackupsRoot + " " + T("已恢复默认备份位置 ✓", "reset to the default backups folder"));
+                return 0;
+            }
+
+            string set = (Flag(args, "--set") ?? "").Trim().Trim('"');
+            if (string.IsNullOrEmpty(set))
+            {
+                Console.WriteLine("BACKUP_DIR " + bk.BackupsRoot);
+                return 0;
+            }
+
+            // 校验：必须是绝对路径 ✓ 必须能创建 ✓（失败就说清原因 ✓ 不猜 ✓）
+            string full;
+            try { full = System.IO.Path.GetFullPath(set); }
+            catch (Exception ex) { Console.WriteLine("BACKUP_DIR_FAIL " + T("路径无效：" + ex.Message, "invalid path: " + ex.Message)); return 0; }
+            try { System.IO.Directory.CreateDirectory(full); }
+            catch (Exception ex) { Console.WriteLine("BACKUP_DIR_FAIL " + T("无法创建目录：" + ex.Message, "cannot create folder: " + ex.Message)); return 0; }
+            // ✓✓ **实测抓到的**：`Z:\no\such\drive\x` 竟然"创建成功"了 ✗（不可用盘符时 `CreateDirectory` 不抛 ✓）
+            //   → **必须**再确认它**真的存在** ✓✓（不信任 API 的返回值 ✓ 只看事实 ✓）
+            if (!System.IO.Directory.Exists(full))
+            {
+                Console.WriteLine("BACKUP_DIR_FAIL " + T("目录创建后**并不存在** ✓ 路径不可用：" + full, "the folder does not exist after creating it: " + full));
+                return 0;
+            }
+            try
+            {
+                if (string.IsNullOrEmpty(sel)) { Console.WriteLine("BACKUP_DIR_FAIL " + T("取不到状态目录，无法保存设置 ✓", "cannot resolve the state dir")); return 0; }
+                System.IO.File.WriteAllText(sel, full, new System.Text.UTF8Encoding(false));
+            }
+            catch (Exception ex) { Console.WriteLine("BACKUP_DIR_FAIL " + T("无法保存设置：" + ex.Message, "cannot save the setting: " + ex.Message)); return 0; }
+
+            Console.WriteLine("BACKUP_DIR_OK " + full + " " + T("以后的备份都写到这里 ✓（已有备份**不会**被移动 ✓ 仍留在原处 ✓）", "future backups go here; existing ones are not moved"));
+            return 0;
+        }
+
+
         private static int BackupList(string[] args, ServiceRegistry reg)
         {
             if (Has(args, "--verify")) return BackupVerify(reg);
@@ -2106,6 +2165,9 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             //   ✓ `BACKUP_LIST_IGNORED` 保留 ✓（仍告诉你有几项不是有效备份 ✓）
             //   ✓ **恢复时仍只认有效包** ✓（安全边界不动 ✓ 见 IsValidBackupDirFn ✓✓）
             all.Reverse();   // 最新在前 ✓
+            // ✓ 用户要求（2026-10-01）：「备份路径在备份页面里设置并且显示吧」✓✓
+            //   → **先把当前备份根报出去** ✓ 页面据此显示 ✓（标记行 `BACKUP_DIR <路径>` ✓）
+            Console.WriteLine("BACKUP_DIR " + src.BackupsRoot);
             Console.WriteLine("BACKUP_LIST_OK " + all.Count);
             int notValid = 0;
             for (int i = 0; i < all.Count; i++) { if (!BackupPackage.IsValidPackage(all[i].Snapshot)) notValid++; }
