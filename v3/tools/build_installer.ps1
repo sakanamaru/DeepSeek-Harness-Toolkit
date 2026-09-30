@@ -16,12 +16,39 @@ param(
     [string]$PayloadZip = "",
     [string]$Version = "3.0.0",
     [string]$Out = "",
+[string]$Roslyn = "",
     [string]$Repo = (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent)
 )
 $ErrorActionPreference = "Stop"
 $u8 = New-Object System.Text.UTF8Encoding($false)
 
-$roslyn = "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\Roslyn\csc.exe"
+# ✗ 原来写死本机路径 → **CI 上必然找不到** ✗（GitHub 的 windows runner 路径不同 ✓）
+# ✓ 现在四级探测：显式参数 → vswhere → 常见位置 glob → 报错说清怎么办 ✓✓
+$roslyn = ""
+if ($Roslyn -and (Test-Path $Roslyn)) { $roslyn = $Roslyn }
+if (-not $roslyn) {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vswhere) {
+        try {
+            $vs = (& $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath 2>$null | Select-Object -First 1)
+            if ($vs) {
+                $cand = Join-Path $vs.Trim() "MSBuild\Current\Bin\Roslyn\csc.exe"
+                if (Test-Path $cand) { $roslyn = $cand }
+            }
+        } catch { }
+    }
+}
+if (-not $roslyn) {
+    foreach ($root in @("${env:ProgramFiles}\Microsoft Visual Studio", "${env:ProgramFiles(x86)}\Microsoft Visual Studio")) {
+        if (-not (Test-Path $root)) { continue }
+        $hit = @(Get-ChildItem $root -Recurse -Filter 'csc.exe' -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\Roslyn\\' } | Select-Object -First 1)
+        if ($hit.Count -gt 0) { $roslyn = $hit[0].FullName; break }
+    }
+}
+if (-not $roslyn -or -not (Test-Path $roslyn)) {
+    throw "找不到 Roslyn csc。装了 VS2022 就行；否则用 -Roslyn <csc.exe 的完整路径> 指定。`n（in-box 的 Framework64\v4.0.30319\csc.exe 只有 C# 5，编不过本项目 ✓）"
+}
+Write-Host "Roslyn: $roslyn"
 if (-not (Test-Path $roslyn)) { throw "找不到 Roslyn csc：$roslyn（本机靠 VS2022 ✓ 没装就用不了现代 C# ✗）" }
 $ico = Join-Path $Repo "v3\gui\Dsht.Gui.Avalonia\Assets\logo-icon.ico"
 $src = Join-Path $Repo "v3\tools\installer.cs"
