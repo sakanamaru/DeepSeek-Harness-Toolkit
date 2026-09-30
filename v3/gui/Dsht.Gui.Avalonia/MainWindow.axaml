@@ -35,7 +35,6 @@
               <Button x:Name="Shell4" />
             </StackPanel>
           </Border>
-          <Button x:Name="PinBtn" />
           <Border x:Name="StyleSwitch" CornerRadius="9" Padding="3" VerticalAlignment="Center">
             <StackPanel Orientation="Horizontal" Spacing="2">
               <Button x:Name="Style0" />
@@ -44,6 +43,7 @@
               <Button x:Name="Style3" />
             </StackPanel>
           </Border>
+          <Button x:Name="PinBtn" />
         </StackPanel>
       </Grid>
     </Border>

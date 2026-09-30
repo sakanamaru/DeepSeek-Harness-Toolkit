@@ -583,15 +583,20 @@ namespace Dsht.Gui.Avalonia
         {
             Button b = this.FindControl<Button>("PinBtn");
             if (b == null) return;
-            // ✓ 用**文字**按钮 ✓✓（FluentIcons 的 `Symbol` 里没有 Pin ✗ 试过报错 ✓ 文字更稳 ✓）
-            b.Content = new TextBlock
+            // ✓✓ **用户要求（2026-09-30）**：「置顶放在 abcd 右边，换成图标」✓✓
+            //   · 位置：Axaml 里已移到 `StyleSwitch`（A B C D）**右边** ✓✓
+            //   · 图标：FluentIcons 的 `Symbol` 里**没有裸 `Pin`** ✗（试过报错 ✓ 扫了 dll 的字符串表确认 ✓）
+            //     → 用 **`Symbol.NotePin`** ✓✓（就是个图钉 ✓ 存在 ✓ 置顶时变 accent 色 ✓）
+                        // ✓ `Ic()` 是 `Shells` 的 **private static** ✗ → `MainWindow` 里用不了 ✗（试过报错 ✓）
+            //   → 直接 new 一个 `SymbolIcon` ✓✓（`FluentIcons.Avalonia` 已在 using 里 ✓）
+            b.Content = new SymbolIcon
             {
-                Text = _alwaysOnTop ? "已置顶" : "置顶",
-                FontSize = 11.5,
+                Symbol = Symbol.NotePin,
+                FontSize = 14,
                 Foreground = _alwaysOnTop ? Palette.Accent : Palette.TextDim,
                 VerticalAlignment = VerticalAlignment.Center
             };
-            b.MinWidth = 56;
+            b.MinWidth = 30;   // ✓ 图标按钮用图标尺寸 ✓（用户之前报过"宽体普京" ✗ 教训 ✓）
             b.HorizontalContentAlignment = HorizontalAlignment.Center;
             b.Padding = new Thickness(8, 5);
             b.CornerRadius = new CornerRadius(7);
