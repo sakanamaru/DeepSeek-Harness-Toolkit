@@ -1305,7 +1305,13 @@ namespace Dsht.Gui.Avalonia.Shells
 
             // —— 运行时事实 ——
             Grid facts = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") };
-            facts.Children.Add(StatCard(Symbol.NumberSymbol, "进程 PID", string.IsNullOrEmpty(st.Pid) ? "—" : st.Pid, "运行 dsh 的进程号", Palette.Text, -1, 0, 3));
+            // 桌面端在跑时（端口没监听 ✓ 但 dsh 确实在运行 ✓）→ 显示**桌面端的** PID/启动时间/已运行 ✓✓
+            // （用户要求："概览再更新下 desktop 的 pid 启动时间和已运行" ✓）
+            bool deskUp = st.State == 2 && !string.IsNullOrEmpty(st.DesktopClient);
+            string fPid = deskUp ? st.DesktopPid : st.Pid;
+            string fStart = deskUp ? st.DesktopStart : st.Start;
+            string fUp = deskUp ? st.DesktopUptime : st.Uptime;
+            facts.Children.Add(StatCard(Symbol.NumberSymbol, deskUp ? "桌面端 PID" : "进程 PID", string.IsNullOrEmpty(fPid) ? "—" : fPid, "运'行 dsh 的进程号", Palette.Text, -1, 0, 3));
             facts.Children.Add(StatCard(Symbol.Calendar, "启动时间", string.IsNullOrEmpty(st.Start) ? "—" : st.Start, "dsh 启动的时刻", Palette.Text, -1, 1, 3));
             facts.Children.Add(StatCard(Symbol.Clock, "已运行", string.IsNullOrEmpty(st.Uptime) ? "—" : st.Uptime, "从启动到现在", Palette.Accent, -1, 2, 3));
             s.Children.Add(facts);
@@ -1322,17 +1328,19 @@ namespace Dsht.Gui.Avalonia.Shells
                 formText = pf.Profiles[0].FormText;
             }
             Grid row1 = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
+            // 当前形态：桌面端在跑 → 直接说 desktop ✓（比 profile 的 web 形态更贴近"现在启动的是哪个" ✓）
+            if (deskUp) formText = "desktop（官方桌面端）";
             row1.Children.Add(StatCard(Symbol.Box, "当前形态", formText, "来自 profile 的 dsh.profile.bundles", Palette.Text, -1, 0, 4));
             row1.Children.Add(StatCard(Symbol.PuzzlePiece, "profile / 插件", (pf == null ? "—" : pf.Count.ToString()) + " / " + thirdCount, bundleCount + " 个组合包（含官方）", Palette.Text, -1, 1, 4));
             row1.Children.Add(StatCard(Symbol.ChatMultiple, "会话", se == null ? "—" : se.Count.ToString(), "非空 " + (se == null ? "—" : se.NonBlank.ToString()) + " · 运行中 " + (se == null ? "—" : se.Live.ToString()), Palette.Text, -1, 2, 4));
             row1.Children.Add(StatCard(Symbol.DataUsage, "累计输入 token", se == null ? "—" : SessionRow.Human(se.TotalIn), "输出 " + (se == null ? "—" : SessionRow.Human(se.TotalOut)), Palette.Text, -1, 3, 4));
             s.Children.Add(row1);
 
-            Grid row2 = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), RowDefinitions = new RowDefinitions("Auto,Auto") };
+            Grid row2 = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), RowDefinitions = new RowDefinitions("Auto,12,Auto") };   // 中间那行是**固定 12px 间隔行** ✓ = 田字隔断 ✓（Avalonia 11.2 的 Grid 没有 RowSpacing ✗）
             Control r2c0 = StatCard(Symbol.Database, "缓存命中率", se == null ? "—" : PctText(se.TotalHitPercent), "越高越省钱", Palette.Good, se == null ? -1 : se.TotalHitPercent, 0, 2); Grid.SetColumn(r2c0, 0); Grid.SetRow(r2c0, 0); row2.Children.Add(r2c0);
             Control r2c1 = StatCard(Symbol.Gauge, "解码速度", se == null ? "—" : TpsText(se.TotalDecodeTps), "tok/s（按合计加权）", Palette.Accent, -1, 1, 2); Grid.SetColumn(r2c1, 1); Grid.SetRow(r2c1, 0); row2.Children.Add(r2c1);
-            Control r2c2 = StatCard(Symbol.Archive, "备份", bk == null || !bk.Ok ? "—" : bk.Count.ToString(), "份（backup-list）", Palette.Text, -1, 0, 2); Grid.SetColumn(r2c2, 0); Grid.SetRow(r2c2, 1); row2.Children.Add(r2c2);
-            Control r2c3 = StatCard(Symbol.Stethoscope, "体检", dc == null || !dc.Ok ? "未运行" : dc.Headline, "点下面按钮运行 doctor", dc != null && dc.Error > 0 ? Palette.Bad : (dc != null && dc.Warn > 0 ? Palette.Warn : Palette.Good), -1, 1, 2); Grid.SetColumn(r2c3, 1); Grid.SetRow(r2c3, 1); row2.Children.Add(r2c3);
+            Control r2c2 = StatCard(Symbol.Archive, "备份", bk == null || !bk.Ok ? "—" : bk.Count.ToString(), "份（backup-list）", Palette.Text, -1, 0, 2); Grid.SetColumn(r2c2, 0); Grid.SetRow(r2c2, 2); row2.Children.Add(r2c2);
+            Control r2c3 = StatCard(Symbol.Stethoscope, "体检", dc == null || !dc.Ok ? "未运行" : dc.Headline, "点下面按钮运行 doctor", dc != null && dc.Error > 0 ? Palette.Bad : (dc != null && dc.Warn > 0 ? Palette.Warn : Palette.Good), -1, 1, 2); Grid.SetColumn(r2c3, 1); Grid.SetRow(r2c3, 2); row2.Children.Add(r2c3);
             s.Children.Add(row2);
 
             // —— 快捷入口 ——

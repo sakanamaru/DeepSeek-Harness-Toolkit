@@ -22,6 +22,31 @@ namespace Dsht.Platform.Windows
         }
 
         /// <summary>按名字精确查进程（tasklist，不区分大小写）。名字里有空格也可用 ✓</summary>
+        /// <summary>按名字取 PID（tasklist /nh /fo csv → 第一列名字、第二列 PID ✓）</summary>
+        public int PidOfNamed(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return 0;
+            try
+            {
+                string outp = WindowsShell.Capture("cmd.exe", "/c tasklist /fi \"imagename eq " + name + ".exe\" /nh /fo csv");
+                if (string.IsNullOrEmpty(outp)) return 0;
+                string[] lines = outp.Replace("\r\n", "\n").Split('\n');
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string ln = lines[i].Trim();
+                    if (ln.Length == 0) continue;
+                    string[] parts = ln.Split(',');
+                    if (parts.Length < 2) continue;
+                    string exe = parts[0].Trim().Trim('"');
+                    if (!exe.Equals(name + ".exe", StringComparison.OrdinalIgnoreCase)) continue;
+                    int pid;
+                    if (int.TryParse(parts[1].Trim().Trim('"'), out pid)) return pid;
+                }
+                return 0;
+            }
+            catch { return 0; }
+        }
+
         public bool AnyProcessNamed(string name)
         {
             if (string.IsNullOrEmpty(name)) return false;

@@ -66,8 +66,8 @@ if ($Fixtures) {
 }
 
 $cases = @(
-    @{ name = 'status';               args = @('status'); ignore = '^STATUS_DESKTOP ' },
-    @{ name = 'status --detail';      args = @('status','--detail'); ignore = '^STATUS_DESKTOP ' },
+    @{ name = 'status';               args = @('status'); ignore = '^STATUS_DESKTOP(_PID|_START|_UPTIME)? ' },
+    @{ name = 'status --detail';      args = @('status','--detail'); ignore = '^STATUS_DESKTOP(_PID|_START|_UPTIME)? ' },
     @{ name = 'profilecheck';         args = @('profilecheck') ; ignore = 'PROFILECHK_READ_ERRORS|PROFILECHK_INCOMPLETE' },
     @{ name = 'profilecheck --abs';   args = @('profilecheck','--abs') },
     @{ name = 'backup-list';          args = @('backup-list'); full = $true; ignore = '^BACKUP_LIST_IGNORED ' },

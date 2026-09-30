@@ -29,6 +29,10 @@ namespace Dsht.Domain.Abstractions
         /// 语义保持中立：域层不知道也不关心调用者拿它判断什么。</summary>
         bool AnyProcessNamed(string name);
 
+        /// <summary>按名字取 PID（精确匹配）；**没找到返回 0** ✓ 不猜 ✓。
+        /// 用途：官方桌面端在跑时，概览要显示它的 PID/启动时间/已运行 ✓</summary>
+        int PidOfNamed(string name);
+
         /// <summary>进程命令行原文（诊断报告用）；取不到返回空串。</summary>
         string CommandLine(int pid);
     }

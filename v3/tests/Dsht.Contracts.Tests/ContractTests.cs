@@ -23,6 +23,7 @@ sealed class FakeProc : IProcessQuery
 {
     // 域测试替身：没有真实进程可查 → 如实返回 false ✓（不猜 ✓）
     public bool AnyProcessNamed(string name) { return false; }
+    public int PidOfNamed(string name) { return 0; }   // 替身没有真实进程 ✓
     public int Pid;
     public bool IsDsh;
     public bool Throw;

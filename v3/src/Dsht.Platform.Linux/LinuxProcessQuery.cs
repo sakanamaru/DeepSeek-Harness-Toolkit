@@ -28,6 +28,21 @@ namespace Dsht.Platform.Linux
         }
 
         /// <summary>按名字精确查进程（pgrep -x）。取不到就返回 false —— 不猜 ✓</summary>
+        /// <summary>按名字取 PID（pgrep -x ✓）；取不到返回 0 ✓ 不猜 ✓</summary>
+        public int PidOfNamed(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return 0;
+            try
+            {
+                string outp = Capture("pgrep", "-x " + Q + name + Q);
+                if (string.IsNullOrEmpty(outp)) return 0;
+                string first = outp.Replace("\r\n", "\n").Split('\n')[0].Trim();
+                int pid;
+                return int.TryParse(first, out pid) ? pid : 0;
+            }
+            catch { return 0; }
+        }
+
         public bool AnyProcessNamed(string name)
         {
             if (string.IsNullOrEmpty(name)) return false;
