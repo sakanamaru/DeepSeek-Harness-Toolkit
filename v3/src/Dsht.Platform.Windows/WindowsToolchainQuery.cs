@@ -66,7 +66,9 @@ namespace Dsht.Platform.Windows
             // match it - so every real registry was rejected and install/update always failed.
             registry = (registry ?? "").Trim();
             if (!string.IsNullOrEmpty(registry) &&
-                !System.Text.RegularExpressions.Regex.IsMatch(registry, @"^https?://[A-Za-z0-9._~:/?#\[\]@!$*+,;=-]+$"))   // N3 FIX: & % ^ ! ( ) are cmd.exe metacharacters
+                // F-C FIX (CLI final review): the whitelist still allowed ! and $, which the comment above named as rejected.
+                // They are inert here (no delayed expansion) but the code should match its own description.
+                !System.Text.RegularExpressions.Regex.IsMatch(registry, @"^https?://[A-Za-z0-9._~:/?#\[\]@*+,;=-]+$"))   // N3 FIX: & % ^ ! ( ) are cmd.exe metacharacters
             {
                 return -3;   // -3 = refused: the registry value is not a plain URL
             }

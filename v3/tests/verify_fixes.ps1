@@ -99,7 +99,9 @@ $checks = @(
   @('不删目标端独有文件',        'PlanMerge', 2),
   # 并发同名碰撞修复 ✓：三处命名（两平台 + CLI import）都必须带 PID 拼接 ✓
   # 否则同毫秒并发会撞名 → 两个源混进同一个包 → 而 --verify 还报 complete ✗✗（真机复现过 ✓）
-  @('命名带 PID（三处 ✓）',      'yyyyMMdd-HHmmssfff', 3)
+  # F-B FIX (CLI final review): the bare format string also appears in two unrelated .bak- names, so this check
+  # passed even if every PID concatenation was deleted. Anchor it on the concatenation itself.
+  @('命名带 PID（三处 ✓）',      'HHmmssfff", System.Globalization.CultureInfo.InvariantCulture) + "-" + System.Diagnostics.Process.GetCurrentProcess().Id', 3)
 )
 $miss = @()
 foreach ($c in $checks) {
