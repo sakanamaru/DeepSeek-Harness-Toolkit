@@ -51,6 +51,9 @@ internal static class Installer
     /// 审计 m8：原来只显示"安装失败（代码 9）" ✗ → **篡改警告这种关键信息用户根本看不到** ✗✗）。</summary>
     internal static string LastFailureReason = "";
     private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "dsh-minato-install.log");
+    // N-E FIX (installer audit MINOR): set once a relocated child has written the shared log, so the parent's
+    // final flush does not wipe the child's detailed deletion log - the part support actually needs.
+    private static bool _childWroteLog = false;
     private static readonly StringBuilder LogBuf = new StringBuilder();
 
     [STAThread]
@@ -135,7 +138,7 @@ internal static class Installer
             if (!silent) MessageBox.Show(ex.Message, AppName + " 安装失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 9;
         }
-        finally { FlushLog(); }
+        finally { if (!_childWroteLog) FlushLog(); }   // N-E FIX: never overwrite the child's log
     }
 
     // ================================================================ 安装
@@ -761,6 +764,7 @@ internal static class Installer
                     {
                         if (child == null) { Log("无法启动迁移后的卸载器 ✗"); return 9; }
                         child.WaitForExit();
+                        _childWroteLog = true;   // N-E FIX: the child owns the log now
                         Log("迁移后的卸载器退出码: " + child.ExitCode + "（原样返回 ✓ 不吞 ✓）");
                         return child.ExitCode;
                     }
@@ -1014,8 +1018,22 @@ internal static class Installer
             {
                 foreach (string rn in Directory.GetFiles(mover, "uninstall.exe.running-*"))
                 {
+                    // N-3b FIX (cont): the parent is STILL ALIVE and holds this file open, so a direct
+                    // delete fails with access denied (reproduced). Schedule it with a delayed command
+                    // that runs after the parent exits.
                     try { File.Delete(rn); removedOur++; Log("已删自我改名留下的副本 ✓ " + Path.GetFileName(rn)); }
-                    catch (Exception rnx) { Log("删自我改名副本失败（不致命 ✓）: " + rnx.Message); }
+                    catch (Exception rnx)
+                    {
+                        Log("副本被父进程占着（正常 ✓）→ 安排父进程退出后删除 ✓: " + Path.GetFileName(rn));
+                        try
+                        {
+                            System.Diagnostics.ProcessStartInfo rk = new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c ping -n 3 127.0.0.1 >nul & del /f /q \"" + rn + "\"");
+                            rk.UseShellExecute = false;
+                            rk.CreateNoWindow = true;
+                            System.Diagnostics.Process.Start(rk);
+                        }
+                        catch (Exception rkx) { Log("安排删除失败（不致命 ✓ 会留一个 .running-* ✓）: " + rkx.Message); }
+                    }
                 }
             }
             catch { }
@@ -1124,9 +1142,25 @@ internal static class Installer
                         using (Stream us = uasm.GetManifestResourceStream(ures))
                         using (FileStream ud = File.Create(uexe))
                             us.CopyTo(ud);
-                        Log("已把 uninstall.exe 放回去 ✓（ARP 保留着 ✓ 现在真的能重试了 ✓）");
+                        Log("已把 uninstall.exe 放回去（内嵌副本）✓（ARP 保留着 ✓ 现在真的能重试了 ✓）");
                     }
-                    else Log("找不到内嵌卸载器 ✗ 请用安装包里的 uninstall.exe 或 --force ✓");
+                    else
+                    {
+                        // N-C FIX (cont): the child IS the embedded uninstaller, so it has no such
+                        // resource - but the parent renamed itself to uninstall.exe.running-* inside
+                        // this very directory. Renaming that back restores the retry path.
+                        bool restored = false;
+                        try
+                        {
+                            foreach (string rn2 in Directory.GetFiles(target, "uninstall.exe.running-*"))
+                            {
+                                try { File.Move(rn2, uexe); restored = true; Log("已把父进程改名的副本改回 uninstall.exe ✓（ARP 保留着 ✓ 现在真的能重试了 ✓）"); break; }
+                                catch (Exception mvx) { Log("改回失败（父进程可能还占着 ✓ 稍后会自动删除 ✓）: " + mvx.Message); }
+                            }
+                        }
+                        catch { }
+                        if (!restored) Log("找不到可还原的卸载器 ✗ 请用安装包里的 uninstall.exe 或 --force ✓");
+                    }
                 }
             }
             catch (Exception uex) { Log("放回 uninstall.exe 失败（请用 --force 重试 ✓）: " + uex.Message); }
