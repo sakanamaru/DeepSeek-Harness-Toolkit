@@ -1195,7 +1195,26 @@ namespace Dsht.Gui.Avalonia.Shells
             }
 
             // ① 近 14 天新增会话
-            int days = 14;
+            // 日期范围切换 ✓（用户要求 ✓）
+            StackPanel range = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            int[] opts = new int[] { 7, 14, 30 };
+            for (int oi = 0; oi < opts.Length; oi++)
+            {
+                int dd = opts[oi];
+                bool on = host.ChartDays == dd;
+                Button rb = new Button
+                {
+                    Content = T("近 " + dd + " 天", 11.5, on ? Palette.OnAccent : Palette.TextDim),
+                    Background = on ? Palette.Accent : Palette.CardHover,
+                    BorderThickness = new Thickness(0),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(12, 5)
+                };
+                rb.Click += delegate { host.SetChartDays(dd); };
+                range.Children.Add(rb);
+            }
+            s.Children.Add(Card(range, new Thickness(0), new Thickness(14, 10)));
+            int days = host.ChartDays;   // 7/14/30 可切 ✓（用户要求："看板第二页图表内可以切换日期分布查看图表" ✓✓）
             string[] labels = new string[days];
             long[] counts = new long[days];
             System.DateTime today = System.DateTime.UtcNow.Date;
@@ -1285,7 +1304,9 @@ namespace Dsht.Gui.Avalonia.Shells
                 StackPanel col = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Spacing = 3, Margin = new Thickness(2, 0) };
                 col.Children.Add(T(v == 0 ? "" : v.ToString(), 10, Palette.TextDim));
                 col.Children.Add(new Border { Height = h, CornerRadius = new CornerRadius(3), Background = v == 0 ? Palette.BarTrack : brush });
-                col.Children.Add(T(labels[i], 9.5, Palette.TextFaint));
+                // 列多时（如 30 天）标签会挤在一起 ✗ → 只标每 3 个 ✓（条形本身照画 ✓ 数据不省略 ✓）
+                bool showLabel = labels.Length <= 16 || (i % 3) == 0 || i == labels.Length - 1;
+                col.Children.Add(T(showLabel ? labels[i] : "", 9.5, Palette.TextFaint));
                 Grid.SetColumn(col, i);
                 g.Children.Add(col);
             }

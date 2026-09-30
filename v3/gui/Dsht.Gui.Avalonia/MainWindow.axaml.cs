@@ -191,6 +191,10 @@ namespace Dsht.Gui.Avalonia
         private async System.Threading.Tasks.Task RunCliActionAsync(string args, string label)
         {
             string cli = CliPath();
+            // ✗ 原来等待期间**什么都不显示** → 备份 818MB 要几秒，用户感觉"卡住" ✓
+            // 现在**先显示"进行中…"** ✓（与体检页同一办法 ✓）→ 用户知道它在干活 ✓✓
+            _actionLog = label + "进行中…（" + args + "）";
+            Refresh();
             string outp = cli == null ? "未找到工具箱 CLI。" : await System.Threading.Tasks.Task.Run(delegate { return Run(cli, args); });
             _actionLog = label + "结果：" + Environment.NewLine + outp.Trim();
             Refresh();
@@ -219,6 +223,9 @@ namespace Dsht.Gui.Avalonia
         /// <summary>一键启动的方式：0 = webui（dsh web，走 CLI ✓）；1 = desktop（官方桌面端应用 ✓）。
         /// （用户要求："一键启动按钮底下可选默认启动 desktop 还是 webui" ✓✓）</summary>
         public int StartMode = 0;
+        /// <summary>看板图表的日期范围（天 ✓ 7/14/30 可切 ✓）。</summary>
+        public int ChartDays = 14;
+        public void SetChartDays(int d) { ChartDays = d; BuildShell(); }
         public void SetStartMode(int m) { StartMode = m; BuildShell(); }
 
         /// <summary>一键部署：按当前方式行动 ✓（用户要求："web/desktop 也要加一键部署，desktop 直接官网下安装包就行" ✓✓）
@@ -715,7 +722,7 @@ namespace Dsht.Gui.Avalonia
                 _profiles = ProfilesMarkers.Parse(pfText);
                 string seText = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "sessions"); });
                 _data = SessionsMarkers.Parse(seText);
-                _backups = SummaryMarkers.ParseBackups(await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "backup-list"); }));
+                _backups = SummaryMarkers.ParseBackups(await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "backup-list"); }));   // ✗ 原来带 --detail → 每份备份都要算目录大小（重 I/O ✗）→ 概览每次刷新都卡几秒 ✓✓ 这里只要 Count/Latest ✓ 不需要大小 ✓（方案 A ✓）
                 if (_doctor == null) _doctor = new DoctorSummary();
                 BuildShell();
                 return;
