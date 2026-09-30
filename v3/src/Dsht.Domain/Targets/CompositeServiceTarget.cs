@@ -61,8 +61,10 @@ namespace Dsht.Domain.Targets
                     if (reports[i].Kind == AppKind.Unknown) { _lastKind = AppKind.Unknown; return reports[i]; }
                 }
                 _lastKind = AppKind.Unknown;
-                return new ServiceReport(AppKind.Unknown, ServiceState.Down, 0,
-                    "所有已知形态均未观测到（已尝试：" + Kinds(reports) + "）");
+                // 措辞必须与实际发生的事一致 ✓：预留形态（headless/acp/desktop）的 Probe() 是硬编码返回 Down，
+                // IsAvailable() 恒为 false —— 它们**根本没有可尝试的观测** ✗，说"已尝试"是过度声称 ✓
+                // （2026-09-29 由子代理发现、我复核确认 ✓）
+                return new ServiceReport(AppKind.Unknown, ServiceState.Down, 0, DownMessage());
             }
             return best;
         }
@@ -105,6 +107,25 @@ namespace Dsht.Domain.Targets
             return 0;
         }
 
+        /// <summary>全 Down 时的说明：**区分"尝试过但没观测到"与"根本无法观测"** ✓✓
+        /// 预留形态（IsAvailable()==false）的 Probe() 是硬编码 Down，从未真正尝试 ✗ → 必须分开说 ✓</summary>
+        private string DownMessage()
+        {
+            List<string> observed = new List<string>();
+            List<string> reserved = new List<string>();
+            for (int i = 0; i < _targets.Length; i++)
+            {
+                if (_targets[i] == null) continue;
+                bool avail;
+                try { avail = _targets[i].IsAvailable(); } catch { avail = false; }
+                if (avail) observed.Add(_targets[i].Kind.ToString());
+                else reserved.Add(_targets[i].Kind.ToString());
+            }
+            string msg = "所有可观测形态均未运行";
+            if (observed.Count > 0) msg += "（已尝试：" + string.Join(",", observed.ToArray()) + "）";
+            if (reserved.Count > 0) msg += "；预留形态暂无法观测：" + string.Join(",", reserved.ToArray()) + "（形态待观测，不等于未运行）";
+            return msg;
+        }
         private static string Kinds(List<ServiceReport> reports)
         {
             List<string> ks = new List<string>();
