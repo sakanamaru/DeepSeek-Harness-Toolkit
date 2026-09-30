@@ -425,6 +425,24 @@ namespace Dsht.Cli
         ///   / `SESSIONS_TOTAL in= out= cacheRead= hit=<%|unknown> decode=<tok/s|unknown>` / `SESSIONS_FAIL <原因>`
         /// **诚实边界**：只读计数/时间/元数据，**不读对话正文**；字段缺失打印 `unknown`（不假装 0）；
         /// "有几个会话在运行"这里只能给**最后活动时间**——运行态是进程内事实，需要插件。</summary>
+        /// <summary>快照的年龄（秒）✓。**解析不出来 → 返回 0** ✓（当作新鲜 ✓ —— 绝不能因为解析失败就把 live 清掉 ✗）。</summary>
+        private static long SnapshotAgeSeconds(string snap)
+        {
+            try
+            {
+                System.Text.RegularExpressions.Match m = System.Text.RegularExpressions.Regex.Match(
+                    snap, "\"generatedAt\"\\s*:\\s*\"([^\"]+)\"");
+                if (!m.Success) return 0;
+                System.DateTime t;
+                if (!System.DateTime.TryParse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out t))
+                    return 0;
+                double age = (System.DateTime.UtcNow - t).TotalSeconds;
+                return age < 0 ? 0 : (long)age;
+            }
+            catch { return 0; }
+        }
+
         private static int Sessions(ServiceRegistry reg)
         {
             ISessionStatsSource src = reg.Get<ISessionStatsSource>();
@@ -443,6 +461,26 @@ namespace Dsht.Cli
                 SessionStat[] fromSnap = SessionStats.ParseSnapshot(snap);
                 if (fromSnap.Length > 0)
                 {
+                    // ★★★ **F8 真机修复（2026-10-01 真机实测抓到）** ✓✓
+                    //   ✗ 插件的 dispose 钩子**在真 dsh 里根本不会跑** ✗ —— dsh 跑完任务直接退出 ✓
+                    //     → 它写下的 `live:true` **永久留在盘上** ✗✗
+                    //     → **面板永远显示"运行中"** ✗（正是 F8 要防的那件事 ✓ 而它只防了"正常卸载"）
+                    //   · 实测证据：快照的 `generatedAt` 停在 dsh 退出前最后一次 tick ✓
+                    //     之后没有任何更晚的写入 ✓ → 说明 dispose 没跑 ✓
+                    //   ✓ 现在：**不信"永久的 live"** ✓✓ 用 `generatedAt` 判**新鲜度** ✓
+                    //     · 插件活着时每 3 秒刷新一次 ✓ → 30 秒没刷新 = **它已经不在了** ✓
+                    //     · 那条快照的其余数据**照常保留** ✓ 只把会撒谎的 `live` 置 false ✓
+                    //   ✓ 放在 CLI 层而不是 Domain ✓ —— 领域层纯净度门槛禁止时钟耦合 ✓✓
+                    long snapAgeSec = SnapshotAgeSeconds(snap);
+                    bool stale = snapAgeSec > 30;
+                    if (stale)
+                    {
+                        int cleared = 0;
+                        for (int i = 0; i < fromSnap.Length; i++)
+                            if (fromSnap[i].Live) { fromSnap[i].Live = false; cleared++; }
+                        if (cleared > 0)
+                            Console.Error.WriteLine("SESSIONS_SNAPSHOT_STALE 快照已 " + snapAgeSec + " 秒未刷新 → 插件已不在 → 已把 " + cleared + " 条「运行中」如实置为 false（数据保留 ✓）");
+                    }
                     list.AddRange(fromSnap);
                     for (int i = 0; i < fromSnap.Length; i++) if (fromSnap[i].Id != null) have.Add(fromSnap[i].Id);
                     source = "snapshot";
