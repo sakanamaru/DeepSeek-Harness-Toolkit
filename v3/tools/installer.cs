@@ -25,6 +25,16 @@ using System.Text;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
+
+    /// <summary>**策略性拒绝** ✓✓（审计 M4：拒绝应当返回 **2** ✓ 不是 9 ✗）。
+    ///   用途：目录非空且不像我们的安装 ✓ 载荷被改动 ✓ 已经装过一份 ✓
+    ///   —— 这些都是**明确的策略决定** ✓ 不是故障 ✓ → 退出码必须是 **2** ✓✓
+    ///   （自动化工具据此区分"拒绝了"与"崩了" ✓）</summary>
+    internal sealed class RefusalException : Exception
+    {
+        public RefusalException(string message) : base(message) { }
+    }
+
 internal static class Installer
 {
     private const string AppName = "dsh-minato";
@@ -99,6 +109,18 @@ internal static class Installer
                 Application.Run(f);
                 return f.ExitCode;
             }
+        }
+        // ★★★ **M4 修复（审计 MAJOR）** ✓✓：**策略性拒绝 → 返回 2** ✓（不是 9 ✗）
+        //   ✗ 三处"拒绝安装"原来是 `InvalidOperationException` ✗ → 被下面这个 catch 接住 → **返回 9** ✗
+        //     → 而契约是 **0 成功 / 2 拒绝 / 3 缺文件 / 4 就位失败 / 9 致命** ✓
+        //     → Scoop / winget / CI 会把"拒绝"当成**崩溃** ✗（那是策略决定 ✓ 不是故障 ✓）
+        //   ✓ 现在：`RefusalException` **单独 catch → return 2** ✓✓
+        catch (RefusalException rex)
+        {
+            Log("**拒绝**（策略决定 ✓ 不是故障 ✓）: " + rex.Message);
+            FlushLog();
+            if (!silent) MessageBox.Show(rex.Message, AppName + " 安装", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return 2;
         }
         catch (Exception ex)
         {
@@ -210,7 +232,7 @@ internal static class Installer
             if (!targetEmpty && !targetOurs && !ForceInstall)
             {
                 Log("拒绝安装：目标目录非空且不是本工具的安装目录 ✓ " + target);
-                throw new InvalidOperationException(
+                throw new RefusalException(
                     "**这个目录里已经有别的东西了。**" + Environment.NewLine + Environment.NewLine +
                     "为了安全，安装器**不会**装进一个非空目录 —— 因为卸载时会删除整个安装目录 ✓" + Environment.NewLine + Environment.NewLine +
                     "目录：" + target + Environment.NewLine + Environment.NewLine +
@@ -246,7 +268,7 @@ internal static class Installer
         {
             Log("载荷校验失败 ✗ " + badFile);
             TryDelete(staging);
-            throw new InvalidOperationException(
+            throw new RefusalException(
                 "**这个安装包不是官方发布的，或者已经被改动过。**" + Environment.NewLine + Environment.NewLine +
                 "对不上的文件：" + badFile + Environment.NewLine + Environment.NewLine +
                 "请从官方 Releases 重新下载：" + Environment.NewLine + ReleasesUrl + Environment.NewLine + Environment.NewLine +
@@ -272,7 +294,7 @@ internal static class Installer
                 if (!string.IsNullOrEmpty(loc) && !sameDir)
                 {
                     Log("拒绝安装：已有一个安装在其他目录 ✓ " + loc);
-                    throw new InvalidOperationException(
+                    throw new RefusalException(
                         "**已经装过一份了。**" + Environment.NewLine + Environment.NewLine +
                         "已安装在：" + loc + Environment.NewLine +
                         "本次要装到：" + target + Environment.NewLine + Environment.NewLine +
@@ -570,7 +592,17 @@ internal static class Installer
             }
         }
         catch (Exception ex) { Log("身份校验读取出错 → 按不通过处理 ✓: " + ex.Message); }
-        if (!looksOurs)
+            // ★★★ **M6 修复（审计 MAJOR —— 身份锁死无逃生口）** ✓✓
+            //   ✗ 原来这里**直接拒绝并 return 2** ✗ 没有 `--force` 逃生口 ✓
+            //     → 审计实测：目录被**移动/改名** ✓ 注册表被清 ✓ marker 丢失 ✓
+            //       都会让**这一份安装永远卸不掉** ✗（只能手动删 ✓）
+            //   ✓ 现在：**`--force` 跳过身份检查** ✓✓ 但**大声说明** ✓ 且**仍然只删清单里的文件** ✓
+            //     （安全边界不动 ✓：清单 + 生成物 + 空目录 ✓ 越界条目已被 M2 的围栏挡住 ✓✓）
+            if (ForceInstall && !looksOurs)
+            {
+                Log("**--force：跳过身份检查** ✓ 用户明确要求 ✓ 仍然**只删清单里的文件** ✓ 不会删别的东西 ✓");
+            }
+            else if (!looksOurs)
         {
             Log("拒绝卸载：这个目录里**没有本工具的文件** → 它不像安装目录 ✓ **一个字节都不删** ✓");
             if (!silent) MessageBox.Show(
