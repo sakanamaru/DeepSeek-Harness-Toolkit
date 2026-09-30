@@ -859,7 +859,6 @@ namespace Dsht.Gui.Avalonia.Shells
             g.Children.Add(KpiCard(Symbol.DataUsage, "累计 token" + tag, d == null ? "—" : SessionRow.Human(filtered ? fIn : d.TotalIn),
                 "输出 " + (d == null ? "—" : SessionRow.Human(filtered ? fOut : d.TotalOut)), Palette.Text, 3, -1));
             return g;
-            return g;
         }
 
         private static Control KpiCard(Symbol icon, string title, string value, string sub, IBrush valueBrush, int col, double barPercent)
@@ -1727,7 +1726,7 @@ namespace Dsht.Gui.Avalonia.Shells
             // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）
             return s;
         }
-        /// <summary>看板图表：近 14 天新增会话（柱状）+ 缓存命中率分布（柱状）。
+        /// <summary>看板图表：近 N 天新增会话（柱状，N = 7/14/30 可切）+ 缓存命中率分布（柱状）。
         /// **手绘**（Grid + Border 柱），不引入任何图表依赖；日期用 ISO 字符串前缀比对，不做时区/日历运算（不猜）。</summary>
         private static Control ChartsBody(MainWindow host)
         {
@@ -1739,7 +1738,7 @@ namespace Dsht.Gui.Avalonia.Shells
                 return s;
             }
 
-            // ① 近 14 天新增会话
+            // ① 近 N 天新增会话（N = 7/14/30 可切）
             // 日期范围切换 ✓（用户要求 ✓）
             StackPanel range = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
             int[] opts = new int[] { 7, 14, 30 };
@@ -1799,7 +1798,7 @@ namespace Dsht.Gui.Avalonia.Shells
             c2.Children.Add(T("命中率越高越省钱；unknown 表示该会话没有这个字段（空会话），我们不会把它算成 0%。", 11.5, Palette.TextFaint));
             s.Children.Add(Card(c2, new Thickness(0), new Thickness(18, 16)));
 
-            // ③ 近 14 天 **token 消耗趋势**（A 类：会话视角，但看的是"花了多少"而不是"开了几个" ✓）
+            // ③ 近 N 天 **token 消耗趋势**（N = 7/14/30 可切）（A 类：会话视角，但看的是"花了多少"而不是"开了几个" ✓）
             long[] dayTok = new long[days];
             long maxTok = 0;
             for (int i = 0; i < d.Rows.Count; i++)
@@ -1891,7 +1890,7 @@ namespace Dsht.Gui.Avalonia.Shells
             return StatusDetail(host);
         }
 
-        /// <summary>看板：指标（KPI + 操作日志）与图表（近 14 天新增会话、命中率分布）。</summary>
+        /// <summary>看板：指标（KPI + 操作日志）与图表（近 N 天新增会话、命中率分布）。</summary>
         private static Control BoardContent(MainWindow host)
         {
             StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
