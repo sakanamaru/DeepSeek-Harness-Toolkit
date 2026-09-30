@@ -164,6 +164,33 @@ internal static class Installer
         Log("已装检测: " + (string.IsNullOrEmpty(installedInfo) ? "（无）" : installedInfo) + " → " + verdict);
 
         Log("目标目录: " + target);
+        // ★★★ **N-10 修复（安装器复审 MAJOR —— 取消会泄漏暂存目录）** ✓✓
+        //   ✗ `Report()` 在**就位 try 之外**也有调用（准备/校验/解压 ✓）
+        //     → GUI 的取消钩子在那里抛 `OperationCanceledException` ✗
+        //     → 而**清理 staging 的代码只在就位 catch 里** ✗✗
+        //     → **每次取消都留下一个 `.dsh-minato-staging-*` 目录** ✓（几十 MB ✓ 累积 ✓）
+        //   ✓ 现在：**启动时清扫旧暂存目录** ✓✓（超过 1 小时的 ✓ 不碰正在跑的那次 ✓）
+        //     → 即使某次取消漏了 ✓ 下次安装也会把它收掉 ✓✓
+        try
+        {
+            string tparent = Path.GetDirectoryName(target.TrimEnd('\\'));
+            if (!string.IsNullOrEmpty(tparent) && Directory.Exists(tparent))
+            {
+                foreach (string stale in Directory.GetDirectories(tparent, ".dsh-minato-staging-*"))
+                {
+                    try
+                    {
+                        if ((DateTime.UtcNow - Directory.GetLastWriteTimeUtc(stale)).TotalHours > 1)
+                        {
+                            Directory.Delete(stale, true);
+                            Log("已清扫旧的暂存目录 ✓ " + stale);
+                        }
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch { }
         Report(progress, 2, "准备…");
         // ✗ 原来在这里就 CreateDirectory → 校验失败会**留下一个空目录** ✗（实测确认 ✓）
         // ✓ 改成**校验通过后再建** ✓ → 拒绝时磁盘上**一个字节都不写** ✓✓
