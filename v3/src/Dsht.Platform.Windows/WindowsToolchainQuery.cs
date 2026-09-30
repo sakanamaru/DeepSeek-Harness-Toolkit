@@ -62,8 +62,11 @@ namespace Dsht.Platform.Windows
             // pasted straight into a cmd.exe command line. The project's own version guard names this
             // exact surface and whitelists the version; the registry was not checked at all. Only a
             // plain http(s) URL is accepted, and anything else is refused rather than executed.
+            // N2 FIX (CLI audit MAJOR): the captured value ends with CRLF and the pattern cannot
+            // match it - so every real registry was rejected and install/update always failed.
+            registry = (registry ?? "").Trim();
             if (!string.IsNullOrEmpty(registry) &&
-                !System.Text.RegularExpressions.Regex.IsMatch(registry, @"^https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+$"))
+                !System.Text.RegularExpressions.Regex.IsMatch(registry, @"^https?://[A-Za-z0-9._~:/?#\[\]@!$*+,;=-]+$"))   // N3 FIX: & % ^ ! ( ) are cmd.exe metacharacters
             {
                 return -3;   // -3 = refused: the registry value is not a plain URL
             }

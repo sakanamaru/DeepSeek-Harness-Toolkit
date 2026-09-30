@@ -987,7 +987,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 // I2 FIX (CLI audit MINOR): this hardcoded the real home directory, so under an isolated
             // DSH_HOME - the project's own testing mode - it listed plugins from the real profile.
             string dshHome = reg.Get<IPaths>().DataRoot;
-                string profiles = System.IO.Path.Combine(dshHome, ".dsh", "profiles");
+                string profiles = System.IO.Path.Combine(dshHome, "profiles");   // N5 FIX: the extra segment made the plugin list always empty
                 if (System.IO.Directory.Exists(profiles))
                 {
                     string[] profDirs = System.IO.Directory.GetDirectories(profiles);
@@ -2447,7 +2447,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             // "..\..\x" could rewrite any file named cordis.patch.yml outside the data root (the
             // fixed file name limits the blast radius, and --yes is required, but it is still a
             // path traversal). Names are restricted to what a profile name can actually be.
-            if (!string.IsNullOrEmpty(profile) && !System.Text.RegularExpressions.Regex.IsMatch(profile, @"^[A-Za-z0-9._-]+$"))
+            if (!string.IsNullOrEmpty(profile) && !System.Text.RegularExpressions.Regex.IsMatch(profile, @"^[A-Za-z0-9._-]+$") || profile == "." || profile == "..")   // N7 FIX: dots alone escaped the profiles dir
             {
                 Console.WriteLine("PROFILEPATCH_FAIL " + T("profile 名字不合法（只允许字母数字与 . _ - ✓）：" + profile, "invalid profile name: " + profile));
                 return 0;
@@ -2626,7 +2626,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             // was accepted. A confirmation is meant to prove the user is looking at the clock now,
             // so only a time in the past (within the window) counts.
             double ctDiff = (DateTime.Now - ctParsed).TotalSeconds;
-            if (ctDiff > 120)
+            if (ctDiff > 120 || ctDiff < -5)   // N4 FIX: negative diff = future; allow only a tiny clock skew
             {
                 Console.WriteLine("BKDEL_FAIL " + T("输入的时间与当前时间相差 " + (int)ctDiff + " 秒（超过 120 秒 ✓）→ 拒绝删除 ✓ 现在：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + " ✓",
                                                      "the time you typed is " + (int)ctDiff + "s away from now - refused"));
