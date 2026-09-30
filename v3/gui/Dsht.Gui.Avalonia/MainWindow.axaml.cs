@@ -1020,6 +1020,12 @@ namespace Dsht.Gui.Avalonia
 
         public void Rerender()
         {
+            // F6 FIX (GUI audit MAJOR): building the session list used to set the list source as a
+            // side effect and nothing ever cleared it. After visiting the sub-agent view the
+            // overview skipped every sub-agent row and rendered an EMPTY list, while the cards above
+            // still showed the previous view's numbers. Clearing it here makes every rebuild start
+            // from the full row set; a view that wants a subset sets it again as it builds.
+            SetListSource(null);
             if (_data == null || !_data.Ok) return;
             List<SessionRow> rows = SessionsView.Filter(_data.Rows, _filter);
             rows = SessionsView.Sort(rows, SortMode);
