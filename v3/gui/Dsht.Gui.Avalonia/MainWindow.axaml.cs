@@ -1203,7 +1203,19 @@ namespace Dsht.Gui.Avalonia
             if (!IsSessionsSection)
             {
                 // 日志页要带**当前筛选** ✓ 用动态命令 ✓（其余页用 NavCli 的固定命令 ✓）
-                string sectionCmd = _mainSection == 9 ? LogArgs() : await System.Threading.Tasks.Task.Run(delegate { return Run(cli, string.Join(" ", (_mainSection >= 0 && _mainSection < NavCli.Length && NavCli[_mainSection] != null ? NavCli[_mainSection] : new string[0]))); });
+                // ★★★ **重大修正（2026-10-01）** ✗✗ —— 这是我上一轮引入的 bug ✓
+                //   ✗ 原来写的是：`sectionCmd = await Task.Run(() => Run(cli, string.Join(" ", NavCli[…])));` ✗✗
+                //     → **它先把命令跑了一遍拿到「输出」** ✗ → `sectionCmd` 成了**多行输出文本** ✗
+                //     → 下一行再 `Run(cli, sectionCmd)` → **把多行文本当命令行** ✗ → **必然失败** ✗✗
+                //     → `_rawOutput` 变成错误信息 ✓ → **凡是解析它的页面都拿不到数据** ✗
+                //   ✓ **症状**（用户报的"备份还是 0 份"✓✓）：
+                //     · 备份页 `BackupItems.Parse(_rawOutput)` → **找不到 `BACKUP_ITEM` 行 → 0 份** ✗✗
+                //     · 其它页（体检/设置/说明/更新/日志）显示的是**原始输出** ✓ → 错误文本看起来也"有内容" ✗
+                //       → **所以只有备份页暴露了这个 bug** ✓✓
+                //   ✓ 现在：`sectionCmd` **只拼命令字符串** ✓ **不运行它** ✓✓
+                string sectionCmd = _mainSection == 9
+                    ? LogArgs()
+                    : string.Join(" ", (_mainSection >= 0 && _mainSection < NavCli.Length && NavCli[_mainSection] != null ? NavCli[_mainSection] : new string[0]));
                 _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, sectionCmd); });
                 if (_mainSection == 5) _doctor = SummaryMarkers.ParseDoctor(_rawOutput);   // 体检页吃解析结果，不是只吃原文
                 BuildShell();
