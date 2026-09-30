@@ -780,6 +780,9 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                             string pid = "plugin:" + name;
                             ids.Add(pid);
                             lines.Add("UPDATECENTER_ITEM " + pid + " kind=plugin installed=" + ver + " latest=unknown state=unknown profile=" + System.IO.Path.GetFileName(profDirs[i]));
+                            // package.json 没有 repository 时 **去问 npm** ✓✓（用户要求："插件尝试获取 GitHub 地址" ✓）
+                            // 只在缺字段时才问 ✓（npm view 每次要 1~2 秒 ✗ 不能对每个插件都问 ✓）
+                            if (string.IsNullOrEmpty(repo)) repo = NpmRepoOf(name);
                             lines.Add("UPDATECENTER_URL " + pid + " " + (string.IsNullOrEmpty(repo) ? "unknown" : repo));
                             lines.Add("UPDATECENTER_NOTE " + pid + " " + T("插件更新**先描述风险再确认** ✓（版本变化可能改行为 ✓）；更新前**自动备份** ✓ 插件由各自作者维护 ✓ 本工具不替它担保 ✓",
                                 "plugin updates describe the risk and ask first; the data root is backed up"));
@@ -803,6 +806,50 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             return 0;
         }
 
+        /// <summary>问 npm 要某个包的仓库地址 ✓（package.json 缺 repository 时的兜底 ✓）。
+        /// 找不到 npm / 查不到 → 返回空串 ✓ **不猜** ✗（上层会写 unknown ✓）。</summary>
+        private static string NpmRepoOf(string pkg)
+        {
+            if (string.IsNullOrEmpty(pkg)) return "";
+            string[] tries = PlatformIsWindows()
+                ? new string[] { "cmd.exe|/c npm view " + pkg + " repository.url", "npm.cmd|view " + pkg + " repository.url" }
+                : new string[] { "npm|view " + pkg + " repository.url", System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local/node/bin/npm") + "|view " + pkg + " repository.url" };
+            for (int i = 0; i < tries.Length; i++)
+            {
+                int bar = tries[i].IndexOf('|');
+                if (bar <= 0) continue;
+                string exe = tries[i].Substring(0, bar);
+                string arg = tries[i].Substring(bar + 1);
+                try
+                {
+                    System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(exe, arg);
+                    psi.UseShellExecute = false;
+                    psi.CreateNoWindow = true;
+                    psi.RedirectStandardOutput = true;
+                    psi.RedirectStandardError = true;
+                    using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
+                    {
+                        if (p == null) continue;
+                        string outp = p.StandardOutput.ReadToEnd();
+                        p.StandardError.ReadToEnd();
+                        p.WaitForExit(8000);
+                        if (string.IsNullOrEmpty(outp)) continue;
+                        string[] ls = outp.Replace("\r\n", "\n").Split('\n');
+                        for (int k = 0; k < ls.Length; k++)
+                        {
+                            string s = ls[k].Trim();
+                            if (s.Length == 0) continue;
+                            // npm 有时输出 git+https://…git → 去掉前缀后缀 ✓ 便于直接点开 ✓
+                            if (s.StartsWith("git+", StringComparison.Ordinal)) s = s.Substring(4);
+                            if (s.EndsWith(".git", StringComparison.Ordinal)) s = s.Substring(0, s.Length - 4);
+                            if (s.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return s;
+                        }
+                    }
+                }
+                catch { }
+            }
+            return "";
+        }
         /// <summary>从 JSON 文本里取一个**字符串字段**（够用即可 ✓ 不引 JSON 库 ✓ 保持零依赖 ✓）。
         /// 找不到返回空串 ✓ 不猜 ✗。</summary>
         private static string JsonStr(string json, string key)
@@ -881,17 +928,11 @@ Console.WriteLine("  config-get | config-set <key> <value>");
         /// <summary>本工具自己的版本串 ✓（取不到就 unknown ✓ 不猜 ✗）。</summary>
         private static string DshtVersionString()
         {
-            try
-            {
-                System.Reflection.Assembly asm = System.Reflection.Assembly.GetEntryAssembly();
-                if (asm == null) return "unknown";
-                string loc = asm.Location;
-                if (string.IsNullOrEmpty(loc)) return "unknown";
-                System.Diagnostics.FileVersionInfo vi = System.Diagnostics.FileVersionInfo.GetVersionInfo(loc);
-                if (vi != null && !string.IsNullOrEmpty(vi.FileVersion)) return vi.FileVersion;
-                return "unknown";
-            }
-            catch { return "unknown"; }
+            // ✗✗ 原来用 FileVersionInfo.GetVersionInfo(asm.Location) → **单文件发布时 Location 是空的** ✗✗
+            //    （.NET 5+ 已知行为 ✓）→ 实测 Linux 上显示 unknown ✓
+            // ✓ 更新中心本来就在 CLI 里 → **直接用编译期的 ToolkitVersion** ✓ 连反射都不用 ✓
+            if (!string.IsNullOrEmpty(ToolkitVersion)) return ToolkitVersion;
+            return "unknown";
         }
 
         private static int UpdateInfo(ServiceRegistry reg)
