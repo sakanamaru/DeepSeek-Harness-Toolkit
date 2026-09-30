@@ -182,7 +182,14 @@ namespace Dsht.Gui.Avalonia
         public async void CreateBackup()
         {
             string outp = await System.Threading.Tasks.Task.Run(delegate { return Run(CliPath(), "backup"); });
-            if (outp != null && outp.IndexOf("第一次备份必须指定目录", StringComparison.Ordinal) < 0)
+            // ★★★ **F13 修复（GUI 审计 MAJOR —— 靠中文判断成功）** ✓✓
+            //   ✗ 原来用 `outp.IndexOf("第一次备份必须指定目录") < 0` 判断"成功了" ✗✗
+            //     → 而那句话在 CLI 里是 `T(zh, en)` ✓ → **切到英文后判断永远失败** ✗
+            //     → 第一次备份**永远做不成** ✓（把失败当结果弹出来 ✓ 弹窗选择器永不出现 ✗）
+            //   ✓ 现在：**看机器标记** ✓✓（`BACKUP_OK` = 成功 ✓ `BACKUP_FAIL` = 失败 ✓）
+            bool backupOk = outp != null && outp.IndexOf("BACKUP_OK", StringComparison.Ordinal) >= 0;
+            bool needsFolder = !backupOk && outp != null && outp.IndexOf("BACKUP_FAIL", StringComparison.Ordinal) >= 0;
+            if (backupOk || !needsFolder)
             {
                 // ✓✓ **用户反馈（2026-10-01）**：「现在备份还是受阻」✗
                 //   真因：备份**成功了** ✓ 但这里**没刷新列表** ✗
@@ -226,7 +233,7 @@ namespace Dsht.Gui.Avalonia
             catch { return ""; }
         }
 
-        public void ExportBackup(string name) { RunCliAction("backup-export --path " + name + " --to " + Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "export"), "导出备份"); }
+        public void ExportBackup(string name) { RunCliAction("backup-export --path " + name + " --yes --to " + Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "export"), "导出备份"); }
 
         /// <summary>删除一份备份 ✓。**用户反馈（2026-09-30）**：「gui 删除备份好像也有问题」✓✓
         ///   ✗ 原来 `backup-delete --path <名>` **没有 --yes** ✗
@@ -759,7 +766,18 @@ namespace Dsht.Gui.Avalonia
             string cli = CliPath();
             if (cli == null) { _actionLog = "无法执行隔离：未找到工具箱 CLI。"; BuildShell(); return; }
             string yaml = Path.Combine(Path.Combine(_profilesRoot, profile), "cordis.patch.yml");
-            string args = "profilepatch --file " + yaml + " --id " + entryId + (disable ? " --disable" : " --set disabled=false") + " --yes";
+            // ★★★ **F2 修复（GUI 审计 MAJOR —— 这个按钮从来没工作过）** ✓✓
+            //   ✗ 原来传 `--file <yaml> --disable` / `--set disabled=false` ✗
+            //     而 CLI 的 `profilepatch` **只认 `--profile` / `--id` / `--enable` / `--yes`** ✗✗
+            //     → 每次都返回 `PROFILEPATCH_FAIL usage: …` ✗ → **隔离/恢复永远无效** ✓
+            //   ✓ 现在：**用 CLI 真正接受的旗标** ✓✓
+            //     · 禁用 = **不带 `--enable`** ✓（CLI 默认就是禁用 ✓）
+            //     · 恢复 = **带 `--enable`** ✓✓
+            //   ✓ 顺带：**改走 `RunCliAction`** ✓✓（原来 `Run` 是**同步**的 ✓
+            //     → 整个 profilepatch 进程期间**窗口卡死** ✗ → 现在后台跑 ✓ 且写操作会清缓存 ✓✓）
+            string args = "profilepatch --profile " + profile + " --id " + entryId + (disable ? "" : " --enable") + " --yes";
+            RunCliAction(args, disable ? "隔离插件" : "恢复插件");
+            return;
             string outp = Run(cli, args);
             _health = "profilepatch " + (disable ? "--disable" : "--set disabled=false") + " " + entryId + " 的结果：" + Environment.NewLine + outp;
             BuildShell();
