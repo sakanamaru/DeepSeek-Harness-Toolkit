@@ -43,6 +43,8 @@ namespace Dsht.Domain.Services
             if (k == "update_channel") return (v == "stable" || v == "rc") ? null : "bad-value";
             if (k == "close_action") return (v.Length == 0 || v == "ask" || v == "tray" || v == "exit") ? null : "bad-value";
             if (k == "auto_start") return (v == "on" || v == "off") ? null : "bad-value";
+            // ✗ 上次只加到了 ApplyTo ✓ 漏了这份**白名单** → config-set 报 unknown-key ✗（实测抓到 ✓）
+            if (k == "auto_start_target") return (v == "auto" || v == "desktop" || v == "web") ? null : "bad-value";
             return "unknown-key";
         }
 
