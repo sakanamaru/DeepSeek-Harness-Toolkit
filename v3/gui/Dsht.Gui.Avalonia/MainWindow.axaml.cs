@@ -24,13 +24,13 @@ namespace Dsht.Gui.Avalonia
     public partial class MainWindow : Window
     {
         /// <summary>主菜单（侧栏一级）。</summary>
-        public static readonly string[] NavItems = new string[] { "概览", "看板", "会话与 Token", "形态与插件", "备份", "体检", "设置", "说明" };
+        public static readonly string[] NavItems = new string[] { "概览", "看板", "会话与 Token", "形态与插件", "备份", "体检", "设置", "说明", "更新" };
         /// <summary>主菜单图标（FluentIcons，编译期检查）。</summary>
         public static readonly FluentIcons.Common.Symbol[] NavIcons = new FluentIcons.Common.Symbol[]
         {
             FluentIcons.Common.Symbol.Home, FluentIcons.Common.Symbol.DataBarVertical, FluentIcons.Common.Symbol.ChatMultiple,
             FluentIcons.Common.Symbol.PuzzlePiece, FluentIcons.Common.Symbol.Archive, FluentIcons.Common.Symbol.Shield,
-            FluentIcons.Common.Symbol.Settings, FluentIcons.Common.Symbol.Question
+            FluentIcons.Common.Symbol.Settings, FluentIcons.Common.Symbol.Question, FluentIcons.Common.Symbol.ArrowSync
         };
         private static readonly string[][] NavCli = new string[][]
         {
@@ -41,7 +41,8 @@ namespace Dsht.Gui.Avalonia
             new string[] { "backup-list", "--detail" },
             new string[] { "doctor" },
             new string[] { "config-get" },
-            new string[] { "describe" }
+            new string[] { "describe" },
+            new string[] { "update-center" }
         };
         private static readonly string[][] NavSubs = new string[][]
         {
@@ -52,7 +53,8 @@ namespace Dsht.Gui.Avalonia
             new string[] { "原始输出" },
             new string[] { "原始输出" },
             new string[] { "原始输出" },
-            new string[] { "原始输出" }
+            new string[] { "原始输出" },
+            new string[] { "检查" }
         };
         private static readonly string[][] NavDesc = new string[][]
         {
@@ -63,7 +65,8 @@ namespace Dsht.Gui.Avalonia
             new string[] { "备份清单：每个备份的时间、范围与大小。" },
             new string[] { "体检：配置、日志、网络与安装完整性检查。" },
             new string[] { "当前配置项（脱敏后）。" },
-            new string[] { "工具箱对当前安装的判断与依据。" }
+            new string[] { "工具箱对当前安装的判断与依据。" },
+            new string[] { "webui / 官方桌面端 / 本工具 / 已装插件 的版本与更新状态（**检查是只读的** ✓）。" }
         };
 
         private SessionsSnapshot _data;
@@ -297,6 +300,19 @@ namespace Dsht.Gui.Avalonia
 
         /// <summary>检查更新 ✓（**只读** ✓ 调 CLI 的 `update-info` ✓ 结果进右下角 toast ✓✓）。</summary>
         public void CheckUpdate() { RunCliAction("update-info", "检查更新"); }
+
+        /// <summary>更新 dsh web ✓ —— **两次点击确认** ✓（沿用删除备份那套 pending 模式 ✓ 一致 ✓）。
+        /// CLI 的 `update` 会**先自动备份** ✓ 并保留回滚点 ✓✓。</summary>
+        public void ConfirmUpdateWeb()
+        {
+            string key = "upd:webui";
+            if (PendingDelete != key) { PendingDelete = key; Rebuild(); return; }
+            PendingDelete = "";
+            RunCliAction("update --yes", "更新 dsh web");
+        }
+
+        /// <summary>打开官方桌面端安装页 ✓（用户指定：desktop 走 https://www.deepseek.com/en/harness/ ✓）。</summary>
+        public void OpenDesktopPage() { OpenUrl("https://www.deepseek.com/en/harness/"); }
 
         /// <summary>执行更新 ✓（CLI 的 `update` ✓ **先备份再更新** ✓ 有回滚点 ✓；结果进 toast ✓）。</summary>
         public void RunUpdate() { RunCliAction("update --yes", "更新 dsh"); }

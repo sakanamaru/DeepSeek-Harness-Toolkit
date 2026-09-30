@@ -688,6 +688,7 @@ namespace Dsht.Gui.Avalonia.Shells
             if (host.MainSection == 4) return BackupContent(host);
             if (host.MainSection == 5) return HealthContent(host);
             if (host.MainSection == 6) return SettingsContent(host);
+            if (host.MainSection == 8) return UpdateCenterContent(host);   // 更新中心 ✓（**追加在最后** ✓ 不动前面 8 处硬编码索引 ✓）
             {
                 // 说明页 = 关于信息（logo 已从标题栏移到这里 ✓）+ CLI 原始输出
                 global::Avalonia.Controls.StackPanel wrap = new global::Avalonia.Controls.StackPanel();
@@ -1245,6 +1246,183 @@ namespace Dsht.Gui.Avalonia.Shells
             }
             return "读不到";
         }
+        /// <summary>更新中心页 ✓✓（用户要求："放到左侧菜单更新内，其中检查 webui/desktop/dsh minato/已经安装的插件的更新列表和版本，如果能获取更新日志那最好了" ✓）
+        /// 数据全部来自 CLI 的 `update-center`（**只读** ✓）→ GUI 只解析 ✓ 不自己算 ✗。
+        /// 更新动作：**web 走 CLI 的 update（先自动备份 + 回滚点 ✓ 需确认 ✓）**；
+        /// **desktop 只给官方安装页** ✓（用户指定 ✓ 本工具不重打包 ✗）；
+        /// **插件只给说明与地址** ✓（由各自作者维护 ✓ 本工具不替它更新 ✗ 也不替它担保 ✗）。</summary>
+        private static Control UpdateCenterContent(MainWindow host)
+        {
+            StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
+
+            // —— 顶部：检查按钮 + 一句说明 ——
+            StackPanel bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            bar.Children.Add(PrimaryButton("检查更新", delegate { host.Refresh(); }));
+            bar.Children.Add(T("只读检查 ✓ 不动任何东西；更新前会**自动备份**并保留回滚点 ✓", 11.5, Palette.TextDim));
+            s.Children.Add(Card(bar, new Thickness(0), new Thickness(16, 14)));
+
+            string raw = host.RawOutput;
+            List<UpdItem> items = UpdParse(raw);
+            if (items.Count == 0)
+            {
+                s.Children.Add(Card(T("还没读到更新信息（CLI 未返回 UPDATECENTER_* 标记）。点上面的「检查更新」试试。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));
+                return s;
+            }
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                UpdItem it = items[i];
+                StackPanel card = new StackPanel { Spacing = 9 };
+
+                // 标题行：名称 + 状态徽章
+                StackPanel head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+                head.Children.Add(T(it.Title, 13, Palette.Text, FontWeight.SemiBold));
+                head.Children.Add(Chip(it.StateText, it.StateBrush, it.StateBg));
+                head.Children.Add(T(it.KindText, 11, Palette.TextFaint));
+                card.Children.Add(head);
+
+                // 版本行 ✓（取不到就写 unknown ✓ 不猜 ✗）
+                card.Children.Add(T("已装 " + it.Installed + "　→　最新 " + it.Latest, 12, Palette.TextDim));
+
+                // 更新日志 ✓（有就显示 ✓ 没有就说没有 ✓）
+                if (!string.IsNullOrEmpty(it.Log))
+                    card.Children.Add(T("更新日志：" + it.Log, 11.5, Palette.TextFaint));
+
+                // 说明 / 风险 ✓✓（用户要求："更新前描述风险并且确认" ✓）
+                if (!string.IsNullOrEmpty(it.Note))
+                    card.Children.Add(T(it.Note, 11.5, Palette.Warn));
+
+                // 地址 ✓（GitHub / 官方页 ✓）
+                if (!string.IsNullOrEmpty(it.Url) && it.Url != "unknown")
+                    card.Children.Add(T(it.Url, 11, Palette.Accent));
+
+                // 动作行 ✓
+                StackPanel acts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                if (it.Id == "webui")
+                {
+                    acts.Children.Add(GhostButton(T("更新 dsh web（会先备份）", 11.5, Palette.Text), delegate { host.ConfirmUpdateWeb(); }, true));
+                }
+                else if (it.Id == "desktop")
+                {
+                    acts.Children.Add(GhostButton(T("打开官方安装页", 11.5, Palette.Text), delegate { host.OpenDesktopPage(); }, true));
+                }
+                else if (it.Id == "minato")
+                {
+                    acts.Children.Add(T("本工具的更新不影响你的数据 ✓（不动 ~/.dsh、备份与配置 ✓）", 11, Palette.TextFaint));
+                }
+                else
+                {
+                    acts.Children.Add(T("插件由各自作者维护 ✓ 本工具不替它更新、也不替它担保 ✓ 更新前请先看上面的风险说明 ✓", 11, Palette.TextFaint));
+                }
+                card.Children.Add(acts);
+                s.Children.Add(Card(card, new Thickness(0), new Thickness(16, 14)));
+            }
+
+            s.Children.Add(Card(T("纪律：**检查是只读的** ✓；**更新前一律自动备份** ✓（本工具自己的更新除外 —— 它不碰数据 ✓）；**desktop 只去官方安装页** ✓；**插件更新由你自行决定** ✓ 本工具只如实展示版本与地址 ✓", 11.5, Palette.TextFaint), new Thickness(0), new Thickness(16, 12)));
+            return s;
+        }
+
+        /// <summary>更新中心的一条 ✓（从 CLI 的 UPDATECENTER_* 行解析 ✓）。</summary>
+        private sealed class UpdItem
+        {
+            public string Id = "";
+            public string Kind = "";
+            public string Installed = "unknown";
+            public string Latest = "unknown";
+            public string State = "unknown";
+            public string Url = "";
+            public string Note = "";
+            public string Log = "";
+            public string Profile = "";
+            public string Title { get { return Id.StartsWith("plugin:", StringComparison.Ordinal) ? Id.Substring(7) : Id; } }
+            public string KindText
+            {
+                get
+                {
+                    if (Kind == "webui") return "dsh web（本体）";
+                    if (Kind == "desktop") return "官方桌面端";
+                    if (Kind == "minato") return "本工具";
+                    return Profile.Length > 0 ? ("插件 · profile " + Profile) : "插件";
+                }
+            }
+            public string StateText
+            {
+                get
+                {
+                    if (State == "up-to-date") return "已是最新";
+                    if (State == "update-available") return "有更新";
+                    if (State == "newer-than-latest") return "比最新还新";
+                    if (State == "external") return "在官方页更新";
+                    return "未知";
+                }
+            }
+            public IBrush StateBrush
+            {
+                get
+                {
+                    if (State == "update-available") return Palette.OnAccent;
+                    if (State == "up-to-date") return Palette.OnAccent;
+                    return Palette.Text;
+                }
+            }
+            public IBrush StateBg
+            {
+                get
+                {
+                    if (State == "update-available") return Palette.Accent;
+                    if (State == "up-to-date") return Palette.Good;
+                    return Palette.CardHover;
+                }
+            }
+        }
+
+        /// <summary>解析 `UPDATECENTER_*` 行 ✓（纯字符串 ✓ 不引 JSON ✓ 保持零依赖 ✓）。</summary>
+        private static List<UpdItem> UpdParse(string raw)
+        {
+            List<UpdItem> list = new List<UpdItem>();
+            if (string.IsNullOrEmpty(raw)) return list;
+            string[] ls = raw.Replace("\r\n", "\n").Split('\n');
+            for (int i = 0; i < ls.Length; i++)
+            {
+                string t2 = ls[i] == null ? "" : ls[i].Trim();
+                if (!t2.StartsWith("UPDATECENTER_", StringComparison.Ordinal)) continue;
+                string[] parts = t2.Split(' ');
+                if (parts.Length < 3) continue;
+                if (parts[0] == "UPDATECENTER_ITEM")
+                {
+                    UpdItem it = new UpdItem();
+                    it.Id = parts[1];
+                    for (int k = 2; k < parts.Length; k++)
+                    {
+                        int eq = parts[k].IndexOf('=');
+                        if (eq <= 0) continue;
+                        string kk = parts[k].Substring(0, eq);
+                        string vv = parts[k].Substring(eq + 1);
+                        if (kk == "kind") it.Kind = vv;
+                        else if (kk == "installed") it.Installed = vv;
+                        else if (kk == "latest") it.Latest = vv;
+                        else if (kk == "state") it.State = vv;
+                        else if (kk == "profile") it.Profile = vv;
+                    }
+                    list.Add(it);
+                }
+                else if (parts[0] == "UPDATECENTER_URL" || parts[0] == "UPDATECENTER_NOTE" || parts[0] == "UPDATECENTER_LOG")
+                {
+                    string id = parts[1];
+                    string val = t2.Substring(parts[0].Length + 1 + id.Length).Trim();
+                    for (int k = 0; k < list.Count; k++)
+                    {
+                        if (list[k].Id != id) continue;
+                        if (parts[0] == "UPDATECENTER_URL") list[k].Url = val;
+                        else if (parts[0] == "UPDATECENTER_NOTE") list[k].Note = val;
+                        else list[k].Log = val;
+                        break;
+                    }
+                }
+            }
+            return list;
+        }
+
         private static Control SettingsContent(MainWindow host)
         {
             StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 12 };
