@@ -227,15 +227,6 @@ namespace Dsht.Cli
         private static int BridgeInstall(string[] args, ServiceRegistry reg)
         {
             string profile = Flag(args, "--profile");
-            // I4 FIX (CLI audit MINOR): the profile name is joined into a path, so a value like
-            // "..\..\x" could rewrite any file named cordis.patch.yml outside the data root (the
-            // fixed file name limits the blast radius, and --yes is required, but it is still a
-            // path traversal). Names are restricted to what a profile name can actually be.
-            if (!string.IsNullOrEmpty(profile) && !System.Text.RegularExpressions.Regex.IsMatch(profile, @"^[A-Za-z0-9._-]+$"))
-            {
-                Console.WriteLine("PROFILEPATCH_FAIL " + T("profile 名字不合法（只允许字母数字与 . _ - ✓）：" + profile, "invalid profile name: " + profile));
-                return 0;
-            }
             if (string.IsNullOrEmpty(profile)) profile = "web";
             bool yes = Has(args, "--yes");
 
@@ -2451,6 +2442,15 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             {
                 Console.WriteLine("PROFILEPATCH_FAIL usage: profilepatch --profile <name> --id <entry> [--enable] [--yes]");
                 return 0;
+            // I4 FIX (CLI audit MINOR): the profile name is joined into a path, so a value like
+            // "..\..\x" could rewrite any file named cordis.patch.yml outside the data root (the
+            // fixed file name limits the blast radius, and --yes is required, but it is still a
+            // path traversal). Names are restricted to what a profile name can actually be.
+            if (!string.IsNullOrEmpty(profile) && !System.Text.RegularExpressions.Regex.IsMatch(profile, @"^[A-Za-z0-9._-]+$"))
+            {
+                Console.WriteLine("PROFILEPATCH_FAIL " + T("profile 名字不合法（只允许字母数字与 . _ - ✓）：" + profile, "invalid profile name: " + profile));
+                return 0;
+            }
             }
             string text = src.ReadPatch(profile);
             if (text == null) { Console.WriteLine("PROFILEPATCH_FAIL file-not-found " + profile); return 0; }
@@ -2622,7 +2622,10 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 Console.WriteLine("BKDEL_FAIL " + T("时间格式不对 ✓ 应为 yyyy-MM-dd HH:mm:ss ✓（现在：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + " ✓）", "bad time format"));
                 return 0;
             }
-            double ctDiff = Math.Abs((DateTime.Now - ctParsed).TotalSeconds);
+            // I1 FIX (cont): the window was symmetric, so a time up to two minutes in the FUTURE
+            // was accepted. A confirmation is meant to prove the user is looking at the clock now,
+            // so only a time in the past (within the window) counts.
+            double ctDiff = (DateTime.Now - ctParsed).TotalSeconds;
             if (ctDiff > 120)
             {
                 Console.WriteLine("BKDEL_FAIL " + T("输入的时间与当前时间相差 " + (int)ctDiff + " 秒（超过 120 秒 ✓）→ 拒绝删除 ✓ 现在：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + " ✓",
