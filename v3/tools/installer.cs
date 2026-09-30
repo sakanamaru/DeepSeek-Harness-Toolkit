@@ -29,7 +29,9 @@ internal static class Installer
 {
     private const string AppName = "dsh-minato";
     private const string Publisher = "dsh-minato (unofficial)";
-    private const string ReleasesUrl = "https://github.com/sakanamaru/dsh-minato/releases";
+    internal const string ReleasesUrl = "https://github.com/sakanamaru/dsh-minato/releases";   // internal ✓ 窗体类要用 ✓
+    /// <summary>上次载荷校验的结果 ✓（空 = 通过或未跑；否则 = 对不上的文件名 ✓ 完成页要显示 ✓）。</summary>
+    internal static string LastVerifyResult = "";
     private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "dsh-minato-install.log");
     private static readonly StringBuilder LogBuf = new StringBuilder();
 
@@ -496,10 +498,11 @@ internal static class Installer
                 {
                     mismatch++;
                     Log("指纹不符 ✗ " + name + " 期望=" + want.Substring(0, 12) + "… 实际=" + got.Substring(0, 12) + "…");
-                    if (mismatch == 1) return name;   // 报第一个就够 ✓（用户不需要看一长串 ✓）
+                    if (mismatch == 1) { LastVerifyResult = name; return name; }   // 记下来 ✓ 完成页要显示 ✓
                 }
             }
             Log("载荷校验：核对 " + checkedCount + " 个文件，不符 " + mismatch + " 个 ✓");
+            LastVerifyResult = "";
             return null;
         }
         catch (Exception ex) { Log("载荷校验本身出错 → 放行（不能让校验把安装变成砖 ✓）: " + ex.Message); return null; }
@@ -616,6 +619,9 @@ internal static class Installer
     // ---- PATH：**绝不用 setx** ✗（会截断 PATH ✓）→ HKCU\Environment + 广播 ✓ ----
     private const int HWND_BROADCAST = 0xffff;
     private const int WM_SETTINGCHANGE = 0x1a;
+    [DllImport("user32.dll")] internal static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] internal static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
+
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern IntPtr SendMessageTimeout(IntPtr hWnd, int Msg, IntPtr wParam, string lParam, int fuFlags, int uTimeout, out IntPtr lpdwResult);
 
@@ -728,24 +734,40 @@ internal sealed class InstallerForm : Form
     {
         _dirArg = dirArg;
         Text = "dsh-minato 安装程序";
-        ClientSize = new Size(620, 486);   // ✗ 原来 420：面板到 Y=386 ✗ 而按钮在 366 → **被盖住 20px** ✓ 现在留足 ✓
+        ClientSize = new Size(620, 532);   // ✗ 原来 420（面板盖住按钮）→ 486 → 现在 532（**自绘标题栏占 46px** ✓）
         AutoScaleMode = AutoScaleMode.Dpi;   // ✓ DPI 自适应 ✓（否则 125%/150% 缩放下布局会溢出 ✓ 子代理第 11 条 ✓）
         StartPosition = FormStartPosition.CenterScreen;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
+        FormBorderStyle = FormBorderStyle.None;   // ✓ 去掉 Windows 自带的框 ✓（用户要求："X 和 minato 一样在里面" ✓）
         MaximizeBox = false; MinimizeBox = false;
         Font = new Font("Microsoft YaHei UI", 9f);
         BackColor = Color.FromArgb(250, 250, 252);
 
-        _title = new Label { Text = "安装 dsh-minato", Font = new Font("Microsoft YaHei UI", 16f, FontStyle.Bold), ForeColor = Color.FromArgb(30, 30, 40), AutoSize = true, Location = new Point(28, 22) };
+        _title = new Label { Text = "安装 dsh-minato", Font = new Font("Microsoft YaHei UI", 16f, FontStyle.Bold), ForeColor = Color.FromArgb(30, 30, 40), AutoSize = true, Location = new Point(28, 70) };
         _sub = new Label
         {
             Text = "DeepSeek Harness 的非官方 Windows 工具箱。只读本地状态，不联网上传。",
-            ForeColor = Color.FromArgb(110, 110, 120), AutoSize = false, Size = new Size(560, 20), Location = new Point(30, 58)
+            ForeColor = Color.FromArgb(110, 110, 120), AutoSize = false, Size = new Size(560, 20), Location = new Point(30, 106)
         };
+        // ---- 自绘标题栏 ✓✓（用户要求："去掉顶上win自带的框，X和minato一样在里面" ✓ + "加logo和项目地址" ✓）----
+        Panel header = new Panel { Location = new Point(0, 0), Size = new Size(620, 46), BackColor = Color.White };
+        PictureBox logo = new PictureBox { Location = new Point(16, 9), Size = new Size(28, 28), SizeMode = PictureBoxSizeMode.StretchImage };
+        try { if (Icon != null) logo.Image = Icon.ToBitmap(); } catch { }
+        Label htitle = new Label { Text = "dsh-minato 安装程序", Font = new Font("Microsoft YaHei UI", 11f, FontStyle.Bold), ForeColor = Color.FromArgb(30, 30, 40), AutoSize = true, Location = new Point(54, 14) };
+        LinkLabel hlink = new LinkLabel { Text = "github.com/sakanamaru/dsh-minato", AutoSize = true, Location = new Point(300, 17), Font = new Font("Microsoft YaHei UI", 8.5f), LinkColor = Color.FromArgb(64, 110, 220) };
+        hlink.LinkClicked += delegate { try { Process.Start(Installer.ReleasesUrl); } catch { } };
+        Button hclose = new Button { Text = "✕", Location = new Point(586, 9), Size = new Size(26, 26), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = Color.FromArgb(90, 90, 100) };
+        hclose.FlatAppearance.BorderSize = 0;
+        hclose.Click += delegate { Close(); };
+        header.Controls.Add(logo); header.Controls.Add(htitle); header.Controls.Add(hlink); header.Controls.Add(hclose);
+        // 无边框窗口要**自己实现拖动** ✓（拖标题栏空白处 ✓）
+        MouseEventHandler drag = delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) { Installer.ReleaseCapture(); Installer.SendMessage(Handle, 0xA1, (IntPtr)0x2, IntPtr.Zero); } };
+        header.MouseDown += drag; htitle.MouseDown += drag; logo.MouseDown += drag;
+        Controls.Add(header);
+
         Controls.Add(_title); Controls.Add(_sub);
 
         // ---- 第一页：选项 ----
-        _page1 = new Panel { Location = new Point(0, 86), Size = new Size(620, 330) };
+        _page1 = new Panel { Location = new Point(0, 134), Size = new Size(620, 330) };
         Label ld = new Label { Text = "安装位置", ForeColor = Color.FromArgb(70, 70, 80), AutoSize = true, Location = new Point(30, 8) };
         _dirBox = new TextBox { Location = new Point(30, 30), Size = new Size(470, 26), Text = string.IsNullOrEmpty(_dirArg) ? Installer.DefaultDir() : _dirArg };
         Button browse = new Button { Text = "浏览…", Location = new Point(508, 29), Size = new Size(80, 27) };
@@ -786,7 +808,7 @@ internal sealed class InstallerForm : Form
         Controls.Add(_page1);
 
         // ---- 第二页：进度 ----
-        _page2 = new Panel { Location = new Point(0, 86), Size = new Size(620, 330), Visible = false };
+        _page2 = new Panel { Location = new Point(0, 134), Size = new Size(620, 330), Visible = false };
         _status = new Label { Text = "准备…", AutoSize = false, Size = new Size(560, 22), Location = new Point(30, 30), ForeColor = Color.FromArgb(60, 60, 70) };
         _bar = new ProgressBar { Location = new Point(30, 60), Size = new Size(560, 22), Minimum = 0, Maximum = 100 };
         _btnCopyLog = new Button { Text = "复制安装日志", Location = new Point(30, 100), Size = new Size(130, 30), Visible = false };
@@ -799,10 +821,10 @@ internal sealed class InstallerForm : Form
         Controls.Add(_page2);
 
         // ---- 底部按钮 ----
-        _btnMain = new Button { Text = DescribeAction(), Location = new Point(410, 428), Size = new Size(90, 34), BackColor = Color.FromArgb(64, 110, 220), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+        _btnMain = new Button { Text = DescribeAction(), Location = new Point(410, 476), Size = new Size(90, 34), BackColor = Color.FromArgb(64, 110, 220), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
         _btnMain.FlatAppearance.BorderSize = 0;
         _btnMain.Click += delegate { if (_done) { Close(); return; } StartInstall(); };   // ✓ 单一处理器 ✓ 装完就只关窗 ✓✓
-        _btnCancel = new Button { Text = "取消", Location = new Point(508, 428), Size = new Size(80, 34), DialogResult = DialogResult.Cancel };
+        _btnCancel = new Button { Text = "取消", Location = new Point(508, 476), Size = new Size(80, 34), DialogResult = DialogResult.Cancel };
         Controls.Add(_btnMain); Controls.Add(_btnCancel);
         CancelButton = _btnCancel;
         AcceptButton = _btnMain;
@@ -865,7 +887,7 @@ internal sealed class InstallerForm : Form
             {
                 _title.Text = "安装完成 ✓";
                 _bar.Value = 100;
-                _status.Text = "已安装到：" + dir;
+                _status.Text = "已安装到：" + dir + (string.IsNullOrEmpty(Installer.LastVerifyResult) ? "　✓ 安装包指纹已校验：全部一致" : ("　✗ 校验异常：" + Installer.LastVerifyResult));
                 _sub.Text = (_chkPath.Checked ? "PATH 已更新 —— **请新开一个终端** ✓ 旧终端看不到变化 ✓" : "已创建开始菜单快捷方式（名为 dsh-minato）✓");
                 _btnMain.Text = "完成";
                 _btnMain.Enabled = true;
