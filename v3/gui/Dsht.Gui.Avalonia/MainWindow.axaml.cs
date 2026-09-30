@@ -501,10 +501,31 @@ namespace Dsht.Gui.Avalonia
             try
             {
                 bool win = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
-                ProcessStartInfo psi = win
-                    ? new ProcessStartInfo(url) { UseShellExecute = true }
-                    : new ProcessStartInfo("xdg-open", url) { UseShellExecute = false };   // ✗ 不加引号：没有 shell 参与，引号反而会弄坏 URL ✓
-                Process.Start(psi);
+                if (win)
+                {
+                    Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                    return;
+                }
+                // Linux：**不加引号** ✓（没有 shell 参与 ✓）· 并**检测退出码** ✗ —— 系统没设默认浏览器时 xdg-open 会失败 ✓
+                // （2026-09-30 真机：xdg-settings 返回空 → xdg-open 静默失败 ✗ 而 Process.Start 成功 ✓ → 用户看不到任何反应 ✓）
+                bool opened = false;
+                try
+                {
+                    ProcessStartInfo xp = new ProcessStartInfo("xdg-open", url) { UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true };
+                    using (Process xp2 = Process.Start(xp))
+                    {
+                        if (xp2 != null) { xp2.WaitForExit(6000); opened = xp2.HasExited && xp2.ExitCode == 0; }
+                    }
+                }
+                catch { opened = false; }
+                if (opened) return;
+                // 回退：直接试常见浏览器 ✓（装了哪个用哪个 ✓ 不依赖系统默认关联 ✓）
+                string[] browsers = new string[] { "firefox", "chromium", "chromium-browser", "google-chrome", "epiphany" };
+                for (int bi = 0; bi < browsers.Length; bi++)
+                {
+                    try { Process.Start(new ProcessStartInfo(browsers[bi], url) { UseShellExecute = false }); return; } catch { }
+                }
+                _actionLog = "打不开浏览器：系统没有设置默认浏览器，也没找到常见浏览器。请手动打开这个地址：" + Environment.NewLine + url;
             }
             catch (Exception ex)
             {
