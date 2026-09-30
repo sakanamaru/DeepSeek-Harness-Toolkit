@@ -467,3 +467,15 @@ If this tool helped you, a ⭐ on the repo's top right would mean a lot — it k
 本项目图标为生成式 AI 产出（工具：Kimi），提示词由本项目维护者编写。
 本项目为非官方、非商业的开源工具，与 DeepSeek 官方无关，不使用任何官方标识。
 来源与许可详见仓库根目录 ASSETS.md。
+
+---
+
+## 代码签名（Code Signing）
+
+本项目的 Windows 安装器**正在申请** [SignPath Foundation](https://signpath.org/) 的**免费开源代码签名**。
+申请通过后，发布的 Windows 产物将由 **SignPath Foundation** 签名，签名主体为 SignPath Foundation。
+
+**当前状态**：申请中 —— 在此之前，Windows 首次运行可能出现 SmartScreen 的「未知发布者」提示 ✓。
+这是**未签名**的正常表现，不代表文件有问题 ✓。你可以用 Releases 页面公布的 **SHA-256** 自行核对下载的文件 ✓。
+
+> 本项目为**非官方、非商业**的开源工具，与 DeepSeek 官方无关。资产来源与许可见 [ASSETS.md](ASSETS.md)，隐私政策见 [PRIVACY.md](PRIVACY.md)。
