@@ -1,10 +1,33 @@
-# dsh-minato
+# DeepSeek Harness Toolkit
+
+> ## 📌 This project used to be called `DeepSeek-Harness-Toolkit`; it is now **`dsh-minato`**
+>
+> **Why the rename**: the old name was long and awkward to type or say. `dsh-minato` (みなと, "harbour")
+> is short, matches how other tools in the dsh ecosystem are named, and reads as *a harbour for dsh*.
+> The repository URL is unchanged; GitHub redirects the old links.
+>
+> ## 🚧 **V3 is coming** (a cross-platform rewrite, in its final stretch)
+>
+> | | **V2.x (this page - current stable)** | **V3 (coming)** |
+> |---|---|---|
+> | Platforms | Windows only | **Windows + Linux** |
+> | Interface | WinForms panel (seven pages) | **Avalonia cross-platform GUI** + a full CLI |
+> | Runtime | Needs the system .NET Framework (**small**) | **Self-contained**, no system runtime needed |
+> | Install | Unzip and run | **Self-extracting installer** (Windows) · **POSIX script** (Linux) |
+> | Integrity check | none | **Yes**: verifies its own fingerprints at startup and **refuses to run if modified** |
+> | Uninstall safety | - | **Never deletes your data by default**, and **refuses to delete a directory that does not look like an install** |
+> | Update centre | - | One place for web / official desktop app / this tool / installed plugins |
+>
+> **The V3 CLI is already complete and usable on Linux**; the GUI is closing its remaining gaps.
+> **V2.x stays maintained** until V3 reaches feature parity.
+>
+> ---
 
 <div align="center">
 
 **[English](README.md) · [简体中文](README_zh-CN.md)**
 
-<img src="logo.png" alt="dsh-minato" width="220"/>
+<img src="logo.png" alt="DeepSeek Harness Toolkit" width="220"/>
 
 **Windows installer, monitor, backup & restore tool for the DeepSeek Harness (dsh) Web UI — double-click and go.**
 
@@ -15,165 +38,9 @@ Install, start, monitor and uninstall the dsh Web UI, with data backup / restore
 
 > ⚠️ This project is **unofficial** and is not affiliated with DeepSeek.
 
-## Guarantees you can rely on
+## Official downloads
 
-This is a tool that touches your data, so its promises should be checkable rather than taken on faith. These
-four were each verified on real machines, on Windows and on Linux, and the method is stated so you can repeat
-it.
-
-- **A restore never deletes files that only exist on your side.** Merging overwrites same-named files and
-  adds new ones; anything the backup does not contain is left alone. The dry run prints the counts it will
-  add, overwrite and keep, and the real run matches that preview.
-- **Session statistics never read your conversation content.** They read only dsh's own metadata projections.
-  Verified by making the conversation files unreadable: the statistics still worked, so the content cannot
-  have been read.
-- **Uninstalling removes the program, not your data.** `uninstall` removes the dsh package and leaves the
-  data directory and every backup untouched, and it says so in the plan before doing anything. Installing again afterwards works and keeps your settings: that round trip was verified end to end, including restoring a backup taken before the uninstall.
-- **A backup can prove it is complete.** Each backup carries a completion marker written last, with a content
-  hash, so an interrupted backup is detectable, altered content is detectable, and restoring from a broken
-  backup is refused unless you pass `--force`.
-
-Anything not on this list is not a guarantee. In particular, packages written before the completion marker
-existed have no marker and are reported as unknown rather than assumed good.
-## Which version: V2 or V3?
-
-**两条线都在维护，但目标用户不同。**
-
-| | **V2.x（经典版）** | **V3（当前主线）** |
-|---|---|---|
-| 平台 | **仅 Windows** | **Windows + Linux** |
-| 界面 | WinForms 面板（七页） | Avalonia 跨平台 GUI + 完整 CLI |
-| 运行时 | 依赖系统 .NET Framework（**体积小**） | **自包含**，不依赖系统运行时（体积大） |
-| 安装 | 解压即用 | **自包含安装器**（Win）· **POSIX 脚本**（Linux） |
-| 完整性校验 | 无 | **有**：启动时核对自身指纹，**被改动就拒绝运行** |
-
-**怎么选：**
-
-- **只在 Windows 上用，想要最小、最省事** → **V2.x**
-- **要用 Linux** → **V3**（经典版在 Linux 上从源码构建时 `start` / `stop` / `shortcut` 三处接缝是坏的，且不认 `$DSH_HOME`）
-- **要自动化 / 脚本化 / 完整性校验** → **V3**
-- **不确定** → **V3**（主线，功能是 V2 的超集）
-
-> 两条线的**数据是同一份**：都只读 `~/.dsh`，都不修改 dsh 自己的文件。
-> 换线不需要迁移数据，卸载任何一条也**不会删除**你的数据。
-
-## Major version history
-
-### V3（当前主线，跨平台重写）
-
-- **跨平台**：CLI 完整移植到 Linux；GUI 从 WinForms 重写为 **Avalonia**，同一套代码跑两个平台
-- **零第三方运行时依赖**：CLI / GUI 自包含发布；安装器只用 Windows 系统组件（.NET Framework 属系统组件）
-- **自解压安装器**（Windows）：单文件、定制界面、**不需要管理员权限**、注册到「应用和功能」
-- **POSIX 安装脚本**（Linux）：纯 `sh`、零依赖、免 `sudo`，装到 `~/.local/share`
-- **完整性校验**：CLI / GUI 启动器 / 安装器在运行前核对 `hashes.txt` 指纹，**不一致就拒绝运行**
-- **卸载安全**：默认**不删用户数据**；且**拒绝删除**"不像安装目录"的目录（四层防护）
-- **更新中心**：一处查看 web / 官方桌面端 / 本工具 / 已装插件的版本与更新状态
-- **工程质量**：334 个契约测试 + 九项发布门槛（含**篡改自证**：故意改一个字节，验证器必须报错）
-
-### V2.x（经典版，仅 Windows）
-
-按发布顺序：
-
-| 版本 | 里程碑 |
-|---|---|
-| **v2.7.x** | 配置自检 `profilecheck`（只读扫描 `~/.dsh/profiles/**/*.yaml`，报出会让 dsh 起不来的问题）；`auto_start` 可控倒计时 |
-| **v2.6.0** | （见 Releases） |
-| **v2.5.0** | （见 Releases） |
-| **v2.4.x** | **自 v2.4.1 起提供图形面板**（WinForms）；发布物含三种形态，按需取用 |
-| **v2.3.0** | （见 Releases） |
-| **v2.1.x** | （见 Releases） |
-| **v2.0.0** | 重构封装起点 |
-
-> 完整的逐版说明见 [Releases](https://github.com/sakanamaru/dsh-minato/releases) 与 [tags](https://github.com/sakanamaru/dsh-minato/tags)。
-> v2.8 阶段 1 做了 **move-only** 拆分（把 4000+ 行单文件 `dsh_v2.cs` 拆开，行为不变）。
-## Linux support (preview)
-
-The V3 line runs on Linux (x86-64) today: the CLI is fully ported, and the Avalonia GUI builds and runs.
-This section states exactly where Linux stands, so nobody has to discover it the hard way.
-
-### What works on Linux today
-
-- The whole CLI: install / update / uninstall, start / stop, status, doctor, sessions, profiles,
-  profilecheck, profilepatch, backup / backup-list / backup-export / backup-delete, restore,
-  config-get / config-set, bootdiag, check, selftest, shortcut, ui, about, and the no-argument menu.
-- One-click install: `dsh-minato install --install-node --yes` fetches an official Node LTS into
-  `~/.local/node` without sudo (using curl, wget or python3, whichever exists) and then installs dsh
-  through npm. Node is chosen for your CPU architecture (x64 / arm64 / armv7l / x86).
-- One-click start and stop: `start --yes` launches dsh detached and reports success only after the
-  port or HTTP probe confirms it; `stop --yes` signals the whole process group and re-checks.
-- Every write prints its plan first and needs `--yes`. A real restore additionally requires `DSH_HOME`
-  (normalised to an absolute path), so it can never write your default data root.
-- The Avalonia GUI builds and runs on Linux (X11, or Wayland through XWayland).
-
-### Platform differences (by nature, not defects)
-
-- The three classic executables (`DeepSeek Harness Toolkit.exe`, `Toolkit GUI*.exe`) and `.lnk`
-  shortcuts are Windows / .NET Framework only; the Linux package does not contain them.
-- `shortcut` creates an application-menu entry (`~/.local/share/applications/dsh-minato.desktop`),
-  not a desktop icon.
-- `--install-node` is Linux-only; on Windows Node is installed by the installer.
-
-- **Workspace auto-detection differs by platform, by necessity.** On Windows the workspace is the folder two
-  levels above the executable (the v2.x rule: an exe in `...\dsh-minato\` means the workspace is `...\`). On
-  Linux the executable usually lives in `~/.local/bin`, where that rule would point at `~/.local`, so the
-  workspace is the directory you run the command from instead. Either way an explicit `ws=` setting wins, and
-  a location that looks unreasonable (your home directory itself, a drive root, a system directory) is
-  rejected and left to you to set.
-### Known gaps on Linux (tracked; being closed before 3.0)
-
-- The GUI's start/stop, profile check and quarantine buttons still call the Windows-only classic
-  core. The CLI behind them already works on Linux, so this is wiring rather than capability.
-- Workspace backup packages the auto-detected workspace into `_workspace/`, and restore merges it back. Several workspaces can be backed up by separating their paths with `;` in `ws=`, which writes the multi-workspace (`.dshws`) layout restore understands. One path keeps the older flat layout, and both are restored the same way.
-- The **GUI** still has no log centre, update centre, backup import, wipe-data, tray or keyboard shortcuts. The **CLI** already has `log`, `update-info`, `import` and `wipe` on Linux today, so what is missing here is the GUI surface, not the capability.
-- `keep_backups` is honoured: automatic backups keep the configured number of copies (the default is 10).
-- The classic v2.x line, if built from source on Linux, has broken `start` / `stop` / `shortcut` seams
-  and does not honour `$DSH_HOME`; use the V3 CLI on Linux instead.
-
-### Linux release artifacts
-
-Every release publishes `dsh-minato-linux-x64.tar.gz` containing two CLI builds (small
-framework-dependent, and self-contained single file), the self-contained GUI, a `.desktop` entry, the
-icon, a smoke script, a short README and a sha256 manifest. Verify it with
-`v3/tools/verify-linux.sh <tarball> [<tarball.sha256>]` - the same script CI runs before uploading.
-Runtime dependencies: iproute2 (`ss`), `ps`, and `tar` plus one of curl/wget/python3 when bootstrapping
-Node.
-
-## Three ways to install
-
-**Windows - the installer** (recommended if you do not live in a terminal)
-
-Download `dsh-minato-<version>-win-x64-setup.exe` from Releases and run it. It installs to
-`%LOCALAPPDATA%\Programs\dsh-minato` without administrator rights, adds a Start Menu shortcut (desktop
-shortcut and PATH are offered but off by default), registers itself under Apps and features, and verifies the
-SHA-256 of every file in the package before installing anything - a mismatch refuses the install and names the
-file. Uninstalling leaves your data alone and writes a note on the desktop saying where it is.
-
-**Windows - portable**
-
-Download `dsh-minato-win-x64.zip`, extract it, run `dsh-minato-gui.exe`.
-
-**Linux - one command**
-
-```sh
-tar xzf dsh-minato-linux-x64.tar.gz && cd dsh-minato-linux-x64 && ./install.sh
-```
-
-Plain POSIX shell, no third-party dependencies, no sudo: it installs into `~/.local/share/dsh-minato`, links
-`~/.local/bin/dsh-minato`, and writes a desktop entry. `./install.sh --uninstall` removes what it added and
-leaves your data untouched.
-
-## Integrity checking (it refuses to run if modified)
-
-Releases ship a `hashes.txt` with the SHA-256 of each executable. The CLI, the GUI launcher and the installer
-all check it before doing anything: a match passes silently, a mismatch **refuses to run** and prints both
-fingerprints with the official download address, and a missing manifest passes while saying plainly that the
-check was skipped.
-
-This targets static infection - a trojan patching a legitimate executable changes the file, so the fingerprint
-stops matching. It does not defend against an attacker replacing `hashes.txt` as well, or against in-memory
-injection; for those, compare against the fingerprints published on the official releases page.## Official downloads
-
-Only this repository's [Releases page](https://github.com/sakanamaru/dsh-minato/releases) ships official binaries — anything else (cloud-drive re-uploads, "paid / cracked / modified" editions, other websites or accounts) is **not official**. The project is free and open source (MIT); **no one is authorized to sell it**. Verify before running: `verify.ps1` checks SHA-256 against the CI-generated manifest and the GPG signature, and the GitHub artifact attestation is an **independent extra** provenance check that `verify.ps1` does not perform — attestation does not replace the GPG signature check either. The trust model, supply-chain controls and manual verification steps live in [SECURITY.md](SECURITY.md).
+Only this repository's [Releases page](https://github.com/sakanamaru/DeepSeek-Harness-Toolkit/releases) ships official binaries — anything else (cloud-drive re-uploads, "paid / cracked / modified" editions, other websites or accounts) is **not official**. The project is free and open source (MIT); **no one is authorized to sell it**. Verify before running: `verify.ps1` checks SHA-256 against the CI-generated manifest and the GPG signature, and the GitHub artifact attestation is an **independent extra** provenance check that `verify.ps1` does not perform — attestation does not replace the GPG signature check either. The trust model, supply-chain controls and manual verification steps live in [SECURITY.md](SECURITY.md).
 
 ## Screenshots
 
@@ -207,23 +74,6 @@ Launch detects the service state — **running / starting / stopped** (TCP + HTT
 
 One-click **full backup** of the dsh data directory (`~/.dsh`) into `backup\` next to the exe; list-restore with confirmation, open-backup-folder; manual backups are kept forever, automatic ones follow the retention policy; every dangerous operation (restore / import / wipe / update) **auto-backs up first**.
 
-### Backups that can prove they are complete
-
-Every backup now carries a completion marker next to it (`<package>.manifest`), written last, recording the
-file count, the byte count and a SHA-256 over the package's contents. Three things follow from that:
-
-- **An interrupted backup is detectable.** The marker is written only after the copy finishes, so a package
-  without one was never completed - `backup-list --verify` reports it as `incomplete` instead of quietly
-  listing it as a usable backup.
-- **Altered or damaged content is detectable.** `backup-list --verify` recomputes the hash and reports
-  `mismatch` with an explicit "do not rely on this backup" when it differs, which catches a file copied only
-  halfway - something a file count cannot see.
-- **Restoring from a broken backup is refused.** `restore` and `restore --dry-run` check the marker before
-  touching anything and refuse with the counts spelled out; add `--force` if you really mean it.
-
-The marker travels with the package through `backup-export` and `import`, so a backup moved to another
-machine can still be checked there. Packages written before this feature have no marker; they are treated as
-"unknown" rather than rejected, so nothing old breaks.
 ### Migrate dsh to another PC
 
 Copy the backup folder to the new machine and use **Import** — multi-workspace aware (`_workspace\name\`), compatible with old backup formats, long-path safe (`\\?\`, >260 chars).
@@ -267,22 +117,22 @@ The cure is **one line** inside the existing profile entry's `config:` block. Th
 
 ```powershell
 # 1) Proactive scan (read-only): which profile entries would break a boot?
-dsh-minato.exe profilecheck              # alias: pc
-dsh-minato.exe profilecheck --vendor     # also scan node_modules (skipped by default)
+DeepSeek Harness Toolkit.exe profilecheck              # alias: pc
+DeepSeek Harness Toolkit.exe profilecheck --vendor     # also scan node_modules (skipped by default)
 
 # 2) Already failed to start? Save the startup output to a text file, then:
-dsh-minato.exe bootdiag --from captured.txt    # alias: bdiag
+DeepSeek Harness Toolkit.exe bootdiag --from captured.txt    # alias: bdiag
 
 # 3) The prescription — preview first, then apply (backup → verify → rollback on failure):
-dsh-minato.exe profilepatch --file <yaml> --id <entry> --set maxDepth=provider-managed
-dsh-minato.exe profilepatch --file <yaml> --id <entry> --set maxDepth=provider-managed --yes
+DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <entry> --set maxDepth=provider-managed
+DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <entry> --set maxDepth=provider-managed --yes
 ```
 
 **Any broken plugin, not just `maxDepth` — quarantine it and move on.** The `maxDepth` cure keeps the plugin working; when the failing plugin is unknown, or you just need dsh to boot again, append a top-level patch item that switches that entry off (append-only — not one existing character of your profile is changed):
 
 ```powershell
-dsh-minato.exe profilepatch --disable <entry-id>          # preview (PROFILEPATCH_DRYRUN, zero writes)
-dsh-minato.exe profilepatch --disable <entry-id> --yes    # backup → append → re-check → byte-identical rollback on failure
+DeepSeek Harness Toolkit.exe profilepatch --disable <entry-id>          # preview (PROFILEPATCH_DRYRUN, zero writes)
+DeepSeek Harness Toolkit.exe profilepatch --disable <entry-id> --yes    # backup → append → re-check → byte-identical rollback on failure
 ```
 
 `disabled: true` is a first-class field of dsh's own patch layer (`PatchOptions.disabled` in `@deepseek-ai/cordis-plugin-include`), and dsh itself uses it to switch off its telemetry row — so this is the canonical "turn that row off" form, not a rewrite of your profile. It is **manual-only and never runs automatically**, idempotent (already quarantined → `PROFILEPATCH_NOOP`), the entry id is charset-whitelisted (`[A-Za-z0-9._@/-]`, so no YAML injection), and a failed re-check rolls the file back byte-for-byte.
@@ -321,24 +171,13 @@ The About page has a **Verify This Install** button: it downloads the official `
 2. **Trust boundary.** Distributing a Windows exe carries an inherent trust cost — hence this project is **fully open source (MIT)**, every release is **built by GitHub Actions CI from source**, and ships `hashes.txt` (SHA-256) + a **GPG signature** so anyone can verify releases.
 3. **Positioning.** If you are comfortable with the terminal, the official npm commands are leaner; this tool is for people who do not want to touch one.
 
-## Relationship to the official dsh desktop app
-
-DeepSeek has released an official **dsh desktop app** (an Electron application). This tool does **not** adapt to it and does not replace it - the two do different jobs: the desktop app is for *using* dsh, this tool is for *installing it, watching it, backing it up, and getting it back when something breaks*.
-
-Three scope notes, all about this tool itself:
-
-1. **This tool manages the Web form.** `start` / `stop` / `status` decide by the **listener on port 3080 and the identity of the process behind it**. If the desktop app does not use that port, `status` will report `STATUS_DOWN` - not a fault but a **difference in scope**: it checks the dsh Web service, not desktop-app processes.
-2. **`headless` / `acp` / `desktop` are reserved forms in the code.** The form is acknowledged, but there is **no observable fact to decide by yet** (process name, IPC channel and so on are all unknown). They are reported as Down **with the reason stated** - never pretending to be Ready, and never pretending not to be running. Run `dsh-minato describe` for the full wording.
-3. **The official desktop app is outside this project's scope.** If you want them to coexist, check your environment yourself; this tool will not guess its process name or how it communicates.
-
-> Public reporting says the desktop app **shares the same `~/.dsh` data directory** as the Web version. If that holds, this tool's **backup / restore / migration** apply to that data too - it only knows the data directory and does not care which client wrote it. Please verify that on your own machine.
 ## 🖥️ GUI panel (three variants)
 
 Since v2.4.1 a **graphical panel** ships in three forms — pick what fits (the panel is now **seven pages**: Home · Backups · Update · Settings · Log · Doctor · About; the screenshots above show Home / Log / About):
 
 | Variant | File(s) | Unzip / run | For |
 |---|---|---|---|
-| **A. CLI core** | `dsh-minato.exe` | unzip fully, double-click | terminal users, scripts/automation |
+| **A. CLI core** | `DeepSeek Harness Toolkit.exe` | unzip fully, double-click | terminal users, scripts/automation |
 | **B. GUI attached** | `Toolkit GUI.exe` + core **next to it** | **must unzip fully** — the GUI depends on the sibling core exe; a stray copy shows "Core exe (CLI) not found" | GUI users deploying with the core |
 | **C. GUI standalone** | `Toolkit GUI Standalone.exe` | **single file, fully independent** — embeds the core and extracts it next to itself on first launch | "one exe handles everything" users |
 
@@ -370,11 +209,11 @@ Since v2.4.1 a **graphical panel** ships in three forms — pick what fits (the 
 
 ## Usage
 
-Double-click `dsh-minato.exe`, or use the command line:
+Double-click `DeepSeek Harness Toolkit.exe`, or use the command line:
 
 ```
-dsh-minato.exe install|start|uninstall|update|check|about|help
-dsh-minato.exe profilecheck|bootdiag|profilepatch     # when dsh won't start (see below)
+DeepSeek Harness Toolkit.exe install|start|uninstall|update|check|about|help
+DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # when dsh won't start (see below)
 ```
 
 Launching without arguments opens the interactive menu: with dsh installed the first run auto-starts the Web UI after a 5-second countdown (interruptible); later launches auto-start too. Set `auto_start=off` to drop the countdown — the menu then waits for a manual choice and says so. If dsh is **not** installed, the menu waits for your choice (press 1) — nothing is auto-installed. With the service already running, it goes straight to the status page.
@@ -391,14 +230,14 @@ Launching without arguments opens the interactive menu: with dsh installed the f
 | Backup failed | Check `logs\launcher.log` next to the exe for the real reason |
 | Backup failed (PathTooLongException) | Long path support and `dsh-data-*` skipping are built in; if the log still shows path issues, move that folder out of the workspace |
 | Prompted for extra paths | Type each extra workspace path (empty Enter to finish), or preset one under **7 Entry → 3** |
-| GUI says "Core exe (CLI) not found" | Variant B must sit **next to** `dsh-minato.exe` — unzip the full package, or use variant C (standalone) instead |
+| GUI says "Core exe (CLI) not found" | Variant B must sit **next to** `DeepSeek Harness Toolkit.exe` — unzip the full package, or use variant C (standalone) instead |
 
 ## Build from Source
 
 Requires the built-in .NET Framework 4.x on Windows (preinstalled on Win10 / Win11):
 
 ```
-"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico "/out:dsh-minato.exe" dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs /warn:4
+"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico "/out:DeepSeek Harness Toolkit.exe" dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs /warn:4
 ```
 
 Or double-click `build_exe.cmd` in this directory. The GUI compiles from the same-rules single file `gui_v2.cs` (one source → both attached and standalone variants; the standalone adds `/resource:<core exe>,DSHCore.exe`).
@@ -411,20 +250,19 @@ Or double-click `build_exe.cmd` in this directory. The GUI compiles from the sam
 
 No test framework or third-party dependency is required.
 
-- **Unit tests (318)** — same-assembly test proxy (`/define:UNIT`; the test entry point is `tests\unit_tests.cs`, everything else is the production code being tested):
+- **Unit tests (304)** — same-assembly test proxy (`/define:UNIT`; the test entry point is `tests\unit_tests.cs`, everything else is the production code being tested):
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs tests\unit_tests.cs
   unittests.exe
   ```
-  Exit code 0 = all green. Covers: path round-trips (incl. UNC / non-ASCII and **relative paths**), workspace blacklist, dsh-data markers, root marker strictness, backup dir validation, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection, netstat PID parsing, dry-run merge/delete planning (incl. restore-side skip-rule fidelity), backup kind parsing, export / delete validation, rollback-candidate lookup, configuration whitelist (incl. the `close_action` / `auto_start` keys), status-bar uptime formatting, profile block scanning / `bootdiag` output parsing / the controlled patch path (one-line plan, idempotent NOOP, backup, verify and rollback).
+  Exit code 0 = all green. Covers: path round-trips (incl. UNC / non-ASCII), workspace blacklist, dsh-data markers, root marker strictness, backup dir validation, log rotation, backup naming + retention policy, service-state judging, version compare / release parsing / update detection, netstat PID parsing, dry-run merge/delete planning (incl. restore-side skip-rule fidelity), backup kind parsing, export / delete validation, rollback-candidate lookup, configuration whitelist (incl. the `close_action` / `auto_start` keys), status-bar uptime formatting, profile block scanning / `bootdiag` output parsing / the controlled patch path (one-line plan, idempotent NOOP, backup, verify and rollback).
 
 - **GUI logic tests (52)** — same-assembly as `gui_v2.cs`, zero third-party deps; run by CI on every push:
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /main:GuiLogicTests /out:guilogictests.exe gui_v2.cs tests\gui_logic_tests.cs
   guilogictests.exe
   ```
-  Covers the presentation-layer foundation: marker-line parsing (the table that used to be missing `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK`), the signal bus (`SignalBus` — incl. "one throwing subscriber must not break the others"), the signal→UI routing table (`SigRouting`), the settings card model (`SettingsCards`), and **source-level i18n enforcement** (every `L10N._()` key must be defined, no dead keys, no empty translations, and **no Chinese string literals outside the L10N dictionary**).
-
+  Covers the presentation-layer foundation: marker-line parsing (the table that used to be missing `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK`), the signal bus (`SignalBus` — incl. "one throwing subscriber must not break the others"), the signal-to-UI routing table (`SigRouting`), the settings card model (`SettingsCards`), and **source-level i18n enforcement** (every `L10N._()` key must be defined, no dead keys, no empty translations, and **no Chinese string literals outside the L10N dictionary**).
 - **Integration tests (33 cases)** — stubbed end-to-end matrix (variants A/C, real 3080 probing; retention policy, restore/import blocked while running, bilingual asserts):
   ```
   powershell -ExecutionPolicy Bypass -File tests\integration.ps1
@@ -450,7 +288,7 @@ gui_v2.cs            GUI source (WinForms; one file → attached + standalone va
 app.manifest         GUI manifest (DPI awareness / compat)
 build_exe.cmd        Rebuild script (core)
 icon.ico             Program icon
-logo.png             Product logo (512x512, same character as the app icon)
+logo.png             Product logo (1536×1536)
 verify.ps1           One-click release verification (SHA-256 + GPG)
 keys/                Maintainer GPG public key
 SECURITY.md          Security policy, data & network boundaries
@@ -463,7 +301,7 @@ docs/screenshots/    README screenshots
 backup/  logs/       Runtime dirs (gitignored — never committed)
 ```
 
-> **The `src/` lines above are the layout shipped since v2.7.3.** Stage 1 is a **move-only** split of the single 4000+ line `dsh_v2.cs` into `partial class Program` layers (`partial` within the same assembly, so no call site, signature or behaviour changes); it landed in commit ee36ac0 (CI green). The released **v2.7.3** is built from this layout. Stage 1 does not touch `gui_v2.cs`, `tests/unit_tests.cs` or `verify.ps1`.
+> **The `src/` lines above are the layout shipped since v2.7.3.** They come from the **move-only** split of the single 4000+ line `dsh_v2.cs` into `partial class Program` layers (`partial` within the same assembly, so no call site, signature or behaviour changes); it landed in commit ee36ac0 (CI green). The released **v2.7.3** is built from this layout. The split does not touch `gui_v2.cs`, `tests/unit_tests.cs` or `verify.ps1`.
 
 ## Error Log
 
@@ -476,7 +314,7 @@ backup/  logs/       Runtime dirs (gitignored — never committed)
 - **Verify before you run (≈20 seconds)**:
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.0 -OutDir D:\verify
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.3 -OutDir D:\verify
   ```
 
   `verify.ps1` (shipped in the package) downloads the release artifacts (all three
@@ -494,7 +332,7 @@ backup/  logs/       Runtime dirs (gitignored — never committed)
   `A2F67D170B5BE4845612642C240979232B4E4CE4`.
 - **GitHub artifact attestation — an independent extra check**: tag builds also publish a
   GitHub artifact attestation; verify it with
-  `gh attestation verify <file> --repo sakanamaru/dsh-minato`. `verify.ps1` does
+  `gh attestation verify <file> --repo sakanamaru/DeepSeek-Harness-Toolkit`. `verify.ps1` does
   **not** verify attestations, and the attestation does **not** replace the GPG signature
   check — the two are independent, so pick either or (better) run both.
 - **What the built-in integrity checks prove — and what they do not**: the GUI's
@@ -536,30 +374,3 @@ This project is open source under the MIT License. You are free to use, modify a
 - GitHub: @sakanamaru  https://github.com/sakanamaru
 
 If this tool helped you, a ⭐ on the repo's top right would mean a lot — it keeps this project going.
-
----
-
-## 资产许可
-
-本项目的 MIT 许可只覆盖**代码**；图标等非代码资产的来源与许可范围见 [ASSETS.md](ASSETS.md)。
-
----
-
-## 图标与署名（Credits）
-
-鲸鱼娘（Whale-chan）形象来自 DeepSeek 社区同人创作。
-本项目图标为生成式 AI 产出（工具：Kimi），提示词由本项目维护者编写。
-本项目为非官方、非商业的开源工具，与 DeepSeek 官方无关，不使用任何官方标识。
-来源与许可详见仓库根目录 ASSETS.md。
-
----
-
-## 代码签名（Code Signing）
-
-本项目的 Windows 安装器**正在申请** [SignPath Foundation](https://signpath.org/) 的**免费开源代码签名**。
-申请通过后，发布的 Windows 产物将由 **SignPath Foundation** 签名，签名主体为 SignPath Foundation。
-
-**当前状态**：申请中 —— 在此之前，Windows 首次运行可能出现 SmartScreen 的「未知发布者」提示 ✓。
-这是**未签名**的正常表现，不代表文件有问题 ✓。你可以用 Releases 页面公布的 **SHA-256** 自行核对下载的文件 ✓。
-
-> 本项目为**非官方、非商业**的开源工具，与 DeepSeek 官方无关。资产来源与许可见 [ASSETS.md](ASSETS.md)，隐私政策见 [PRIVACY.md](PRIVACY.md)。
