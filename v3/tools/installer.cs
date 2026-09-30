@@ -222,9 +222,22 @@ internal static class Installer
                 //     → 认作我们自己的 ✓✓
                 //   （**这不是权限边界** ✓：能往目标目录写 marker 的人本来就能改里面任何东西 ✓
                 //     审计也明确说过"任何以该用户运行的进程都能读 token 并写 marker" ✓）
-                bool legacyOurs = !string.IsNullOrEmpty(mkPath) && pthOk && !string.IsNullOrEmpty(mkVer);
-                targetOurs = (tokOk || legacyOurs) && pthOk;
-                if (legacyOurs && !tokOk) Log("旧版安装标记（无 token 但有 version+path ✓）→ 认作我们自己的 ✓ 可以升级 ✓");
+                // M-3 FIX (installer audit MAJOR): a hand-written marker carrying version= and path=
+                // was enough to make the installer treat ANY directory as ours, and it then deleted the
+                // gui folder of a user who happened to have one there. The legacy branch is now confined
+                // to the DEFAULT install location AND requires our own uninstall.exe and dsh-minato.exe
+                // to sit beside the marker, which is what a real install made by the previous version
+                // looks like. Everything else falls through to the normal refusal.
+                bool legacyDefaultDir = false;
+                try
+                {
+                    string defDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "dsh-minato");
+                    legacyDefaultDir = string.Equals(Path.GetFullPath(target).TrimEnd('\\'), Path.GetFullPath(defDir).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+                }
+                catch { }
+                bool legacyOurs = legacyDefaultDir && !string.IsNullOrEmpty(mkPath) && pthOk && !string.IsNullOrEmpty(mkVer)
+                                  && File.Exists(Path.Combine(target, "uninstall.exe")) && File.Exists(Path.Combine(target, "dsh-minato.exe"));
+                if (legacyOurs && !tokOk) Log("旧版安装标记（默认目录 + 有 version/path + 旁边有我们自己的 exe ✓）→ 认作我们自己的 ✓ 可以升级 ✓");
                 if (!targetOurs) Log("目标目录里有个 marker，但**身份校验没通过** ✗（tokenOk=" + tokOk + " pathOk=" + pthOk + "）→ 按「不是我们的」处理 ✓");
             }
         }
@@ -310,6 +323,11 @@ internal static class Installer
         Report(progress, 78, "就位…");
         string old = target + ".old-" + DateTime.Now.ToString("HHmmss");
         bool hadOld = false;
+        // M-1 FIX (installer audit MAJOR): tracks whether the NEW payload actually landed. When the
+        // failure IS the move below (because the old version folder could not be renamed aside - a
+        // process holding it is enough), the version directory still holds the LIVE old install, and
+        // the rollback used to delete it recursively and then "restore" whatever .old-* it found.
+        bool placed = false;
         try
         {
             // 把暂存里的内容搬进一个版本化目录 ✓
@@ -325,6 +343,7 @@ internal static class Installer
                 catch (Exception mv) { Log("旧版本目录改名失败（不致命 ✓ 稍后会被新载荷替换）: " + mv.Message); }
             }
             Directory.Move(staging, verDir);
+            placed = true;   // M-1 FIX: only now does the version folder hold the NEW payload
             Log("版本目录: " + verDir);
             // 稳定入口：把启动器与 CLI 复制到 target 根 ✓（快捷方式指向它们 ✓ 升级时路径不变 ✓）
             // ✓ M7：**检查每一处复制** ✓ 任何一处失败都让安装失败 ✓（不再假装成功 ✗）
@@ -382,7 +401,9 @@ internal static class Installer
             try
             {
                 string vd2 = Path.Combine(target, "app-" + ShortVersion());
-                if (Directory.Exists(vd2)) { TryDelete(vd2); Log("已清掉失败的新版本目录 ✓ " + vd2); }
+                // M-1 FIX: only delete the version folder when the new payload actually landed in it.
+                if (placed && Directory.Exists(vd2)) { TryDelete(vd2); Log("已清掉失败的新版本目录 ✓ " + vd2); }
+                else if (!placed) Log("**没有清掉版本目录** ✓（新载荷从未就位 → 那是**活的旧安装** ✓ 保留 ✓）");
                 string[] olds = Directory.GetDirectories(target, "app-" + ShortVersion() + ".old-*");
                 if (olds.Length > 0) { Directory.Move(olds[0], vd2); Log("已回滚旧版本目录 ✓ " + vd2); }
                 if (!Directory.Exists(Path.Combine(target, "gui")))
@@ -403,6 +424,16 @@ internal static class Installer
             return 4;
         }
         if (hadOld) TryDelete(old);
+        // M-2 FIX (installer audit MAJOR): the manifest was copied BEFORE the gui copy could fail,
+        // so a failed upgrade left the NEW hashes.txt beside the RESTORED old gui and the launcher
+        // reported the tool as tampered with and refused to start. Re-copy it last, now that
+        // placement has succeeded, so the manifest always matches what is on disk.
+        try
+        {
+            string manSrc = Path.Combine(Path.Combine(target, "app-" + ShortVersion()), "hashes.txt");
+            if (File.Exists(manSrc)) CopyFile(manSrc, Path.Combine(target, "hashes.txt"));
+        }
+        catch (Exception manEx) { Log("清单重写失败（启动时会报不一致 ✓ 请重装）: " + manEx.Message); }
         // ✓ M2：**走到这里说明新载荷已就位** ✓ 才清掉改名让开的旧版本目录 ✓
         try { foreach (string od in Directory.GetDirectories(target, "app-" + ShortVersion() + ".old-*")) TryDelete(od); } catch { }
 
@@ -601,9 +632,13 @@ internal static class Installer
                 //   卸的时候却"必须"✓ → 注册表被清理工具删掉 / 二次安装改写共享 key → **永久卸不掉** ✗✗
                 // ✓ 修：**注册表里没有 token 时，不因此拒绝** ✓（回退到 marker + path 检查 ✓）
                 //       但 **token 存在且不匹配 → 拒绝** ✓（那才是伪造 ✓✓）
+                // M-4 FIX (installer audit MAJOR): a missing token used to be treated as a match, so
+                // a bare marker with a path= line was accepted and the uninstaller deleted gui, bin and
+                // app-<ver>. A missing token now counts as a mismatch; --force is the documented
+                // override, and the refusal says so.
                 bool regMissing = string.IsNullOrEmpty(regToken);
-                looksOurs = (regMissing ? true : tokenOk) && pathOk;
-                if (regMissing) Log("注册表里没有 token（被清理过或二次安装 ✓）→ 回退到 marker+path 判定 ✓ 不因此拒绝 ✓");
+                looksOurs = tokenOk && pathOk;
+                if (regMissing) Log("注册表里没有 token ✗（被清理过、或旧版本安装 ✓）→ **不据此放行** ✓（要强制卸载请用 uninstall.exe --force ✓）");
                 if (File.Exists(markerPath) && !looksOurs)
                     Log("身份校验未通过 ✓ tokenOk=" + tokenOk + " pathOk=" + pathOk + "（markerToken=" + (markerToken.Length > 8 ? markerToken.Substring(0,8) : markerToken) + " regToken=" + (regToken.Length > 8 ? regToken.Substring(0,8) : regToken) + "）");
             }
