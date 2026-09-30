@@ -186,6 +186,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "csc build failed" }
           Get-Item "DeepSeek Harness Toolkit.exe" | Select-Object Name,Length
 
+      - name: Compare the V3 and v2.x marker contracts (switchover gate 1)
+        shell: pwsh
+        # Why this is here: the gate existed but was only ever run by hand, and on Windows PowerShell 5.1 it
+        # silently died at its first case (a child's stderr became a terminating error) while still looking
+        # green - it was reporting 6 of 21 contracts aligned and nobody saw it. CI runs PowerShell 7, where
+        # that does not happen, so running it here is real protection. Needs the v2.x exe built just above.
+        run: pwsh -NoProfile -File v3/tests/compare_markers.ps1 -Repo . -Fixtures
+
       - name: Compile Toolkit GUI.exe (embedded logo, single file)
         shell: pwsh
         run: |
