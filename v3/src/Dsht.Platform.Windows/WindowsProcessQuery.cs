@@ -21,6 +21,19 @@ namespace Dsht.Platform.Windows
             _httpTimeoutMs = httpTimeoutMs;
         }
 
+        /// <summary>按名字精确查进程（tasklist，不区分大小写）。名字里有空格也可用 ✓</summary>
+        public bool AnyProcessNamed(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            try
+            {
+                string outp = WindowsShell.Capture("cmd.exe", "/c tasklist /fi \"imagename eq " + name + ".exe\" /nh /fo csv");
+                if (string.IsNullOrEmpty(outp)) return false;
+                return outp.IndexOf("\"" + name + ".exe\"", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            catch { return false; }
+        }
+
         public int PidListeningOn(int port)
         {
             return ParsePortPid(WindowsShell.Capture("cmd.exe", "/c netstat -ano -p tcp"), port);

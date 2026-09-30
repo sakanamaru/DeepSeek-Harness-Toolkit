@@ -24,6 +24,11 @@ namespace Dsht.Domain.Abstractions
         /// <summary>进程启动时间（本地时间）；取不到返回 null（对应 v2.x 的 haveStart=false）。</summary>
         System.DateTime? StartTime(int pid);
 
+        /// <summary>是否存在名为 <paramref name="name"/> 的进程（按名字精确匹配，不做模糊）。
+        /// 用途：判断某个**已知名字**的客户端是否在跑（例如官方桌面端进程 "DeepSeek Harness"）。
+        /// 语义保持中立：域层不知道也不关心调用者拿它判断什么。</summary>
+        bool AnyProcessNamed(string name);
+
         /// <summary>进程命令行原文（诊断报告用）；取不到返回空串。</summary>
         string CommandLine(int pid);
     }

@@ -27,6 +27,18 @@ namespace Dsht.Platform.Linux
             _httpTimeoutMs = httpTimeoutMs;
         }
 
+        /// <summary>按名字精确查进程（pgrep -x）。取不到就返回 false —— 不猜 ✓</summary>
+        public bool AnyProcessNamed(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            try
+            {
+                string outp = Capture("pgrep", "-x " + Q + name + Q);
+                return !string.IsNullOrEmpty(outp) && outp.Trim().Length > 0;
+            }
+            catch { return false; }
+        }
+
         public int PidListeningOn(int port)
         {
             return ParseSsOutput(Capture("ss", "-ltnp"), port);

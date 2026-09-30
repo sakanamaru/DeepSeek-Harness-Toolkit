@@ -1479,6 +1479,18 @@ namespace Dsht.Cli
             if (sr.State == ServiceState.Down)
             {
                 items.Add(new DocItem("Service", 2, "端口 " + WebPort + " 未监听（服务未运行；菜单按 2 启动）"));
+                // 官方桌面端（Electron）**不监听 3080**（2026-09-29 在真机上实测：它监听 19387）✓
+                // → 它开着时上面那条 ERROR 会误导用户，甚至让他"按 2 启动"再起一个 web 实例 ✗
+                // 这里**只在真的检测到那个进程时**才补一句说明 ✓
+                // ✗ 更正（2026-09-30）：我原先注释写"比对环境里没有它 → gate1 零影响"，**这是错的** ✓
+                //   实测：本机桌面端开着时 gate1 从 22/22 掉到 19/21（doctor 与 --report 各失败一次）✗
+                //   → 该行**已加进两个 doctor 用例的 ignore** ✓（环境相关 → 属于必须 ignore 的那类 ✓）
+                try
+                {
+                    if (reg.Get<IProcessQuery>().AnyProcessNamed("DeepSeek Harness"))
+                        items.Add(new DocItem("Service", 1, T("另检测到官方桌面端进程（DeepSeek Harness）：它不走 3080 端口，本项检测不到它——这是检测范围不同，不是故障", "an official desktop app process (DeepSeek Harness) is also running: it does not use port 3080, so this check cannot see it - a difference in scope, not a fault")));
+                }
+                catch { }
             }
             else
             {
