@@ -731,8 +731,7 @@ namespace Dsht.Gui.Avalonia.Shells
             else if (host.SubTab == 0) s.Children.Add(SessionListGrouped(host));   // 整体：子代理**折叠进父会话**（下拉框 ✓✓ 用户要求 ✓）
             else s.Children.Add(SessionList(host, host.SubTab));
             s.Children.Add(Explain());
-            if (!string.IsNullOrEmpty(host.ActionLog))
-                s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
+            // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）
             return s;
         }
 
@@ -1127,8 +1126,7 @@ namespace Dsht.Gui.Avalonia.Shells
                 for (int i = 0; i < d.WarnLines.Count; i++) list.Children.Add(T(d.WarnLines[i], 12, Palette.Warn));
                 s.Children.Add(Card(list, new Thickness(0), new Thickness(16, 14)));
             }
-            if (!string.IsNullOrEmpty(host.ActionLog))
-                s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
+            // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）
             return s;
         }
         /// <summary>备份页：清单（名称/类型/大小/时间）+ 立即备份 / 导出 / 恢复预览 / 应用恢复 / 删除（两次确认）。</summary>
@@ -1176,8 +1174,7 @@ namespace Dsht.Gui.Avalonia.Shells
                 s.Children.Add(Card(row, new Thickness(0), new Thickness(16, 14)));
             }
 
-            if (!string.IsNullOrEmpty(host.ActionLog))
-                s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
+            // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）
             s.Children.Add(Card(T("恢复是合并语义：只覆盖同名文件，不删除目标端独有的文件；「应用恢复」只允许写入隔离数据根（CLI 的准入闸门会拒绝其它情况并把原因显示在上面）。", 11.5, Palette.TextFaint), new Thickness(0), new Thickness(16, 12)));
             return s;
         }
@@ -1260,8 +1257,7 @@ namespace Dsht.Gui.Avalonia.Shells
                 row.Children.Add(edit);
                 s.Children.Add(Card(row, new Thickness(0), new Thickness(16, 12)));
             }
-            if (!string.IsNullOrEmpty(host.ActionLog))
-                s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
+            // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）
             return s;
         }
         /// <summary>看板图表：近 14 天新增会话（柱状）+ 缓存命中率分布（柱状）。
@@ -1407,9 +1403,8 @@ namespace Dsht.Gui.Avalonia.Shells
             if (host.SubTab == 1) { s.Children.Add(ChartsBody(host)); return s; }
             s.Children.Add(KpiStrip(host));
             s.Children.Add(ChartsBody(host));   // ✗ 原来只在 SubTab==1 → 第一页看不到 ✗（2026-09-30 用户反馈 ✓）
-            if (!string.IsNullOrEmpty(host.ActionLog)) s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
-            if (!string.IsNullOrEmpty(host.ActionLog))
-                s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
+            // 操作日志改为**右下角 toast** ✓✓
+            // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）
             return s;
         }
 
@@ -1628,8 +1623,7 @@ namespace Dsht.Gui.Avalonia.Shells
                     Line("• 官方 = @deepseek-ai/* 的组合包；第三方 = 你自己加的插件（例如 dsh-web-search-tavily）。")
                 }
             }, new Thickness(0), new Thickness(18, 16)));
-            if (!string.IsNullOrEmpty(host.ActionLog))
-                s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
+            // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）
             return s;
         }
 

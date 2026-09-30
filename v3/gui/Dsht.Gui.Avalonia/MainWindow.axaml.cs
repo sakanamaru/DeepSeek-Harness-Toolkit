@@ -779,7 +779,72 @@ namespace Dsht.Gui.Avalonia
             if (body == null) return;
             ApplyChrome();
             DetailHost = null;
-            body.Content = Shells.Shells.Build(_shell, this);
+            // 页面外面包一层 Grid ✓ 把 toast 作为**浮层**加在最后 ✓✓
+            // （用户要求：那种提示改成"窗口内右下角弹窗" ✓ 原来是页面流里的一张卡片 ✗）
+            Grid wrap = new Grid();
+            wrap.Children.Add(Shells.Shells.Build(_shell, this));
+            wrap.Children.Add(ToastLayer());
+            body.Content = wrap;
+            // 有新的操作日志 → 弹一次 ✓（去重：同一条不重复弹 ✓）
+            if (!string.IsNullOrEmpty(_actionLog) && _actionLog != _lastToasted)
+            {
+                _lastToasted = _actionLog;
+                ShowToast(_actionLog);
+            }
+        }
+
+        // —— 右下角弹窗（toast）✓✓ 用户要求："这个绿色框的提示改为在窗口内右下角弹窗提示吧" ——
+        private Border _toast;
+        private TextBlock _toastText;
+        private string _lastToasted = "";
+        private global::Avalonia.Threading.DispatcherTimer _toastTimer;
+
+        /// <summary>浮层容器：一个**右下角对齐**的 Border ✓ 初始隐藏 ✓ 不挡操作 ✓（只有它自己那块可点 ✓）。</summary>
+        private Control ToastLayer()
+        {
+            _toastText = new TextBlock { Text = "", FontSize = 12, TextWrapping = TextWrapping.Wrap, Foreground = Palette.Text };
+            StackPanel sp = new StackPanel { Spacing = 6 };
+            sp.Children.Add(_toastText);
+            sp.Children.Add(new TextBlock { Text = "点一下关闭", FontSize = 10.5, Foreground = Palette.TextFaint });
+            _toast = new Border
+            {
+                Child = sp,
+                MaxWidth = 460,
+                Background = Palette.CardBg,
+                BorderBrush = Palette.Warn,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(14, 11),
+                Margin = new Thickness(0, 0, 20, 20),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                IsVisible = false,
+                BoxShadow = new BoxShadows(new BoxShadow { Blur = 18, OffsetY = 4, Color = Color.FromArgb(60, 0, 0, 0) })
+            };
+            _toast.PointerPressed += delegate { HideToast(); };
+            return _toast;
+        }
+
+        /// <summary>弹一条 ✓（8 秒后自动消失 ✓ 也可以点掉 ✓）。</summary>
+        public void ShowToast(string text)
+        {
+            if (_toast == null || _toastText == null || string.IsNullOrEmpty(text)) return;
+            _toastText.Text = text;
+            _toast.IsVisible = true;
+            if (_toastTimer == null)
+            {
+                _toastTimer = new global::Avalonia.Threading.DispatcherTimer();
+                _toastTimer.Interval = TimeSpan.FromSeconds(8);
+                _toastTimer.Tick += delegate { HideToast(); };
+            }
+            _toastTimer.Stop();
+            _toastTimer.Start();
+        }
+
+        private void HideToast()
+        {
+            if (_toastTimer != null) _toastTimer.Stop();
+            if (_toast != null) _toast.IsVisible = false;
         }
 
         private bool _busy;
