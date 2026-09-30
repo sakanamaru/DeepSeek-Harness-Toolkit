@@ -290,7 +290,13 @@ namespace Dsht.Cli
             bool linked = false, patched = false;
             if (!string.IsNullOrEmpty(profileDir))
             {
-                try { linked = System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.Combine(profileDir, "node_modules"), "dsh-minato-bridge")); } catch { }
+                // C1 FIX (audit MAJOR): an npm package is a directory (pnpm makes a junction), and
+                // File.Exists is false for both - so `linked` was always false, BRIDGE_OK was
+                // unreachable, and a successful install printed a false failure.
+                // NOTE: the comment goes ABOVE the line, never inside it - a `//` inside a
+                // single-line `try { ... } catch { }` comments out the closing brace and breaks
+                // the whole file (this exact mistake cost an hour tonight).
+                try { linked = System.IO.Directory.Exists(System.IO.Path.Combine(System.IO.Path.Combine(profileDir, "node_modules"), "dsh-minato-bridge")); } catch { }
                 try
                 {
                     string patch = System.IO.Path.Combine(profileDir, "cordis.patch.yml");
@@ -2165,12 +2171,19 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             //   ✓ `BACKUP_LIST_IGNORED` 保留 ✓（仍告诉你有几项不是有效备份 ✓）
             //   ✓ **恢复时仍只认有效包** ✓（安全边界不动 ✓ 见 IsValidBackupDirFn ✓✓）
             all.Reverse();   // 最新在前 ✓
-            // ✓ 用户要求（2026-10-01）：「备份路径在备份页面里设置并且显示吧」✓✓
-            //   → **先把当前备份根报出去** ✓ 页面据此显示 ✓（标记行 `BACKUP_DIR <路径>` ✓）
-            Console.WriteLine("BACKUP_DIR " + src.BackupsRoot);
-            Console.WriteLine("BACKUP_LIST_OK " + all.Count);
+            // ★★★ **A1 修复（CLI 审计 CRITICAL —— gate1 变红）** ✓✓
+            //   ✗ `backup-list` 是 **v2.x 的冻结契约** ✓ 而 `compare_markers.ps1` **逐字比对**它 ✓
+            //     （只忽略 `^BACKUP_LIST_IGNORED ` ✓）→ 我上一轮加的三样**全都 diff** ✗✗：
+            //       ① 多出来的 `BACKUP_DIR` 行 ✗
+            //       ② 计数从「有效包」改成「全部条目」✗
+            //       ③ 无效条目也打印了路径行 + `BACKUP_ITEM_INVALID` ✗
+            //   ✓ 现在：**计数与路径行都只算有效包** ✓✓（与 v2.x 一致 ✓）
+            //     · 备份位置改由**独立的 `backup-dir` 命令**报告 ✓（GUI 调它 ✓ 不再动这个契约 ✓）
+            //     · `BACKUP_ITEM_INVALID` 只在**真有无效包**时出现 ✓ → 比对夹具（3 个有效包 ✓）不受影响 ✓✓
             int notValid = 0;
             for (int i = 0; i < all.Count; i++) { if (!BackupPackage.IsValidPackage(all[i].Snapshot)) notValid++; }
+            int validCount = all.Count - notValid;
+            Console.WriteLine("BACKUP_LIST_OK " + validCount);
             // 备份根里"不是有效备份"的条目 → **仅在存在时**说明 ✓✓（用户往 backup/ 放了自己的东西、
             // 或留下名字像备份但内容不是的目录时 ✓ 静默忽略会让他以为"我的备份还在" ✗）
             // 仅当 >0 时打印 ✓ → 比对夹具（受控 3 个备份 ✓）不受影响 ✓ 契约安全 ✓
@@ -2178,6 +2191,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 Console.WriteLine("BACKUP_LIST_IGNORED " + notValid + T(" 项在备份根里但不是有效备份（**仍会列出** ✓ 但不能用于恢复 ✓）", " entries are not valid packages (listed, but not restorable)"));
             foreach (BackupEntry e in all)
             {
+                if (!BackupPackage.IsValidPackage(e.Snapshot)) continue;   // A1: v2.x listed valid packages only
                 Console.WriteLine(e.Path);
                 // ✓ 无效包**明确标注** ✓（新标记 ✓ 不认识它的解析器会忽略它 ✓ 不影响契约 ✓）
                 if (!BackupPackage.IsValidPackage(e.Snapshot)) Console.WriteLine("BACKUP_ITEM_INVALID " + e.Name);
