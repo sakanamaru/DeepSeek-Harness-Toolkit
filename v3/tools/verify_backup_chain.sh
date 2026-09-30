@@ -35,7 +35,7 @@ echo "== 备份可信链验证 =="
 echo "  CLI: $($CLI version 2>/dev/null || echo '(version 失败)')"
 
 # ---- 1 备份 + 完成标记 ----
-O=$(DSH_HOME="$A" $T $CLI backup 2>&1 | tr -d '\r'); P=$(echo "$O" | awk '/BACKUP_OK/{print $2}')
+O=$(DSH_HOME="$A" $T $CLI backup --to "$BKROOT" 2>&1 | tr -d '\r'); P=$(echo "$O" | awk '/BACKUP_OK/{print $2}')
 [ -n "$P" ] && ok "备份成功（BACKUP_OK ✓）" || { bad "备份失败"; echo "$O" | sed 's/^/      /'; }
 [ -f "$P.manifest" ] && ok "完成标记存在 ✓" || bad "完成标记缺失 ✗"
 grep -q 'sha256=' "$P.manifest" 2>/dev/null && ok "标记含内容哈希 ✓" || bad "标记缺哈希 ✗"
@@ -79,7 +79,7 @@ grep -qE '^RESTORE_PRE_BACKUP ' <<<"$(DSH_HOME="$TG" $T $CLI restore --path "$P"
 if [ "$(id -u)" != "0" ]; then
   U="$WORK/unread"; mkdir -p "$U/storages" "$U/secret"
   printf 'R\n' > "$U/storages/r.txt"; printf 'S\n' > "$U/secret/s.txt"; chmod 000 "$U/secret"
-  UO=$(DSH_HOME="$U" $T $CLI backup 2>&1 | tr -d '\r')
+  UO=$(DSH_HOME="$U" $T $CLI backup --to "$BKROOT" 2>&1 | tr -d '\r')
   echo "$UO" | grep -q 'BACKUP_INCOMPLETE' && ok "不可读目录被如实报告（BACKUP_INCOMPLETE ✓）" || bad "静默少备份 ✗✗"
   echo "$UO" | grep -q 'BACKUP_OK' && ok "同时给出包路径（部分成功 ✓）" || bad "未给路径 ✗"
   chmod 755 "$U/secret" 2>/dev/null
@@ -91,7 +91,7 @@ fi
 W1="$WORK/w1"; W2="$WORK/w2"; mkdir -p "$W1" "$W2"
 printf 'W1\n' > "$W1/one.txt"; printf 'W2\n' > "$W2/two.txt"
 DSH_HOME="$A" $T $CLI config-set ws "$W1;$W2" >/dev/null 2>&1
-MO=$(DSH_HOME="$A" $T $CLI backup 2>&1 | tr -d '\r'); MP=$(echo "$MO" | awk '/BACKUP_OK/{print $2}')
+MO=$(DSH_HOME="$A" $T $CLI backup --to "$BKROOT" 2>&1 | tr -d '\r'); MP=$(echo "$MO" | awk '/BACKUP_OK/{print $2}')
 N=$(find "$MP/_workspace" -name '.dshws' 2>/dev/null | wc -l)
 [ "$N" -eq 2 ] && ok "多工作区：两个 .dshws 标记 ✓" || bad "多工作区标记数 $N ≠ 2 ✗"
 FLAT=$(find "$MP/_workspace" -maxdepth 1 -type f 2>/dev/null | wc -l)
