@@ -718,7 +718,33 @@ namespace Dsht.Gui.Avalonia
         }
 
         private bool _busy;
-        public void Refresh() { if (_busy) return; _busy = true; _ = RefreshGuardedAsync(); }   // 重入保护：刷新期间再点不叠加   // 异步：CLI 调用不占 UI 线程
+        public void Refresh() { if (_busy) return; _busy = true; _ = RefreshGuardedAsync(); }   // 重入保护：刷新期间再点不叠加
+
+        /// <summary>GUI 启动时按 `auto_start` **自动起一次** dsh ✓（用户要求："GUI/CLI 启动时自动起" ✓✓）
+        /// 约束（重要 ✓）：① **每次 GUI 会话只试一次** ✗（不能每次刷新都起 ✓）
+        ///               ② **只在服务没在跑时** ✓（STATUS_DOWN 才起 ✓ 不重复启动 ✓）
+        ///               ③ `auto_start=off` 时**什么都不做** ✓✓</summary>
+        private bool _autoStartTried = false;
+        private async System.Threading.Tasks.Task AutoStartOnceAsync(string cli)
+        {
+            if (_autoStartTried) return;
+            _autoStartTried = true;
+            try
+            {
+                string cfg = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "config-get"); });
+                bool wantAuto = cfg != null && cfg.IndexOf("auto_start on", StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!wantAuto) return;
+                string st = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "status"); });
+                bool down = st != null && st.IndexOf("STATUS_DOWN", StringComparison.Ordinal) >= 0;
+                if (!down) return;   // 已经在跑 → 不动它 ✓
+                _actionLog = "auto_start=on → 正在自动启动 dsh…";
+                BuildShell();
+                string outp = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "start --yes"); });
+                _actionLog = "auto_start 自动启动结果：" + Environment.NewLine + (outp == null ? "" : outp.Trim());
+                Refresh();
+            }
+            catch { }
+        }   // 异步：CLI 调用不占 UI 线程
 
         /// <summary>保证 _busy 一定复位：刷新中途抛异常也不许把界面锁死成一次性。</summary>
         private async System.Threading.Tasks.Task RefreshGuardedAsync()
@@ -730,6 +756,7 @@ namespace Dsht.Gui.Avalonia
         private async System.Threading.Tasks.Task RefreshAsync()
         {
             string cli = CliPath();
+            if (cli != null && !_autoStartTried) _ = AutoStartOnceAsync(cli);   // 启动时自动起一次 ✓（内部有"只一次 + 只在没跑时"约束 ✓）
             if (cli == null)
             {
                 _data = null;
@@ -743,11 +770,15 @@ namespace Dsht.Gui.Avalonia
                 _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "status --detail"); });
                 _status = StatusMarkers.Parse(_rawOutput);
                 // 概览页顺带把这几样也取回来（都很快，且都是只读）
-                string pfText = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "profiles"); });
-                _profiles = ProfilesMarkers.Parse(pfText);
-                string seText = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "sessions"); });
-                _data = SessionsMarkers.Parse(seText);
-                _backups = SummaryMarkers.ParseBackups(await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "backup-list"); }));   // ✗ 原来带 --detail → 每份备份都要算目录大小（重 I/O ✗）→ 概览每次刷新都卡几秒 ✓✓ 这里只要 Count/Latest ✓ 不需要大小 ✓（方案 A ✓）
+                // ✗ 原来是**串行** await 三次 → 每次切页都等 3×100~200ms ≈ 0.5~1 秒 ✗（用户反馈"切换卡片响应不及时" ✓）
+                // 现在**并行** ✓✓ —— 三者互相独立（profiles / sessions / backup-list ✓）→ 总耗时 = 最慢那个 ✓
+                System.Threading.Tasks.Task<string> tPf = System.Threading.Tasks.Task.Run(delegate { return Run(cli, "profiles"); });
+                System.Threading.Tasks.Task<string> tSe = System.Threading.Tasks.Task.Run(delegate { return Run(cli, "sessions"); });
+                System.Threading.Tasks.Task<string> tBk = System.Threading.Tasks.Task.Run(delegate { return Run(cli, "backup-list"); });
+                await System.Threading.Tasks.Task.WhenAll(tPf, tSe, tBk);
+                _profiles = ProfilesMarkers.Parse(tPf.Result);
+                _data = SessionsMarkers.Parse(tSe.Result);
+                _backups = SummaryMarkers.ParseBackups(tBk.Result);   // ✗ 原来带 --detail → 每份备份都要算目录大小（重 I/O ✗）→ 概览每次刷新都卡几秒 ✓✓ 这里只要 Count/Latest ✓ 不需要大小 ✓（方案 A ✓）
                 if (_doctor == null) _doctor = new DoctorSummary();
                 BuildShell();
                 return;
