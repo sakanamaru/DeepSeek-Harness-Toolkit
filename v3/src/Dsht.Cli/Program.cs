@@ -70,6 +70,15 @@ namespace Dsht.Cli
         {
             ServiceReport r = reg.Get<IServiceTarget>().Probe();
             Console.WriteLine(r.StatusMarker);
+            // 官方桌面端（Electron）**不监听 3080** ✓（2026-09-30 真机实测：监听 19387 ✓）
+            // → 它开着时上面那行是 STATUS_DOWN ✓ 准确但会让人以为"dsh 没在跑" ✗
+            // 这里**只在真检测到那个进程时**才补一行 ✓ → 界面据此能如实显示"桌面端在跑" ✓✓
+            try
+            {
+                if (reg.Get<IProcessQuery>().AnyProcessNamed("DeepSeek Harness"))
+                    Console.WriteLine("STATUS_DESKTOP DeepSeek Harness");
+            }
+            catch { }
             if (!detail) return 0;
             Console.WriteLine("STATUS_PID " + (r.Pid > 0 ? r.Pid.ToString() : "0"));
             // Honest diagnostic: a running service with no PID means the process probe could not read it
