@@ -246,8 +246,8 @@ namespace Dsht.Gui.Avalonia
                     Refresh();
                     return;
                 }
-                _actionLog = "官方桌面端请在官网下载安装包（那是官方自己的安装包，本工具不重打包、也不改它）：\nhttps://download.deepseek.com/\n装好后回到这里，把方式切到 desktop 点「一键启动」即可。";
-                OpenUrl("https://download.deepseek.com/");
+                _actionLog = "官方桌面端请在**官方安装页**下载（那是官方自己的安装包，本工具不重打包、也不改它）：\nhttps://www.deepseek.com/harness/\n装好后回到这里，把方式切到 desktop 点「一键启动」即可。";
+                OpenUrl("https://www.deepseek.com/harness/");
                 Refresh();
                 return;
             }
@@ -294,6 +294,12 @@ namespace Dsht.Gui.Avalonia
 
         /// <summary>只停 **web**（3080 ✓ 不动桌面端 ✓）。两个都开着时用 ✓✓</summary>
         public void StopWebOnly() { RunCliAction("stop --yes", "停止 web"); }
+
+        /// <summary>检查更新 ✓（**只读** ✓ 调 CLI 的 `update-info` ✓ 结果进右下角 toast ✓✓）。</summary>
+        public void CheckUpdate() { RunCliAction("update-info", "检查更新"); }
+
+        /// <summary>执行更新 ✓（CLI 的 `update` ✓ **先备份再更新** ✓ 有回滚点 ✓；结果进 toast ✓）。</summary>
+        public void RunUpdate() { RunCliAction("update --yes", "更新 dsh"); }
 
         /// <summary>只停**官方桌面端**（Electron 多进程 → CLI 用 StopTree 杀整棵 ✓ 不动 web ✓）。</summary>
         public void StopDesktopOnly() { RunCliAction("stop --target desktop --yes", "停止桌面端"); }
