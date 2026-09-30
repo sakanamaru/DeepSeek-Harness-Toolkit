@@ -47,7 +47,7 @@ namespace Dsht.Gui.Avalonia
         {
             new string[] { "概览", "原始输出" },
             new string[] { "指标", "图表" },
-            new string[] { "会话列表", "统计" },
+            new string[] { "整体", "父会话", "子代理", "统计" },   // 用户要求的三视图 + 原有统计 ✓
             new string[] { "原始输出" },
             new string[] { "原始输出" },
             new string[] { "原始输出" },
@@ -578,6 +578,10 @@ namespace Dsht.Gui.Avalonia
         }
         public void SetProfileSearch(string text) { ProfileSearch = text == null ? "" : text; BuildShell(); }
         public List<SessionRowVm> Rows { get { return _rows; } }
+        /// <summary>当前视图要显示的列表（过滤后 ✓；默认 = 全部 ✓）。</summary>
+        public List<SessionRowVm> ListSource { get { return _listSource == null ? _rows : _listSource; } }
+        private List<SessionRowVm> _listSource;
+        public void SetListSource(List<SessionRowVm> src) { _listSource = src; }
         public int SortMode { get; set; }
         public int Filter { get { return _filter; } }
         public int StyleKind { get { return Palette.StyleKind; } }
