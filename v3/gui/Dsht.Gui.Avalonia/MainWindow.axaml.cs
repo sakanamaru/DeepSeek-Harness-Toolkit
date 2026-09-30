@@ -307,6 +307,7 @@ namespace Dsht.Gui.Avalonia
             // ✗ 原来等待期间**什么都不显示** → 备份 818MB 要几秒，用户感觉"卡住" ✓
             // 现在**先显示"进行中…"** ✓（与体检页同一办法 ✓）→ 用户知道它在干活 ✓✓
             _actionLog = label + "进行中…（" + args + "）";
+            InvalidateCliCache();   // ✓✓ **写操作 → 立刻清只读缓存** ✓（点完"停止"再刷新必须是新状态 ✓ 不能显示 4 秒前的旧值 ✗）
             Refresh();
             string outp = cli == null ? "未找到工具箱 CLI。" : await System.Threading.Tasks.Task.Run(delegate { return Run(cli, args); });
             _actionLog = label + "结果：" + Environment.NewLine + outp.Trim();
@@ -1196,7 +1197,7 @@ namespace Dsht.Gui.Avalonia
 
             if (IsOverviewLike)
             {
-                _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "status --detail"); });
+                _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return RunCached(cli, "status --detail"); });
                 _status = StatusMarkers.Parse(_rawOutput);
                 // 概览页顺带把这几样也取回来（都很快，且都是只读）
                 // ✗ 原来是**串行** await 三次 → 每次切页都等 3×100~200ms ≈ 0.5~1 秒 ✗（用户反馈"切换卡片响应不及时" ✓）
@@ -1207,15 +1208,15 @@ namespace Dsht.Gui.Avalonia
                 if (!UiParallel)
                 {
                     // 排障开关 off → **回到老行为（串行）** ✓ 真的接线 ✓ 不做摆设 ✗
-                    _profiles = ProfilesMarkers.Parse(await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "profiles"); }));
-                    _data = SessionsMarkers.Parse(await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "sessions"); }));
-                    _backups = SummaryMarkers.ParseBackups(await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "backup-list"); }));
+                    _profiles = ProfilesMarkers.Parse(await System.Threading.Tasks.Task.Run(delegate { return RunCached(cli, "profiles"); }));
+                    _data = SessionsMarkers.Parse(await System.Threading.Tasks.Task.Run(delegate { return RunCached(cli, "sessions"); }));
+                    _backups = SummaryMarkers.ParseBackups(await System.Threading.Tasks.Task.Run(delegate { return RunCached(cli, "backup-list"); }));
                 }
                 else
                 {
-                System.Threading.Tasks.Task<string> tPf = System.Threading.Tasks.Task.Run(delegate { return Run(cli, "profiles"); });
-                System.Threading.Tasks.Task<string> tSe = System.Threading.Tasks.Task.Run(delegate { return Run(cli, "sessions"); });
-                System.Threading.Tasks.Task<string> tBk = System.Threading.Tasks.Task.Run(delegate { return Run(cli, "backup-list"); });
+                System.Threading.Tasks.Task<string> tPf = System.Threading.Tasks.Task.Run(delegate { return RunCached(cli, "profiles"); });
+                System.Threading.Tasks.Task<string> tSe = System.Threading.Tasks.Task.Run(delegate { return RunCached(cli, "sessions"); });
+                System.Threading.Tasks.Task<string> tBk = System.Threading.Tasks.Task.Run(delegate { return RunCached(cli, "backup-list"); });
                 await System.Threading.Tasks.Task.WhenAll(tPf, tSe, tBk);
                 _profiles = ProfilesMarkers.Parse(tPf.Result);
                 _data = SessionsMarkers.Parse(tSe.Result);
@@ -1227,7 +1228,7 @@ namespace Dsht.Gui.Avalonia
             }
             if (_mainSection == 3)
             {
-                _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "profiles"); });
+                _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return RunCached(cli, "profiles"); });
                 _profiles = ProfilesMarkers.Parse(_rawOutput);
                 for (int i = 0; i < _rawOutput.Length && _profilesRoot.Length == 0; i++) { }
                 _profilesRoot = ProfilesRootFrom(cli);
@@ -1240,7 +1241,7 @@ namespace Dsht.Gui.Avalonia
                 // ★★★ **重大修正（2026-10-01）** ✗✗ —— 这是我上一轮引入的 bug ✓
                 //   ✗ 原来写的是：`sectionCmd = await Task.Run(() => Run(cli, string.Join(" ", NavCli[…])));` ✗✗
                 //     → **它先把命令跑了一遍拿到「输出」** ✗ → `sectionCmd` 成了**多行输出文本** ✗
-                //     → 下一行再 `Run(cli, sectionCmd)` → **把多行文本当命令行** ✗ → **必然失败** ✗✗
+                //     → 下一行再 `RunCached(cli, sectionCmd)` → **把多行文本当命令行** ✗ → **必然失败** ✗✗
                 //     → `_rawOutput` 变成错误信息 ✓ → **凡是解析它的页面都拿不到数据** ✗
                 //   ✓ **症状**（用户报的"备份还是 0 份"✓✓）：
                 //     · 备份页 `BackupItems.Parse(_rawOutput)` → **找不到 `BACKUP_ITEM` 行 → 0 份** ✗✗
@@ -1250,13 +1251,13 @@ namespace Dsht.Gui.Avalonia
                 string sectionCmd = _mainSection == 9
                     ? LogArgs()
                     : string.Join(" ", (_mainSection >= 0 && _mainSection < NavCli.Length && NavCli[_mainSection] != null ? NavCli[_mainSection] : new string[0]));
-                _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, sectionCmd); });
+                _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return RunCached(cli, sectionCmd); });
                 if (_mainSection == 5) _doctor = SummaryMarkers.ParseDoctor(_rawOutput);   // 体检页吃解析结果，不是只吃原文
                 BuildShell();
                 return;
             }
 
-            string text = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "sessions"); });
+            string text = await System.Threading.Tasks.Task.Run(delegate { return RunCached(cli, "sessions"); });
             _data = SessionsMarkers.Parse(text);
             _rawOutput = text;
             if (!_data.Ok)
@@ -1279,7 +1280,7 @@ namespace Dsht.Gui.Avalonia
         {
             try
             {
-                string outp = Run(cli, "sessions");
+                string outp = RunCached(cli, "sessions");
                 string[] lines = outp.Replace("\r\n", "\n").Split('\n');
                 for (int i = 0; i < lines.Length; i++)
                 {
@@ -1349,9 +1350,9 @@ namespace Dsht.Gui.Avalonia
         //   而 `config-get` 的结果**极少变化** ✗ → 每次刷新都重跑纯属浪费 ✓
         //   ✓ 现在：**缓存 60 秒** ✓✓ + **任何 config-set 之后立刻失效** ✓✓
         //     （设置页改了配置 → `SetConfig` 清缓存 → 下一次刷新读到新值 ✓ 不会看不到变化 ✗）
-        private string _cfgCache;
-        private System.DateTime _cfgCacheAt = System.DateTime.MinValue;
-        private string CfgCached(string cli)
+        private static string _cfgCache;
+        private static System.DateTime _cfgCacheAt = System.DateTime.MinValue;
+        private static string CfgCached(string cli)
         {
             if (_cfgCache != null && (System.DateTime.UtcNow - _cfgCacheAt).TotalSeconds < 5.0) return _cfgCache;   // ✓ 60 秒太长 → 用户报"设置读不到配置项" ✗ 改 5 秒 ✓✓
             _cfgCache = Run(cli, "config-get");
@@ -1359,7 +1360,56 @@ namespace Dsht.Gui.Avalonia
             return _cfgCache;
         }
         /// <summary>配置写入后**立刻让缓存失效** ✓✓（否则设置页改了看不到变化 ✗）。</summary>
-        private void InvalidateCfgCache() { _cfgCache = null; _cfgCacheAt = System.DateTime.MinValue; }
+        private static void InvalidateCfgCache() { _cfgCache = null; _cfgCacheAt = System.DateTime.MinValue; }
+        // ================================================================ CLI 结果短缓存（性能）
+
+        /// <summary>只读 CLI 命令的**短缓存** ✓✓
+        ///
+        /// **用户反馈（2026-09-30）**：「按钮交互还是有延迟，并且不低」✓✓
+        ///   根因：**每次刷新都要启动 CLI 子进程** ✗ 而 CLI 是 **66 MB 自包含 exe** ✓
+        ///     → 一次调用就是几百毫秒的进程启动 ✓ 概览页一次刷新要 4 个 ✓ → **1~2 秒** ✗✗
+        ///
+        /// **纪律（重要 ✓）**：
+        ///   · **只缓存只读命令** ✓（`status --detail` / `profiles` / `sessions` / `backup-list` / `config-get` ✓）
+        ///   · **写操作绝不缓存** ✗（`backup` / `start` / `stop` / `config-set` / `wipe` … 一律直接跑 ✓✓）
+        ///   · TTL 很短 ✓（默认 4 秒 ✓）→ 用户看到的仍是"刚刚"的状态 ✓ 不会显示过期数据 ✓
+        ///   · **写操作会清空整个缓存** ✓✓（点完"停止"再刷新，看到的必须是新状态 ✓）
+        ///
+        /// 为什么这样是**诚实**的：这些命令读的都是**磁盘上的持久状态** ✓
+        ///   4 秒内的两次读取结果**本来就一样** ✓ → 复用**不是**在猜 ✓ 是省掉一次必然相同的进程启动 ✓✓
+        ///   （`status` 里的"运行中"也一样：它查的是进程是否存在 ✓ 4 秒内不会变 ✓）</summary>
+        private static readonly System.Collections.Generic.Dictionary<string, string> _cliCache =
+            new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
+        private static readonly System.Collections.Generic.Dictionary<string, DateTime> _cliCacheAt =
+            new System.Collections.Generic.Dictionary<string, DateTime>(StringComparer.Ordinal);
+        private const double CliCacheTtlSec = 4.0;
+
+        /// <summary>跑一条**只读**命令，带短缓存 ✓✓。写操作请直接用 `Run` ✗ 不要走这里 ✓。</summary>
+        private static string RunCached(string cli, string args)
+        {
+            if (string.IsNullOrEmpty(cli) || string.IsNullOrEmpty(args)) return Run(cli, args);
+            DateTime at;
+            string hit;
+            if (_cliCache.TryGetValue(args, out hit) && _cliCacheAt.TryGetValue(args, out at)
+                && (System.DateTime.UtcNow - at).TotalSeconds < CliCacheTtlSec)
+            {
+                return hit;
+            }
+            string outp = Run(cli, args);
+            _cliCache[args] = outp;
+            _cliCacheAt[args] = System.DateTime.UtcNow;
+            return outp;
+        }
+
+        /// <summary>清空只读缓存 ✓✓。**任何写操作之后都要调它** ✓
+        ///   （否则点完"停止"再刷新，4 秒内还会看到"运行中" ✗✗ —— 那就是**撒谎** ✓）</summary>
+        private static void InvalidateCliCache()
+        {
+            try { _cliCache.Clear(); _cliCacheAt.Clear(); } catch { }
+            InvalidateCfgCache();   // ✓ config 缓存一起清 ✓（写操作可能改了配置 ✓）
+        }
+
+
         private static string Run(string cli, string args)
         {
             try
