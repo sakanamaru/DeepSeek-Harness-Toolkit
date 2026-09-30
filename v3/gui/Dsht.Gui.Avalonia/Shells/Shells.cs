@@ -1123,6 +1123,14 @@ namespace Dsht.Gui.Avalonia.Shells
                 s.Children.Add(Card(T("没有读到配置项（CLI 未返回 CONFIG 行）。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));
                 return s;
             }
+            int roCount = 0; int swCount = 0;
+            for (int ci = 0; ci < items.Count; ci++) { if (items[ci].ReadOnly) roCount++; else if (items[ci].IsSwitch) swCount++; }
+            StackPanel sum = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            sum.Children.Add(Chip(items.Count + " 项", Palette.Accent, Palette.AccentSoft));
+            sum.Children.Add(Chip("可改 " + (items.Count - roCount) + "", Palette.Good, Palette.GoodSoft));
+            sum.Children.Add(Chip("开关 " + swCount + "", Palette.TextDim, Palette.CardHover));
+            sum.Children.Add(Chip("只读 " + roCount + "", Palette.TextFaint, Palette.CardHover));
+            s.Children.Add(Card(sum, new Thickness(0), new Thickness(14, 10)));
             s.Children.Add(Card(T("配置写入会立即生效并落盘（CLI 的 config-set）；键名与 v2.x 完全一致，可用文本编辑器对照。", 11.5, Palette.TextFaint), new Thickness(0), new Thickness(16, 12)));
             for (int i = 0; i < items.Count; i++)
             {
@@ -1145,14 +1153,10 @@ namespace Dsht.Gui.Avalonia.Shells
                     {
                         string val = opts[k];
                         bool active = c.Value == val;
-                        Button ob = new Button
-                        {
-                            Content = val,
-                            FontSize = 11.5,
-                            Background = active ? Palette.AccentSoft : Brushes.Transparent,
-                            Foreground = active ? Palette.Accent : Palette.TextDim
-                        };
-                        ob.Click += delegate { host.SetConfig(c.Key, val); };
+                        // 统一到工厂 ✓（原来裸 Button ✗）—— 当前值用 accent 实心 ✓ 另一个用幽灵 ✓
+                        Button ob = active
+                            ? PrimaryButton(val, delegate { host.SetConfig(c.Key, val); })
+                            : GhostButton(T(val, 11.5, Palette.TextDim), delegate { host.SetConfig(c.Key, val); }, true);
                         edit.Children.Add(ob);
                     }
                 }
@@ -1160,8 +1164,7 @@ namespace Dsht.Gui.Avalonia.Shells
                 {
                     TextBox box = new TextBox { Text = c.Value, Width = 260, FontSize = 12 };
                     edit.Children.Add(box);
-                    Button save = new Button { Content = "保存", FontSize = 11.5 };
-                    save.Click += delegate { host.SetConfig(c.Key, box.Text == null ? "" : box.Text.Trim()); };
+                    Button save = PrimaryButton("保存", delegate { host.SetConfig(c.Key, box.Text == null ? "" : box.Text.Trim()); });
                     edit.Children.Add(save);
                     if (c.Key == "ws") edit.Children.Add(T("留空=自动探测；填了必须存在", 11, Palette.TextFaint));
                 }
