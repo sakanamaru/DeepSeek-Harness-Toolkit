@@ -1512,7 +1512,13 @@ namespace Dsht.Cli
 
             if (sr.State == ServiceState.Down)
             {
-                items.Add(new DocItem("Service", 2, "端口 " + WebPort + " 未监听（服务未运行；菜单按 2 启动）"));
+                // 桌面端在跑时**跳过 3080 那条** ✓（用户要求："体检里检测到 desktop 就跳过 3080 端口监测" ✓✓）
+                // 理由：桌面端**不监听 3080**（实测走 19387 ✓）→ 那条 ERROR 说的是"web 服务没起" ✓
+                //       但用户在用桌面端时它**必然**是 ERROR ✓ 会误导 ✗
+                bool desktopRunning = false;
+                try { desktopRunning = reg.Get<IProcessQuery>().AnyProcessNamed("DeepSeek Harness"); } catch { }
+                if (!desktopRunning)
+                    items.Add(new DocItem("Service", 2, "端口 " + WebPort + " 未监听（服务未运行；菜单按 2 启动）"));
                 // 官方桌面端（Electron）**不监听 3080**（2026-09-29 在真机上实测：它监听 19387）✓
                 // → 它开着时上面那条 ERROR 会误导用户，甚至让他"按 2 启动"再起一个 web 实例 ✗
                 // 这里**只在真的检测到那个进程时**才补一句说明 ✓
