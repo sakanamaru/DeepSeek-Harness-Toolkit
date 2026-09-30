@@ -417,7 +417,10 @@ jobs:
           & $exe version
           if ($LASTEXITCODE -ne 0) { throw "version failed" }
           & $exe about
-          $p = (& $exe backup 2>&1 | Select-String "BACKUP_OK" | Select-Object -First 1)
+          # 第一次备份必须显式给目录（D4 契约 ✓）→ 用隔离根里的一个目录 ✓
+          $bk = Join-Path $iso "backups"
+          New-Item -ItemType Directory -Path $bk -Force | Out-Null
+          $p = (& $exe backup --to $bk 2>&1 | Select-String "BACKUP_OK" | Select-Object -First 1)
           if (-not $p) { throw "backup did not report BACKUP_OK" }
           $v = (& $exe backup-list --verify 2>&1 | Select-String "complete" | Select-Object -First 1)
           if (-not $v) { throw "verify did not report a complete package" }

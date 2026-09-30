@@ -24,7 +24,8 @@ bad(){ fail=$((fail+1)); echo "  [FAIL] $1"; }
 
 WORK=$(mktemp -d /tmp/vfp-XXXXXX)
 BIN="$WORK/bin"; mkdir -p "$BIN"; cp "$CLI" "$BIN/dsh-minato"; chmod +x "$BIN/dsh-minato"; CLI="$BIN/dsh-minato"
-BKROOT="$BIN/backup"   # 第一次备份必须显式给目录（D4 契约）→ 隔离备份根 ✓
+# ★ 备份根放在 exe 目录**之外** ✓（否则会被 Linux 的一次性 XDG 迁移搬走 ✗ 见 vbc 的说明 ✓）
+BKROOT="$WORK/bk"
 cleanup(){ chmod -R u+rwX "$WORK" 2>/dev/null; rm -rf "$WORK" "$TG1" "$TG2" 2>/dev/null; }
 TG1="$HOME/vfp-tg1-$$"; TG2="$HOME/vfp-tg2-$$"
 trap cleanup EXIT

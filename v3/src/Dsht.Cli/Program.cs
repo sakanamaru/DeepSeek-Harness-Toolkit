@@ -2271,6 +2271,8 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             try
             {
                 if (string.IsNullOrEmpty(sel)) { Console.WriteLine("BACKUP_DIR_FAIL " + T("取不到状态目录，无法保存设置 ✓", "cannot resolve the state dir")); return 0; }
+                // ★ 同一处修复 ✓：**全新安装上 StateDir 可能还不存在** ✗ → 先建目录再写 ✓（见 `--to` 的说明 ✓）
+                try { string sp2 = System.IO.Path.GetDirectoryName(sel); if (!string.IsNullOrEmpty(sp2)) System.IO.Directory.CreateDirectory(sp2); } catch { }
                 System.IO.File.WriteAllText(sel, full, new System.Text.UTF8Encoding(false));
             }
             catch (Exception ex) { Console.WriteLine("BACKUP_DIR_FAIL " + T("无法保存设置：" + ex.Message, "cannot save the setting: " + ex.Message)); return 0; }
@@ -2777,7 +2779,21 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     // tool announced a destination and then backed up somewhere else.
                     // ✓ **记住这个选择** ✓✓（用户要求"第一次弹窗选择" ✓ 但**不该每次都问** ✗）
                     //   → 写进 `<StateDir>/.backup-dir` ✓ 之后所有命令都用它 ✓✓
-                    try { System.IO.File.WriteAllText(System.IO.Path.Combine(reg.Get<IPaths>().StateDir, ".backup-dir"), full, new System.Text.UTF8Encoding(false)); }
+                    // ★★★ **真机 CI 修复（2026-10-01）—— 写设置文件前必须先建目录** ✓✓
+                    //   ✗ 原来直接 `WriteAllText("<StateDir>/.backup-dir", …)` ✗
+                    //     → **全新安装上 StateDir 还不存在** ✗（它由日志/备份首次写入时才建 ✓）
+                    //     → `Could not find a part of the path …` ✗ → **位置记不住** ✗✗
+                    //     → 后续 `backup-list` / `--verify` **回落到默认根** ✗ → 找不到刚建的包 ✓
+                    //   · 真机复现（Ubuntu）：干净 XDG 下第一次 `backup --to <dir>`
+                    //     → `BACKUP_WARN 记不住这个位置` ✓ → 4-5 条连锁失败 ✓
+                    //     第二次跑就好 ✓ —— 因为第一次的日志**顺手把那个目录建出来了** ✗✗
+                    //   ✓ 现在：**先 `CreateDirectory` 再写** ✓✓（真用户也受益 ✓ 不只是测试 ✓）
+                    try
+                    {
+                        string selDir = System.IO.Path.Combine(reg.Get<IPaths>().StateDir, ".backup-dir");
+                        try { string parent = System.IO.Path.GetDirectoryName(selDir); if (!string.IsNullOrEmpty(parent)) System.IO.Directory.CreateDirectory(parent); } catch { }
+                        System.IO.File.WriteAllText(selDir, full, new System.Text.UTF8Encoding(false));
+                    }
                     catch (Exception wex) { Console.WriteLine("BACKUP_WARN " + T("记不住这个位置（设置文件写不进去 ✓）：" + wex.Message, "could not remember the location: " + wex.Message)); }
                     string effective = reg.Get<IBackupSource>().BackupsRoot;
                     if (!string.Equals((effective ?? "").TrimEnd('\\', '/'), full.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
