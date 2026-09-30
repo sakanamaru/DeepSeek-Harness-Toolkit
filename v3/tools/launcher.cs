@@ -73,30 +73,45 @@ internal static class Launcher
         {
             if (!File.Exists(manifest)) return null;   // 无清单 → 放行 ✓（源码/单独复制属正常 ✓ 与 CLI 一致 ✓）
             string[] lines = File.ReadAllLines(manifest);
-            string[] names = new string[] { "dsht-gui.exe", "dsh-minato.exe" };
-            string[] paths = new string[] { gui, cli };
-            for (int i = 0; i < names.Length; i++)
+            // ★★★ **M-9 修复（安装器审计 MAJOR）** ✓✓
+            //   ✗ 原来**只验 2 个文件**（`dsht-gui.exe` / `dsh-minato.exe`）✗✗
+            //     → **`gui\dsht-gui.dll` 才是 GUI 的真身** ✓ 改它照样能启动 ✗
+            //     → 而"被感染就无法运行"正是这道校验存在的**唯一理由** ✗（银狐给 GUI 打补丁那个场景 ✓）
+            //   ✗ 而且 basename 回退**会选错条目** ✗（清单里同名文件在 `gui\` 和 `app-<ver>\gui\` 各有一份 ✓
+            //     清单按路径排序 → 副本在前 ✓ → 取到副本 → **假报"被木马感染"** ✗✗）
+            //   ✓ 现在：**逐条验证清单里每一个"磁盘上存在"的文件** ✓✓（精确相对路径 ✓ **没有回退** ✗）
+            //     · 不在磁盘上 → 跳过 ✓（清单可能含未装的可选文件 ✓ 不能因此变砖 ✓）
+            //     · 取不到哈希 → 跳过 ✓（权限/占用 ✓ 同上 ✓）
+            //     · **一个都对不上 → 拒绝** ✓✓（清单与目录不匹配 = 被换过 ✓）
+            //   ✓ 顺带：`gui`/`cli` 两个参数保留但不再用于查找 ✓（签名不动 ✓ 调用方不用改 ✓）
+            int checkedCount = 0;
+            for (int i = 0; i < lines.Length; i++)
             {
-                if (!File.Exists(paths[i])) continue;
-                // ★★ **审计 M10 + 用户实测** ✓✓：basename 匹配会**取错条目** ✗
-                //   ✗ 清单里有 `gui\dsht-gui.exe`（我们要的 ✓）和 `app-3.0.0\gui\dsht-gui.exe`（副本 ✗）
-                //     而清单**按完整路径排序** ✓ → 副本排在前面 ✗ → 取到副本 → **哈希不符 → 拒绝启动** ✗✗
-                //     （用户实测："打不开" ✓ 启动器弹警告框卡住 ✓）
-                //   ✓ 现在：**先按"从安装根算起的相对路径"精确找** ✓ 找不到才退回 basename ✓✓
-                string rel = paths[i].Substring(dir.Length).TrimStart('\\');   // 例: gui\dsht-gui.exe
-                string want = FindHashExact(lines, rel);
-                if (string.IsNullOrEmpty(want)) want = FindHash(lines, names[i]);
-                if (string.IsNullOrEmpty(want)) continue;   // 清单里没这个文件 → 跳过 ✓
-                string got = Sha256(paths[i]);
-                if (string.IsNullOrEmpty(got)) continue;    // 取不到哈希 → 放行 ✓（不能让校验把工具变成砖 ✓）
+                string t = lines[i] == null ? "" : lines[i].Trim();
+                if (t.Length == 0 || t.StartsWith("#", StringComparison.Ordinal)) continue;
+                int sp = t.IndexOf(' ');
+                if (sp <= 0) continue;
+                string want = t.Substring(0, sp).Trim().ToLowerInvariant();
+                string rel = t.Substring(sp + 1).Trim().Replace('/', '\\');
+                string full;
+                try { full = Path.Combine(dir, rel); } catch { continue; }
+                if (!File.Exists(full)) continue;   // 磁盘上没有 → 没得验 ✓
+                string got = Sha256(full);
+                if (string.IsNullOrEmpty(got)) continue;
+                checkedCount++;
                 if (!string.Equals(want, got, StringComparison.OrdinalIgnoreCase))
-                    return "不一致的文件：" + paths[i].Substring(dir.Length).TrimStart('\\') + Environment.NewLine +
+                    return "不一致的文件：" + rel + Environment.NewLine +
                            "  官方指纹：" + want + Environment.NewLine +
                            "  实际指纹：" + got;
             }
+            if (checkedCount == 0)
+                return "清单里**没有任何文件**能在安装目录里找到 ✗" + Environment.NewLine +
+                       "  清单：" + manifest + Environment.NewLine +
+                       "  目录：" + dir + Environment.NewLine +
+                       "  → 清单与目录不匹配 ✓ **拒绝启动** ✓（这是被整体替换过的特征 ✓）";
             return null;
         }
-        catch { return null; }   // 校验本身出错 → 放行 ✓
+        catch { return null; }   // 校验本身出错 → 放行 ✓（不能让校验把工具变成砖 ✓）
     }
 
     /// <summary>按**完整相对路径**精确找哈希 ✓✓（优先于 basename ✓

@@ -499,6 +499,13 @@ internal static class Installer
         //   ✓✓ 现在：**随机 token** 同时写进 marker 和 ARP 注册表 ✓ → 卸载时必须**两边对上** ✓✓
         //       单独复制一个 marker 到别的目录**对不上 ARP** ✓ → 拒绝 ✓✓
         //       另外 marker 里的 `path=` 也会被校验（原来记了却从不读 ✗）
+        // ★★★ **M-7 修复（安装器审计 MAJOR）** ✓✓
+        //   ✗ 原来 marker 写失败**只记一句"不致命"** ✗ → **安装照常返回 0** ✗✗
+        //     → 而卸载器**要求 marker 存在**（`File.Exists` 那道预检 ✓）
+        //     → **这份安装永远卸不掉** ✗（应用和功能里的卸载入口指向一个会拒绝的卸载器 ✓）
+        //     → 触发条件很现实：**杀软锁住文件** ✓ **磁盘满** ✓ **权限** ✓（审计实测确认 ✓）
+        //   ✓ 现在：**marker 写不进去 → 安装失败** ✓✓（抛 RefusalException → 返回 2 ✓
+        //     而且**不会写 ARP** ✓ 因为 ARP 在 marker 之后 ✓ 所以不会留下半份注册 ✓✓）
         try
         {
             File.WriteAllText(Path.Combine(target, ".dsh-minato-install"),
@@ -507,9 +514,17 @@ internal static class Installer
                 "installed=" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine +
                 "token=" + InstallToken + Environment.NewLine +
                 "path=" + target + Environment.NewLine, new UTF8Encoding(false));
+            if (!File.Exists(Path.Combine(target, ".dsh-minato-install")))
+                throw new InvalidOperationException("写入后**文件并不存在**");
             Log("安装标记已写 ✓（含 token ✓ 卸载时与注册表双向比对 ✓）");
         }
-        catch (Exception ex) { Log("安装标记写入失败（不致命，但卸载会更保守 ✓）: " + ex.Message); }
+        catch (Exception ex)
+        {
+            Log("**安装标记写入失败** ✗ " + ex.Message);
+            Log("→ **中止安装** ✓（否则这份安装**永远卸载不掉** ✗ 卸载器要求 marker 存在 ✓）");
+            Log("→ 常见原因：杀毒软件锁住文件 / 磁盘满 / 权限不足 ✓ 解决后重试即可 ✓");
+            throw new RefusalException("安装标记写入失败 ✓ 已中止 ✓（原因：" + ex.Message + " ✓ 不会有半份注册残留 ✓）");
+        }
         if (wantPath && !noPath)
         {
             try
@@ -734,7 +749,28 @@ internal static class Installer
                         if (s.Length == 0 || s.StartsWith("#", StringComparison.Ordinal)) continue;
                         int sp2 = s.IndexOf(' ');
                         if (sp2 <= 0) continue;
-                        ourFiles.Add(s.Substring(sp2 + 1).Trim());
+                        // ★★★ **M-5 修复（安装器审计 MAJOR）** ✓✓
+                        //   ✗ 原来 `backup/` 与 `logs/` **只是被 Log 出来** ✗ —— **删除列表里并没有排除** ✗✗
+                        //     → 清单里任何指向它们的条目**都会被删** ✗（它们是**用户数据** ✓）
+                        //     → 审计还指出：真实安装目录里的 `hashes.txt` 含 `.dsh-minato-install` /
+                        //       `uninstall.exe` / `app-3.0.0\*` 这些**载荷清单不可能有的**条目 ✓
+                        //       → 说明有东西在**安装后的树上重新生成过清单** ✓
+                        //   ✓ 现在：**在加入删除列表时就剔掉** ✓✓
+                        //     · `backup\` / `logs\` 前缀 ✓（含裸目录名 ✓）
+                        //     · **绝对路径** ✗ 与含 `..` 的条目 ✗（可编辑的清单是外部输入 ✓）
+                        string relEntry = s.Substring(sp2 + 1).Trim();
+                        string relNorm = relEntry.Replace('/', '\\');
+                        if (relNorm.StartsWith("backup\\", StringComparison.OrdinalIgnoreCase)
+                            || relNorm.StartsWith("logs\\", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(relNorm, "backup", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(relNorm, "logs", StringComparison.OrdinalIgnoreCase)
+                            || Path.IsPathRooted(relNorm)
+                            || relNorm.IndexOf("..", StringComparison.Ordinal) >= 0)
+                        {
+                            Log("**跳过** " + relEntry + " ✓（backup/logs 是用户数据 ✓ 或路径可疑 ✓ 不删 ✓）");
+                            continue;
+                        }
+                        ourFiles.Add(relEntry);
                     }
                 }
             }
@@ -856,9 +892,23 @@ internal static class Installer
             //        · PATH 里那条死 `bin` 条目**永远留着** ✗（`RemoveFromUserPath` 成了死代码 ✓）
             //   ✓ 现在：**目录删完之后**再清理 ✓（顺序仍是"先删目录"✓ 只是调用丢了 ✓）
             //      单个失败不影响其它 ✓ 全部记日志 ✓
-            try { RemoveShortcuts(); Log("已清理快捷方式 ✓"); } catch (Exception c1) { Log("清理快捷方式失败: " + c1.Message); }
-            try { RemoveFromUserPath(Path.Combine(target, "bin")); Log("已清理 PATH 条目 ✓"); } catch (Exception c2) { Log("清理 PATH 失败: " + c2.Message); }
-            try { RemoveArp(); Log("已清理注册表 ✓"); } catch (Exception c3) { Log("清理注册表失败: " + c3.Message); }
+            // ★★★ **M-6 修复（安装器审计 MAJOR）** ✓✓
+            //   ✗ 这三个清理**原来无条件执行** ✗ —— 即使目录没删干净 ✓
+            //     → **注册表被清了、快捷方式没了、PATH 条目没了** ✗ 而**文件还在** ✗
+            //     → 而**卸载器自己已经被删**（它也在清单里 ✓）→ **用户没有任何办法重试** ✗✗
+            //     （应用和功能里的卸载入口指向已删的 exe ✓ 本地也没有 uninstall.exe 了 ✓）
+            //   ✓ 现在：**只有目录真的删干净了才清理** ✓✓ 否则**全部保留**并说清怎么重试 ✓
+            if (gone)
+            {
+                try { RemoveShortcuts(); Log("已清理快捷方式 ✓"); } catch (Exception c1) { Log("清理快捷方式失败: " + c1.Message); }
+                try { RemoveFromUserPath(Path.Combine(target, "bin")); Log("已清理 PATH 条目 ✓"); } catch (Exception c2) { Log("清理 PATH 失败: " + c2.Message); }
+                try { RemoveArp(); Log("已清理注册表 ✓"); } catch (Exception c3) { Log("清理注册表失败: " + c3.Message); }
+            }
+            else
+            {
+                Log("**目录没删干净 → 注册表 / 快捷方式 / PATH 一律保留** ✓（否则你就没法重试了 ✗）");
+                Log("**怎么重试**：关掉占用文件的程序后再跑一次 uninstall.exe ✓ 或用 `--force` 跳过身份校验 ✓ 也可以手动删掉上面那个目录 ✓");
+            }
             return 0;
         }
         catch (Exception ex)
@@ -1569,6 +1619,14 @@ internal sealed class InstallerForm : Form
             }
             Installer.FlushLog();
         };
+        // ★★★ **M-8 修复（安装器审计 MAJOR —— 取消按钮是死代码）** ✓✓
+        //   ✗ `ReportHook` **从未被赋值** ✗ —— 编译器用项目自己的开关就报了 **CS0649** ✓
+        //     而 `_cancelRequested` **写了但从未被读** ✗（**CS0414** ✓）
+        //     → 点「取消安装」**只把文案改掉** ✓ **安装照常跑完** ✗✗
+        //     → 而 `build_installer.ps1` 只 grep "error" ✓ → **带着警告照样发出去** ✓
+        //   ✓ 现在：**启动安装前挂上钩子** ✓✓ → 每个进度回调里检查 ✓
+        //     → 抛出 → `RunInstall` 的 catch **清理 staging** ✓ **如实报告"已取消"** ✓✓
+        Installer.ReportHook = delegate { if (_cancelRequested) throw new InvalidOperationException("用户取消了安装 ✓（不会留下半个安装 ✓）"); };
         bw.RunWorkerAsync();
     }
 }
