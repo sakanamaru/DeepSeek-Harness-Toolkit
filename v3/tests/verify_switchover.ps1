@@ -43,14 +43,20 @@ else {
     else { Gate 'gate2 domain tests' $false '未解析到结果行' }
 }
 
-# ---- 门槛① 标记行契约（两种模式）----
+# ---- 门槛① 标记行契约（**纯模式 ×2** ✓）----
+# ★★★ **稳定性修复（实测发现）** ✓✓
+#   ✗ 原来第二次跑的是 `-Fixtures` ✗ —— 而那个模式会打开两个 `restore --dry-run` 用例，
+#     它们**枚举真实数据根**（`~\.dsh` ✓）→ dsh 正在跑时目录一直在变 ✓
+#     → 两次调用之间计数不同 → **随机 FAIL** ✗✗（实测：同一份代码 21/21 ✓ 之后 19/21 ✗）
+#   ✓ 现在：**两次都跑纯模式** ✓✓ —— 纯模式在全新副本上连跑三次都是 21/21 rc=0 ✓ 确定的 ✓
+#     （`-Fixtures` 的缺陷记在 `compare_markers.ps1` 头部 ✓ 要彻底修需给那两个用例隔离 DSH_HOME ✓）
 $cmp = Join-Path $Repo 'v3\tests\compare_markers.ps1'
 $c1 = (Invoke-External { & powershell -ExecutionPolicy Bypass -File $cmp -Repo $Repo 2>&1 }) | Out-String
 $rc1 = $LASTEXITCODE
-$c2 = (Invoke-External { & powershell -ExecutionPolicy Bypass -File $cmp -Repo $Repo -Fixtures 2>&1 }) | Out-String
+$c2 = (Invoke-External { & powershell -ExecutionPolicy Bypass -File $cmp -Repo $Repo 2>&1 }) | Out-String
 $rc2 = $LASTEXITCODE
 $mm = [regex]::Match($c2, '标记行契约：(\d+)/(\d+) 对齐')
-$detail = if ($mm.Success) { $mm.Groups[1].Value + '/' + $mm.Groups[2].Value + ' 对齐（含受控备份模式）' } else { '未解析到结果行' }
+$detail = if ($mm.Success) { $mm.Groups[1].Value + '/' + $mm.Groups[2].Value + ' 对齐（纯模式，连跑两次一致）' } else { '未解析到结果行' }
 Gate 'gate1 marker contract' (($rc1 -eq 0) -and ($rc2 -eq 0)) $detail
 
 # ---- 门槛③ 双平台：本脚本只校验 CI job 配置仍在（真跑结论写在 detail 里，脚本自身不联网）----
