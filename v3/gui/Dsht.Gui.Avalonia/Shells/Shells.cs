@@ -464,7 +464,7 @@ namespace Dsht.Gui.Avalonia.Shells
                 bool on = cur == i;
                 Button b = new Button
                 {
-                    Content = T(names[i], 11, on ? Palette.OnAccent : Palette.TextDim),
+                    Content = T(names[i] == "webui" ? "web" : names[i], 11, on ? Palette.OnAccent : Palette.TextDim),
                     Background = on ? Palette.Accent : Palette.CardHover,
                     BorderThickness = new Thickness(0),
                     CornerRadius = new CornerRadius(6),
@@ -473,10 +473,10 @@ namespace Dsht.Gui.Avalonia.Shells
                 b.Click += delegate { host.SetStartMode(idx); };
                 s.Children.Add(b);
             }
-            s.Children.Add(T(cur == 1 ? "（启动官方桌面端）" : "（启动 dsh web）", 10.5, Palette.TextFaint));
+            s.Children.Add(T(cur == 1 ? "" : "", 10.5, Palette.TextFaint));
             Button dep = new Button
             {
-                Content = T(cur == 1 ? "一键部署：官网下载" : "一键部署 dsh", 11, Palette.Text),
+                Content = T(cur == 1 ? "下载" : "安装", 11, Palette.Text),
                 Background = Palette.CardHover,
                 BorderThickness = new Thickness(0),
                 CornerRadius = new CornerRadius(6),
@@ -520,7 +520,7 @@ namespace Dsht.Gui.Avalonia.Shells
             Grid.SetColumn(dot, 0);
             // 桌面端在跑 → 说清"桌面端运行中"✓（本工具**停不了它** ✓ 不能假装能 ✓）
             // 三种状态都要说清 ✓：只有 web / 只有桌面端 / **两个都在** ✓✓（用户："两个可能同时开着" ✓）
-            string stText = st.State == 0 && deskUp ? "web 与桌面端都在运行" : (deskUp ? "桌面端运行中（本工具不停它）" : (up ? "停止 dsh" : "一键启动 dsh"));
+            string stText = st.State == 0 && deskUp ? "web 与桌面端都在运行" : (deskUp ? "桌面端运行中" : (up ? "停止 dsh" : "一键启动 dsh"));
             TextBlock label = T(stText, 13, up ? Palette.Accent : Palette.OnAccent, FontWeight.SemiBold);
             label.Margin = new Thickness(10, 0, 0, 0);
             label.VerticalAlignment = VerticalAlignment.Center;
@@ -741,9 +741,9 @@ namespace Dsht.Gui.Avalonia.Shells
             Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
             g.Children.Add(KpiCard(Symbol.ChatMultiple, "会话总数", d == null ? "—" : d.Count.ToString(),
                 "非空 " + (d == null ? "—" : d.NonBlank.ToString()) + " · 运行中 " + (d == null ? "—" : d.Live.ToString()) + " · 子代理 " + (d == null ? "—" : d.SubAgentCount.ToString()) + " / 根 " + (d == null ? "—" : d.RootCount.ToString()), Palette.Text, 0, -1));
-            g.Children.Add(KpiCard(Symbol.Database, "缓存命中率（越高越省钱）", PctText(d == null ? -1 : d.TotalHitPercent),
+            g.Children.Add(KpiCard(Symbol.Database, "缓存命中率", PctText(d == null ? -1 : d.TotalHitPercent),
                 "缓存读 " + (d == null ? "—" : SessionRow.Human(d.TotalCacheRead)), Palette.Good, 1, d == null ? -1 : d.TotalHitPercent));
-            g.Children.Add(KpiCard(Symbol.Gauge, "解码速度（生成 token 的速度）", TpsText(d == null ? -1 : d.TotalDecodeTps),
+            g.Children.Add(KpiCard(Symbol.Gauge, "解码速度", TpsText(d == null ? -1 : d.TotalDecodeTps),
                 "tok/s，按合计加权", Palette.Accent, 2, -1));
             g.Children.Add(KpiCard(Symbol.DataUsage, "累计 token", d == null ? "—" : SessionRow.Human(d.TotalIn),
                 "输出 " + (d == null ? "—" : SessionRow.Human(d.TotalOut)) + " · 输入含缓存读", Palette.Text, 3, -1));
@@ -831,14 +831,25 @@ namespace Dsht.Gui.Avalonia.Shells
                         for (int m = 0; m < src.Count; m++) { if (src[m].Row != null && src[m].Row.Id == vm.Row.ChildIds[k]) { kv = src[m]; break; } }
                         if (kv != null) kids.Children.Add(SessionCard(kv));
                     }
-                    Expander ex = new Expander
+                    // ✗ 原来用 Expander 默认外观 → 自带边框/底色，和卡片放一起**很突兀** ✓（用户指出 ✓）
+                    // 现在：**透明背景 + 无边框 + 左侧一条细竖线** ✓ → 视觉上"挂"在父会话下面 ✓✓
+                    // （还顺手把默认展开箭头去掉了 ✗ → 用 ▸ 前缀 ✓ 更轻 ✓）
+                    Border exHead = new Border
                     {
-                        Header = T("▸ 子代理 " + vm.Row.ChildIds.Count + " 个（点开看明细）", 11.5, Palette.TextDim),
-                        Content = kids,
-                        IsExpanded = false,
-                        Margin = new Thickness(0, 2, 0, 0)
+                        Background = Brushes.Transparent,
+                        BorderBrush = Palette.Border,
+                        BorderThickness = new Thickness(2, 0, 0, 0),
+                        Padding = new Thickness(10, 6, 0, 6),
+                        Cursor = new global::Avalonia.Input.Cursor(global::Avalonia.Input.StandardCursorType.Hand),
+                        Child = T("▸ 子代理 " + vm.Row.ChildIds.Count + " 个（点这里展开）", 11.5, Palette.TextDim)
                     };
-                    s.Children.Add(ex);
+                    StackPanel exBox = new StackPanel { Spacing = 6, Margin = new Thickness(16, 4, 0, 0), IsVisible = false };
+                    exBox.Children.Add(kids);
+                    exHead.PointerPressed += delegate { exBox.IsVisible = !exBox.IsVisible; };
+                    StackPanel exWrap = new StackPanel { Spacing = 0 };
+                    exWrap.Children.Add(exHead);
+                    exWrap.Children.Add(exBox);
+                    s.Children.Add(exWrap);
                 }
             }
             return s;
@@ -1502,7 +1513,7 @@ namespace Dsht.Gui.Avalonia.Shells
 
             Grid row2 = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), RowDefinitions = new RowDefinitions("Auto,12,Auto") };   // 中间那行是**固定 12px 间隔行** ✓ = 田字隔断 ✓（Avalonia 11.2 的 Grid 没有 RowSpacing ✗）
             Control r2c0 = StatCard(Symbol.Database, "缓存命中率", se == null ? "—" : PctText(se.TotalHitPercent), "越高越省钱", Palette.Good, se == null ? -1 : se.TotalHitPercent, 0, 2); Grid.SetColumn(r2c0, 0); Grid.SetRow(r2c0, 0); row2.Children.Add(r2c0);
-            Control r2c1 = StatCard(Symbol.Gauge, "解码速度", se == null ? "—" : TpsText(se.TotalDecodeTps), "tok/s（按合计加权）", Palette.Accent, -1, 1, 2); Grid.SetColumn(r2c1, 1); Grid.SetRow(r2c1, 0); row2.Children.Add(r2c1);
+            Control r2c1 = StatCard(Symbol.Gauge, "解码速度", se == null ? "—" : TpsText(se.TotalDecodeTps), "tok/s", Palette.Accent, -1, 1, 2); Grid.SetColumn(r2c1, 1); Grid.SetRow(r2c1, 0); row2.Children.Add(r2c1);
             Control r2c2 = StatCard(Symbol.Archive, "备份", bk == null || !bk.Ok ? "—" : bk.Count.ToString(), "份（backup-list）", Palette.Text, -1, 0, 2); Grid.SetColumn(r2c2, 0); Grid.SetRow(r2c2, 2); row2.Children.Add(r2c2);
             Control r2c3 = StatCard(Symbol.Stethoscope, "体检", dc == null || !dc.Ok ? "未运行" : dc.Headline, "点下面按钮运行 doctor", dc != null && dc.Error > 0 ? Palette.Bad : (dc != null && dc.Warn > 0 ? Palette.Warn : Palette.Good), -1, 1, 2); Grid.SetColumn(r2c3, 1); Grid.SetRow(r2c3, 2); row2.Children.Add(r2c3);
             s.Children.Add(row2);
