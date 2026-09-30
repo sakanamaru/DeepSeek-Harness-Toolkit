@@ -1020,6 +1020,12 @@ namespace Dsht.Gui.Avalonia
         public void SetMainSection(int idx)
         {
             if (idx < 0 || idx >= NavItems.Length) return;
+            // ★★★ **N8 修复（GUI 复审 MAJOR —— 子集泄漏到别的页面）** ✓✓
+            //   ✗ 会话页会把"子代理"这个子集写进 `_listSource` ✗ 而换主页面时**从不清它** ✗✗
+            //     → 切到看板/概览时 `KpiStrip` 读到的是**上一个页面的子集** ✓
+            //     → 显示"只有子代理"的数字却标着「父会话」✗✗
+            //   ✓ 现在：**换主页面就清掉** ✓✓（会话页重建时会自己再设 ✓）
+            SetListSource(null);
             _mainSection = idx;
             _subTab = 0;
             SortMode = 0;
