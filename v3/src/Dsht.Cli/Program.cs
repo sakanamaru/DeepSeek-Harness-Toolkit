@@ -370,7 +370,7 @@ namespace Dsht.Cli
             Console.WriteLine("  config-get | config-set <key> <value>");
             Console.WriteLine("  install [--install-node] [--version <v>] [--list] [--yes] | update [--version <v>] [--list] [--yes] | uninstall [--yes]");
             Console.WriteLine("  update-info（只读：当前/最新/来源/状态/回滚候选 ✓）");
-            Console.WriteLine("  start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--force] [--yes]");
+            Console.WriteLine("  start [--port <n>] [--profile <name>] [--yes] | stop [--port <n>] [--target web|desktop] [--force] [--yes]");
             Console.WriteLine("  backup | backup-list [--detail] [--verify] | backup-export --path <备份> --to <目标> [--yes] | backup-delete --path <备份> [--yes] [--yes]");
             Console.WriteLine("  restore --path <备份> [--dry-run] [--apply] [--yes]");
             Console.WriteLine("  import --path <外部备份包> [--yes] | wipe [--yes] | verify-install [--manifest <f>] [--file <f>] [--url <u>]");
@@ -1279,6 +1279,39 @@ namespace Dsht.Cli
             if (portArg > 0)
             {
                 target = PlatformComposition.WebFor(portArg, reg.Get<IPortProbe>(), reg.Get<IHttpProbe>(), reg.Get<IProcessQuery>());
+            }
+            // `--target web|desktop`：**两个都开着时可以选停一个** ✓✓（用户要求 ✓）
+            // 默认 web ✓ = 原行为 ✓ 向后兼容 ✓（不加这个参数时一个字都不变 ✓）
+            string stopTarget = ArgOr(args, "--target", "web").Trim().ToLowerInvariant();
+            if (stopTarget == "desktop")
+            {
+                int dpid = 0;
+                try { dpid = reg.Get<IProcessQuery>().PidOfNamed("DeepSeek Harness"); } catch { }
+                if (dpid <= 0)
+                {
+                    Console.WriteLine("STOP_FAIL " + T("没有检测到官方桌面端进程（DeepSeek Harness）", "no desktop app process (DeepSeek Harness) found"));
+                    Console.WriteLine("STOP_OBSERVED down");
+                    return 0;
+                }
+                if (dpid == System.Diagnostics.Process.GetCurrentProcess().Id)
+                {
+                    Console.WriteLine("STOP_FAIL " + T("拒绝执行：那是本程序自己（安全保护）", "refused: that is this program itself (safety)"));
+                    return 0;
+                }
+                if (!Has(args, "--yes"))
+                {
+                    Console.WriteLine("STOP_PLAN " + T("将停止**官方桌面端** PID ", "will stop the **desktop app** PID ") + dpid);
+                    Console.WriteLine("STOP_NOTE " + T("确认请加 --yes。它和 web 是两个独立的东西：本命令只停桌面端，不动 3080 上的 web。", "add --yes. The desktop app and dsh web are separate; this only stops the desktop app."));
+                    return 0;
+                }
+                IServiceControl dctl = reg.Get<IServiceControl>();
+                string derr;
+                // Electron 是**多进程** ✗ → 必须杀**整棵** ✓（StopTree ✓ 与 Windows 侧实现一致 ✓）
+                bool dok = dctl.StopTree(dpid, out derr);
+                Console.WriteLine(dok ? "STOP_OK " + dpid : "STOP_FAIL " + (string.IsNullOrEmpty(derr) ? T("停止失败", "stop failed") : derr));
+                Console.WriteLine("STOP_OBSERVED " + (dok ? "down" : "unknown"));
+                if (dok) OpLog(reg, "INFO", "stop desktop pid=" + dpid);
+                return 0;
             }
             ServiceReport r = target.Probe();
             if (ServiceControlPolicy.BeforeStop(r.State.ToString(), r.Pid) == StopDecision.NothingToStop)

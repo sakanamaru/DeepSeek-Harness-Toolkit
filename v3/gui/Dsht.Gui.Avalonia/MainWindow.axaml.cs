@@ -289,6 +289,12 @@ namespace Dsht.Gui.Avalonia
         /// <summary>停止 dsh（核心的 `stop`）。</summary>
         public void StopDsh() { RunCliAction("stop --yes", "停止"); }
 
+        /// <summary>只停 **web**（3080 ✓ 不动桌面端 ✓）。两个都开着时用 ✓✓</summary>
+        public void StopWebOnly() { RunCliAction("stop --yes", "停止 web"); }
+
+        /// <summary>只停**官方桌面端**（Electron 多进程 → CLI 用 StopTree 杀整棵 ✓ 不动 web ✓）。</summary>
+        public void StopDesktopOnly() { RunCliAction("stop --target desktop --yes", "停止桌面端"); }
+
         private void RunCoreAction(string verb, string label)
         {
             string core = ToolkitCore();
