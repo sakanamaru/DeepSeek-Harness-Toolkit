@@ -787,21 +787,24 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 bkFull = System.IO.Path.GetFullPath(backups).TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
             }
             catch (Exception ex) { Console.WriteLine("WIPE_FAIL " + ex.Message); return 0; }
-            // 闸门 ④：系统/用户级根目录一律拒绝 ✗
-            string[] segs = dataFull.Split(new char[] { '/', '\\' });
-            int depth = 0;
-            for (int i = 0; i < segs.Length; i++) if (segs[i].Length > 0) depth++;
-            if (depth < 2) { Console.WriteLine("WIPE_REFUSED " + T("数据根看起来是盘根/系统根，拒绝清除: ", "the data root looks like a drive or system root, refusing: ") + dataFull); return 0; }
-            // 闸门 ⑤：备份根在数据根内 → 拒绝（会把安全网一起删 ✗）
-            if (bkFull == dataFull || bkFull.StartsWith(dataFull + System.IO.Path.DirectorySeparatorChar, StringComparison.Ordinal))
-            { Console.WriteLine("WIPE_REFUSED " + T("备份目录位于数据根内，清除会连备份一起删除，已拒绝。请先把备份目录移出数据根。", "the backups root is inside the data root, so wiping would delete the backups too; move it out first") + " (" + bkFull + ")"); return 0; }
+            // F1 FIX (CLI audit MAJOR): two refusals used to sit here - a drive/system-root check
+            // and a check that the backup folder is not inside the data root - and both returned
+            // before the output below. This command no longer deletes anything, so the refusals
+            // were both unnecessary and harmful: they made the one thing the command still does
+            // - print the exact path for the user to delete by hand - unreachable in precisely
+            // the two configurations where it matters most. They are gone; the dead block below
+            // keeps its own copies of the same checks for whoever restores the delete path.
             int files = 0, dirs = 0;
-            try { files = System.IO.Directory.GetFiles(dataFull, "*", System.IO.SearchOption.AllDirectories).Length; dirs = System.IO.Directory.GetDirectories(dataFull, "*", System.IO.SearchOption.AllDirectories).Length; } catch { }
+            // F2 FIX (CLI audit MINOR): a failed enumeration used to leave files and dirs at 0, and
+            // the line below then said "the data root holds 0 files and 0 folders", which is a fake
+            // zero where the truth is unknown. counted distinguishes that case.
+            bool counted = false;
+            try { files = System.IO.Directory.GetFiles(dataFull, "*", System.IO.SearchOption.AllDirectories).Length; dirs = System.IO.Directory.GetDirectories(dataFull, "*", System.IO.SearchOption.AllDirectories).Length; counted = true; } catch { }
             // ★★★ **用户要求（2026-09-30）**：「删除 CLI 和 GUI 备份里的清除数据操作按钮，点击只弹出手动删除路径」✓✓
             //   → **本命令永不删除任何东西** ✓✓ 无论有没有 `--yes` ✓
             //   → 只输出：① 数据根里有多少东西（信息 ✓）② **手动删除的确切路径** ✓
             //   → 保留 `WIPE_PLAN` / `WIPE_PLAN_NOTE` 标记 ✓（门槛与 GUI 的解析不用改 ✓）
-            Console.WriteLine("WIPE_PLAN " + T("数据根内有 ", "the data root holds ") + files + T(" 个文件、", " files and ") + dirs + T(" 个目录", " folders") + " — " + dataFull);
+            Console.WriteLine("WIPE_PLAN " + T("数据根内有 ", "the data root holds ") + (counted ? files.ToString() : T("unknown", "unknown")) + T(" 个文件、", " files and ") + (counted ? dirs.ToString() : T("unknown", "unknown")) + T(" 个目录", " folders") + " — " + dataFull);
             Console.WriteLine("WIPE_PLAN_NOTE " + T("**本工具不再执行清除** ✓ 请**手动**删除上面那个目录 ✓ 删前请先备份 ✓（备份目录：" + backups + " ✓）", "this tool no longer wipes data - delete the folder above yourself, after backing up"));
             Console.WriteLine("WIPE_MANUAL " + dataFull);
             return 0;
@@ -2636,10 +2639,20 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     string full = System.IO.Path.GetFullPath(toDir);
                     System.IO.Directory.CreateDirectory(full);
                     Environment.SetEnvironmentVariable("DSH_MINATO_BACKUP_DIR", full);
+                    // D2 FIX (CLI audit MAJOR): --to works through an environment variable, but the
+                    // settings file takes priority over it, and the write below swallowed its own
+                    // failure. When the file could not be written the variable was ignored, so the
+                    // tool announced a destination and then backed up somewhere else.
                     // ✓ **记住这个选择** ✓✓（用户要求"第一次弹窗选择" ✓ 但**不该每次都问** ✗）
                     //   → 写进 `<StateDir>/.backup-dir` ✓ 之后所有命令都用它 ✓✓
                     try { System.IO.File.WriteAllText(System.IO.Path.Combine(reg.Get<IPaths>().StateDir, ".backup-dir"), full, new System.Text.UTF8Encoding(false)); }
-                    catch { }
+                    catch (Exception wex) { Console.WriteLine("BACKUP_WARN " + T("记不住这个位置（设置文件写不进去 ✓）：" + wex.Message, "could not remember the location: " + wex.Message)); }
+                    string effective = reg.Get<IBackupSource>().BackupsRoot;
+                    if (!string.Equals((effective ?? "").TrimEnd('\\', '/'), full.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine("BACKUP_FAIL " + T("指定的目录**没有生效** ✓ 本次备份会写到：" + effective + " ✗（设置文件可能只读 ✓）", "the --to folder did not take effect; this backup would go to: " + effective));
+                        return 0;
+                    }
                     Console.WriteLine("BACKUP_TO " + full + " " + T("本次备份写到这个目录 ✓（放在安装目录之外才稳妥 ✓）", "this backup goes here"));
                 }
                 catch (Exception ex) { Console.WriteLine("BACKUP_FAIL " + T("无法使用 --to 指定的目录：" + ex.Message, "cannot use --to dir: " + ex.Message)); return 0; }
@@ -2654,7 +2667,19 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 try
                 {
                     string br = reg.Get<IBackupSource>().BackupsRoot;   // ✓ 这里 `bk` 还没声明 ✓ 直接取 ✓
-                    hasAny = System.IO.Directory.Exists(br) && System.IO.Directory.GetDirectories(br, "dsh-data-*").Length > 0;
+                    // E1 FIX (CLI audit MINOR): this counted any dsh-data-* folder, and an interrupted
+                    // first backup leaves exactly such an empty folder behind (the destination is
+                    // created before anything is copied). The next run then skipped the guard and wrote
+                    // a package inside the install folder - what that guard exists to prevent.
+                    if (System.IO.Directory.Exists(br))
+                    {
+                        string[] cands = System.IO.Directory.GetDirectories(br, "dsh-data-*");
+                        for (int ci = 0; ci < cands.Length; ci++)
+                        {
+                            try { if (BackupPackage.IsValidPackage(reg.Get<IBackupSource>().Snapshot(cands[ci]))) { hasAny = true; break; } }
+                            catch { }
+                        }
+                    }
                 }
                 catch { }
                 if (!hasAny)
