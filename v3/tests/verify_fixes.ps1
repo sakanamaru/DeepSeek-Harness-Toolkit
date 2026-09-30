@@ -86,7 +86,11 @@ $checks = @(
   @('命令 version',              'cmd == "version"', 1),
   @('命令 wipe',                 'cmd == "wipe"', 1),
   # ---- 更早轮次的关键闸门（V3 自身 ✓）----
-  @('wipe 拒绝路径',             'WIPE_REFUSED', 1),
+  # F-I FIX (CLI final review): this asserted WIPE_REFUSED, but that marker only exists in the block that
+  # sits BELOW the command's `return 0` - the wipe command no longer deletes anything, so that guard is
+  # reference-only dead code and the check was giving false assurance. It asserts the marker the live path
+  # actually prints.
+  @('wipe 手动路径',             'WIPE_MANUAL', 1),
   @('wipe 计划路径',             'WIPE_PLAN', 1),
   @('恢复跳过运行中闸门 ACK',    'RESTORE_APPLY_ACK', 1),
   @('start 已运行分支',          'START_OBSERVED', 1),
