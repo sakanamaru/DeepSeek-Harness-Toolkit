@@ -847,7 +847,15 @@ namespace Dsht.Gui.Avalonia.Shells
             //  · **整体**视图 → 仍用 CLI 给的精确合计 ✓（口径与 CLI 完全一致 ✓ 不自己算 ✗）
             //  · **父会话 / 子代理** → 按**当前显示的那些行**重算 ✓（求和是确定的 ✓ 不是猜 ✓）
             List<SessionRowVm> src = host.ListSource;
-            bool filtered = src != null && host.Data != null && src.Count != host.Data.Rows.Count;
+            // ★★★ **真机 GUI 冒烟抓到的 bug（截图可见）** ✓✓
+            //   ✗ `filtered = src != null && src.Count != d.Rows.Count` ✗
+            //     → 列表源是**空列表**（Count 0 ✓ 比如页面刚切过来、或该视图下没有行 ✓）时
+            //       `0 != 2` → **filtered = true** ✗ → **对空列表求和 → 四张卡全 0** ✗✗
+            //     → 真机实测：CLI 说 `SESSIONS_OK 2`、图表也画了 2 个会话 ✓
+            //       而 KPI 卡片写着「会话总数 0 · 非空 0 · 运行中 0 · 子代理 0 · 根 0」✗✗ **明显矛盾** ✓
+            //   ✓ 现在：**空源一律按"没有过滤"处理** ✓✓ → 回落到 CLI 的精确合计 ✓（口径与 CLI 一致 ✓）
+            //     · 只有**非空、而且行数确实与全量不同**时，才认为用户在看子集 ✓
+            bool filtered = src != null && src.Count > 0 && d != null && src.Count != d.Rows.Count;
             int fCount = 0, fNonBlank = 0, fLive = 0, fSubs = 0;
             long fIn = 0, fOut = 0, fCache = 0;
             double hitNum = 0, hitDen = 0, tpsNum = 0, tpsDen = 0;

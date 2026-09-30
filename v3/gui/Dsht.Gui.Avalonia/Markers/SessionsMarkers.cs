@@ -143,14 +143,20 @@ namespace Dsht.Gui.Avalonia.Markers
         {
             get
             {
+                // ★★★ **真机 GUI 冒烟抓到的回归（截图里写着「数据来源：未知」）** ✓✓
+                //   ✗ CLI 的合并修复引入了新值 **`snapshot+disk`**（快照 + 磁盘补齐 ✓）✗
+                //     → 而这里只认 snapshot / disk / aggregate ✗ → **落到"未知"** ✗✗
+                //     → 它恰好是**最常见的真实情况**（dsh 在跑 + 有历史会话 ✓）
+                //   ✓ 现在：**如实说明两者都在用** ✓✓（并说清历史来自磁盘 ✓）
+                if (Source == "snapshot+disk") return "数据来源：桥接插件快照（实时）+ 磁盘投影（历史）";
                 if (Source == "snapshot") return "数据来源：桥接插件快照（含实时「运行中」标记）";
                 if (Source == "disk") return "数据来源：磁盘投影（未装桥接插件 —— 因此没有「正在运行」这一项）";
                 if (Source == "aggregate") return "数据来源：投影总表（每会话投影文件缺失时的兜底）";
-                return "数据来源：未知";
+                return "数据来源：未知（CLI 报告的是「" + (Source ?? "") + "」）";
             }
         }
 
-        public bool IsLiveSource { get { return Source == "snapshot"; } }
+        public bool IsLiveSource { get { return Source == "snapshot" || Source == "snapshot+disk"; } }
     }
 
     /// <summary>列表的过滤与排序（纯函数，供界面调用；也可单测）。</summary>
