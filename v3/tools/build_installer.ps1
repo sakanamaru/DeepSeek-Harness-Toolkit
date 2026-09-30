@@ -61,8 +61,21 @@ $refs = @(
     "/r:$gac\System.IO.Compression.FileSystem\v4.0_4.0.0.0__b77a5c561934e089\System.IO.Compression.FileSystem.dll"
 )
 if ($Out -eq "") { $Out = Join-Path $Repo ("dsh-minato-" + $Version + "-win-x64-setup.exe") }
+# ---- ③a 先编**不带载荷**的小卸载器 ✓✓（评审要求：卸载器不能带 70MB 载荷 ✗ 实测装出来 302MB ✗）----
+$unExe = Join-Path $work "uninstall.exe"
+Write-Host "编译卸载器（不带载荷 ✓）…"
+$argsU = @("/nologo", "/target:winexe", "/platform:anycpu", "/win32icon:$ico", "/out:$unExe") + $refs + @($src, (Join-Path $work "AssemblyInfo.cs"))
+$ru = & $roslyn @argsU 2>&1
+$eu = @($ru | Where-Object { $_ -match "error" })
+if ($eu.Count -gt 0) {
+    $eu | Select-Object -First 6 | ForEach-Object { Write-Host ("  " + $_.ToString().Trim()) }
+    throw "卸载器编译失败"
+}
+Write-Host ("  卸载器 " + [Math]::Round((Get-Item $unExe).Length / 1KB, 1) + " KB ✓")
+
+# ---- ③b 再编**带载荷 + 内嵌小卸载器**的安装器 ✓✓ ----
 $args = @("/nologo", "/target:winexe", "/platform:anycpu", "/win32icon:$ico", "/out:$Out",
-          "/resource:$PayloadZip,payload.zip") + $refs + @($src, (Join-Path $work "AssemblyInfo.cs"))
+          "/resource:$PayloadZip,payload.zip", "/resource:$unExe,uninstall.exe") + $refs + @($src, (Join-Path $work "AssemblyInfo.cs"))
 Write-Host "编译安装器…"
 $r = & $roslyn @args 2>&1
 $errs = @($r | Where-Object { $_ -match "error" })
