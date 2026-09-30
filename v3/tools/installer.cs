@@ -645,6 +645,24 @@ internal static class Installer
             {
                 try { string fp = Path.Combine(mover, gen); if (File.Exists(fp)) { File.Delete(fp); removedOur++; } } catch { }
             }
+            // ★★★ **用户要求（2026-09-30）** ✓✓：**卸载绝不能删掉备份** ✗✗
+            //   ✗ 备份目录默认是 `StateDir/backup` ✓ 而 Windows 上 StateDir **就是安装目录** ✗
+            //     → 备份**物理上躺在安装目录里** ✓ → 现在没被删**只是因为它不在删除列表里** ✗
+            //     → 那是"运气"不是"设计" ✓ 任何一次改动都可能把它带进去 ✗✗
+            //   ✓ 现在：**显式跳过 backup/ 与 logs/** ✓✓
+            //     · 它们是**用户数据** ✓（备份是他自己做的 ✓ 日志是他排障要看的 ✓）不是我们的 ✓
+            //     · 跳过 → 目录非空 → **安装目录也会被保留** ✓ → 用户能自己取回 ✓
+            //     · 并在最后**明确告诉他备份还在哪** ✓✓
+            foreach (string keepDir in new string[] { "backup", "logs" })
+            {
+                string kd = Path.Combine(mover, keepDir);
+                if (Directory.Exists(kd))
+                {
+                    int kn = 0;
+                    try { kn = Directory.GetFileSystemEntries(kd, "*", SearchOption.AllDirectories).Length; } catch { }
+                    Log("**保留** " + keepDir + "/ ✓（用户数据，卸载不删 ✓ 共 " + kn + " 项）");
+                }
+            }
             try { foreach (string dd in Directory.GetDirectories(mover, "app-*")) { try { Directory.Delete(dd, true); removedOur++; } catch { } } } catch { }
             try { string g2 = Path.Combine(mover, "gui"); if (Directory.Exists(g2)) { Directory.Delete(g2, true); removedOur++; } } catch { }
             // ✓ 我自己的 m3 修复引入的：`bin\` 是**安装器生成的** ✓ 不在清单里 ✗
