@@ -349,6 +349,13 @@ internal static class Installer
                 if (!string.IsNullOrEmpty(loc) && !sameDir)
                 {
                     Log("拒绝安装：已有一个安装在其他目录 ✓ " + loc);
+                    // ★★★ **缺陷修复（最终验证复审 MAJOR —— 被拒绝的安装泄漏整个载荷）** ✓✓
+                    //   ✗ 载荷**在这条检查之前**就被解压出来了（约 300 MB / 514 项 ✓）✗
+                    //     → 这里抛 RefusalException **没有清理暂存目录** ✗✗（另外两条拒绝路径都有 TryDelete ✓）
+                    //     → 实测：拒绝一次就在**用户选的父目录**里留下一个 303 MB 的 `.dsh-minato-staging-*` ✗✗
+                    //       （唯一的机会是"1 小时后下次安装顺手清扫" ✗ 不够 ✓）
+                    //   ✓ 现在：**拒绝前先删暂存目录** ✓✓（磁盘上一个字节都不留 ✓ 与另两条拒绝一致 ✓）
+                    TryDelete(staging);
                     throw new RefusalException(
                         "**已经装过一份了。**" + Environment.NewLine + Environment.NewLine +
                         "已安装在：" + loc + Environment.NewLine +
@@ -1099,7 +1106,32 @@ internal static class Installer
             Log("已删我们自己的 " + removedOur + " 项 ✓（清单 " + ourFiles.Count + " 条 ✓）");
             if (skipped > 0) Log("**有 " + skipped + " 项删不掉**（被占用或权限 ✓）→ 目录会保留 ✓ 关掉占用它的程序后重试即可 ✓");   // N-D FIX: report the count
             bool leftover = false;
-            try { leftover = Directory.Exists(mover) && Directory.GetFileSystemEntries(mover).Length > 0; } catch { }
+            // ★★★ **缺陷修复（最终验证复审 MAJOR —— 干净卸载不可达）** ✓✓
+            //   ✗ 父进程在 `WaitForExit` 期间**还活着** ✗ → 它自己改名的那个
+            //     `uninstall.exe.running-*` **删不掉**（访问被拒绝 ✓ 实测 ✓）→ 只能安排延时删 ✓
+            //     → 而 `GetFileSystemEntries(mover).Length > 0` **永远为真** ✗✗
+            //     → **每一次卸载都走"目录没删干净"** ✗ → 目录搬回 + marker 写回 +
+            //       uninstall.exe 还原 + ARP/快捷方式/PATH 全保留 ✗✗
+            //       （**连没有任何用户数据的干净卸载也一样** ✓ 与 CI 烟测的断言直接矛盾 ✓）
+            //   ✓ 现在：**算 leftover 时忽略那个已安排删除的自我改名副本** ✓✓
+            //     它是**我们自己的临时产物** ✓ 不是用户数据 ✓ 也不是"删不掉"的失败 ✓
+            try
+            {
+                if (Directory.Exists(mover))
+                {
+                    string[] rest = Directory.GetFileSystemEntries(mover);
+                    int real = 0;
+                    for (int ri = 0; ri < rest.Length; ri++)
+                    {
+                        string nm = Path.GetFileName(rest[ri]);
+                        if (nm != null && nm.StartsWith("uninstall.exe.running-", StringComparison.OrdinalIgnoreCase)) continue;
+                        real++;
+                    }
+                    leftover = real > 0;
+                    if (!leftover && rest.Length > 0) Log("目录里只剩自我改名副本（已安排删除 ✓）→ **按删干净处理** ✓✓");
+                }
+            }
+            catch { }
             if (leftover)
             {
                 try { if (!string.Equals(mover, target, StringComparison.OrdinalIgnoreCase)) Directory.Move(mover, target); } catch { }

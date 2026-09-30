@@ -119,7 +119,7 @@ foreach ($f in @(Get-ChildItem $Repo -Recurse -Filter *.ps1 -ErrorAction Silentl
 Gate 'invariant ps1 utf8 bom' ($bomBad.Count -eq 0) $(if ($bomBad.Count -eq 0) { '含非 ASCII 的 .ps1 全部带 BOM' } else { '缺 BOM：' + ($bomBad -join ', ') })
 
 # ---- 领域层纯净度 ----
-$pure = & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_domain_pure.ps1') -Repo $Repo 2>&1 | Out-String
+$pure = (Invoke-External { & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_domain_pure.ps1') -Repo $Repo 2>&1 }) | Out-String   # 审计 M8：这一条原来**没包装** ✗ → 子进程一写 stderr 就杀掉整个门槛（输出层假绿 ✓）
 Gate 'invariant domain purity' ($LASTEXITCODE -eq 0) '零 IO / 零平台 / 零时钟耦合'
 
 Remove-Item $exe -Force -ErrorAction SilentlyContinue   # 别把契约测试 exe 留在 %TEMP%
