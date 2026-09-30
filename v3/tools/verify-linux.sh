@@ -80,15 +80,26 @@ ok "no .exe/.lnk smuggled into the Linux package"
 CLI="$ROOT/dsh-minato"
 [ -x "$CLI" ] || { chmod +x "$CLI" 2>/dev/null || true; }
 [ -x "$CLI" ] || fail "dsh-minato is not executable"
-VER=$(timeout 60 "$CLI" version 2>&1 | head -1)
+# ★★★ **CI 红修复（2026-10-01）—— 不要把 stderr 混进被断言的内容** ✓✓
+#   ✗ 原来 `... version 2>&1 | head -1` ✗ —— 而 CLI 会往 **stderr** 打一条**正常诊断**
+#     （`INTEGRITY_SKIPPED 旁无 hashes.txt …`：源码编译/单独复制的 exe 旁没有清单 ✓ 完全正常 ✓）
+#     → **`$VER` 以 `INTEGRITY_SKIPPED` 开头** ✗ → `case DSHT_VERSION*` 不匹配 → **误报失败** ✗✗
+#   · 这与当初 `compare_markers` 的假 FAIL 是**同一个根因** ✓（`2>&1` 把诊断混进比对/断言 ✓）
+#   ✓ 现在：**只看 stdout** ✓✓（诊断照旧打到终端 ✓ 可见 ✓ 但不参与断言 ✓）
+VER=$(timeout 60 "$CLI" version 2>/dev/null | head -1)
 case "$VER" in
     DSHT_VERSION*) ok "binary runs: $VER" ;;
     *) fail "binary did not answer 'version' with a DSHT_VERSION marker (got: ${VER:-<empty>})" ;;
 esac
-ABOUT=$(timeout 60 "$CLI" about 2>&1 | head -1)
+# ★★★ **CI 红修复（2026-10-01，第二处）** ✓✓
+#   ✗ 原来只检查 `about` 的**第一行**是不是 `dsh-minato*` ✗
+#     → 而 `about` 现在**第一行是 CREDITS**（鲸鱼娘/生成式图标/非官方声明 ✓ 有意的 ✓）
+#     → 产品名在后面 ✓ → **断言误报失败** ✗✗
+#   ✓ 现在：**在整份输出里找产品名** ✓✓（只看事实"产品名出现过" ✓ 不绑行号 ✓）
+ABOUT=$(timeout 60 "$CLI" about 2>/dev/null)
 case "$ABOUT" in
-    dsh-minato*) ok "about works: $ABOUT" ;;
-    *) fail "about did not print the product name (got: ${ABOUT:-<empty>})" ;;
+    *dsh-minato*) ok "about works: $(echo "$ABOUT" | head -1)" ;;
+    *) fail "about did not print the product name (got: $(echo "$ABOUT" | head -1))" ;;
 esac
 
 # ---- 4. hashes for the release notes ------------------------------------
