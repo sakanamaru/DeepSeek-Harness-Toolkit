@@ -19,8 +19,19 @@ namespace Dsht.Platform.Windows
                 if (!string.IsNullOrEmpty(workingDirectory)) psi.WorkingDirectory = workingDirectory;
                 Process p = Process.Start(psi);
                 if (p == null) { error = "Process.Start 返回 null"; return false; }
-                System.Threading.Tasks.Task.Run(delegate { try { p.StandardOutput.ReadToEnd(); } catch { } });
-                System.Threading.Tasks.Task.Run(delegate { try { p.StandardError.ReadToEnd(); } catch { } });
+                // ✗ 原来把输出**丢弃**（ReadToEnd 后不落盘）→ Windows 上取不到 dsh 打印的带 token 的 URL ✗
+                //   （2026-09-30 真机：Windows 侧日志文件根本不存在 ✓ 而 CLI 又要从日志读 URL ✓）
+                // 改成**逐行流式写日志** ✓ 与 Linux 侧同一路径 ✓ → 两个平台一致 ✓✓
+                string logPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsh-minato-start.log");
+                try { System.IO.File.WriteAllText(logPath, "== dsh-minato start " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine); } catch { }
+                System.Threading.Tasks.Task.Run(delegate
+                {
+                    try { string ln; while ((ln = p.StandardOutput.ReadLine()) != null) { try { System.IO.File.AppendAllText(logPath, ln + Environment.NewLine); } catch { } } } catch { }
+                });
+                System.Threading.Tasks.Task.Run(delegate
+                {
+                    try { string ln2; while ((ln2 = p.StandardError.ReadLine()) != null) { try { System.IO.File.AppendAllText(logPath, ln2 + Environment.NewLine); } catch { } } } catch { }
+                });
                 pid = p.Id;
                 return true;
             }
