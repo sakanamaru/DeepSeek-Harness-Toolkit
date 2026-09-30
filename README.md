@@ -452,3 +452,9 @@ This project is open source under the MIT License. You are free to use, modify a
 - GitHub: @sakanamaru  https://github.com/sakanamaru
 
 If this tool helped you, a ⭐ on the repo's top right would mean a lot — it keeps this project going.
+
+---
+
+## 资产许可
+
+本项目的 MIT 许可只覆盖**代码**；图标等非代码资产的来源与许可范围见 [ASSETS.md](ASSETS.md)。
