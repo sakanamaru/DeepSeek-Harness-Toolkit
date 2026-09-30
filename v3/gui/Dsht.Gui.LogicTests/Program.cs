@@ -106,7 +106,7 @@ namespace Dsht.Gui.LogicTests
             Check("体检：条目按级别归类", ds.ErrorLines.Count == 1 && ds.WarnLines.Count == 1 && ds.ErrorLines[0].Contains("dsh 未安装"));
             Check("体检：空输入不抛", !SummaryMarkers.ParseDoctor("").Ok && SummaryMarkers.ParseDoctor(null).Error == 0);
             BackupSummary bs = SummaryMarkers.ParseBackups("BACKUP_LIST_OK 3\nBACKUP_ITEM dsh-data-x Manual 10 2026-09-28 19:00:00");
-            Check("备份摘要：数量与最新一条", bs.Ok && bs.Count == 3 && bs.Latest.Contains("dsh-data-x"));
+            Check("备份摘要：数量", bs.Ok && bs.Count == 3);   // the Latest field was removed as dead state; assert the count only
             Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
             return _fail == 0 ? 0 : 1;
         }

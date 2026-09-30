@@ -982,6 +982,23 @@ internal static class Installer
                 try { if (File.Exists(fp)) { File.Delete(fp); removedOur++; } }
                 catch (Exception fex) { skipped++; Log("**删不掉**（可能被占用 ✓）: " + rel + " → " + fex.Message); }
             }
+            // ★★★ **N-3b 修复（安装器复审 CRITICAL —— 我上一轮的自我改名挡住了自己）** ✓✓
+            //   ✗ 我让父进程先把自己改名成 `uninstall.exe.running-XXXXXX` ✗（这样子进程能删 `uninstall.exe` ✓）
+            //     → 但**那个 `.running-*` 文件**：(a) 不在删除列表 ✗ (b) 子进程运行期间被父进程锁着 ✗
+            //       (c) 名字不是 `uninstall.exe` → **这个 `gen` 循环匹配不到** ✗✗
+            //     → **实测：卸载 exit 0 而目录还在** ✗ · ARP/快捷方式保留 ✓ · **用户无法重试** ✗✗
+            //       （`uninstall.exe` 与 marker 都删了 ✓ 只剩一个删不掉的 `.running-*` ✓）
+            //     → 而且**第二次安装到任何目录都被拒 exit 2** ✗（残留 ARP 被 `ReadInstalled` 读到 ✓）
+            //   ✓ 现在：**先扫掉所有 `uninstall.exe.running-*`** ✓✓（父进程已退出 ✓ 不再被锁 ✓）
+            try
+            {
+                foreach (string rn in Directory.GetFiles(mover, "uninstall.exe.running-*"))
+                {
+                    try { File.Delete(rn); removedOur++; Log("已删自我改名留下的副本 ✓ " + Path.GetFileName(rn)); }
+                    catch (Exception rnx) { Log("删自我改名副本失败（不致命 ✓）: " + rnx.Message); }
+                }
+            }
+            catch { }
             foreach (string gen in new string[] { "uninstall.exe", ".dsh-minato-install", "hashes.txt" })
             {
                 try { string fp = Path.Combine(mover, gen); if (File.Exists(fp)) { File.Delete(fp); removedOur++; } } catch { }
