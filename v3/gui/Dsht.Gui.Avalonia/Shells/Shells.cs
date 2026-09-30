@@ -1829,7 +1829,9 @@ namespace Dsht.Gui.Avalonia.Shells
             long[] dayTokK = new long[days];
             for (int k = 0; k < days; k++) dayTokK[k] = dayTok[k] / tokDiv;
             StackPanel c3 = new StackPanel { Spacing = 8 };
-            c3.Children.Add(T("近 " + days + " 天 token 消耗（输入侧合计，k token；按 dsh 记录的创建时间归日）", 13, Palette.Text, FontWeight.Bold));
+            // N11 FIX: the bar unit follows the data, so the title must too (it said "k token" even
+            // when the chart was drawing plain tokens)
+            c3.Children.Add(T("近 " + days + " 天 token 消耗（输入侧合计，" + (tokDiv >= 1000 ? "k token" : "token") + "；按 dsh 记录的创建时间归日）", 13, Palette.Text, FontWeight.Bold));
             c3.Children.Add(BarChart(labels, dayTokK, maxTok / tokDiv, Palette.Warn, maxTok >= 1000 ? "k tok" : "tok"));   // F11 FIX: unit follows the data
             c3.Children.Add(T("合计 " + SessionRow.Human(Sum(dayTok)) + " token　最高 " + SessionRow.Human(maxTok) + "/天（创建时间缺失的会话不计入，不猜）", 11.5, Palette.TextFaint));
             s.Children.Add(Card(c3, new Thickness(0), new Thickness(18, 16)));
@@ -1957,8 +1959,8 @@ namespace Dsht.Gui.Avalonia.Shells
             string fStart = deskUp ? st.DesktopStart : st.Start;
             string fUp = deskUp ? st.DesktopUptime : st.Uptime;
             facts.Children.Add(StatCard(Symbol.NumberSymbol, deskUp ? "桌面端 PID" : "进程 PID", (string.IsNullOrEmpty(fPid) || fPid == "0") ? "—" : fPid, "运'行 dsh 的进程号", Palette.Text, -1, 0, 3));
-            facts.Children.Add(StatCard(Symbol.Calendar, "启动时间", string.IsNullOrEmpty(st.Start) ? "—" : st.Start, "dsh 启动的时刻", Palette.Text, -1, 1, 3));
-            facts.Children.Add(StatCard(Symbol.Clock, "已运行", string.IsNullOrEmpty(st.Uptime) ? "—" : st.Uptime, "从启动到现在", Palette.Accent, -1, 2, 3));
+            facts.Children.Add(StatCard(Symbol.Calendar, "启动时间", string.IsNullOrEmpty(fStart) ? "—" : fStart, "dsh 启动的时刻", Palette.Text, -1, 1, 3));
+            facts.Children.Add(StatCard(Symbol.Clock, "已运行", string.IsNullOrEmpty(fUp) ? "—" : fUp, "从启动到现在", Palette.Accent, -1, 2, 3));
             s.Children.Add(facts);
 
             // —— 总览指标（把其它页的要点也摆到这里，省得来回点）——
