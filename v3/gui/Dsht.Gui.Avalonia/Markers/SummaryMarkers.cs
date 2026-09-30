@@ -84,10 +84,13 @@ namespace Dsht.Gui.Avalonia.Markers
     {
         public string Name = "";
         public string Kind = "Manual";
+        /// <summary>F14 FIX: the CLI lists entries it cannot restore from and marks them. This
+        /// lets the page show them as invalid instead of as ordinary backups.</summary>
+        public bool Invalid = false;
         public long Bytes;
         public string Time = "";
-        public string KindText { get { return Kind == "Manual" ? "手动" : (Kind == "Auto" ? "自动" : Kind); } }
-        public string SizeText { get { return SessionRow.Human(Bytes); } }
+        public string KindText { get { return Invalid ? "无效（不能用于恢复）" : (Kind == "Manual" ? "手动" : (Kind == "Auto" ? "自动" : Kind)); } }
+        public string SizeText { get { return Invalid ? "—" : SessionRow.Human(Bytes); } }
     }
 
     /// <summary>一个配置项（`config-get` 的 CONFIG 行）。</summary>
@@ -152,6 +155,19 @@ namespace Dsht.Gui.Avalonia.Markers
             for (int i = 0; i < lines.Length; i++)
             {
                 string line = lines[i] == null ? "" : lines[i].Trim();
+                if (line.StartsWith("BACKUP_ITEM_INVALID ", StringComparison.Ordinal))
+                {
+                    string badName = line.Substring("BACKUP_ITEM_INVALID ".Length).Trim();
+                    if (badName.Length > 0)
+                    {
+                        BackupItem bad = new BackupItem();
+                        bad.Name = badName;
+                        bad.Kind = "Invalid";
+                        bad.Invalid = true;
+                        list.Add(bad);
+                    }
+                    continue;
+                }
                 if (!line.StartsWith("BACKUP_ITEM ", StringComparison.Ordinal)) continue;
                 string[] p = line.Substring("BACKUP_ITEM ".Length).Split(new char[] { ' ' }, 4);
                 if (p.Length < 1) continue;
