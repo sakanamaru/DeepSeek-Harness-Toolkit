@@ -1,10 +1,32 @@
-# dsh-minato
+# DeepSeek Harness Toolkit
+
+> ## 📌 这个项目原来叫 `DeepSeek-Harness-Toolkit`，现在叫 **`dsh-minato`**
+>
+> **为什么改名**：原名太长、不好记也不好念。`dsh-minato`（みなと = **港**）短、好打、
+> 与 dsh 生态的命名习惯一致——**dsh 的港口**。仓库地址不变，GitHub 会重定向旧链接。
+>
+> ## 🚧 **V3 即将推出**（跨平台重写，正在收尾）
+>
+> | | **V2.x（本页 · 当前稳定版）** | **V3（即将推出）** |
+> |---|---|---|
+> | 平台 | 仅 Windows | **Windows + Linux** |
+> | 界面 | WinForms 面板（七页） | **Avalonia 跨平台 GUI** + 完整 CLI |
+> | 运行时 | 依赖系统 .NET Framework（**体积小**） | **自包含**，不依赖系统运行时 |
+> | 安装 | 解压即用 | **自解压安装器**（Windows）· **POSIX 脚本**（Linux） |
+> | 完整性校验 | 无 | **有**：启动时核对自身指纹，**被改动就拒绝运行** |
+> | 卸载安全 | — | **默认不删你的数据** + **拒绝删除"不像安装目录"的目录** |
+> | 更新中心 | — | 一处查看 web / 官方桌面端 / 本工具 / 已装插件的版本 |
+>
+> **V3 的 CLI 在 Linux 上已经完整可用**，GUI 正在逐个补齐功能。
+> **V2.x 会继续维护**，直到 V3 功能对等再切换。
+>
+> ---
 
 <div align="center">
 
 **[English](README.md) · [简体中文](README_zh-CN.md)**
 
-<img src="logo.png" alt="dsh-minato" width="220"/>
+<img src="logo.png" alt="DeepSeek Harness Toolkit" width="220"/>
 
 **DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具——双击即用，无需终端。**
 
@@ -15,151 +37,9 @@ DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具
 
 > ⚠️ 本项目为**非官方**工具，与 DeepSeek 官方无关。
 
-## 你可以依赖的保证
-
-这是一个会动你数据的工具，所以它的承诺应该**可核对**，而不是靠信任。下面四条都在**真机**上验证过（Windows 与 Linux 各一遍），并写明**验证方法**，你可以自己复现。
-
-- **恢复永远不会删除只存在于你这边的文件。** 合并只覆盖同名文件、补上新增文件；备份里没有的东西一概不动。dry-run 会打印它将**新增/覆盖/保留**的数量，而真实恢复的结果与预览一致。
-- **会话统计从不读取你的对话正文。** 它只读 dsh 自己的元数据投影。验证方式：把对话文件设为**不可读**后统计仍然正常，因此它不可能读过正文。
-- **卸载只移除程序，不动你的数据。** `uninstall` 只移除 dsh 包，数据目录与全部备份原封不动，而且在动手之前就在计划里写明了这一点。之后再装回来可用、且**设置保持不变** ✓ —— 这条往返已端到端验证过（含"用卸载前做的备份恢复"✓）。
-- **备份能自证完整。** 每个备份旁边有一个**最后写入**的完成标记，含内容哈希：中断的备份可被发现、被改动的内容可被发现，从不完整的备份恢复会被拒绝（除非你显式加 `--force`）。
-
-**不在这份清单上的，就不是保证。** 特别是：完成标记出现之前写的备份没有标记，它们会被报告为**未知**，而不是被当成好的。
-## 版本线：V2 还是 V3？
-
-**两条线都在维护，但目标用户不同。**
-
-| | **V2.x（经典版）** | **V3（当前主线）** |
-|---|---|---|
-| 平台 | **仅 Windows** | **Windows + Linux** |
-| 界面 | WinForms 面板（七页） | Avalonia 跨平台 GUI + 完整 CLI |
-| 运行时 | 依赖系统 .NET Framework（**体积小**） | **自包含**，不依赖系统运行时（体积大） |
-| 安装 | 解压即用 | **自包含安装器**（Win）· **POSIX 脚本**（Linux） |
-| 完整性校验 | 无 | **有**：启动时核对自身指纹，**被改动就拒绝运行** |
-
-**怎么选：**
-
-- **只在 Windows 上用，想要最小、最省事** → **V2.x**
-- **要用 Linux** → **V3**（经典版在 Linux 上从源码构建时 `start` / `stop` / `shortcut` 三处接缝是坏的，且不认 `$DSH_HOME`）
-- **要自动化 / 脚本化 / 完整性校验** → **V3**
-- **不确定** → **V3**（主线，功能是 V2 的超集）
-
-> 两条线的**数据是同一份**：都只读 `~/.dsh`，都不修改 dsh 自己的文件。
-> 换线不需要迁移数据，卸载任何一条也**不会删除**你的数据。
-
-## 大版本更新历史
-
-### V3（当前主线，跨平台重写）
-
-- **跨平台**：CLI 完整移植到 Linux；GUI 从 WinForms 重写为 **Avalonia**，同一套代码跑两个平台
-- **零第三方运行时依赖**：CLI / GUI 自包含发布；安装器只用 Windows 系统组件（.NET Framework 属系统组件）
-- **自解压安装器**（Windows）：单文件、定制界面、**不需要管理员权限**、注册到「应用和功能」
-- **POSIX 安装脚本**（Linux）：纯 `sh`、零依赖、免 `sudo`，装到 `~/.local/share`
-- **完整性校验**：CLI / GUI 启动器 / 安装器在运行前核对 `hashes.txt` 指纹，**不一致就拒绝运行**
-- **卸载安全**：默认**不删用户数据**；且**拒绝删除**"不像安装目录"的目录（四层防护）
-- **更新中心**：一处查看 web / 官方桌面端 / 本工具 / 已装插件的版本与更新状态
-- **工程质量**：334 个契约测试 + 九项发布门槛（含**篡改自证**：故意改一个字节，验证器必须报错）
-
-### V2.x（经典版，仅 Windows）
-
-按发布顺序：
-
-| 版本 | 里程碑 |
-|---|---|
-| **v2.7.x** | 配置自检 `profilecheck`（只读扫描 `~/.dsh/profiles/**/*.yaml`，报出会让 dsh 起不来的问题）；`auto_start` 可控倒计时 |
-| **v2.6.0** | （见 Releases） |
-| **v2.5.0** | （见 Releases） |
-| **v2.4.x** | **自 v2.4.1 起提供图形面板**（WinForms）；发布物含三种形态，按需取用 |
-| **v2.3.0** | （见 Releases） |
-| **v2.1.x** | （见 Releases） |
-| **v2.0.0** | 重构封装起点 |
-
-> 完整的逐版说明见 [Releases](https://github.com/sakanamaru/dsh-minato/releases) 与 [tags](https://github.com/sakanamaru/dsh-minato/tags)。
-> v2.8 阶段 1 做了 **move-only** 拆分（把 4000+ 行单文件 `dsh_v2.cs` 拆开，行为不变）。
-## Linux 支持（预览）
-
-V3 线今天就能在 Linux（x86-64）上跑：CLI 已完整移植，Avalonia GUI 也能编译并运行。
-这一节把 Linux 的现状写清楚，免得你踩到才发现。
-
-### Linux 上已经能用
-
-- **全部 CLI 命令**：install / update / uninstall、start / stop、status、doctor、sessions、profiles、
-  profilecheck、profilepatch、backup / backup-list / backup-export / backup-delete、restore、
-  config-get / config-set、bootdiag、check、selftest、shortcut、ui、about，以及无参数数字菜单。
-- **一键安装**：`dsh-minato install --install-node --yes` **免 sudo** 把官方 Node LTS 装到 `~/.local/node`
-  （curl / wget / python3 有哪个用哪个 ✓），再用 npm 装 dsh；Node 按你的 CPU 架构选择（x64 / arm64 / armv7l / x86）。
-- **一键启动 / 停止**：`start --yes` 脱离终端启动，**只有端口或 HTTP 探测确认后才报成功**；
-  `stop --yes` 对**整个进程组**发信号并复检。
-- **每个写操作都先打印计划、加 `--yes` 才执行**；真实恢复还要求设置 `DSH_HOME`（会规范化为绝对路径），
-  因此**永远不会写你的默认数据根**。
-- **Avalonia GUI 能在 Linux 上编译并运行**（X11，或经 XWayland 走 Wayland）。
-
-### 平台本质差异（不是缺陷）
-
-- 三个经典可执行文件（`DeepSeek Harness Toolkit.exe`、`Toolkit GUI*.exe`）与 `.lnk` 快捷方式是
-  Windows / .NET Framework 专有，**Linux 包里不含它们**。
-- `shortcut` 在 Linux 上创建的是**应用菜单项**（`~/.local/share/applications/dsh-minato.desktop`），
-  不是桌面图标。
-- `--install-node` 只在 Linux 上可用；Windows 的 Node 由安装器负责。
-
-- **工作区自动探测在两侧的基准不同，这是必要的。** Windows 上取**可执行文件所在目录的上两级**（v2.x 的规则：exe 在 `...\dsh-minato\` 时工作区为 `...\`）；Linux 上可执行文件通常装在 `~/.local/bin`，同一条规则会指向 `~/.local`（没有意义），所以 Linux 改为取**你运行命令时所在的目录**。两种情况里显式的 `ws=` 配置都优先 ✓；看起来不合理的位置（家目录本身、盘根、系统目录）会被拒绝 ✓，交由你手动指定 ✓。
-### Linux 上的已知缺口（有跟踪，3.0 前补齐）
-
-- GUI 的「一键启动/停止」「运行检查」「隔离/恢复」按钮仍调用 Windows 专有的经典核心；
-  它们背后的 CLI 在 Linux 上已经可用，所以这是**接线**问题而非能力缺失。
-- 备份会把**自动探测到的工作区**打包进 `_workspace/`，恢复时合并回去；在 `ws=` 里用 `;` 分隔多个路径即可备份**多个工作区** ✓（写入恢复侧认识的**多工作区**（`.dshws`）格式 ✓）；只写一个路径时仍用旧式扁平格式 ✓，两种都能正常恢复 ✓。
-- **GUI** 仍无日志中心、更新中心、导入备份、清除数据、托盘与快捷键；但这些**能力**在 **CLI** 上已经具备 ✓（`log` / `update-info` / `import` / `wipe` 在 Linux 上今天就能用 ✓）—— 这里缺的是 **GUI 界面**，不是能力 ✓。
-- `keep_backups` **已按配置生效**：自动备份保留配置的份数（默认为 10）。
-- 经典 v2.x 线若在 Linux 上从源码构建，`start` / `stop` / `shortcut` 三处接缝是坏的，且不认 `$DSH_HOME`；
-  Linux 上请使用 V3 CLI。
-
-### Linux 发布产物
-
-每次发布会附上 `dsh-minato-linux-x64.tar.gz`，内含两份 CLI 构建（小的 framework-dependent 与**自包含单文件**）、
-自包含 GUI、`.desktop` 入口、图标、冒烟脚本、简短说明与 sha256 清单。用
-`v3/tools/verify-linux.sh <tarball> [<tarball.sha256>]` 校验 —— 与 CI 上传前跑的是同一个脚本。
-运行时依赖：iproute2（`ss`）、`ps`，以及引导 Node 时的 `tar` 加 curl/wget/python3 之一。
-
-## 安装方式（三种，按场景选）
-
-**Windows —— 双击安装器**（推荐给不熟悉命令行的用户）
-
-从 Releases 下载 `dsh-minato-<版本>-win-x64-setup.exe`，双击即可。它会：
-
-- 安装到 `%LOCALAPPDATA%\Programs\dsh-minato` —— **不需要管理员权限**，不弹 UAC
-- 创建开始菜单快捷方式（可选桌面快捷方式、可选加入 PATH，**默认都不勾**）
-- 注册到「应用和功能」，卸载用安装目录里的 `uninstall.exe`
-- **安装前校验包内每个文件的 SHA-256**，不一致就**拒绝安装**并指出是哪个文件
-- 卸载时**默认不删你的数据**，并在桌面留一份说明写明数据位置
-
-**Windows —— 解压即用**（不想安装）
-
-下载 `dsh-minato-win-x64.zip` 解压，双击 `dsh-minato-gui.exe`。
-
-**Linux —— 一条命令**
-
-```sh
-tar xzf dsh-minato-linux-x64.tar.gz && cd dsh-minato-linux-x64 && ./install.sh
-```
-
-**纯 POSIX sh · 零第三方依赖 · 不需要 sudo** —— 装到 `~/.local/share/dsh-minato`，链接到 `~/.local/bin/dsh-minato`，并写一个 `.desktop` 菜单项。
-卸载：`./install.sh --uninstall`（**默认不删你的数据**，会在桌面留一份说明）。
-
-## 完整性校验（被改动就拒绝运行）
-
-发布包内附 `hashes.txt`（每个可执行文件的 SHA-256）。**CLI、GUI 启动器与安装器在运行前都会核对它**：
-
-| 情况 | 行为 |
-|---|---|
-| **一致** | 静默通过（不刷屏） |
-| **不一致** | **拒绝运行**，打印期望与实际指纹，并给出官方下载地址 |
-| **没有清单** | 放行，但**明确显示"跳过校验"** —— 源码编译、单独复制 exe 属正常 |
-
-它针对的是**静态感染**：木马给正常 exe 打补丁后文件必然改变，指纹必然对不上。
-它**挡不住**「连 `hashes.txt` 一起替换」与「内存注入」—— 那两种情况只能从官方渠道核对指纹。
 ## 官方下载
 
-只有本仓库的 [Releases 页面](https://github.com/sakanamaru/dsh-minato/releases) 提供官方产物——其他任何来源（网盘二次上传、"收费 / 破解 / 修改版"、其他网站或账号）均**非官方**。本项目免费开源（MIT），**任何收费售卖均未经授权**。运行前请核验：`verify.ps1` 对照 CI 生成的清单校验 SHA-256 并验证 GPG 签名，而 GitHub 构建溯源证明（attestation）是**独立的额外**溯源检查，`verify.ps1` **不会**验证它，它也不能替代 GPG 签名校验。信任模型、供应链控制与手动核验步骤见 [SECURITY.md](SECURITY.md)。
+只有本仓库的 [Releases 页面](https://github.com/sakanamaru/DeepSeek-Harness-Toolkit/releases) 提供官方产物——其他任何来源（网盘二次上传、"收费 / 破解 / 修改版"、其他网站或账号）均**非官方**。本项目免费开源（MIT），**任何收费售卖均未经授权**。运行前请核验：`verify.ps1` 对照 CI 生成的清单校验 SHA-256 并验证 GPG 签名，而 GitHub 构建溯源证明（attestation）是**独立的额外**溯源检查，`verify.ps1` **不会**验证它，它也不能替代 GPG 签名校验。信任模型、供应链控制与手动核验步骤见 [SECURITY.md](SECURITY.md)。
 
 ## 界面截图
 
@@ -193,15 +73,6 @@ tar xzf dsh-minato-linux-x64.tar.gz && cd dsh-minato-linux-x64 && ./install.sh
 
 一键**全量备份** dsh 数据目录（`~/.dsh`）到 exe 旁的 `backup\`；列表式恢复带确认、可直接打开备份文件夹；手动备份永久保留，自动备份按保留策略清理；每个危险操作（恢复/导入/清除/更新）前都会**先自动备份**兜底。
 
-### 能自证完整的备份
-
-现在每个备份旁边都有一个**完成标记**（`<包名>.manifest`），**最后写入** ✓，记录文件数、字节数与**整包内容的 SHA-256** ✓。由此有三件事：
-
-- **中断的备份可被发现** ✓：标记只在复制**完成后**才写 ✓ → 没有标记的包就是**没写完**的 ✓ → `backup-list --verify` 会报 `incomplete` ✓，而不是把它当成可用的备份悄悄列出来 ✓。
-- **被改动或损坏的内容可被发现** ✓：`backup-list --verify` 会重算哈希 ✓，不一致时报 `mismatch` 并明确写出「**不要依赖它**」✓ —— 这能发现「**只拷了一半**」的文件 ✓（**这是文件计数看不到的** ✓✓）。
-- **从不完整的备份恢复会被拒绝** ✓：`restore` 与 `restore --dry-run` 在动任何数据之前先核对标记 ✓，不一致时**明确报出数字并拒绝** ✓；确实要用就加 `--force` ✓。
-
-标记会随 `backup-export` 与 `import` **一起迁移** ✓ → 备份搬到另一台机器后**仍可核对** ✓。本功能之前写的包没有标记 ✓ → 它们被当作「**未知**」而不是被拒绝 ✓ → **老包不会因此失效** ✓。
 ### 把 dsh 迁移到另一台电脑
 
 把备份文件夹拷到新电脑，用**导入**即可——支持多工作区（`_workspace\名称\`）、兼容旧格式备份包、内置长路径支持（`\\?\`，>260 字符）。
@@ -241,22 +112,22 @@ plugin tree failed to load: … provider "kimi" cannot enforce maxDepth (no dept
 
 ```powershell
 # 1) 主动预检（只读）：哪些 profile 条目会让 dsh 起不来？
-dsh-minato.exe profilecheck              # 别名：pc
-dsh-minato.exe profilecheck --vendor     # 连 node_modules 一起扫（默认跳过）
+DeepSeek Harness Toolkit.exe profilecheck              # 别名：pc
+DeepSeek Harness Toolkit.exe profilecheck --vendor     # 连 node_modules 一起扫（默认跳过）
 
 # 2) 已经起不来了？把启动输出存成文本文件，然后：
-dsh-minato.exe bootdiag --from captured.txt    # 别名：bdiag
+DeepSeek Harness Toolkit.exe bootdiag --from captured.txt    # 别名：bdiag
 
 # 3) 处方——先预览，确认后再落盘（先备份 → 复扫校验 → 失败自动回滚）：
-dsh-minato.exe profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed
-dsh-minato.exe profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed --yes
+DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed
+DeepSeek Harness Toolkit.exe profilepatch --file <yaml> --id <条目> --set maxDepth=provider-managed --yes
 ```
 
 **不止 `maxDepth`：任何坏插件都能先隔离掉。** 上面那行处方让插件**继续可用**；当坏插件身份不明、或你只想先让 dsh 起来时，可以往补丁文件**末尾追加**一个顶层条目把这一行关掉（**只追加**，不改动你 profile 里任何已有字符）：
 
 ```powershell
-dsh-minato.exe profilepatch --disable <条目 id>          # 预览（PROFILEPATCH_DRYRUN，零写入）
-dsh-minato.exe profilepatch --disable <条目 id> --yes    # 先备份 → 追加 → 复检 → 失败逐字节回滚
+DeepSeek Harness Toolkit.exe profilepatch --disable <条目 id>          # 预览（PROFILEPATCH_DRYRUN，零写入）
+DeepSeek Harness Toolkit.exe profilepatch --disable <条目 id> --yes    # 先备份 → 追加 → 复检 → 失败逐字节回滚
 ```
 
 `disabled: true` 是 **dsh 自己补丁层的一等字段**（`@deepseek-ai/cordis-plugin-include` 的 `PatchOptions.disabled`），dsh 自己关遥测行就用它——所以这是"关掉那一行"的正统写法，不是重写你的 profile。它**只做手动操作、绝不自动执行**，幂等（已隔离 → `PROFILEPATCH_NOOP`），id 走字符集白名单（`[A-Za-z0-9._@/-]`，防 YAML 注入），复检失败则逐字节回滚。
@@ -304,17 +175,6 @@ dsh web
 2. 分发的是 Windows exe，天然存在信任门槛——因此本项目**完全开源（MIT）**，每个发布物均由 **GitHub Actions CI 从源码构建**，并随发布提供 `hashes.txt`（SHA-256 指纹）与 **GPG 签名**，任何人可核对发布物是否一致
 3. 如果你是终端熟练用户，直接用官方 npm 命令更轻快；这个工具是给「不想碰终端」的人准备的
 
-## 与官方 dsh 桌面端的关系
-
-DeepSeek 官方已推出 **dsh 桌面端**（Electron 应用）。本工具**不针对它做适配**，也不替代它——两者管的事情不同：桌面端管"用 dsh"，本工具管"装好、看好、备份好、必要时救回来"。
-
-三点范围说明（都只关于本工具自身）：
-
-1. **本工具当前管理的是 Web 形态**：`start` / `stop` / `status` 的判断依据是 **3080 端口的监听与监听进程身份**。桌面端若不走这个端口，本工具的 `status` 会报 `STATUS_DOWN`——那不是故障，是**检测范围不同**（它检测的是 dsh 的 Web 服务，不是桌面端进程）。
-2. **`headless` / `acp` / `desktop` 在代码中是"预留形态"**：形态已被承认，但**当前没有可观测事实可据以判定**（进程名、IPC 通道等均未知）。它们**如实报 Down 并说明原因**，绝不假装 Ready，也不假装"没在跑"。运行 `dsh-minato describe` 可以看到完整说明。
-3. **官方桌面端不在本项目的适配范围内**。若你要与它共存，请自行确认环境；本工具不会去猜它的进程名或通信方式。
-
-> 公开报道称官方桌面端与 Web 版**共用同一个 `~/.dsh` 数据目录**。如果确实如此，那么本工具的**备份 / 恢复 / 迁移**对那份数据同样适用——因为本工具只认数据目录，不区分数据是谁写的。这一点请以你自己的实测为准。
 ## 功能一览
 
 | 功能 | 说明 |
@@ -347,7 +207,7 @@ DeepSeek 官方已推出 **dsh 桌面端**（Electron 应用）。本工具**不
 
 | 版本 | 文件 | 解压/运行方式 | 适合谁 |
 |---|---|---|---|
-| **A. 命令行核心** | `dsh-minato.exe` | 完整解压后双击运行 | 熟悉终端、要脚本/自动化的人 |
+| **A. 命令行核心** | `DeepSeek Harness Toolkit.exe` | 完整解压后双击运行 | 熟悉终端、要脚本/自动化的人 |
 | **B. GUI 附加版** | `Toolkit GUI.exe` + 核心同目录 | **必须完整解压**——GUI 依赖同目录的核心 exe；单独拷 GUI 会提示「未找到核心程序（CLI）」 | 想用图形界面、与核心一起部署的人 |
 | **C. GUI 单文件集成版** | `Toolkit GUI Standalone.exe` | **单文件独立运行**——内嵌核心，首次启动自动解出到同目录 | 想「一个 exe 搞定一切」的人 |
 
@@ -379,11 +239,11 @@ DeepSeek 官方已推出 **dsh 桌面端**（Electron 应用）。本工具**不
 
 ## 使用
 
-双击 `dsh-minato.exe` 即可；或命令行：
+双击 `DeepSeek Harness Toolkit.exe` 即可；或命令行：
 
 ```
-dsh-minato.exe install|start|uninstall|update|check|about|help
-dsh-minato.exe profilecheck|bootdiag|profilepatch     # dsh 起不来时的诊断与修复（见下）
+DeepSeek Harness Toolkit.exe install|start|uninstall|update|check|about|help
+DeepSeek Harness Toolkit.exe profilecheck|bootdiag|profilepatch     # dsh 起不来时的诊断与修复（见下）
 ```
 
 无参数启动为交互菜单：dsh 已安装时首次运行 5 秒倒计时自动启动（可按键接管），之后每次打开也自动启动 Web 界面；
@@ -397,7 +257,7 @@ dsh-minato.exe profilecheck|bootdiag|profilepatch     # dsh 起不来时的诊�
 
 | 现象 | 解决 |
 | --- | --- |
-| GUI 提示「未找到核心程序（CLI）」 | B 附加版必须与 `dsh-minato.exe` **同目录**——请完整解压发布包，或改用 C 单文件集成版 |
+| GUI 提示「未找到核心程序（CLI）」 | B 附加版必须与 `DeepSeek Harness Toolkit.exe` **同目录**——请完整解压发布包，或改用 C 单文件集成版 |
 | `stop` 提示「3080 被其他程序占用，已拒绝停止」 | 监听 3080 的进程不是 dsh（如其他开发服务器）。本工具**不会误杀他人程序**；若确要关闭它，请自行结束该进程 |
 | dsh 起不来（`plugin tree failed to load`、`cannot enforce maxDepth`） | 跑 `profilecheck`（或把启动输出存成文件后跑 `bootdiag --from <文件>`），再用 `profilepatch … --yes` 补那一行处方；也可直接用 GUI **体检 → 配置自检**——详见上文「dsh 起不来怎么办」 |
 | 打开 Web 界面 403 / 空白 | 菜单选 **7 访问入口**，切换 `127.0.0.1` ↔ `localhost`（浏览器把两者当不同站点，旧缓存会导致异常） |
@@ -411,12 +271,12 @@ dsh-minato.exe profilecheck|bootdiag|profilepatch     # dsh 起不来时的诊�
 需要 Windows 自带的 .NET Framework 4.x（Win10 / Win11 默认已安装）：
 
 ```
-"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico "/out:dsh-minato.exe" dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs /warn:4
+"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /target:exe /win32icon:icon.ico "/out:DeepSeek Harness Toolkit.exe" dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs /warn:4
 ```
 
 或双击本目录 `build_exe.cmd`。GUI 由同规则的单文件 `gui_v2.cs` 编译（一份源码 → 附加版与集成版两种形态；集成版多一个 `/resource:<核心exe>,DSHCore.exe`）。
 
-> 上面命令里的 `src\` 通配符属于 **v2.8 阶段 1 的布局（2026-09-21 已完成）**——**move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（见「目录结构」）。**已发布的 v2.7.3** 核心即由这套分层布局编译（v2.7.2 及更早是单文件 `dsh_v2.cs`）。`csc.exe` 自身不展开通配符——需要显式文件清单时，用 `Get-ChildItem src -Recurse -Filter *.cs` 展开。
+> 上面命令里的 `src\` 通配符属于 **v2.8 阶段 1 的布局（2026-09-21 已完成）**——**move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（见「目录结构」）。**已发布的 v2.7.3** 核心即由这套分层布局编译（v2.7.2 及更早是单文件 `dsh_v2.cs`，重编它们时去掉那三个 `src\` 通配符）。`csc.exe` 自身不展开通配符——需要显式文件清单时，用 `Get-ChildItem src -Recurse -Filter *.cs` 展开。
 
 **可复现发布（源码即产物）**：每个 GitHub Release 的 exe 均由 **GitHub Actions CI** 从本仓库源码自动编译生成，并在同一流水线里重新生成 `hashes.txt` 且完成 **GPG 签名**。标签构建另会发布 **GitHub 构建溯源证明（attestation）**——这是独立的额外溯源检查，需用 `gh` 单独验证；`verify.ps1` **不**验证它，它也不能替代 GPG 签名校验。仓库自身不存放任何二进制文件。
 
@@ -424,20 +284,19 @@ dsh-minato.exe profilecheck|bootdiag|profilepatch     # dsh 起不来时的诊�
 
 无需任何测试框架或第三方依赖：
 
-- **单元测试（318 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
+- **单元测试（304 项）**：`/define:UNIT` 构建，测试入口在 `tests\unit_tests.cs`，被测的是生产代码本体：
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /define:UNIT /out:unittests.exe dsh_v2.cs src\Core\*.cs src\Platform\Windows\*.cs src\Cli\*.cs tests\unit_tests.cs
   unittests.exe
   ```
-  退出码 0=全过。覆盖：路径往返（含 UNC / 中文空格与**相对路径**）、工作区黑名单、dsh 数据目录标记、根标记严格性、备份目录校验、日志轮转、备份命名 + 保留策略、服务三态判定、版本比较 / 发布解析 / 更新探测、netstat PID 解析、Dry-Run 合并/删除计划（含恢复侧跳过规则一致性）、备份类型解析、导出 / 删除校验、回滚候选查询、配置白名单（含 `close_action` / `auto_start` 键）、状态栏 `FormatUptime`、profile 静态扫描 / `bootdiag` 输出解析 / 受控单行修复（一行计划、幂等 NOOP、备份、复扫校验与回滚）。
+  退出码 0=全过。覆盖：路径往返（含 UNC / 中文空格）、工作区黑名单、dsh 数据目录标记、根标记严格性、备份目录校验、日志轮转、备份命名 + 保留策略、服务三态判定、版本比较 / 发布解析 / 更新探测、netstat PID 解析、Dry-Run 合并/删除计划（含恢复侧跳过规则一致性）、备份类型解析、导出 / 删除校验、回滚候选查询、配置白名单（含 `close_action` / `auto_start` 键）、状态栏 `FormatUptime`、profile 静态扫描 / `bootdiag` 输出解析 / 受控单行修复（一行计划、幂等 NOOP、备份、复扫校验与回滚）。
 
 - **GUI 逻辑测试（52 项）**：与 `gui_v2.cs` 同程序集编译，零第三方依赖；CI 每次推送都跑：
   ```
   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:exe /main:GuiLogicTests /out:guilogictests.exe gui_v2.cs tests\gui_logic_tests.cs
   guilogictests.exe
   ```
-  覆盖呈现层基座：标记行解析（含此前漏掉的 `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK`）、信号总线（`SignalBus`——含"一个订阅者抛异常不影响其他订阅者"）、信号→界面动作路由表（`SigRouting`）、设置卡片模型（`SettingsCards`），以及**源码级 i18n 强制检查**（`L10N._()` 用到的键必须有定义、定义过的键不能是死键、中英文不能为空、**L10N 字典之外不允许出现中文字符串字面量**）。
-
+  覆盖呈现层基座：标记行解析（含此前漏掉的 `BKEXPORT_OK` / `BKDEL_OK` / `CONFIGSET_OK`）、信号总线（含"一个订阅者抛异常不影响其他订阅者"）、信号→界面动作路由表（`SigRouting`）、设置卡片模型（`SettingsCards`），以及**源码级 i18n 强制检查**（`L10N._()` 用到的键必须有定义、不能有死键、中英文不能为空、**L10N 字典之外不允许出现中文字符串字面量**）。
 - **集成测试（33 个用例）**：打桩端到端矩阵（变体 A/C，真实探测 3080；覆盖保留策略、运行中禁止恢复/导入、双语断言等）：
   ```
   powershell -ExecutionPolicy Bypass -File tests\integration.ps1
@@ -463,20 +322,20 @@ gui_v2.cs            GUI 源码（WinForms；一份源码 → 附加版 + 集成
 app.manifest         GUI 清单（DPI 感知 / 兼容性）
 build_exe.cmd        重编译脚本（核心）
 icon.ico             程序图标源文件
-logo.png             产品 Logo PNG（512×512，与程序图标同一角色）
+logo.png             产品 Logo PNG（1536×1536）
 verify.ps1           发布物一键核验（SHA-256 + GPG）
 keys/                维护者 GPG 公钥
 SECURITY.md          安全策略、数据与网络边界声明
 CHANGELOG.md         更新日志（双语）
 hashes.txt           SHA-256 校验清单（CI 每次发布重新生成）
-tests/               单元（297）/ 集成（33）测试——无第三方依赖
+tests/               单元（304）/ 集成（33）测试——无第三方依赖
 docs/screenshots/    README 截图
 .github/workflows/   CI：push/PR 跑测试；标签/手动触发构建发布 + GPG 签名
 .dsh_launcher_root   安装标记（随包分发；误删保护）
 backup/  logs/       运行时目录（已被 .gitignore 排除，切勿提交）
 ```
 
-> **上面的 `src/` 各行即 v2.7.3 起的发布布局。** 阶段 1 是 **move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（同一程序集内的 `partial`，因此调用点、签名与行为零改动），已完成于 2026-09-21（提交 ee36ac0，CI 绿）。已发布的 **v2.7.3** 即由这套布局编译。阶段 1 不动 `gui_v2.cs`、`tests/unit_tests.cs`、`verify.ps1`。
+> **上面的 `src/` 各行即 v2.7.3 起的发布布局。** 它来自 **move-only** 拆分：把 4000+ 行的单文件 `dsh_v2.cs` 拆成 `partial class Program` 分层（同一程序集内的 `partial`，因此调用点、签名与行为零改动），已完成于 2026-09-21（提交 ee36ac0，CI 绿）。已发布的 **v2.7.3** 即由这套布局编译。拆分不动 `gui_v2.cs`、`tests/unit_tests.cs`、`verify.ps1`。
 
 ## 错误日志
 
@@ -489,14 +348,14 @@ backup/  logs/       运行时目录（已被 .gitignore 排除，切勿提交�
 - **下载后先核验再运行（约 20 秒）**：
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.0 -OutDir D:\verify
+  powershell -ExecutionPolicy Bypass -File verify.ps1 -Tag v2.7.3 -OutDir D:\verify
   ```
 
   `verify.ps1`（发布包内）自动完成：下载指定 release 的全部产物（三个版本 + `hashes.txt`）→ 对照 CI 生成的 `hashes.txt` 做 SHA-256 核验 → 用**临时隔离钥匙串**把 `hashes.txt.asc` 的签名**钉死比对维护者指纹**（不信任本机钥匙串：换任何别的钥匙签出的"好签名"都会被拒绝）→ 打印 **Release → Tag → Commit** 溯源链（tag 对象 / commit / commit 链接）。只读，不安装任何东西。带 `-Tag` 时走固定下载链接、完全不调 GitHub API（不怕匿名限速）；不带 `-Tag` 时通过 API 解析最新 release（网络受限可选传 `-Token`）。
 - **GPG 签名**：`hashes.txt` 由维护者私钥签名（`hashes.txt.asc`），公钥 `keys/sakanamaru-gpg.asc`，指纹：
   `A2F67D170B5BE4845612642C240979232B4E4CE4`
 - **GitHub 构建溯源证明（attestation）——独立的额外检查**：标签构建另会发布 GitHub 构建溯源证明，可用
-  `gh attestation verify <文件> --repo sakanamaru/dsh-minato` 单独验证。`verify.ps1`
+  `gh attestation verify <文件> --repo sakanamaru/DeepSeek-Harness-Toolkit` 单独验证。`verify.ps1`
   **不**验证 attestation，attestation 也**不**能替代 GPG 签名校验——两者相互独立，任选其一即可（都做更好）。
 - **程序自带完整性检查能证明什么、不能证明什么**：GUI 的「验证此安装」、启动/首次启动一致性检查与体检
   `Integrity` 类都只是把文件与**紧挨着它的** `hashes.txt` 比对——若有人同时替换 exe **和**该清单即可通过，
@@ -534,30 +393,3 @@ backup/  logs/       运行时目录（已被 .gitignore 排除，切勿提交�
 - GitHub    : @sakanamaru  https://github.com/sakanamaru
 
 如果这个工具帮到了你，欢迎在仓库右上角点个 ⭐——就是对维护最大的鼓励。
-
----
-
-## 资产许可
-
-本项目的 MIT 许可只覆盖**代码**；图标等非代码资产的来源与许可范围见 [ASSETS.md](ASSETS.md)。
-
----
-
-## 图标与署名（Credits）
-
-鲸鱼娘（Whale-chan）形象来自 DeepSeek 社区同人创作。
-本项目图标为生成式 AI 产出（工具：Kimi），提示词由本项目维护者编写。
-本项目为非官方、非商业的开源工具，与 DeepSeek 官方无关，不使用任何官方标识。
-来源与许可详见仓库根目录 ASSETS.md。
-
----
-
-## 代码签名（Code Signing）
-
-本项目的 Windows 安装器**正在申请** [SignPath Foundation](https://signpath.org/) 的**免费开源代码签名**。
-申请通过后，发布的 Windows 产物将由 **SignPath Foundation** 签名，签名主体为 SignPath Foundation。
-
-**当前状态**：申请中 —— 在此之前，Windows 首次运行可能出现 SmartScreen 的「未知发布者」提示 ✓。
-这是**未签名**的正常表现，不代表文件有问题 ✓。你可以用 Releases 页面公布的 **SHA-256** 自行核对下载的文件 ✓。
-
-> 本项目为**非官方、非商业**的开源工具，与 DeepSeek 官方无关。资产来源与许可见 [ASSETS.md](ASSETS.md)，隐私政策见 [PRIVACY.md](PRIVACY.md)。
