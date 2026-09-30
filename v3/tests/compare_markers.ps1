@@ -236,6 +236,26 @@ foreach ($c in $cases) {
     }
 }
 
+# ★★★ **门槛完整性审计 M4 —— 忽略规则太宽，这里补一条显式断言** ✓✓
+#   ✗ `^BACKUP_ITEM_INVALID ` 的忽略会吞掉**任意多条** ✗
+#     → 审计变异证明：**给每个条目都打这个标记（1 → 4 行）也照样绿** ✗✗
+#       （"把每个有效备份都标成无效"这种真回归**看不见** ✓）
+#   ✓ 现在：**显式断言次数** ✓✓ —— fixture 里**正好 1 个**无效包 ✓
+#     · V3 必须**恰好 1 次** ✓ · v2.x 必须 **0 次**（它没这个标记 ✓）
+#     → 多打（全标无效 ✓）或少打（标记又不可达 ✓）都会红 ✓✓
+if ($Fixtures) {
+    $bl3 = (Invoke-External { & $v3exe @('backup-list') }) | Out-String
+    $n3 = @(($bl3 -split "`r?`n") | Where-Object { $_ -match '^BACKUP_ITEM_INVALID ' }).Count
+    $bl2 = (Invoke-External { & $v2 @('backup-list') }) | Out-String
+    $n2 = @(($bl2 -split "`r?`n") | Where-Object { $_ -match '^BACKUP_ITEM_INVALID ' }).Count
+    if ($n3 -eq 1 -and $n2 -eq 0) {
+        Write-Host ("  {0,-18} PASS  [恰好 1 次（V3）/ 0 次（v2.x）]" -f 'invalid-entry count')
+    } else {
+        $fail++
+        Write-Host ("  {0,-18} FAIL  [次数不对：V3=$n3（应 1）· v2.x=$n2（应 0）]" -f 'invalid-entry count') -ForegroundColor Red
+    }
+}
+
 # 安全网：真实数据根必须与开跑前完全一致——任何"用例真的写了用户数据"都会在这里暴露
 $rootDirty = ''
 foreach ($r in $realRoots) {
