@@ -369,6 +369,10 @@ esac
 if [ "$WRITE_DESKTOP" -eq 1 ]; then
     mkdir -p "$DESKTOP_DIR" || warn "建不了 $DESKTOP_DIR（跳过菜单项）"
     ICON="$PREFIX/icons/$APP.png"
+    # S9 FIX (Linux audit MINOR): the Linux package ships
+    # icons/hicolor/256x256/apps/dsh-minato.png (the Windows package uses icons/dsh-minato.png),
+    # so Icon= fell back to the executable and the menu entry had no icon at all.
+    [ -f "$ICON" ] || ICON="$PREFIX/icons/hicolor/256x256/apps/$APP.png"
     [ -f "$ICON" ] || ICON="$PREFIX/$APP"
     cat > "$DESKTOP_DIR/$APP.desktop" <<EOF
 [Desktop Entry]
