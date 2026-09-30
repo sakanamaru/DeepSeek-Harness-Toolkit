@@ -583,6 +583,10 @@ internal static class Installer
             }
             try { foreach (string dd in Directory.GetDirectories(mover, "app-*")) { try { Directory.Delete(dd, true); removedOur++; } catch { } } } catch { }
             try { string g2 = Path.Combine(mover, "gui"); if (Directory.Exists(g2)) { Directory.Delete(g2, true); removedOur++; } } catch { }
+            // ✓ 我自己的 m3 修复引入的：`bin\` 是**安装器生成的** ✓ 不在清单里 ✗
+            //   → "只删我们自己的"逻辑**不知道它是我们的** ✗ → 目录非空 → 保留 ✓
+            //   （**是"如实报告"抓到它的** ✓✓ —— 日志写了"还有文件被占用"✓ 而不是假报干净 ✓）
+            try { string b2 = Path.Combine(mover, "bin"); if (Directory.Exists(b2)) { Directory.Delete(b2, true); removedOur++; } } catch { }
             Log("已删我们自己的 " + removedOur + " 项 ✓（清单 " + ourFiles.Count + " 条 ✓）");
             bool leftover = false;
             try { leftover = Directory.Exists(mover) && Directory.GetFileSystemEntries(mover).Length > 0; } catch { }
