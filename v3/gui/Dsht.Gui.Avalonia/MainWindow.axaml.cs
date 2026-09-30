@@ -517,7 +517,20 @@ namespace Dsht.Gui.Avalonia
             //   ✓ 现在：**统一 MinWidth + 文字居中** ✓✓
             //     · 短文字被撑到同一宽度 ✓ 长文字仍可自然变宽 ✓（不会被截断 ✓）
             //     · 这一处同时覆盖 `ShellSwitch`（5 个壳 ✓）与 `StyleSwitch`（4 个样式 ✓）✓✓
-            if (b != null) { b.MinWidth = 86; b.HorizontalContentAlignment = HorizontalAlignment.Center; }
+            // ★★★ **修正（2026-09-30 用户反馈"宽体普京"）** ✓✓
+            //   ✗ 我上一轮加 `MinWidth = 86` 时**没看内容类型** ✗✗：
+            //     · `ShellSwitch` 的 5 个按钮装的是 **SymbolIcon**（图标 ✓）不是文字 ✗
+            //     · `StyleSwitch` 的 4 个是**文字**（A B C D ✓）
+            //     → 图标被撑成 **86px 宽条** ✓ 用户形容"宽体普京" ✓✓
+            //   ✓ 现在：**按内容类型分别给** ✓
+            //     · 图标按钮 → **34px 方形** ✓（图标居中 ✓ 与图标本体大小相称 ✓）
+            //     · 文字按钮 → **86px 等宽** ✓（这是用户原本的诉求 ✓ 短文字不再长短不一 ✓）
+            if (b != null)
+            {
+                bool isIcon = b.Content is SymbolIcon;
+                b.MinWidth = isIcon ? 34 : 86;
+                b.HorizontalContentAlignment = HorizontalAlignment.Center;
+            }
             if (b == null) return;
             b.Padding = new Thickness(10, 5);
             b.CornerRadius = new CornerRadius(7);
