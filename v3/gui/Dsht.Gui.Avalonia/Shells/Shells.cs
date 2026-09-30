@@ -1216,6 +1216,30 @@ namespace Dsht.Gui.Avalonia.Shells
             }
 
             // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）
+            // ════ 清除数据（**危险操作** ✓✓ roadmap Phase 2 的缺口："CLI 已有 wipe，缺 GUI 表面" ✓）════
+            // CLI 的 `wipe` 有**五道闸门** ✓✓（读过源码确认 ✓）：
+            //   ① 不加 --yes 只出 WIPE_PLAN 计划 ✓  ② --yes 确认 ✓
+            //   ③ **先做 -pre-wipe 安全备份，且必须成功** ✓✓（做不出就不清 ✓ 这是最好的设计 ✓）
+            //   ④ 数据根是盘根/系统根 → WIPE_REFUSED ✓  ⑤ 备份目录在数据根内 → WIPE_REFUSED ✓
+            // GUI 侧只做三件事 ✓：**先看计划** ✓ · **两次点击确认**（house style ✓ 与"删除备份"一致 ✓）· **如实显示安全备份路径** ✓
+            StackPanel wipe = new StackPanel { Spacing = 8 };
+            wipe.Children.Add(T("清除数据（危险）", 13, Palette.Bad, FontWeight.SemiBold));
+            wipe.Children.Add(T("会删除数据根（~/.dsh 或 $DSH_HOME）里的全部内容 —— 会话、设置、凭据都会没。", 11.5, Palette.TextDim));
+            wipe.Children.Add(T("但 CLI 会**先自动做一份安全备份，且必须成功**；做不出来就**不会清** ✓。备份目录本身**不动** ✓，清完可随时用 restore 恢复 ✓。", 11.5, Palette.TextDim));
+            StackPanel wacts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            wacts.Children.Add(GhostButton(T("先看将删除什么（只读，不动数据）", 11.5, Palette.Text), delegate { host.WipePlan(); }, true));
+            string wkey = "wipe:armed";
+            bool warm = host.PendingDelete == wkey;
+            Button wbtn = GhostButton(T(warm ? "再点一次：确认清除数据" : "清除数据…", 11.5, warm ? Brushes.White : Palette.Bad), delegate
+            {
+                if (host.PendingDelete != wkey) { host.PendingDelete = wkey; host.Rebuild(); return; }
+                host.PendingDelete = "";
+                host.DoWipe();
+            }, true);
+            wbtn.Background = warm ? Palette.Bad : Palette.WarnSoft;
+            wacts.Children.Add(wbtn);
+            wipe.Children.Add(wacts);
+            s.Children.Add(Card(wipe, new Thickness(0), new Thickness(16, 14)));
             s.Children.Add(Card(T("恢复是合并语义：只覆盖同名文件，不删除目标端独有的文件；「应用恢复」只允许写入隔离数据根（CLI 的准入闸门会拒绝其它情况并把原因显示在上面）。", 11.5, Palette.TextFaint), new Thickness(0), new Thickness(16, 12)));
             return s;
         }

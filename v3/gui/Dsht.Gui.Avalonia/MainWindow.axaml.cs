@@ -338,6 +338,14 @@ namespace Dsht.Gui.Avalonia
 
         /// <summary>导出日志 ✓（走 CLI 的 `--export` ✓ **CLI 自己带 --yes 闸门** ✓ 这里显式加 --yes ✓
         /// 导出到临时目录 ✓ 结果路径进右下角 toast ✓）。</summary>
+        // —— 清除数据 ✓✓（roadmap Phase 2："CLI 已有 wipe，缺 GUI 表面" ✓）
+        //   **先看计划**（只读 ✓ 不加 --yes 时 CLI 只输出 WIPE_PLAN ✓ 一个字节都不删 ✓）
+        public void WipePlan() { RunCliAction("wipe", "清除计划（只读，未删除任何东西）"); }
+
+        // **真清除** ✓（`--yes` ✓ → CLI 会**先做安全备份且必须成功** ✓ 再删 ✓
+        //   `WIPE_PRE_BACKUP <路径>` 会显示在页面上 ✓ → 用户能看到安全备份在哪 ✓✓）
+        public void DoWipe() { RunCliAction("wipe --yes", "清除数据"); }
+
         public void ExportLog()
         {
             string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsh-minato-log-export.txt");
