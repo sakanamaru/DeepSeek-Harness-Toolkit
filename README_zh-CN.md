@@ -446,3 +446,9 @@ backup/  logs/       运行时目录（已被 .gitignore 排除，切勿提交�
 - GitHub    : @sakanamaru  https://github.com/sakanamaru
 
 如果这个工具帮到了你，欢迎在仓库右上角点个 ⭐——就是对维护最大的鼓励。
+
+---
+
+## 资产许可
+
+本项目的 MIT 许可只覆盖**代码**；图标等非代码资产的来源与许可范围见 [ASSETS.md](ASSETS.md)。
