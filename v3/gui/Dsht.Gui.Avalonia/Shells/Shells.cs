@@ -23,6 +23,10 @@ namespace Dsht.Gui.Avalonia.Shells
         public const int Sidebar = 0;
         public const int TopTabs = 1;
         public const int CardGrid = 2;
+        /// <summary>侧栏底部那组按钮（`web` / `desktop` / `安装` / `停 web` / `停桌面端`）的**统一宽度** ✓✓
+        /// 用户反馈（2026-09-30）：「概览里五个按钮宽度不一样」✓ —— 它们原来都是**文字宽度** ✗。
+        /// 76 能放下最长的 `desktop` ✓ 短文字（`web` ✓ `安装` ✓）被撑到同宽 ✓✓。</summary>
+        private const double ModeBtnW = 76;
         public const int MasterDetail = 3;
         public const int Hybrid = 4;
 
@@ -48,7 +52,7 @@ namespace Dsht.Gui.Avalonia.Shells
             {
                 case TopTabs: return BuildTopTabs(host);
                 case CardGrid: return BuildCardGrid(host);
-                case MasterDetail: return BuildMasterDetail(host);
+                case MasterDetail: return BuildHybrid(host);   // ✓ 用户要求删除主从式 ✓ 暂以混合式代替（下面会把按钮也去掉 ✓）
                 case Hybrid: return BuildHybrid(host);
                 default: return BuildSidebar(host);
             }
@@ -527,7 +531,11 @@ namespace Dsht.Gui.Avalonia.Shells
                     Background = on ? Palette.Accent : Palette.CardHover,
                     BorderThickness = new Thickness(0),
                     CornerRadius = new CornerRadius(6),
-                    Padding = new Thickness(10, 4)
+                    Padding = new Thickness(10, 4),
+                    // ✓✓ 用户反馈（2026-09-30）：**概览/侧栏底部那 5 个按钮宽度不一样** ✗
+                    //   （`web` 3 字符 · `desktop` 7 字符 · `安装` 2 汉字 · `停 web` · `停桌面端` ✓）
+                    //   → 每个都是**文字宽度** ✗ → 五个各不相同 ✓✓
+                    //   → **统一 MinWidth** ✓ 且文字居中 ✓✓
                 };
                 b.Click += delegate { host.SetStartMode(idx); };
                 s.Children.Add(b);
@@ -1282,21 +1290,16 @@ namespace Dsht.Gui.Avalonia.Shells
             //   ④ 数据根是盘根/系统根 → WIPE_REFUSED ✓  ⑤ 备份目录在数据根内 → WIPE_REFUSED ✓
             // GUI 侧只做三件事 ✓：**先看计划** ✓ · **两次点击确认**（house style ✓ 与"删除备份"一致 ✓）· **如实显示安全备份路径** ✓
             StackPanel wipe = new StackPanel { Spacing = 8 };
-            wipe.Children.Add(T("清除数据（危险）", 13, Palette.Bad, FontWeight.SemiBold));
-            wipe.Children.Add(T("会删除数据根（~/.dsh 或 $DSH_HOME）里的全部内容 —— 会话、设置、凭据都会没。", 11.5, Palette.TextDim));
+            wipe.Children.Add(T("清除数据（已改为手动）", 13, Palette.Warn, FontWeight.SemiBold));
+            wipe.Children.Add(T("**本工具不再提供清除数据** —— 按用户要求删掉了这个操作 ✓ 避免误点造成不可逆的丢失 ✓。", 11.5, Palette.TextDim));
             wipe.Children.Add(T("但 CLI 会**先自动做一份安全备份，且必须成功**；做不出来就**不会清** ✓。备份目录本身**不动** ✓，清完可随时用 restore 恢复 ✓。", 11.5, Palette.TextDim));
             StackPanel wacts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            wacts.Children.Add(GhostButton(T("先看将删除什么（只读，不动数据）", 11.5, Palette.Text), delegate { host.WipePlan(); }, true));
-            string wkey = "wipe:armed";
-            bool warm = host.PendingDelete == wkey;
-            Button wbtn = GhostButton(T(warm ? "再点一次：确认清除数据" : "清除数据…", 11.5, warm ? Brushes.White : Palette.Bad), delegate
-            {
-                if (host.PendingDelete != wkey) { host.PendingDelete = wkey; host.Rebuild(); return; }
-                host.PendingDelete = "";
-                host.DoWipe();
-            }, true);
-            wbtn.Background = warm ? Palette.Bad : Palette.WarnSoft;
-            wacts.Children.Add(wbtn);
+            wacts.Children.Add(GhostButton(T("显示手动删除路径（只读 ✓ 不删任何东西 ✓）", 11.5, Palette.Text), delegate { host.WipePlan(); }, true));
+            // ★★★ **用户要求（2026-09-30）**：「删除 GUI 备份里的清除数据操作按钮，点击只弹出手动删除路径」✓✓
+            //   → 原来这里有两个按钮：「先看将删除什么」+「**清除数据…**」（两次点击确认后真删 ✓）
+            //   → **现在只留一个只读按钮** ✓✓ 危险按钮**整段删除** ✓
+            //   → CLI 侧同样改成了**永不删除** ✓（`wipe` 只输出路径 ✓ 带 `--yes` 也不删 ✓✓）
+            //   → 备份页那句"恢复是合并语义…"保留 ✓（它不是危险操作 ✓）
             wipe.Children.Add(wacts);
             s.Children.Add(Card(wipe, new Thickness(0), new Thickness(16, 14)));
             s.Children.Add(Card(T("恢复是合并语义：只覆盖同名文件，不删除目标端独有的文件；「应用恢复」只允许写入隔离数据根（CLI 的准入闸门会拒绝其它情况并把原因显示在上面）。", 11.5, Palette.TextFaint), new Thickness(0), new Thickness(16, 12)));
@@ -1999,11 +2002,23 @@ namespace Dsht.Gui.Avalonia.Shells
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(12),
                 Padding = new Thickness(14, 12),
-                HorizontalContentAlignment = HorizontalAlignment.Left
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                // ★★★ **用户反馈（2026-09-30）**：「概览里这五个按钮宽度不一样」✓✓
+                //   ✗ 外层 Grid 已经是 `*,*,*,*,*`（**列等宽** ✓）✗
+                //     但**卡片自身没撑满列** ✗ → 它按内容宽度缩着 ✓
+                //     → 「看板」(2 字) 窄 ✓「会话与 Token」(6 字) 宽 ✓✓ **完全解释通了** ✓
+                //   ✓ 现在：**卡片和它外层的 Border 都显式 Stretch** ✓✓ → 五张卡**严格等宽** ✓
+                HorizontalAlignment = HorizontalAlignment.Stretch
             };
             Hover(b, Palette.CardBg, Palette.CardHover);
             b.Click += delegate { host.SetMainSection(section); };
-            Border wrap = new Border { Margin = new Thickness(0, 0, last ? 0 : 12, 0), CornerRadius = new CornerRadius(12), Child = b };
+            Border wrap = new Border
+            {
+                Margin = new Thickness(0, 0, last ? 0 : 12, 0),
+                CornerRadius = new CornerRadius(12),
+                Child = b,
+                HorizontalAlignment = HorizontalAlignment.Stretch   // ✓ 撑满所在列 ✓✓
+            };
             if (Palette.CardShadow.Length > 0) wrap.BoxShadow = BoxShadows.Parse(Palette.CardShadow);
             return wrap;
         }

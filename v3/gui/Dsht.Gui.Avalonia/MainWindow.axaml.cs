@@ -355,7 +355,9 @@ namespace Dsht.Gui.Avalonia
 
         // **真清除** ✓（`--yes` ✓ → CLI 会**先做安全备份且必须成功** ✓ 再删 ✓
         //   `WIPE_PRE_BACKUP <路径>` 会显示在页面上 ✓ → 用户能看到安全备份在哪 ✓✓）
-        public void DoWipe() { RunCliAction("wipe --yes", "清除数据"); }
+        /// <summary>**已停用** ✓✓（用户要求删除清除数据操作 ✓ 只保留"显示手动删除路径" ✓）。
+        /// 留着方法体是为了不动调用点 ✓ 但它**不再做任何删除** ✓（CLI 的 wipe 本身也永不删除了 ✓✓）。</summary>
+        public void DoWipe() { RunCliAction("wipe", "查看手动删除路径（已停用清除 ✓ 只读 ✓）"); }
 
         public void ExportLog()
         {
@@ -492,7 +494,7 @@ namespace Dsht.Gui.Avalonia
             RecolorWindowButtons();
             PaintSwitch("ShellSwitch");
             PaintSwitch("StyleSwitch");
-            for (int i = 0; i < 5; i++) PaintSwitchButton("Shell" + i, i == _shell);
+            for (int i = 0; i < 4; i++) PaintSwitchButton("Shell" + i, i == _shell);   // ✓ 用户要求删除主从式 → 只剩 4 个 ✓✓
             for (int i = 0; i < 4; i++) PaintSwitchButton("Style" + i, i == Palette.StyleKind);
         }
 
@@ -543,7 +545,14 @@ namespace Dsht.Gui.Avalonia
                     string txt = tb0 != null ? tb0.Text : (b.Content as string);
                     if (txt != null && txt.Length <= 2) compact = true;
                 }
-                b.MinWidth = compact ? 34 : 86;
+                // ★★★ **用户第三次反馈（2026-09-30）**：「五个按钮宽度不一样」✓✓
+                //   ✗ 我用的是 `MinWidth` ✗ —— **它只是下限** ✓
+                //     → 内容比下限宽时**照样撑开** ✗ → 两组（图标组 / A B C D 组）**视觉上不齐** ✗✗
+                //   ✓ 现在：**紧凑的用固定 Width** ✓✓（绝对等宽 ✓）
+                //     · 图标 ✓ 与 ≤2 字符短文字（A B C D ✓）→ **Width = 34 固定** ✓✓
+                //     · 更长的文字 → MinWidth = 86 ✓（等宽 ✓ 且不会被截断 ✓）
+                if (compact) { b.Width = 34; b.MinWidth = 0; }
+                else { b.MinWidth = 86; }
                 b.HorizontalContentAlignment = HorizontalAlignment.Center;
             }
             if (b == null) return;
@@ -1186,7 +1195,7 @@ namespace Dsht.Gui.Avalonia
         private System.DateTime _cfgCacheAt = System.DateTime.MinValue;
         private string CfgCached(string cli)
         {
-            if (_cfgCache != null && (System.DateTime.UtcNow - _cfgCacheAt).TotalSeconds < 60.0) return _cfgCache;
+            if (_cfgCache != null && (System.DateTime.UtcNow - _cfgCacheAt).TotalSeconds < 5.0) return _cfgCache;   // ✓ 60 秒太长 → 用户报"设置读不到配置项" ✗ 改 5 秒 ✓✓
             _cfgCache = Run(cli, "config-get");
             _cfgCacheAt = System.DateTime.UtcNow;
             return _cfgCache;
