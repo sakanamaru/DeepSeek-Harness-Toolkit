@@ -101,7 +101,7 @@ namespace Dsht.Cli
                     try { dpid = reg.Get<IProcessQuery>().PidOfNamed("DeepSeek Harness"); } catch { }
                     if (dpid > 0)
                     {
-                        try { System.DateTime? ds = reg.Get<IProcessQuery>().StartTime(dpid); if (ds.HasValue) { dstart = ds.Value.ToString("yyyy-MM-dd HH:mm:ss"); dup = UptimeFormatter.Format(System.DateTime.Now - ds.Value); } } catch { }
+                        try { System.DateTime? ds = reg.Get<IProcessQuery>().StartTime(dpid); if (ds.HasValue) { dstart = ds.Value.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture); dup = UptimeFormatter.Format(System.DateTime.Now - ds.Value); } } catch { }
                     }
                     // 分成**独立标记** ✓（进程名与时长都带空格 ✗ → 挤在一行没法可靠解析 ✓）
                     Console.WriteLine("STATUS_DESKTOP DeepSeek Harness");
@@ -124,7 +124,7 @@ namespace Dsht.Cli
                 DateTime? s = reg.Get<IProcessQuery>().StartTime(r.Pid);
                 if (s.HasValue) { start = s.Value; haveStart = true; }
             }
-            Console.WriteLine("STATUS_START " + (haveStart ? start.ToString("yyyy-MM-dd HH:mm:ss") : ""));
+            Console.WriteLine("STATUS_START " + (haveStart ? start.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) : ""));
             Console.WriteLine("STATUS_UPTIME " + (haveStart ? UptimeFormatter.Format(DateTime.Now - start) : ""));
             return 0;
         }
@@ -227,6 +227,15 @@ namespace Dsht.Cli
         private static int BridgeInstall(string[] args, ServiceRegistry reg)
         {
             string profile = Flag(args, "--profile");
+            // I4 FIX (CLI audit MINOR): the profile name is joined into a path, so a value like
+            // "..\..\x" could rewrite any file named cordis.patch.yml outside the data root (the
+            // fixed file name limits the blast radius, and --yes is required, but it is still a
+            // path traversal). Names are restricted to what a profile name can actually be.
+            if (!string.IsNullOrEmpty(profile) && !System.Text.RegularExpressions.Regex.IsMatch(profile, @"^[A-Za-z0-9._-]+$"))
+            {
+                Console.WriteLine("PROFILEPATCH_FAIL " + T("profile 名字不合法（只允许字母数字与 . _ - ✓）：" + profile, "invalid profile name: " + profile));
+                return 0;
+            }
             if (string.IsNullOrEmpty(profile)) profile = "web";
             bool yes = Has(args, "--yes");
 
@@ -491,7 +500,10 @@ namespace Dsht.Cli
             for (int i = 0; i < list.Count; i++)
             {
                 SessionStat s = list[i];
-                Console.WriteLine("SESSION " + s.Id
+                // I5 FIX (CLI audit MINOR): the title was escaped but the id was not, so a session
+                // projection whose file name contained a newline (legal on Linux) could inject a
+                // fake marker line into the output the GUI parses.
+                Console.WriteLine("SESSION " + MarkerText.Encode(s.Id)
                     + " title=" + MarkerText.Encode(s.Title)
                     + " created=" + (string.IsNullOrEmpty(s.CreatedAt) ? "unknown" : s.CreatedAt)
                     + " last=" + (string.IsNullOrEmpty(s.LastPromptAt) ? "unknown" : s.LastPromptAt)
@@ -881,7 +893,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             }
             catch (Exception bex) { Console.WriteLine("IMPORT_PRE_BACKUP_FAILED " + bex.Message); }
             // 2) 复制外部包进备份根（源包不动 ✓）；名字带 -imported 便于识别（Classify 视作手动类 ✓ 不会被自动清理 ✓）
-            string dest = System.IO.Path.Combine(rootFull, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff") + "-" + System.Diagnostics.Process.GetCurrentProcess().Id + "-imported");
+            string dest = System.IO.Path.Combine(rootFull, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff", System.Globalization.CultureInfo.InvariantCulture) + "-" + System.Diagnostics.Process.GetCurrentProcess().Id + "-imported");
             try
             {
                 int files = CopyDirDeep(srcFull, dest, 0);
@@ -981,7 +993,9 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             // —— ④ 已安装插件（从各 profile 的 node_modules 扫 ✓ 取 GitHub 地址 ✓✓）——
             try
             {
-                string dshHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                // I2 FIX (CLI audit MINOR): this hardcoded the real home directory, so under an isolated
+            // DSH_HOME - the project's own testing mode - it listed plugins from the real profile.
+            string dshHome = reg.Get<IPaths>().DataRoot;
                 string profiles = System.IO.Path.Combine(dshHome, ".dsh", "profiles");
                 if (System.IO.Directory.Exists(profiles))
                 {
@@ -1667,21 +1681,36 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     }
                     else
                     {
-                        string cli = System.Reflection.Assembly.GetEntryAssembly() == null ? "dsh-minato" : System.Reflection.Assembly.GetEntryAssembly().Location;
+                        // I7 FIX (CLI audit MAJOR): Assembly.Location is an empty STRING (not null) for a
+            // single-file build, which is how the tool ships, so the null check passed and the
+            // autostart entry was written with an empty command path while still reporting success.
+            // The running executable path is the reliable source.
+            string cli = SelfExePath();
                         body = "@echo off\r\nrem dsh-minato 开机自启（设置里可关：dsh-minato autostart --disable）\r\n\"" + cli + "\" start --yes\r\n";
                     }
                     System.IO.File.WriteAllText(path, body, new System.Text.UTF8Encoding(false));
                 }
                 else
                 {
-                    string cli2 = System.Reflection.Assembly.GetEntryAssembly() == null ? "dsh-minato" : System.Reflection.Assembly.GetEntryAssembly().Location;
+                    string cli2 = SelfExePath();   // I7 FIX: see above
                     string exec = effective == "web" ? "\"" + cli2 + "\" start --yes" : "echo 'desktop app not available on Linux'";
                     string unit = "[Unit]\nDescription=dsh-minato autostart (dsh)\nAfter=network.target\n\n[Service]\nType=oneshot\nExecStart=" + exec + "\n\n[Install]\nWantedBy=default.target\n";
                     System.IO.File.WriteAllText(path, unit, new System.Text.UTF8Encoding(false));
                     RunQuiet("systemctl", "--user daemon-reload");
                     RunQuiet("systemctl", "--user enable dsh-minato-autostart");
                 }
-                Console.WriteLine("AUTOSTART_OK enable");
+                // I6 FIX (CLI audit MINOR): success was printed without checking that anything was
+            // written, unlike the shortcut path which verifies the file exists.
+            bool wrote = false;
+            try
+            {
+                string unitPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "systemd", "user", "dsh-minato-autostart.service");
+                string unit2 = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "dsh-minato.cmd");
+                wrote = System.IO.File.Exists(unitPath) || System.IO.File.Exists(unit2);
+            }
+            catch { }
+            if (!wrote) { Console.WriteLine("AUTOSTART_FAIL " + T("写入后**没有找到自启文件** ✓ 请检查权限 ✓", "no autostart file was found after writing")); return 0; }
+            Console.WriteLine("AUTOSTART_OK enable");
                 Console.WriteLine("AUTOSTART_PATH " + path);
                 OpLog(reg, "INFO", "autostart enabled target=" + effective);
             }
@@ -2226,7 +2255,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 {
                     long bytes = src.DirSize(e.Path);
                     DateTime? mt = src.LastWrite(e.Path);
-                    string mts = mt.HasValue ? mt.Value.ToString("yyyy-MM-dd HH:mm:ss") : "(unknown)";
+                    string mts = mt.HasValue ? mt.Value.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) : "(unknown)";
                     Console.WriteLine("BACKUP_ITEM " + e.Name + " " + BackupPackage.KindLabel(BackupPackage.Classify(e.Name)) + " " + bytes + " " + mts);
                 }
             }
@@ -2238,6 +2267,19 @@ Console.WriteLine("  config-get | config-set <key> <value>");
         /// 可选 `--report <file>`：写完整诊断报告（含配置/日志摘要，全部脱敏）→ `DOCTOR_REPORT <路径>`；
         /// 写失败 → `DOCTOR_WRITE_FAIL <原因>`。全程只读（与 v2.x 一致，报告用 UTF-8 **带 BOM** 写）。</summary>
         /// <summary>当前操作系统名（跨平台：Linux 上不能写 "Windows" —— 真机测试抓到的 bug）。</summary>
+        /// <summary>I7 FIX: the running executable path. Assembly.Location is empty for single-file
+        /// builds, so autostart entries were written with an empty command while reporting success.</summary>
+        private static string SelfExePath()
+        {
+            try
+            {
+                string p = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
+                if (!string.IsNullOrEmpty(p)) return p;
+            }
+            catch { }
+            return "dsh-minato";
+        }
+
         private static string OsName()
         {
             if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)) return "Windows";
@@ -2259,7 +2301,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             if (report == null) report = Flag(args, "-report");
             if (report != null)
             {
-                string text = DoctorReport.Build(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), ToolkitVersion,
+                string text = DoctorReport.Build(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture), ToolkitVersion,
                     Environment.OSVersion.VersionString, items,
                     ConfigSummaryBuilder.Build(reg.Get<IConfigSource>().ReadConfig()),
                     LogSummaryBuilder.Build(reg.Get<ILogSource>().ReadLog()), summary);
@@ -2566,20 +2608,24 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             string ct = (Flag(args, "--confirm-time") ?? "").Trim().Trim('"');
             if (string.IsNullOrEmpty(ct))
             {
-                Console.WriteLine("BKDEL_PLAN " + T("删除备份需要输入**当前时间**确认 ✓ 请加 `--confirm-time \"" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\"` ✓（照抄上面这个时间 ✓）",
-                                                     "deleting a backup needs the current time: add --confirm-time \"" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\""));
+                Console.WriteLine("BKDEL_PLAN " + T("删除备份需要输入**当前时间**确认 ✓ 请加 `--confirm-time \"" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + "\"` ✓（照抄上面这个时间 ✓）",
+                                                     "deleting a backup needs the current time: add --confirm-time \"" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + "\""));
                 return 0;
             }
+            // I1 FIX (CLI audit MINOR): this used the current culture, so on a locale with a
+            // different date format a bare time or a slashed date was accepted, and the window was
+            // symmetric so a time in the FUTURE was accepted too. The documented contract is
+            // exactly yyyy-MM-dd HH:mm:ss within two minutes, invariant, and not in the future.
             DateTime ctParsed;
-            if (!DateTime.TryParse(ct, out ctParsed))
+            if (!DateTime.TryParseExact(ct, "yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out ctParsed))
             {
-                Console.WriteLine("BKDEL_FAIL " + T("时间格式不对 ✓ 应为 yyyy-MM-dd HH:mm:ss ✓（现在：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " ✓）", "bad time format"));
+                Console.WriteLine("BKDEL_FAIL " + T("时间格式不对 ✓ 应为 yyyy-MM-dd HH:mm:ss ✓（现在：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + " ✓）", "bad time format"));
                 return 0;
             }
             double ctDiff = Math.Abs((DateTime.Now - ctParsed).TotalSeconds);
             if (ctDiff > 120)
             {
-                Console.WriteLine("BKDEL_FAIL " + T("输入的时间与当前时间相差 " + (int)ctDiff + " 秒（超过 120 秒 ✓）→ 拒绝删除 ✓ 现在：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " ✓",
+                Console.WriteLine("BKDEL_FAIL " + T("输入的时间与当前时间相差 " + (int)ctDiff + " 秒（超过 120 秒 ✓）→ 拒绝删除 ✓ 现在：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + " ✓",
                                                      "the time you typed is " + (int)ctDiff + "s away from now - refused"));
                 return 0;
             }
@@ -2684,6 +2730,17 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 catch { }
                 if (!hasAny)
                 {
+                    // D4 FIX (CLI audit MINOR): when the configured backup folder no longer exists the
+                    // message said "the first backup needs a folder", which is wrong and misleading -
+                    // the user HAS backups, in a folder that is gone. Say so, and only then apply the
+                    // first-backup rule.
+                    string br2 = "";
+                    try { br2 = reg.Get<IBackupSource>().BackupsRoot; } catch { }
+                    if (!string.IsNullOrEmpty(br2) && !System.IO.Directory.Exists(br2))
+                    {
+                        Console.WriteLine("BACKUP_FAIL " + T("**配置的备份目录不存在** ✗：" + br2 + " ✓（你可能移动或删除了它 ✓）请用 `backup-dir --reset` 恢复默认 ✓ 或用 `--to <目录>` 指定新的 ✓", "the configured backups folder does not exist: " + br2));
+                        return 0;
+                    }
                     Console.WriteLine("BACKUP_FAIL " + T(
                         "**第一次备份必须指定目录** ✓ 请加 `--to <目录>` ✓（建议放在安装目录之外 ✓ 例如 D:\\dsh-backups ✓）"
                         + "；GUI 里第一次点「立即备份」也会弹窗让你选 ✓✓",

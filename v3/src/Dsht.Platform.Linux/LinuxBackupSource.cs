@@ -118,7 +118,7 @@ namespace Dsht.Platform.Linux
             {
                 string root = BackupsRoot;
                 Directory.CreateDirectory(root);
-                string dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff") + "-" + System.Diagnostics.Process.GetCurrentProcess().Id + Dsht.Domain.Services.BackupPackage.Suffix(kind));
+                string dest = Path.Combine(root, "dsh-data-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff", System.Globalization.CultureInfo.InvariantCulture) + "-" + System.Diagnostics.Process.GetCurrentProcess().Id + Dsht.Domain.Services.BackupPackage.Suffix(kind));
                 _copyFailures = 0;
             int srcFiles = 0;
             CountTree(sourceDir, ref srcFiles);
@@ -170,7 +170,7 @@ namespace Dsht.Platform.Linux
                     _copyFailures = before;
                     long bytes = DirSizeForManifest(dest);
                     System.IO.File.WriteAllText(dest + ".manifest",
-                        "files=" + finalFiles + "\nbytes=" + bytes + "\nfailed=" + _copyFailures + "\nfinished=" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n");
+                        "files=" + finalFiles + "\nbytes=" + bytes + "\nfailed=" + _copyFailures + "\nfinished=" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + "\n");
                 }
                 catch { }
                 return new BackupResult(dest, skipped, _copyFailures);

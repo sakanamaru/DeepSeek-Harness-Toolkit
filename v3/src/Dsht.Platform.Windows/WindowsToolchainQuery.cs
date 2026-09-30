@@ -57,6 +57,16 @@ namespace Dsht.Platform.Windows
         /// <summary>全局安装（Windows 经 cmd.exe 包装 npm；registry 为空则用默认源）。返回退出码，-1 = 未能执行。</summary>
         public int NpmInstallGlobal(string pkg, string registry)
         {
+            // I3 FIX (CLI audit MINOR): the registry value comes from `npm config get registry`, and
+            // npm reads ./.npmrc from the current directory - a file an attacker can plant. It was
+            // pasted straight into a cmd.exe command line. The project's own version guard names this
+            // exact surface and whitelists the version; the registry was not checked at all. Only a
+            // plain http(s) URL is accepted, and anything else is refused rather than executed.
+            if (!string.IsNullOrEmpty(registry) &&
+                !System.Text.RegularExpressions.Regex.IsMatch(registry, @"^https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+$"))
+            {
+                return -3;   // -3 = refused: the registry value is not a plain URL
+            }
             string args = "/c npm install -g " + (string.IsNullOrEmpty(registry) ? "" : "--registry " + registry + " ") + pkg;
             return RunExit("cmd.exe", args);
         }
