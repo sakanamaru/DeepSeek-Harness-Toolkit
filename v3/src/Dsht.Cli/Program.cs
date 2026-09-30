@@ -2482,12 +2482,14 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 bool inside = b.StartsWith(s + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
                             || string.Equals(b, s, StringComparison.OrdinalIgnoreCase);
                 if (!inside) return;
+                // ★★ **用户反馈（2026-09-30）**：「GUI 备份报错」✗✗ —— 命令其实是**成功**的 ✓
+                //   真因：这里原来输出**4 行长警告** ✓ 而 GUI 的 toast 把 CLI 输出**原样弹出** ✗
+                //     → 满屏 `✗` 与「可能被一起清掉」→ **读起来就是报错** ✓✓
+                //   ✓ 现在：**缩成一句** ✓✓（安装器侧已加保险：卸载显式跳过 backup/ ✓
+                //     所以这句只是**提示** ✓ 不是告警 ✓ 也不再吓人 ✓）
                 Console.WriteLine("BACKUP_WARN " + T(
-                    "备份目录在**安装/状态目录内**（" + bk + "）✗ —— 卸载时**可能**被一起清掉 ✓。"
-                    + "建议把备份放到安装目录之外 ✓：手动复制整个 backup 目录到别处（例如 D:\\dsh-backups ✓），"
-                    + "以后用 backup-export --path <备份> --to <目标> ✓ 导出到外面 ✓。"
-                    + "（安装器侧已加保险：卸载会**显式跳过** backup/ ✓ 但放在外面才真正稳妥 ✓）",
-                    "the backup folder is inside the install/state directory - uninstalling may remove it. Move it outside, e.g. D:\\dsh-backups, and use backup-export --to <target> from then on. The installer now explicitly skips backup/ on uninstall, but keeping it outside is safer."));
+                    "备份在安装目录内 ✓ 建议用 --to <目录> 或环境变量 DSH_MINATO_BACKUP_DIR 放到外面 ✓",
+                    "backups live inside the install folder; use --to <dir> or DSH_MINATO_BACKUP_DIR to move them out"));
             }
             catch { }
         }
