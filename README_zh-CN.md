@@ -25,6 +25,57 @@ DeepSeek Harness（dsh）Web 界面的第三方非官方启动 / 运维小工具
 - **备份能自证完整。** 每个备份旁边有一个**最后写入**的完成标记，含内容哈希：中断的备份可被发现、被改动的内容可被发现，从不完整的备份恢复会被拒绝（除非你显式加 `--force`）。
 
 **不在这份清单上的，就不是保证。** 特别是：完成标记出现之前写的备份没有标记，它们会被报告为**未知**，而不是被当成好的。
+## 版本线：V2 还是 V3？
+
+**两条线都在维护，但目标用户不同。**
+
+| | **V2.x（经典版）** | **V3（当前主线）** |
+|---|---|---|
+| 平台 | **仅 Windows** | **Windows + Linux** |
+| 界面 | WinForms 面板（七页） | Avalonia 跨平台 GUI + 完整 CLI |
+| 运行时 | 依赖系统 .NET Framework（**体积小**） | **自包含**，不依赖系统运行时（体积大） |
+| 安装 | 解压即用 | **自包含安装器**（Win）· **POSIX 脚本**（Linux） |
+| 完整性校验 | 无 | **有**：启动时核对自身指纹，**被改动就拒绝运行** |
+
+**怎么选：**
+
+- **只在 Windows 上用，想要最小、最省事** → **V2.x**
+- **要用 Linux** → **V3**（经典版在 Linux 上从源码构建时 `start` / `stop` / `shortcut` 三处接缝是坏的，且不认 `$DSH_HOME`）
+- **要自动化 / 脚本化 / 完整性校验** → **V3**
+- **不确定** → **V3**（主线，功能是 V2 的超集）
+
+> 两条线的**数据是同一份**：都只读 `~/.dsh`，都不修改 dsh 自己的文件。
+> 换线不需要迁移数据，卸载任何一条也**不会删除**你的数据。
+
+## 大版本更新历史
+
+### V3（当前主线，跨平台重写）
+
+- **跨平台**：CLI 完整移植到 Linux；GUI 从 WinForms 重写为 **Avalonia**，同一套代码跑两个平台
+- **零第三方运行时依赖**：CLI / GUI 自包含发布；安装器只用 Windows 系统组件（.NET Framework 属系统组件）
+- **自解压安装器**（Windows）：单文件、定制界面、**不需要管理员权限**、注册到「应用和功能」
+- **POSIX 安装脚本**（Linux）：纯 `sh`、零依赖、免 `sudo`，装到 `~/.local/share`
+- **完整性校验**：CLI / GUI 启动器 / 安装器在运行前核对 `hashes.txt` 指纹，**不一致就拒绝运行**
+- **卸载安全**：默认**不删用户数据**；且**拒绝删除**"不像安装目录"的目录（四层防护）
+- **更新中心**：一处查看 web / 官方桌面端 / 本工具 / 已装插件的版本与更新状态
+- **工程质量**：334 个契约测试 + 九项发布门槛（含**篡改自证**：故意改一个字节，验证器必须报错）
+
+### V2.x（经典版，仅 Windows）
+
+按发布顺序：
+
+| 版本 | 里程碑 |
+|---|---|
+| **v2.7.x** | 配置自检 `profilecheck`（只读扫描 `~/.dsh/profiles/**/*.yaml`，报出会让 dsh 起不来的问题）；`auto_start` 可控倒计时 |
+| **v2.6.0** | （见 Releases） |
+| **v2.5.0** | （见 Releases） |
+| **v2.4.x** | **自 v2.4.1 起提供图形面板**（WinForms）；发布物含三种形态，按需取用 |
+| **v2.3.0** | （见 Releases） |
+| **v2.1.x** | （见 Releases） |
+| **v2.0.0** | 重构封装起点 |
+
+> 完整的逐版说明见 [Releases](https://github.com/sakanamaru/dsh-minato/releases) 与 [tags](https://github.com/sakanamaru/dsh-minato/tags)。
+> v2.8 阶段 1 做了 **move-only** 拆分（把 4000+ 行单文件 `dsh_v2.cs` 拆开，行为不变）。
 ## Linux 支持（预览）
 
 V3 线今天就能在 Linux（x86-64）上跑：CLI 已完整移植，Avalonia GUI 也能编译并运行。
@@ -69,6 +120,43 @@ V3 线今天就能在 Linux（x86-64）上跑：CLI 已完整移植，Avalonia G
 `v3/tools/verify-linux.sh <tarball> [<tarball.sha256>]` 校验 —— 与 CI 上传前跑的是同一个脚本。
 运行时依赖：iproute2（`ss`）、`ps`，以及引导 Node 时的 `tar` 加 curl/wget/python3 之一。
 
+## 安装方式（三种，按场景选）
+
+**Windows —— 双击安装器**（推荐给不熟悉命令行的用户）
+
+从 Releases 下载 `dsh-minato-<版本>-win-x64-setup.exe`，双击即可。它会：
+
+- 安装到 `%LOCALAPPDATA%\Programs\dsh-minato` —— **不需要管理员权限**，不弹 UAC
+- 创建开始菜单快捷方式（可选桌面快捷方式、可选加入 PATH，**默认都不勾**）
+- 注册到「应用和功能」，卸载用安装目录里的 `uninstall.exe`
+- **安装前校验包内每个文件的 SHA-256**，不一致就**拒绝安装**并指出是哪个文件
+- 卸载时**默认不删你的数据**，并在桌面留一份说明写明数据位置
+
+**Windows —— 解压即用**（不想安装）
+
+下载 `dsh-minato-win-x64.zip` 解压，双击 `dsh-minato-gui.exe`。
+
+**Linux —— 一条命令**
+
+```sh
+tar xzf dsh-minato-linux-x64.tar.gz && cd dsh-minato-linux-x64 && ./install.sh
+```
+
+**纯 POSIX sh · 零第三方依赖 · 不需要 sudo** —— 装到 `~/.local/share/dsh-minato`，链接到 `~/.local/bin/dsh-minato`，并写一个 `.desktop` 菜单项。
+卸载：`./install.sh --uninstall`（**默认不删你的数据**，会在桌面留一份说明）。
+
+## 完整性校验（被改动就拒绝运行）
+
+发布包内附 `hashes.txt`（每个可执行文件的 SHA-256）。**CLI、GUI 启动器与安装器在运行前都会核对它**：
+
+| 情况 | 行为 |
+|---|---|
+| **一致** | 静默通过（不刷屏） |
+| **不一致** | **拒绝运行**，打印期望与实际指纹，并给出官方下载地址 |
+| **没有清单** | 放行，但**明确显示"跳过校验"** —— 源码编译、单独复制 exe 属正常 |
+
+它针对的是**静态感染**：木马给正常 exe 打补丁后文件必然改变，指纹必然对不上。
+它**挡不住**「连 `hashes.txt` 一起替换」与「内存注入」—— 那两种情况只能从官方渠道核对指纹。
 ## 官方下载
 
 只有本仓库的 [Releases 页面](https://github.com/sakanamaru/dsh-minato/releases) 提供官方产物——其他任何来源（网盘二次上传、"收费 / 破解 / 修改版"、其他网站或账号）均**非官方**。本项目免费开源（MIT），**任何收费售卖均未经授权**。运行前请核验：`verify.ps1` 对照 CI 生成的清单校验 SHA-256 并验证 GPG 签名，而 GitHub 构建溯源证明（attestation）是**独立的额外**溯源检查，`verify.ps1` **不会**验证它，它也不能替代 GPG 签名校验。信任模型、供应链控制与手动核验步骤见 [SECURITY.md](SECURITY.md)。
@@ -375,7 +463,7 @@ gui_v2.cs            GUI 源码（WinForms；一份源码 → 附加版 + 集成
 app.manifest         GUI 清单（DPI 感知 / 兼容性）
 build_exe.cmd        重编译脚本（核心）
 icon.ico             程序图标源文件
-logo.png             产品 Logo PNG（1536×1536）
+logo.png             产品 Logo PNG（512×512，与程序图标同一角色）
 verify.ps1           发布物一键核验（SHA-256 + GPG）
 keys/                维护者 GPG 公钥
 SECURITY.md          安全策略、数据与网络边界声明
