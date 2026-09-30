@@ -342,6 +342,7 @@ internal static class Installer
         // process holding it is enough), the version directory still holds the LIVE old install, and
         // the rollback used to delete it recursively and then "restore" whatever .old-* it found.
         bool placed = false;
+            string oldManifest = "";   // N-4 FIX: must live OUTSIDE the try, because the rollback reads it in the catch
         try
         {
             // 把暂存里的内容搬进一个版本化目录 ✓
@@ -356,6 +357,18 @@ internal static class Installer
                 try { Directory.Move(verDir, verDir + ".old-" + DateTime.Now.ToString("HHmmss")); }
                 catch (Exception mv) { Log("旧版本目录改名失败（不致命 ✓ 稍后会被新载荷替换）: " + mv.Message); }
             }
+            // ★★★ **N-4 修复（安装器复审 MAJOR —— 回滚不还原清单）** ✓✓
+            //   ✗ 清单在**就位之前**就被复制到 target ✗ 而回滚路径（`return 4`）
+            //     **只还原 gui 与版本目录** ✗ → **新清单配旧 gui** ✗✗
+            //     → 启动器 `FindHashExact` 对不上 → **报"文件已经被改动，可能被木马感染"** ✗
+            //       （审计实测：清单 b218a60d… vs 实际 e651fa8e… ✓）
+            //   ✓ 现在：**就位前先快照旧清单** ✓✓ 回滚时还原 ✓
+            try
+            {
+                string mnow = Path.Combine(target, "hashes.txt");
+                if (File.Exists(mnow)) oldManifest = File.ReadAllText(mnow);
+            }
+            catch { }
             Directory.Move(staging, verDir);
             placed = true;   // M-1 FIX: only now does the version folder hold the NEW payload
             Log("版本目录: " + verDir);
@@ -453,6 +466,16 @@ internal static class Installer
                 Log("**已尽力回滚** ✓ 若仍异常请用卸载器或手动检查 ✓（不会假装「什么都没发生」✗）");
             }
             catch (Exception rb) { Log("回滚失败（请手动查看 ✓）: " + rb.Message); }
+            // N-4 FIX: put the OLD manifest back, so it matches the restored old gui
+            try
+            {
+                if (!string.IsNullOrEmpty(oldManifest))
+                {
+                    File.WriteAllText(Path.Combine(target, "hashes.txt"), oldManifest, new UTF8Encoding(false));
+                    Log("已还原旧清单 ✓（否则启动器会报「被改动」✗）");
+                }
+            }
+            catch (Exception omx) { Log("还原旧清单失败（启动时会报不一致 ✓ 请重装）: " + omx.Message); }
             return 4;
         }
         if (hadOld) TryDelete(old);
@@ -525,7 +548,13 @@ internal static class Installer
         //   原来生成在 marker 那段（ARP 之后）→ **注册表里的 token 是空的** ✗ → 卸载时双向比对失败 ✗✗
         //   → **正常卸载也被拒** ✓ 幸好回归测试抓到了 ✓）
         InstallToken = Guid.NewGuid().ToString("N");
-        try { WriteArp(target); Log("ARP 注册表已写 ✓（含 token ✓）"); } catch (Exception ex) { Log("ARP 失败（不致命）: " + ex.Message); }
+        // ★★★ **N-5 修复（安装器复审 MAJOR —— ARP 写在 marker 之前）** ✓✓
+        //   ✗ 原来这里就写 ARP ✗ 而 **marker 在下面几行才写** ✗✗
+        //     → marker 写失败时（杀软/磁盘满/权限 ✓）**ARP 已经写进去了** ✗
+        //     → 应用和功能里有一条指向**卸不掉**的安装 ✓（卸载器要求 marker ✗）
+        //     → 而且我上一轮的注释说"不会写 ARP ✓ 因为 ARP 在 marker 之后" ✗ **是假的** ✓
+        //   ✓ 现在：**ARP 挪到 marker 成功之后** ✓✓（见下面 ✓）
+        //     → marker 失败 → **抛 RefusalException → 没有 ARP 残留** ✓✓
         // ★ 写**安装标记** ✓✓
         //   ✗✗ 审计发现（子代理实测）：原来只判"文件存在" ✗ —— `echo x > 任意目录\.dsh-minato-install`
         //      就能满足 ✓ → **任何被放进该 marker 的目录都会被整棵删除** ✗✗（我的注释还自称"无法满足" ✗ 错的）
@@ -558,6 +587,8 @@ internal static class Installer
             Log("→ 常见原因：杀毒软件锁住文件 / 磁盘满 / 权限不足 ✓ 解决后重试即可 ✓");
             throw new RefusalException("安装标记写入失败 ✓ 已中止 ✓（原因：" + ex.Message + " ✓ 不会有半份注册残留 ✓）");
         }
+        // N-5 FIX: ARP only AFTER the marker succeeded, so a marker failure leaves no registry entry
+        try { WriteArp(target); Log("ARP 注册表已写 ✓（含 token ✓ · 在 marker 之后 ✓ 不会有半份注册残留 ✓）"); } catch (Exception arpx) { Log("ARP 失败（不致命）: " + arpx.Message); }
         if (wantPath && !noPath)
         {
             try
@@ -594,7 +625,9 @@ internal static class Installer
         string preTarget = Environment.GetEnvironmentVariable("DSHT_UNINSTALL_TARGET");
         if (!string.IsNullOrEmpty(preTarget)) preTarget = preTarget.TrimEnd('\\'); else preTarget = target;
         if (IsDangerousPath(preTarget)) { Log("拒绝（迁移前检查）：目录可疑 " + preTarget); return 2; }
-        if (!File.Exists(Path.Combine(preTarget, ".dsh-minato-install")))
+        // N-8 FIX (installer audit MAJOR): this pre-check ran before the force branch, so the
+        // one case the force escape hatch exists for - a lost marker - could not be forced.
+        if (!ForceInstall && !File.Exists(Path.Combine(preTarget, ".dsh-minato-install")))
         {
             Log("拒绝（迁移前检查）：目录里没有安装标记 → 不像安装目录 ✓ **一个字节都不删** ✓");
             if (!silent) MessageBox.Show(
@@ -614,7 +647,12 @@ internal static class Installer
                 string me = Process.GetCurrentProcess().MainModule.FileName;
                 string tmp = Path.Combine(Path.GetTempPath(), "dsh-minato-uninstall-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".exe");
                 File.Copy(me, tmp, true);
-                ProcessStartInfo psi = new ProcessStartInfo(tmp, "--uninstall" + (silent ? " --silent" : ""));
+                // ★★★ **N-8 修复（安装器复审 MAJOR —— 子进程丢了 --force）** ✓✓
+                //   ✗ 父进程认 `--force` ✓ 通过了 630 行的预检 ✓ 但**传给子进程时没带上它** ✗✗
+                //     → 子进程重新预检 → `ForceInstall=false` → **又拒绝（exit 2）** ✗
+                //     → 实测：`--force` 卸载"marker 丢失"的目录**仍然 exit 2** ✓✓
+                //   ✓ 现在：**把 `--force` 一起传下去** ✓✓
+                ProcessStartInfo psi = new ProcessStartInfo(tmp, "--uninstall" + (silent ? " --silent" : "") + (ForceInstall ? " --force" : ""));
                 psi.UseShellExecute = false;
                 psi.EnvironmentVariables["DSHT_UNINSTALL_RELOCATED"] = "1";
                 psi.EnvironmentVariables["DSHT_UNINSTALL_TARGET"] = target;
@@ -882,6 +920,7 @@ internal static class Installer
             catch { }
             try { Directory.Move(target, mover); } catch { mover = target; }
             int removedOur = 0;
+            int skipped = 0;   // N-6 FIX: files we could not delete (locked, in use)
             foreach (string rel in ourFiles)
             {
                 // ★★★ **M2 修复（审计 MAJOR —— 会删到安装目录之外）** ✓✓
@@ -890,8 +929,16 @@ internal static class Installer
                 //     · `Path.Combine("C:\\a\\b", "..\\..\\x.txt")` → **逃出安装目录** ✗✗
                 //     → 安装器自己不删这些 ✓ 但**卸载器会** ✗ → 那就是"删了它没创建的东西" ✓
                 //   ✓ 现在：**解析成绝对路径后必须仍在安装目录内** ✓✓ 越界就**跳过并如实记录** ✓
+                // ★★★ **N-6 修复（安装器复审 MAJOR —— 单个文件删不掉就整段崩）** ✓✓
+                //   ✗ 这个 `File.Delete` **没有 try/catch** ✗（旁边 `gen` 那三个有 ✓）
+                //     → 一个被占用的文件（如 `gui\\Avalonia.Base.dll` ✓）抛异常 →
+                //       **外层 catch → exit 5 · 而目录已经删了一半** ✗✗
+                //     → 如果 `Directory.Move(target, mover)` 成功了 ✓ 还会留下一个
+                //       `<target>.removing-*` **孤儿目录** ✗ 且没有任何回滚 ✓
+                //   ✓ 现在：**逐文件 try/catch + 失败计数** ✓✓（删不掉的如实记 ✓ 继续删别的 ✓）
                 string fp = Path.Combine(mover, rel);
-                string full = Path.GetFullPath(fp);
+                string full;
+                try { full = Path.GetFullPath(fp); } catch { Log("**跳过**（路径非法）: " + rel); skipped++; continue; }
                 string rootFull = Path.GetFullPath(mover).TrimEnd('\\') + "\\";
                 if (!full.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
                 {
@@ -904,7 +951,9 @@ internal static class Installer
                 //     → 却仍然打印「卸载完成。」+ 返回 **0** ✗ · ARP/快捷方式/PATH 还**已经清了** ✗
                 //     → 用户**无法重试**（卸载器自己也被删了 ✓）→ 只能手动下载 + `--force` ✗
                 //   ✓ 现在：**删除放在围栏之后** ✓✓（越界的跳过 ✓ 界内的照删 ✓）
-                if (File.Exists(fp)) { File.Delete(fp); removedOur++; }
+                // N-6 FIX: one locked file must not abort the whole uninstall
+                try { if (File.Exists(fp)) { File.Delete(fp); removedOur++; } }
+                catch (Exception fex) { skipped++; Log("**删不掉**（可能被占用 ✓）: " + rel + " → " + fex.Message); }
             }
             foreach (string gen in new string[] { "uninstall.exe", ".dsh-minato-install", "hashes.txt" })
             {
