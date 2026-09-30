@@ -184,8 +184,13 @@ namespace Dsht.Gui.Avalonia
             string outp = await System.Threading.Tasks.Task.Run(delegate { return Run(CliPath(), "backup"); });
             if (outp != null && outp.IndexOf("第一次备份必须指定目录", StringComparison.Ordinal) < 0)
             {
+                // ✓✓ **用户反馈（2026-10-01）**：「现在备份还是受阻」✗
+                //   真因：备份**成功了** ✓ 但这里**没刷新列表** ✗
+                //     → 备份页的「共 N 份」还是旧数字 ✓ → **看起来像没成功** ✓✓
+                //   ✓ 现在：**显示结果 + 立刻 Refresh()** ✓✓（列表马上更新 ✓）
                 _actionLog = "立即备份结果：" + Environment.NewLine + outp.Trim();
                 BuildShell(); ShowToast(_actionLog);
+                Refresh();   // ✓ 关键：刷新备份列表 ✓✓（原来漏了 ✓）
                 return;
             }
             // 第一次 → 让用户选目录 ✓✓
