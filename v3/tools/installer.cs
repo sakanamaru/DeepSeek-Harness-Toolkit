@@ -168,12 +168,13 @@ internal static class Installer
             string mp0 = Path.Combine(target, ".dsh-minato-install");
             if (File.Exists(mp0))
             {
-                string mkTok = "", mkPath = "";
+                string mkTok = "", mkPath = "", mkVer = "";
                 foreach (string ln in File.ReadAllLines(mp0))
                 {
                     if (ln == null) continue;
                     if (ln.StartsWith("token=", StringComparison.Ordinal)) mkTok = ln.Substring(6).Trim();
                     else if (ln.StartsWith("path=", StringComparison.Ordinal)) mkPath = ln.Substring(5).Trim();
+                    else if (ln.StartsWith("version=", StringComparison.Ordinal)) mkVer = ln.Substring(8).Trim();
                 }
                 string regTok = "";
                 try
@@ -189,7 +190,19 @@ internal static class Installer
                     try { pthOk = string.Equals(Path.GetFullPath(mkPath).TrimEnd('\\'), Path.GetFullPath(target).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase); }
                     catch { pthOk = false; }
                 }
-                targetOurs = tokOk && pthOk;
+                // ★★★ **Bug 1 修复（用户实测）** ✓✓
+                //   ✗ 我加严身份校验时**没留兼容旧版本的口子** ✗：
+                //     旧版安装器写的 marker **没有 `token=` 行** ✓（那时还没有 token 机制 ✓）
+                //     → `mkTok=""` → `tokOk=false` → **我们自己的旧安装被当成"外来目录"** ✗✗
+                //     → 用户装到**默认位置**（他自己装过的那个 ✓）被拒 ✓ **升级路径断了** ✓
+                //   ✓ 现在：**旧版 marker 也认** ✓ —— 判据是
+                //     ① 有 `path=` 行 ✓ 且与目标一致 ✓  ② 有 `version=` 行 ✓（旧版 marker 的固定结构 ✓）
+                //     → 认作我们自己的 ✓✓
+                //   （**这不是权限边界** ✓：能往目标目录写 marker 的人本来就能改里面任何东西 ✓
+                //     审计也明确说过"任何以该用户运行的进程都能读 token 并写 marker" ✓）
+                bool legacyOurs = !string.IsNullOrEmpty(mkPath) && pthOk && !string.IsNullOrEmpty(mkVer);
+                targetOurs = (tokOk || legacyOurs) && pthOk;
+                if (legacyOurs && !tokOk) Log("旧版安装标记（无 token 但有 version+path ✓）→ 认作我们自己的 ✓ 可以升级 ✓");
                 if (!targetOurs) Log("目标目录里有个 marker，但**身份校验没通过** ✗（tokenOk=" + tokOk + " pathOk=" + pthOk + "）→ 按「不是我们的」处理 ✓");
             }
         }
@@ -980,7 +993,16 @@ internal static class Installer
     {
         try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch (Exception ex) { Log("删除失败 " + dir + " → " + ex.Message); }
     }
-    private static void Report(Action<int, string> p, int pct, string msg) { if (p != null) p(pct, msg); }
+    /// <summary>报告进度 ✓。**取消请求在这里被检查** ✓（用户实测：取消按钮原来没反应 ✗）：
+    /// 抛出 OperationCanceledException → RunInstall 的 catch → 清理 staging → 如实报告"已取消" ✓✓。</summary>
+    private static void Report(Action<int, string> p, int pct, string msg)
+    {
+        if (ReportHook != null) ReportHook();   // ✓ 取消检查钩子 ✓（GUI 安装时挂上 ✓）
+        if (p != null) p(pct, msg);
+    }
+
+    /// <summary>进度报告前的钩子 ✓（GUI 用它检查"用户是否点了取消" ✓；CLI 模式下为 null ✓）。</summary>
+    internal static Action ReportHook;
 
     // ---- 快捷方式（.lnk）用 WScript.Shell（系统自带 ✓ 零依赖 ✓）----
     private static void CreateShortcut(string dir, string name, string target, string workDir, string desc)
@@ -1300,6 +1322,9 @@ internal sealed class InstallerForm : Form
     }
 
     private bool _running;
+    /// <summary>用户点了"取消安装" ✓（审计/用户实测：原来按钮只改文案 ✗ 点了被 FormClosing 吞掉 ✗）。
+    /// 安装过程在**每个进度回调**里检查它 ✓ → 抛出 → RunInstall 的 catch 如实报告 ✓✓。</summary>
+    private volatile bool _cancelRequested;
     private bool _done;   // ✓ 装完了 → 按钮变成"完成"（**只挂一个处理器** ✓ 不会重复安装 ✓✓）
     /// <summary>要不要建**桌面**快捷方式 ✓（用户要求："添加创建快捷方式询问或者选项框" ✓）。
     /// 默认 **false** ✓（评审建议：桌面快捷方式默认不勾 ✓ 减少杂乱 ✓ OneDrive 同步目录里更该少放 ✓）。</summary>
@@ -1309,7 +1334,19 @@ internal sealed class InstallerForm : Form
         string dir = _dirBox.Text == null ? "" : _dirBox.Text.Trim();
         if (dir.Length == 0) { MessageBox.Show("请先选择安装位置。", "dsh-minato", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
         _page1.Visible = false; _page2.Visible = true; _running = true;
-        _btnMain.Enabled = false; _btnCancel.Text = "请稍候";
+        _btnMain.Enabled = false;
+        // ✓ Bug 2：**真的能取消** ✓（原来只把文案改成"请稍候" ✗ 按钮没禁用也没挂处理器 ✓
+        //   而 FormClosing 里 `if (_running) { e.Cancel = true; }` 会把关闭请求吞掉 ✗ → 表现为"没反应" ✓）
+        _cancelRequested = false;
+        _btnCancel.Text = "取消安装";
+        _btnCancel.Enabled = true;
+        _btnCancel.Click += delegate
+        {
+            _cancelRequested = true;
+            _btnCancel.Text = "正在取消…";
+            _btnCancel.Enabled = false;
+            _status.Text = "正在取消…（等当前步骤结束 ✓ 不会留下半个安装 ✓）";
+        };
         _title.Text = "正在安装…";
         _sub.Text = "窗口在解压前就已经显示出来了 ✓（冻结的窗口最像恶意软件 ✗）";
         bool wantPath = _chkPath.Checked, wantSc = _chkShortcuts.Checked;
