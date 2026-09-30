@@ -1,0 +1,165 @@
+        /// <summary>update-center（V3 独有，**只读** ✓）：四个组件的更新一览 ✓✓
+        /// （用户要求："检查 webui / desktop / dsh-minato / 已安装插件的更新列表和版本，如果能获取更新日志那最好了" ✓）
+        /// 标记行：
+        ///   `UPDATECENTER_OK <n>`
+        ///   `UPDATECENTER_ITEM <id> kind=<webui|desktop|minato|plugin> installed=<v|unknown> latest=<v|unknown> state=<up-to-date|update-available|unknown|external>`
+        ///   `UPDATECENTER_URL <id> <地址>`       ← GitHub / 官方安装页 ✓
+        ///   `UPDATECENTER_NOTE <id> <说明>`      ← 更新前风险与确认要求 ✓
+        ///   `UPDATECENTER_LOG <id> <一行日志>`   ← 更新日志（best-effort ✓ 取不到就说取不到 ✓）
+        /// 纪律：**只读** ✓ 不改任何东西 ✓；取不到的字段写 `unknown` ✓ **不猜** ✗</summary>
+        private static int UpdateCenter(ServiceRegistry reg)
+        {
+            IToolchainQuery tc = reg.Get<IToolchainQuery>();
+            List<string> ids = new List<string>();
+            List<string> lines = new List<string>();
+
+            // —— ① webui = dsh 本体（官方 npm 包 ✓）——
+            string dshInstalled = tc.DshVersion();
+            if (string.IsNullOrEmpty(dshInstalled)) dshInstalled = "unknown";
+            string dshLatest = VersionForChannel(tc, _cfg == null ? "rc" : _cfg.UpdateChannel);
+            if (string.IsNullOrEmpty(dshLatest)) dshLatest = "unknown";
+            string dshState = "unknown";
+            if (dshInstalled != "unknown" && dshLatest != "unknown")
+                dshState = dshInstalled == dshLatest ? "up-to-date" : (dshInstalled.CompareTo(dshLatest) < 0 ? "update-available" : "newer-than-latest");
+            ids.Add("webui");
+            lines.Add("UPDATECENTER_ITEM webui kind=webui installed=" + dshInstalled + " latest=" + dshLatest + " state=" + dshState);
+            lines.Add("UPDATECENTER_URL webui https://github.com/deepseek-ai/deepseek-harness");
+            lines.Add("UPDATECENTER_NOTE webui " + T("更新前会**自动备份**数据根 ✓ 并保留回滚点 ✓；需要你确认后才执行 ✓",
+                "updating backs up the data root first and keeps a rollback point; it runs only after you confirm"));
+
+            // —— ② desktop = 官方桌面端（**只能去官方安装页** ✓ 用户指定 ✓）——
+            string deskPath = null;
+            try
+            {
+                string cand = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "DeepSeek Harness", "DeepSeek Harness.exe");
+                if (System.IO.File.Exists(cand)) deskPath = cand;
+            }
+            catch { }
+            string deskVer = "unknown";
+            if (deskPath != null)
+            {
+                try { System.Diagnostics.FileVersionInfo vi = System.Diagnostics.FileVersionInfo.GetVersionInfo(deskPath); if (vi != null && !string.IsNullOrEmpty(vi.FileVersion)) deskVer = vi.FileVersion; } catch { }
+            }
+            ids.Add("desktop");
+            lines.Add("UPDATECENTER_ITEM desktop kind=desktop installed=" + deskVer + " latest=unknown state=" + (deskPath == null ? "unknown" : "external"));
+            lines.Add("UPDATECENTER_URL desktop https://www.deepseek.com/en/harness/");
+            lines.Add("UPDATECENTER_NOTE desktop " + T("官方桌面端**不在本工具里更新** ✓ —— 去官方安装页自己下 ✓（本工具不重打包、也不改它 ✓）",
+                "the desktop app is not updated here; download it from the official page"));
+
+            // —— ③ minato = 本工具自己（**不影响数据** ✓ 用户要求 ✓）——
+            string selfVer = "unknown";
+            try { selfVer = DshtVersionString(); } catch { }
+            ids.Add("minato");
+            lines.Add("UPDATECENTER_ITEM minato kind=minato installed=" + selfVer + " latest=unknown state=unknown");
+            lines.Add("UPDATECENTER_URL minato https://github.com/sakanamaru/dsh-minato");
+            lines.Add("UPDATECENTER_NOTE minato " + T("本工具的更新**不碰你的数据** ✓（不动 ~/.dsh、不动备份、不动配置 ✓）；需要你确认 ✓",
+                "updating this tool does not touch your data; it runs only after you confirm"));
+
+            // —— ④ 已安装插件（从各 profile 的 node_modules 扫 ✓ 取 GitHub 地址 ✓✓）——
+            try
+            {
+                string dshHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                string profiles = System.IO.Path.Combine(dshHome, ".dsh", "profiles");
+                if (System.IO.Directory.Exists(profiles))
+                {
+                    string[] profDirs = System.IO.Directory.GetDirectories(profiles);
+                    for (int i = 0; i < profDirs.Length; i++)
+                    {
+                        string nm = System.IO.Path.Combine(profDirs[i], "node_modules");
+                        if (!System.IO.Directory.Exists(nm)) continue;
+                        string[] pkgs = System.IO.Directory.GetDirectories(nm);
+                        for (int k = 0; k < pkgs.Length; k++)
+                        {
+                            string pj = System.IO.Path.Combine(pkgs[k], "package.json");
+                            if (!System.IO.File.Exists(pj)) continue;
+                            string txt = null;
+                            try { txt = System.IO.File.ReadAllText(pj); } catch { }
+                            if (string.IsNullOrEmpty(txt)) continue;
+                            string name = JsonStr(txt, "name");
+                            string ver = JsonStr(txt, "version");
+                            string repo = JsonStr(txt, "repository");
+                            if (string.IsNullOrEmpty(name)) name = System.IO.Path.GetFileName(pkgs[k]);
+                            if (string.IsNullOrEmpty(ver)) ver = "unknown";
+                            string pid = "plugin:" + name;
+                            ids.Add(pid);
+                            lines.Add("UPDATECENTER_ITEM " + pid + " kind=plugin installed=" + ver + " latest=unknown state=unknown profile=" + System.IO.Path.GetFileName(profDirs[i]));
+                            lines.Add("UPDATECENTER_URL " + pid + " " + (string.IsNullOrEmpty(repo) ? "unknown" : repo));
+                            lines.Add("UPDATECENTER_NOTE " + pid + " " + T("插件更新**先描述风险再确认** ✓（版本变化可能改行为 ✓）；更新前**自动备份** ✓ 插件由各自作者维护 ✓ 本工具不替它担保 ✓",
+                                "plugin updates describe the risk and ask first; the data root is backed up"));
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // —— ⑤ 更新日志（best-effort ✓ 从 GitHub Releases 取 ✓ 取不到就明说 ✓）——
+            try
+            {
+                string log = FetchLatestRelease("deepseek-ai", "deepseek-harness");
+                if (!string.IsNullOrEmpty(log)) lines.Add("UPDATECENTER_LOG webui " + log);
+                else lines.Add("UPDATECENTER_LOG webui " + T("取不到更新日志（网络不可达或仓库没有 Releases）", "no changelog available"));
+            }
+            catch { lines.Add("UPDATECENTER_LOG webui " + T("取不到更新日志", "no changelog available")); }
+
+            Console.WriteLine("UPDATECENTER_OK " + ids.Count);
+            for (int i = 0; i < lines.Count; i++) Console.WriteLine(lines[i]);
+            return 0;
+        }
+
+        /// <summary>从 JSON 文本里取一个**字符串字段**（够用即可 ✓ 不引 JSON 库 ✓ 保持零依赖 ✓）。
+        /// 找不到返回空串 ✓ 不猜 ✗。</summary>
+        private static string JsonStr(string json, string key)
+        {
+            if (string.IsNullOrEmpty(json) || string.IsNullOrEmpty(key)) return "";
+            int k = json.IndexOf("\"" + key + "\"", StringComparison.Ordinal);
+            if (k < 0) return "";
+            int c = json.IndexOf(':', k + key.Length + 2);
+            if (c < 0) return "";
+            int q1 = json.IndexOf('"', c + 1);
+            if (q1 < 0) return "";
+            int q2 = json.IndexOf('"', q1 + 1);
+            if (q2 < 0) return "";
+            return json.Substring(q1 + 1, q2 - q1 - 1);
+        }
+
+        /// <summary>取某个仓库最新 Release 的**一行摘要**（best-effort ✓ 超时 6 秒 ✓ 失败返回空 ✓）。</summary>
+        private static string FetchLatestRelease(string owner, string repo)
+        {
+            try
+            {
+                string url = "https://api.github.com/repos/" + owner + "/" + repo + "/releases?per_page=1";
+                System.Net.HttpWebRequest req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(url);
+                req.UserAgent = "dsh-minato";
+                req.Timeout = 6000;
+                req.ReadWriteTimeout = 6000;
+                using (System.Net.HttpWebResponse resp = (System.Net.HttpWebResponse)req.GetResponse())
+                using (System.IO.StreamReader sr = new System.IO.StreamReader(resp.GetResponseStream()))
+                {
+                    string body = sr.ReadToEnd();
+                    string tag = JsonStr(body, "tag_name");
+                    if (string.IsNullOrEmpty(tag)) return "";
+                    string name = JsonStr(body, "name");
+                    string one = string.IsNullOrEmpty(name) ? tag : (tag + " " + name);
+                    one = one.Replace("\r", " ").Replace("\n", " ");
+                    if (one.Length > 160) one = one.Substring(0, 160) + "…";
+                    return one;
+                }
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>本工具自己的版本串 ✓（取不到就 unknown ✓ 不猜 ✗）。</summary>
+        private static string DshtVersionString()
+        {
+            try
+            {
+                System.Reflection.Assembly asm = System.Reflection.Assembly.GetEntryAssembly();
+                if (asm == null) return "unknown";
+                string loc = asm.Location;
+                if (string.IsNullOrEmpty(loc)) return "unknown";
+                System.Diagnostics.FileVersionInfo vi = System.Diagnostics.FileVersionInfo.GetVersionInfo(loc);
+                if (vi != null && !string.IsNullOrEmpty(vi.FileVersion)) return vi.FileVersion;
+                return "unknown";
+            }
+            catch { return "unknown"; }
+        }
