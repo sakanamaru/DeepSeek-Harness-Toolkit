@@ -22,6 +22,12 @@ namespace Dsht.Gui.Avalonia.Markers
         public long TtftMs = -1;           // 首 token（dsh 投影原值，多步累计；未知 = -1）
         public double CtxPercent = -1;     // 上下文压力（%）
         public bool Blank;
+        /// <summary>父会话 id（空 = 它是根会话 ✓）。来自 CLI 的 `SESSION_CHILD <父> <子>` ✓✓
+        /// —— dsh 把子会话 id 记在父会话文件的 "childId" 字段里 ✓（2026-09-30 实测 98 组 ✓）</summary>
+        public string ParentId = "";
+        /// <summary>它的子会话 id 列表（子代理 ✓）。</summary>
+        public List<string> ChildIds = new List<string>();
+        public bool IsSubAgent { get { return ParentId.Length > 0; } }
         public bool Live;
         /// <summary>是否**知道**运行态（只有桥接插件快照才提供 live；磁盘投影没有这个事实）。</summary>
         public bool LiveKnown;
@@ -128,6 +134,9 @@ namespace Dsht.Gui.Avalonia.Markers
         public double TotalHitPercent = -1;
         public double TotalDecodeTps = -1;
         public List<SessionRow> Rows = new List<SessionRow>();
+        /// <summary>子代理（有父会话的）数量 ✓；RootCount = 其余（根会话/普通会话 ✓）。</summary>
+        public int SubAgentCount;
+        public int RootCount;
 
         /// <summary>数据来源的中文说明（给界面用；插件缺失时如实说明少了什么）。</summary>
         public string SourceText
@@ -217,6 +226,7 @@ namespace Dsht.Gui.Avalonia.Markers
         {
             SessionsSnapshot s = new SessionsSnapshot();
             if (string.IsNullOrEmpty(output)) return s;
+            Dictionary<string, string> links = new Dictionary<string, string>();   // 子 id → 父 id ✓
             string[] lines = output.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
             for (int i = 0; i < lines.Length; i++)
             {
@@ -245,6 +255,13 @@ namespace Dsht.Gui.Avalonia.Markers
                         continue;
                     }
                     if (line.StartsWith("SESSION ", StringComparison.Ordinal)) s.Rows.Add(ParseRow(line));
+                    // 父子链接 ✓：CLI 扫会话文件的 childId 得到 ✓（先收集 ✓ 循环后统一归类 ✓）
+                    if (line.StartsWith("SESSION_CHILD ", StringComparison.Ordinal))
+                    {
+                        string[] pc = line.Substring("SESSION_CHILD ".Length).Trim().Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (pc.Length >= 2) links[pc[1]] = pc[0];   // 子 → 父 ✓
+                        continue;
+                    }
                 }
                 catch
                 {
@@ -254,6 +271,22 @@ namespace Dsht.Gui.Avalonia.Markers
             // 运行态只有桥接插件快照才知道：磁盘投影没有这个事实（unknown 不等于"已结束"）
             bool liveKnown = s.Source == "snapshot";
             for (int i = 0; i < s.Rows.Count; i++) s.Rows[i].LiveKnown = liveKnown;
+            // 归类：子代理挂到父会话下 ✓（98/98 子 id 都有 SESSION 行 ✓ 所以都能归类 ✓）
+            for (int ri = 0; ri < s.Rows.Count; ri++)
+            {
+                string cid2 = s.Rows[ri].Id;
+                string pid3;
+                if (cid2 != null && links.TryGetValue(cid2, out pid3))
+                {
+                    s.Rows[ri].ParentId = pid3;
+                    for (int rj = 0; rj < s.Rows.Count; rj++)
+                        if (s.Rows[rj].Id == pid3) s.Rows[rj].ChildIds.Add(cid2);
+                }
+            }
+            int subCount = 0;
+            for (int ri = 0; ri < s.Rows.Count; ri++) if (s.Rows[ri].IsSubAgent) subCount++;
+            s.SubAgentCount = subCount;
+            s.RootCount = s.Rows.Count - subCount;
             return s;
         }
 
