@@ -2098,22 +2098,27 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             bool detail = Has(args, "--detail");
             IBackupSource src = reg.Get<IBackupSource>();
             List<BackupEntry> all = src.ListRaw();
-            List<BackupEntry> valid = new List<BackupEntry>();
-            for (int i = 0; i < all.Count; i++)
-            {
-                if (BackupPackage.IsValidPackage(all[i].Snapshot)) valid.Add(all[i]);
-            }
-            // v2.x：升序后反转 → 最新在前
-            valid.Reverse();
-            Console.WriteLine("BACKUP_LIST_OK " + valid.Count);
+            // ★★★ **用户要求（2026-09-30）**：「GUI 备份要不不校验了」✓✓
+            //   ✗ 原来**只列有效包** ✗（用 `IsValidPackage` 过滤 ✓）
+            //     → 用户往 `backup/` 里放的东西**看不到** ✗ → 他会以为"我的备份不见了" ✓
+            //       而其实**还在那里** ✓✓（真机就出现过：`BACKUP_LIST_OK 0` + 1 项被忽略 ✓）
+            //   ✓ 现在：**全部列出** ✓✓ 无效的**明确标注** ✓（诚实 ✓ 不隐藏 ✓ 不假装有效 ✓）
+            //   ✓ `BACKUP_LIST_IGNORED` 保留 ✓（仍告诉你有几项不是有效备份 ✓）
+            //   ✓ **恢复时仍只认有效包** ✓（安全边界不动 ✓ 见 IsValidBackupDirFn ✓✓）
+            all.Reverse();   // 最新在前 ✓
+            Console.WriteLine("BACKUP_LIST_OK " + all.Count);
+            int notValid = 0;
+            for (int i = 0; i < all.Count; i++) { if (!BackupPackage.IsValidPackage(all[i].Snapshot)) notValid++; }
             // 备份根里"不是有效备份"的条目 → **仅在存在时**说明 ✓✓（用户往 backup/ 放了自己的东西、
             // 或留下名字像备份但内容不是的目录时 ✓ 静默忽略会让他以为"我的备份还在" ✗）
             // 仅当 >0 时打印 ✓ → 比对夹具（受控 3 个备份 ✓）不受影响 ✓ 契约安全 ✓
-            if (all.Count > valid.Count)
-                Console.WriteLine("BACKUP_LIST_IGNORED " + (all.Count - valid.Count) + T(" 项在备份根里但不是有效备份（不会被列出，也不会被恢复选中）", " entries in the backups root are not valid backups (not listed, not selected by restore)"));
-            foreach (BackupEntry e in valid)
+            if (notValid > 0)
+                Console.WriteLine("BACKUP_LIST_IGNORED " + notValid + T(" 项在备份根里但不是有效备份（**仍会列出** ✓ 但不能用于恢复 ✓）", " entries are not valid packages (listed, but not restorable)"));
+            foreach (BackupEntry e in all)
             {
                 Console.WriteLine(e.Path);
+                // ✓ 无效包**明确标注** ✓（新标记 ✓ 不认识它的解析器会忽略它 ✓ 不影响契约 ✓）
+                if (!BackupPackage.IsValidPackage(e.Snapshot)) Console.WriteLine("BACKUP_ITEM_INVALID " + e.Name);
                 if (detail)
                 {
                     long bytes = src.DirSize(e.Path);

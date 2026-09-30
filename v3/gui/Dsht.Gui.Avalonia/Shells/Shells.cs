@@ -1301,7 +1301,11 @@ namespace Dsht.Gui.Avalonia.Shells
             StackPanel wipe = new StackPanel { Spacing = 8 };
             wipe.Children.Add(T("清除数据（已改为手动）", 13, Palette.Warn, FontWeight.SemiBold));
             wipe.Children.Add(T("**本工具不再提供清除数据** —— 按用户要求删掉了这个操作 ✓ 避免误点造成不可逆的丢失 ✓。", 11.5, Palette.TextDim));
-            wipe.Children.Add(T("但 CLI 会**先自动做一份安全备份，且必须成功**；做不出来就**不会清** ✓。备份目录本身**不动** ✓，清完可随时用 restore 恢复 ✓。", 11.5, Palette.TextDim));
+            // ✓✓ **用户要求（2026-09-30）**：「删除中排除备份文件夹且无法选择，要删自己删」✓✓
+            //   · 卸载器侧：**显式跳过 `backup/` 与 `logs/`** ✓✓（installer.cs 已做 ✓）
+            //   · 界面上：**没有删除备份文件夹的选项** ✓✓（这里是说明 ✓ 不是按钮 ✓）
+            wipe.Children.Add(T("备份文件夹**不在删除范围内** ✓ 本工具**不会**删它 ✓ 想删请**自己**去删（路径见下面的按钮 ✓）。", 11.5, Palette.TextDim));
+            wipe.Children.Add(T("界面上**没有**删除备份文件夹的选项 ✓ 这是刻意的 —— 备份是你最后的退路 ✓ 不该被一键清掉 ✓。", 11.5, Palette.TextFaint));
             StackPanel wacts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             wacts.Children.Add(GhostButton(T("显示手动删除路径（只读 ✓ 不删任何东西 ✓）", 11.5, Palette.Text), delegate { host.WipePlan(); }, true));
             // ★★★ **用户要求（2026-09-30）**：「删除 GUI 备份里的清除数据操作按钮，点击只弹出手动删除路径」✓✓
