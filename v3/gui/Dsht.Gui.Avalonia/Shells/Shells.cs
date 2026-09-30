@@ -602,12 +602,19 @@ namespace Dsht.Gui.Avalonia.Shells
             Grid.SetColumn(dot, 0);
             // 桌面端在跑 → 说清"桌面端运行中"✓（本工具**停不了它** ✓ 不能假装能 ✓）
             // 三种状态都要说清 ✓：只有 web / 只有桌面端 / **两个都在** ✓✓（用户："两个可能同时开着" ✓）
-            string stText = st.State == 0 && deskUp ? "web 与桌面端都在运行" : (deskUp ? "桌面端运行中" : (up ? "停止 dsh" : "一键启动 dsh"));
+            // ★★★ **F1 修复（GUI 审计 CRITICAL —— 空引用）** ✓✓
+            //   ✗ `StatusSnapshot` 是**类** ✓ 而 `MainWindow._status` **只在概览分支里被赋值** ✗
+            //     → CLI 找不到时 `_status` 仍是 null ✓ → `st.State` **抛 NRE** ✗✗
+            //     → 异常被 fire-and-forget 的 Refresh 吞掉 ✓ → **窗口主体永远是空的** ✗
+            //       而且友好提示「未找到工具箱 CLI」**永远显示不出来** ✓✓
+            //   ✓ 现在：**先算一个 webUp 布尔** ✓ 再也不用 `st` 空着 ✓✓
+            bool webUp = st != null && st.State == 0;
+            string stText = webUp && deskUp ? "web 与桌面端都在运行" : (deskUp ? "桌面端运行中" : (up ? "停止 dsh" : "一键启动 dsh"));
             TextBlock label = T(stText, 13, up ? Palette.Accent : Palette.OnAccent, FontWeight.SemiBold);
             label.Margin = new Thickness(10, 0, 0, 0);
             label.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(label, 1);
-            TextBlock state = T(st.State == 0 && deskUp ? "web+桌面端" : (up ? "运行中" : "未运行"), 10.5, up ? Palette.Good : Palette.OnAccent);
+            TextBlock state = T(webUp && deskUp ? "web+桌面端" : (up ? "运行中" : "未运行"), 10.5, up ? Palette.Good : Palette.OnAccent);
             state.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(state, 2);
             row.Children.Add(dot); row.Children.Add(label); row.Children.Add(state);
@@ -1914,7 +1921,8 @@ namespace Dsht.Gui.Avalonia.Shells
 
             // —— 状态 hero ——
             // 桌面端在跑 → 用 Good 色 ✓（不是红 ✗ —— 它没坏，只是不走 3080 ✓）
-            bool desktopUp = st.State == 2 && !string.IsNullOrEmpty(st.DesktopClient);
+            // F1 FIX (cont): same null dereference as the start/stop row - `_status` is null when the CLI
+            bool desktopUp = st.State == 2 && !string.IsNullOrEmpty(st.DesktopClient);   // safe: the st == null case returned above
             IBrush stateBrush = st.State == 0 ? Palette.Good : (desktopUp ? Palette.Good : (st.State == 1 ? Palette.Warn : Palette.Bad));
             Grid hero = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
             Grid halo = new Grid { Width = 44, Height = 44, VerticalAlignment = VerticalAlignment.Center };

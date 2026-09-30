@@ -314,10 +314,16 @@ namespace Dsht.Gui.Avalonia
             // ✗ 原来等待期间**什么都不显示** → 备份 818MB 要几秒，用户感觉"卡住" ✓
             // 现在**先显示"进行中…"** ✓（与体检页同一办法 ✓）→ 用户知道它在干活 ✓✓
             _actionLog = label + "进行中…（" + args + "）";
-            InvalidateCliCache();   // ✓✓ **写操作 → 立刻清只读缓存** ✓（点完"停止"再刷新必须是新状态 ✓ 不能显示 4 秒前的旧值 ✗）
+            // ★★★ **F4 修复（GUI 审计 MAJOR —— 我上一轮清早了）** ✓✓
+            //   ✗ 原来在**写之前**就 `InvalidateCliCache()` ✗ → 紧接着的 `Refresh()`（318 行 ✓）
+            //     **把写前状态缓存进去了** ✗✗ → 写完成后最后一次 `Refresh()`（321 行 ✓）
+            //     **命中了那份写前缓存** ✗ → **界面最多 4 秒还显示旧状态** ✗✗
+            //     ← 正是我在提交信息里说"不会发生"的那件事 ✓ **打脸** ✓
+            //   ✓ 现在：**写完成后、最终 Refresh 之前**再清** ✓✓（见 320 行之后 ✓）
             Refresh();
             string outp = cli == null ? "未找到工具箱 CLI。" : await System.Threading.Tasks.Task.Run(delegate { return Run(cli, args); });
             _actionLog = label + "结果：" + Environment.NewLine + outp.Trim();
+            InvalidateCliCache();   // F4 FIX: 写**完成**之后清 ✓ 此时缓存里必然是写前状态 ✓ 紧接着的 Refresh 会重新跑命令 ✓✓
             Refresh();
             // 启动成功后**自动打开浏览器** ✓✓（用户点"启动"就是想用它 ✓）
             // 失败时不打开 ✗；"已在运行"也算成功 ✓（那时打开正好能用 ✓）
@@ -598,7 +604,12 @@ namespace Dsht.Gui.Avalonia
             RecolorWindowButtons();
             PaintSwitch("ShellSwitch");
             PaintSwitch("StyleSwitch");
-            for (int i = 0; i < 4; i++) PaintSwitchButton("Shell" + i, i == _shell);   // ✓ 用户要求删除主从式 → 只剩 4 个 ✓✓
+            // ★★ **F8 修复（GUI 审计 MINOR）** ✓✓：XAML 里是 Shell0/1/2/**Shell4**（没有 Shell3 ✓）
+            //   ✗ 循环只到 4 ✗ → **默认布局 Shell4 从不被 paint** ✗
+            //     → ① **默认布局没有高亮** ✗ ② 它是**原生按钮形状** ✗ → 与旁边三个图标按钮**宽度不一致** ✗✗
+            //       （这正是用户报过的"按钮宽度不一样" ✓）
+            //   ✓ 现在：**循环到 5** ✓（Shell3 不存在 ✓ PaintSwitchButton 自己有 null 检查 ✓✓）
+            for (int i = 0; i < 5; i++) PaintSwitchButton("Shell" + i, i == _shell);
             // ✓✓ **用户要求（2026-09-30）**：「窗口不要始终置顶，要始终置顶至少加个按钮」✓
             //   ✗ 之前窗口被**外部**（我的截图脚本）设成 topmost ✗ → 一直压在最上面 ✓ 很烦 ✓
             //   ✓ 现在：**由用户自己控制** ✓✓ 默认**不置顶** ✓ 点一下才置顶 ✓ 再点取消 ✓
@@ -659,7 +670,14 @@ namespace Dsht.Gui.Avalonia
                     Topmost = _alwaysOnTop;
                     PaintPin();
                     // ✓ 存进配置 ✓ 下次启动恢复 ✓（写操作 → 走 CLI ✓ 失败也不影响本次切换 ✓）
-                    RunCliAction("config-set always_on_top " + (_alwaysOnTop ? "on" : "off"), "置顶设置");
+                    // ★★★ **F7 修复（GUI 审计 MAJOR —— 实测 `CONFIGSET_FAIL unknown-key`）** ✓✓
+                    //   ✗ 原来写 `config-set always_on_top on` ✗ —— CLI 的 `ConfigValidator` **没有这个键** ✗✗
+                    //     → 每次点击都弹一条 unknown-key 的**失败 toast** ✗
+                    //     → 而注释说"下次启动恢复" ✗ **是假的** ✓（`_alwaysOnTop` 永远从 false 开始 ✓ 从不读回 ✓）
+                    //   ✓ 现在：**改成"仅本次会话"** ✓✓ 并且**如实说明** ✓
+                    //     （要真正持久化得先在 CLI 加键 ✓ 那是另一件事 ✓ **不能假装已经持久化** ✗✓）
+                    _actionLog = _alwaysOnTop ? "窗口已置顶 ✓（仅本次运行 ✓ 重启后不保留 ✓）" : "已取消置顶 ✓";
+                    ShowToast(_actionLog);
                 };
             }
         }
@@ -757,6 +775,11 @@ namespace Dsht.Gui.Avalonia
             string h = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "profilecheck"); });
             string d = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "doctor"); });
             _healthBusy = false;
+            _health = h;   // ★★★ **F12 修复（GUI 审计 MAJOR —— 体检结果从来没显示过）** ✓✓
+            //   ✗ 我上一轮把这一行**误删**了 ✗ → `_health` 在正常路径上**从不赋值** ✗✗
+            //     → `Shells.cs` 的 `if (!string.IsNullOrEmpty(host.Health))` **永远为假** ✗
+            //     → **"运行检查"按钮既不显示"检查中…"也不显示结果** ✗✗ ← 比修之前更糟 ✓
+            //   ✓ 现在：**结果真的写回 `_health`** ✓✓（`Run()` 自己吞异常 ✓ 不会卡住 `_healthBusy` ✓）
             _doctor = SummaryMarkers.ParseDoctor(d);
             BuildShell();
         }
@@ -1407,22 +1430,34 @@ namespace Dsht.Gui.Avalonia
             new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly System.Collections.Generic.Dictionary<string, DateTime> _cliCacheAt =
             new System.Collections.Generic.Dictionary<string, DateTime>(StringComparer.Ordinal);
+        // ★★★ **F5 修复（GUI 审计 MAJOR —— 数据竞争）** ✓✓
+        //   ✗ 普通 `Dictionary` ✗ 而概览页的 `Task.WhenAll(tPf, tSe, tBk)` 会**三个线程同时写** ✗✗
+        //     → 丢条目 ✓ 桶链错乱（**可能取到另一条命令的输出** ✗✗）✓ 甚至抛异常 ✓
+        //     → 而异常被 fire-and-forget 吞掉 ✓ → **页面空白或显示旧数据** ✗
+        //   ✓ 现在：**一把锁** ✓✓（读写都进锁 ✓ 微秒级 ✓ 命令本身在锁外跑 ✓ 不串行化 ✓✓）
+        private static readonly object _cliCacheLock = new object();
         private const double CliCacheTtlSec = 4.0;
 
         /// <summary>跑一条**只读**命令，带短缓存 ✓✓。写操作请直接用 `Run` ✗ 不要走这里 ✓。</summary>
         private static string RunCached(string cli, string args)
         {
             if (string.IsNullOrEmpty(cli) || string.IsNullOrEmpty(args)) return Run(cli, args);
-            DateTime at;
-            string hit;
-            if (_cliCache.TryGetValue(args, out hit) && _cliCacheAt.TryGetValue(args, out at)
-                && (System.DateTime.UtcNow - at).TotalSeconds < CliCacheTtlSec)
+            lock (_cliCacheLock)
             {
-                return hit;
+                DateTime at;
+                string hit;
+                if (_cliCache.TryGetValue(args, out hit) && _cliCacheAt.TryGetValue(args, out at)
+                    && (System.DateTime.UtcNow - at).TotalSeconds < CliCacheTtlSec)
+                {
+                    return hit;
+                }
             }
-            string outp = Run(cli, args);
-            _cliCache[args] = outp;
-            _cliCacheAt[args] = System.DateTime.UtcNow;
+            string outp = Run(cli, args);   // F5 FIX: run OUTSIDE the lock so the three parallel tasks do not serialise
+            lock (_cliCacheLock)
+            {
+                _cliCache[args] = outp;
+                _cliCacheAt[args] = System.DateTime.UtcNow;
+            }
             return outp;
         }
 
@@ -1430,7 +1465,7 @@ namespace Dsht.Gui.Avalonia
         ///   （否则点完"停止"再刷新，4 秒内还会看到"运行中" ✗✗ —— 那就是**撒谎** ✓）</summary>
         private static void InvalidateCliCache()
         {
-            try { _cliCache.Clear(); _cliCacheAt.Clear(); } catch { }
+            try { lock (_cliCacheLock) { _cliCache.Clear(); _cliCacheAt.Clear(); } } catch { }   // F5 FIX: clear under the lock too
             InvalidateCfgCache();   // ✓ config 缓存一起清 ✓（写操作可能改了配置 ✓）
         }
 

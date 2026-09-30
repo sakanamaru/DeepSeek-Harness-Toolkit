@@ -328,6 +328,8 @@ internal static class Installer
         Report(progress, 78, "就位…");
         string old = target + ".old-" + DateTime.Now.ToString("HHmmss");
         bool hadOld = false;
+        string oldPlug = Path.Combine(target, "plugin.old-" + DateTime.Now.ToString("HHmmss", System.Globalization.CultureInfo.InvariantCulture));
+        bool hadOldPlug = false;   // BUG-1 FIX
         // M-1 FIX (installer audit MAJOR): tracks whether the NEW payload actually landed. When the
         // failure IS the move below (because the old version folder could not be renamed aside - a
         // process holding it is enough), the version directory still holds the LIVE old install, and
@@ -386,7 +388,25 @@ internal static class Installer
             if (!CopyFile(Path.Combine(verDir, "dsh-minato.exe"), Path.Combine(binDir, "dsh-minato.exe")))
                 throw new InvalidOperationException("命令行目录写入失败 ✗ 请先关掉正在运行的本工具 ✓");
             Log("命令行目录已就位 ✓ " + binDir);
-            Log("稳定入口已就位（dsh-minato.exe / dsh-minato-gui.exe / gui\\ / bin\\）");
+            // ★★★ **BUG-1 修复（端到端实测发现）** ✓✓
+            //   ✗ 整个载荷（含 `plugin\`）被 `Directory.Move(staging, verDir)` 搬进 `app-<版本>\` ✗
+            //     而只有 `gui\` 被搬到安装根 ✓ → **`plugin\` 留在 `app-3.0.0\plugin\`** ✗✗
+            //     → `bridge-install` 在安装根找 `<install>\plugin\` → **永远找不到插件** ✗
+            //       （而清单里**有**这 6 个文件 ✓ → 校验通过 ✓ → 更难发现 ✓）
+            //   ✓ 现在：**和 `gui\` 一样把 `plugin\` 搬到安装根** ✓✓（已有的先改名到 .old 再换 ✓）
+            string vplug = Path.Combine(verDir, "plugin");
+            if (Directory.Exists(vplug))
+            {
+                string tplug = Path.Combine(target, "plugin");
+                if (Directory.Exists(tplug))
+                {
+                    try { Directory.Move(tplug, oldPlug); hadOldPlug = true; }
+                    catch (Exception pmv) { throw new InvalidOperationException("旧 plugin 目录改名失败（可能有程序占用 ✓）→ 已中止，未做任何破坏 ✓: " + pmv.Message); }
+                }
+                Directory.Move(vplug, tplug);
+                Log("桥接插件已就位 ✓ " + tplug);
+            }
+            Log("稳定入口已就位（dsh-minato.exe / dsh-minato-gui.exe / gui\\ / bin\\ / plugin\\）");
         }
         catch (Exception ex)
         {
@@ -429,6 +449,7 @@ internal static class Installer
             return 4;
         }
         if (hadOld) TryDelete(old);
+        if (hadOldPlug) TryDelete(oldPlug);   // BUG-1 FIX: 安装成功后再清旧的 plugin ✓
         // M-2 FIX (installer audit MAJOR): the manifest was copied BEFORE the gui copy could fail,
         // so a failed upgrade left the NEW hashes.txt beside the RESTORED old gui and the launcher
         // reported the tool as tampered with and refused to start. Re-copy it last, now that
@@ -549,7 +570,15 @@ internal static class Installer
     /// <summary>卸载 ✓。**默认不动数据** ✓ + 在桌面留一份说明文档指出数据位置 ✓（维护者的选择 ✓）。</summary>
     internal static int RunUninstall(bool silent)
     {
-        string target = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
+        // ★★★ **BUG-3 修复（端到端实测发现 —— 潜在危险）** ✓✓
+        //   ✗ 原来先取 `AppDomain.CurrentDomain.BaseDirectory` ✗
+        //     → 而卸载器**会把自己复制到 %TEMP% 再重启** ✓ → 子进程的 BaseDirectory 是 `%TEMP%\` ✗✗
+        //     → `target` 变成 **%TEMP%** ✓（实测日志第一行就是「卸载目录: …\\Temp」✓）
+        //     → 只因为后面还有 marker/token 身份校验才没真去删 %TEMP% ✓ —— **纯属侥幸** ✗✗
+        //   ✓ 现在：**先读 `DSHT_UNINSTALL_TARGET`** ✓✓（父进程一定会设 ✓）取不到才回退 ✓
+        string target = Environment.GetEnvironmentVariable("DSHT_UNINSTALL_TARGET");
+        if (!string.IsNullOrEmpty(target)) target = target.TrimEnd('\\');
+        else target = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
         Log("卸载目录: " + target);
 
         // ★★ **先做两道安全检查，再考虑自我迁移** ✓✓
