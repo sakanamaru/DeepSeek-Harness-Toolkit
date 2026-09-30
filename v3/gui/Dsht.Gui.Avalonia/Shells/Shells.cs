@@ -490,7 +490,10 @@ namespace Dsht.Gui.Avalonia.Shells
         private static Control StartStopButton(MainWindow host)
         {
             StatusSnapshot st = host.Status;
-            bool up = st != null && st.Ok && st.State == 0;
+            // ✗ 原来只看 web 服务（State==0）→ 桌面端在跑时左下角仍显示"未运行" ✓（用户反馈 ✓）
+            // 现在把**桌面端也算"dsh 在跑"** ✓（它确实在跑 ✓ 只是不走 3080 ✓）
+            bool deskUp = st != null && st.Ok && st.State == 2 && !string.IsNullOrEmpty(st.DesktopClient);
+            bool up = st != null && st.Ok && (st.State == 0 || deskUp);
             Grid row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
             Border dot = new Border
             {
@@ -501,7 +504,8 @@ namespace Dsht.Gui.Avalonia.Shells
                 VerticalAlignment = VerticalAlignment.Center
             };
             Grid.SetColumn(dot, 0);
-            TextBlock label = T(up ? "停止 dsh" : "一键启动 dsh", 13, up ? Palette.Accent : Palette.OnAccent, FontWeight.SemiBold);
+            // 桌面端在跑 → 说清"桌面端运行中"✓（本工具**停不了它** ✓ 不能假装能 ✓）
+            TextBlock label = T(deskUp && st.State != 0 ? "桌面端运行中（本工具不停它）" : (up ? "停止 dsh" : "一键启动 dsh"), 13, up ? Palette.Accent : Palette.OnAccent, FontWeight.SemiBold);
             label.Margin = new Thickness(10, 0, 0, 0);
             label.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(label, 1);
@@ -522,7 +526,7 @@ namespace Dsht.Gui.Avalonia.Shells
                 Padding = new Thickness(12, 10)
             };
             Hover(b, up ? Palette.AccentSoft : Palette.Accent, up ? Palette.CardHover : Palette.AccentHover);
-            b.Click += delegate { if (up) host.StopDsh(); else host.StartDsh(); };
+            b.Click += delegate { if (up) host.StopDsh(); else host.StartDsh(); };   // 桌面端在跑时 StopDsh 会如实说"没在监听 3080"✓ 不谎报 ✓
             return b;
         }
 
