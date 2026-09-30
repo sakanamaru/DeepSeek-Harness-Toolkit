@@ -209,6 +209,44 @@ await check("collectSessions：服务缺失/抛异常 → 空数组（不抛）"
 	assert.equal((await collectSessions({ sessionQuery: { listSessions: () => Promise.reject(new Error("rej")) } })).length, 0);
 });
 
+// ---- N6 契约（插件复审：这条修复**没有测试覆盖** ✗ → 现在有了 ✓✓）----
+// 为什么重要：工具箱只要快照**非空**就完全不用磁盘投影（Program.cs）。
+// 所以"发一行空值"会把历史会话**好好的磁盘统计覆盖成 0** ✗✗ —— 装了插件反而更糟 ✓。
+await check("**N6：纯持久化会话（没有投影值）必须不发空行** ✓✓", async () => {
+	const rec = { header: { id: "persisted-only", cwd: "/x", createdAt: "2026-09-30T00:00:00Z" }, live: false, persisted: true };
+	const list = await collectSessions({
+		sessionQuery: { listSessions: async () => [rec] },
+		sessions: { list: async () => [] }, // 不在 store 里 → 没有投影单元 → values 为空 ✓
+		sessionProjections: { snapshot: async () => ({ values: {} }) }
+	});
+	assert.equal(list.length, 0, "空值 + 非活跃 → 不能发行（否则遮蔽磁盘投影 ✗✗）");
+});
+
+await check("**N6：活跃会话即使没有投影值也必须发行** ✓✓", async () => {
+	const rec = { header: { id: "live-1", cwd: "/x", createdAt: "2026-09-30T00:00:00Z" }, live: true, persisted: true };
+	const sess = { header: { id: "live-1" }, snapshotEvents: function () { return []; } };
+	const list = await collectSessions({
+		sessionQuery: { listSessions: async () => [rec] },
+		sessions: { list: async () => [sess] },
+		sessionProjections: { snapshot: async () => ({ values: {} }) }
+	});
+	assert.equal(list.length, 1, "live:true 是磁盘投影拿不到的事实 → 必须发行 ✓");
+	assert.equal(list[0].live, true);
+	assert.equal(list[0].id, "live-1");
+});
+
+await check("**N6：有投影值的会话照常发行（值原样带上）** ✓✓", async () => {
+	const rec = { header: { id: "p2", cwd: "/x", createdAt: "2026-09-30T00:00:00Z" }, live: false, persisted: true };
+	const sess = { header: { id: "p2" }, snapshotEvents: function () { return []; } };
+	const list = await collectSessions({
+		sessionQuery: { listSessions: async () => [rec] },
+		sessions: { list: async () => [sess] },
+		sessionProjections: { snapshot: async () => ({ values: { sessionStats: { turns: 3 } } }) }
+	});
+	assert.equal(list.length, 1);
+	assert.equal(list[0].values.sessionStats.turns, 3);
+});
+
 // ---- index.js 的 cordis 声明（旧测试完全没覆盖 ✗）----
 await check("**index.js 的 cordis 声明** ✓（name 与 patch 的 id 一致 ✓ inject 是真实服务 ✓）", () => {
 	assert.equal(pluginName, "shio-bridge");
