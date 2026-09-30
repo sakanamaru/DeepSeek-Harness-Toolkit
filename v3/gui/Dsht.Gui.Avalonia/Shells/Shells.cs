@@ -1183,6 +1183,20 @@ namespace Dsht.Gui.Avalonia.Shells
         }
 
         /// <summary>设置页：逐键编辑（config-get / config-set），开关型给两个按钮，只读键禁编辑。</summary>
+        /// <summary>取某个配置键的备注（CLI 的 `CONFIGNOTE <key> <说明>` ✓ 原样显示 ✓ 没有就返回空 ✓）。</summary>
+        private static string NoteFor(string raw, string key)
+        {
+            if (string.IsNullOrEmpty(raw) || string.IsNullOrEmpty(key)) return "";
+            string[] ls = raw.Replace("\r\n", "\n").Split('\n');
+            string pre = "CONFIGNOTE " + key + " ";
+            for (int i = 0; i < ls.Length; i++)
+            {
+                string t2 = ls[i] == null ? "" : ls[i].Trim();
+                if (t2.StartsWith(pre, StringComparison.Ordinal)) return t2.Substring(pre.Length).Trim();
+            }
+            return "";
+        }
+
         private static Control SettingsContent(MainWindow host)
         {
             StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 12 };
@@ -1210,6 +1224,11 @@ namespace Dsht.Gui.Avalonia.Shells
                 head.Children.Add(T(c.Key, 12.5, Palette.Text, FontWeight.SemiBold));
                 head.Children.Add(T(c.Desc, 11.5, Palette.TextDim));
                 row.Children.Add(head);
+                // 备注 ✓✓（用户要求：""备注一下发生什么问题可以尝试启用和禁用"" ✓）
+                // CLI 的 `CONFIGNOTE <key> <说明>` 原样显示在这个键下面 ✓ 没有备注就不显示 ✓
+                string note = NoteFor(host.RawOutput, c.Key);
+                if (!string.IsNullOrEmpty(note))
+                    row.Children.Add(T(note, 11, Palette.Warn));
 
                 StackPanel edit = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
                 if (c.ReadOnly)

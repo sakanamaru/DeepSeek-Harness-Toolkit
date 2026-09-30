@@ -45,6 +45,8 @@ namespace Dsht.Domain.Services
             if (k == "auto_start") return (v == "on" || v == "off") ? null : "bad-value";
             // ✗ 上次只加到了 ApplyTo ✓ 漏了这份**白名单** → config-set 报 unknown-key ✗（实测抓到 ✓）
             if (k == "auto_start_target") return (v == "auto" || v == "desktop" || v == "web") ? null : "bad-value";
+            if (k == "browser_mode") return (v == "auto" || v == "snap" || v == "direct" || v == "xdg") ? null : "bad-value";
+            if (k == "ui_parallel" || k == "scan_children") return (v == "on" || v == "off") ? null : "bad-value";
             return "unknown-key";
         }
 
@@ -68,6 +70,9 @@ namespace Dsht.Domain.Services
             else if (k == "close_action") c.CloseAction = (v == "tray" || v == "exit") ? v : (v == "ask" ? "ask" : "");
             else if (k == "auto_start") c.AutoStart = v != "off";
             else if (k == "auto_start_target") c.AutoStartTarget = v;
+            else if (k == "browser_mode") c.BrowserMode = v;
+            else if (k == "ui_parallel") c.UiParallel = v != "off";
+            else if (k == "scan_children") c.ScanChildren = v != "off";
             return c;
         }
     }

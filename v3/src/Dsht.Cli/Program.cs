@@ -243,6 +243,7 @@ namespace Dsht.Cli
             // 快照里**没有**这个信息 ✗ → 所以必须扫盘 ✓；用**流式字符串扫描**（不解析 JSON ✓ 快 ✓）
             try
             {
+                if (_cfg == null || !_cfg.ScanChildren) throw new InvalidOperationException("scan_children=off");   // 排障开关真的接线 ✓
                 string[] cfiles = src.ListSessionFiles();
                 for (int ci = 0; ci < cfiles.Length; ci++)
                 {
@@ -2396,6 +2397,16 @@ namespace Dsht.Cli
             Console.WriteLine("CONFIG close_action " + _cfg.CloseAction);
             Console.WriteLine("CONFIG auto_start " + (_cfg.AutoStart ? "on" : "off"));
             Console.WriteLine("CONFIG dsh_versions " + _cfg.DshVersions);
+            // —— 排障开关 ✓（用户要求：""给可能会发生可能不会发生的问题提供解决的选项"" + ""备注一下发生什么问题可以尝试启用和禁用"" ✓✓）——
+            Console.WriteLine("CONFIG browser_mode " + _cfg.BrowserMode);
+            Console.WriteLine("CONFIG ui_parallel " + (_cfg.UiParallel ? "on" : "off"));
+            Console.WriteLine("CONFIG scan_children " + (_cfg.ScanChildren ? "on" : "off"));
+            // 备注行 ✓✓：GUI 原样显示在对应设置项下面 ✓（"出现什么问题时试哪个" ✓）
+            Console.WriteLine("CONFIGNOTE browser_mode " + T("【浏览器打不开时改这个】auto=自动（先 snap run firefox → 再直开 → 最后 xdg-open）/ snap=只走 snap（Ubuntu 的 snap 版 firefox 必须这样 ✓）/ direct=只直开 firefox / xdg=只交给系统默认", "when the browser will not open"));
+            Console.WriteLine("CONFIGNOTE ui_parallel " + T("【切页卡顿时改这个】on=并行取数据（快 ✓ 默认）/ off=串行（老行为，个别环境下更稳）", "when switching pages feels slow"));
+            Console.WriteLine("CONFIGNOTE scan_children " + T("【会话页想更快时关掉】on=扫描会话文件得出主/子代理归类（默认 ✓ 197 个会话约 200ms）/ off=不扫（会话页更快，但子代理统计会为空）", "to make the sessions page faster"));
+            Console.WriteLine("CONFIGNOTE auto_start " + T("【不想让 GUI 自动起 dsh 时关掉】on=GUI 启动时自动启动（默认）/ off=不自动", "if you do not want the GUI to auto-start dsh"));
+            Console.WriteLine("CONFIGNOTE auto_start_target " + T("【开机自启启动什么】auto=按平台（Windows/macOS 启动官方桌面端，Linux 启动 dsh web）/ desktop=官方桌面端 / web=dsh web", "what to start at login"));
             return 0;
         }
 

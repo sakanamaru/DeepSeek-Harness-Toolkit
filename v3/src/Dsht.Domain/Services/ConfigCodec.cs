@@ -74,6 +74,9 @@ namespace Dsht.Domain.Services
                 }
             // ✗ 上次写成 auto_start= 分支的 else → 只有 auto_start= 为空时才读 ✗ 永远读不到 ✓（CLI 的回读校验抓到 ✓✓）
             else if (t.StartsWith("auto_start_target=", StringComparison.Ordinal)) c.AutoStartTarget = t.Substring("auto_start_target=".Length).Trim();
+            else if (t.StartsWith("browser_mode=", StringComparison.Ordinal)) c.BrowserMode = t.Substring("browser_mode=".Length).Trim();
+            else if (t.StartsWith("ui_parallel=", StringComparison.Ordinal)) c.UiParallel = t.Substring("ui_parallel=".Length).Trim() != "off";
+            else if (t.StartsWith("scan_children=", StringComparison.Ordinal)) c.ScanChildren = t.Substring("scan_children=".Length).Trim() != "off";
             }
             return c;
         }
@@ -93,6 +96,9 @@ namespace Dsht.Domain.Services
             sb.Append("close_action=").Append(c.CloseAction).Append("\r\n");
             sb.Append("auto_start=").Append(c.AutoStart ? "on" : "off").Append("\r\n");
             sb.Append("auto_start_target=").Append(c.AutoStartTarget).Append("\r\n");
+            sb.Append("browser_mode=").Append(c.BrowserMode).Append("\r\n");
+            sb.Append("ui_parallel=").Append(c.UiParallel ? "on" : "off").Append("\r\n");
+            sb.Append("scan_children=").Append(c.ScanChildren ? "on" : "off").Append("\r\n");
             return sb.ToString();
         }
 
