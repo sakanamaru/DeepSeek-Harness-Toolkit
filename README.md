@@ -237,6 +237,17 @@ The About page has a **Verify This Install** button: it downloads the official `
 2. **Trust boundary.** Distributing a Windows exe carries an inherent trust cost — hence this project is **fully open source (MIT)**, every release is **built by GitHub Actions CI from source**, and ships `hashes.txt` (SHA-256) + a **GPG signature** so anyone can verify releases.
 3. **Positioning.** If you are comfortable with the terminal, the official npm commands are leaner; this tool is for people who do not want to touch one.
 
+## Relationship to the official dsh desktop app
+
+DeepSeek has released an official **dsh desktop app** (an Electron application). This tool does **not** adapt to it and does not replace it - the two do different jobs: the desktop app is for *using* dsh, this tool is for *installing it, watching it, backing it up, and getting it back when something breaks*.
+
+Three scope notes, all about this tool itself:
+
+1. **This tool manages the Web form.** `start` / `stop` / `status` decide by the **listener on port 3080 and the identity of the process behind it**. If the desktop app does not use that port, `status` will report `STATUS_DOWN` - not a fault but a **difference in scope**: it checks the dsh Web service, not desktop-app processes.
+2. **`headless` / `acp` / `desktop` are reserved forms in the code.** The form is acknowledged, but there is **no observable fact to decide by yet** (process name, IPC channel and so on are all unknown). They are reported as Down **with the reason stated** - never pretending to be Ready, and never pretending not to be running. Run `dsh-minato describe` for the full wording.
+3. **The official desktop app is outside this project's scope.** If you want them to coexist, check your environment yourself; this tool will not guess its process name or how it communicates.
+
+> Public reporting says the desktop app **shares the same `~/.dsh` data directory** as the Web version. If that holds, this tool's **backup / restore / migration** apply to that data too - it only knows the data directory and does not care which client wrote it. Please verify that on your own machine.
 ## 🖥️ GUI panel (three variants)
 
 Since v2.4.1 a **graphical panel** ships in three forms — pick what fits (the panel is now **seven pages**: Home · Backups · Update · Settings · Log · Doctor · About; the screenshots above show Home / Log / About):
