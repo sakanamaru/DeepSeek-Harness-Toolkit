@@ -31,7 +31,14 @@ $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path $csc)) { Write-Host "SKIP: 找不到 csc（需 Windows + .NET Framework 4.x）"; exit 2 }
 $v2 = Join-Path $Repo 'DeepSeek Harness Toolkit.exe'
 if (-not (Test-Path $v2)) { Write-Host "SKIP: 找不到 v2.x exe（$v2）——先在仓库根构建 v2.x"; exit 2 }
-$v3exe = Join-Path $Repo 'dsht_v3_contract.exe'          # 与 v2.x 同目录 → 状态目录一致
+# ★★★ **并发碰撞修复（实测发现 —— 假红/假绿的又一个来源）** ✓✓
+#   ✗ 原来固定叫 `dsht_v3_contract.exe` ✗ → **两个进程同时跑就撞同一个文件** ✗✗
+#     → 实测：同一份代码连跑两次，第一次 `FAIL: V3 编译失败` rc=2 ✓ 第二次就好 ✓
+#     → 而 `verify_switchover` 自己就会**连跑两次**这个脚本 ✓ → 任一次失败 →
+#       **gate1 显示 `21/21 对齐` 却仍然是 `[ NOT ]`** ✗✗（因为退出码非 0 ✓ 极其难查 ✓）
+#   ✓ 现在：**exe 名字带 PID** ✓✓ —— **仍与 v2.x 同目录** ✓（状态目录语义不变 ✓）
+#     并发不再撞 ✓ 每次跑完自己删自己的 ✓（见文件末尾的清理 ✓）
+$v3exe = Join-Path $Repo ("dsht_v3_contract_" + $PID + ".exe")          # 与 v2.x 同目录 → 状态目录一致
 $files = @(Get-ChildItem (Join-Path $Repo 'v3\src') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
 Invoke-External { & $csc /nologo /target:exe /warn:4 ("/out:" + $v3exe) $files 2>&1 } | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: V3 编译失败"; exit 2 }
