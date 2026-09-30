@@ -222,7 +222,18 @@ export async function collectSessions(ctx) {
 			} catch {
 				values = {};
 			}
-			list.push({ id: n.id, live: n.live, values, header: n.header });
+			// ★★★ **N6 修复（复审 MAJOR —— "装了插件更糟"对历史会话仍成立）** ✓✓
+			//   ✗ 原来**无条件**发行 ✗ → 而纯持久化会话（不在 store 里 ✓ 没有投影单元 ✓）
+			//     `values` 是空对象 `{}` ✓ → **仍然发了一行** ✗
+			//     而工具箱**只要快照非空就完全不用磁盘投影** ✗✗（Program.cs:426 ✓）
+			//     → **历史会话原本好好的磁盘统计被空值覆盖** ✗ → 面板打 `turns=0 steps=0` ✗✗
+			//   ✓ 现在：**没有投影值、而且不是活跃会话 → 干脆不发行** ✓✓
+			//     → 工具箱那一份快照就**不非空** → 回退到磁盘投影 ✓ → **历史数据保住** ✓✓
+			//     · 活跃会话即使还没有投影值也发行 ✓（`live:true` 是磁盘投影拿不到的事实 ✓）
+			const hasValues = values && Object.keys(values).length > 0;
+			if (hasValues || n.live === true) {
+				list.push({ id: n.id, live: n.live, values, header: n.header });
+			}
 		}
 	} catch {
 		/* 只读桥：任何异常都降级为空列表 ✓ 绝不打断 dsh ✓ */
