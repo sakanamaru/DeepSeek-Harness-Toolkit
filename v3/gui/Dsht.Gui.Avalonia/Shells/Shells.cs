@@ -689,6 +689,7 @@ namespace Dsht.Gui.Avalonia.Shells
             if (host.MainSection == 5) return HealthContent(host);
             if (host.MainSection == 6) return SettingsContent(host);
             if (host.MainSection == 8) return UpdateCenterContent(host);   // 更新中心 ✓（**追加在最后** ✓ 不动前面 8 处硬编码索引 ✓）
+            if (host.MainSection == 9) return LogCenterContent(host);   // 日志中心 ✓（同样**追加在最后** ✓）
             {
                 // 说明页 = 关于信息（logo 已从标题栏移到这里 ✓）+ CLI 原始输出
                 global::Avalonia.Controls.StackPanel wrap = new global::Avalonia.Controls.StackPanel();
@@ -1251,6 +1252,106 @@ namespace Dsht.Gui.Avalonia.Shells
         /// 更新动作：**web 走 CLI 的 update（先自动备份 + 回滚点 ✓ 需确认 ✓）**；
         /// **desktop 只给官方安装页** ✓（用户指定 ✓ 本工具不重打包 ✗）；
         /// **插件只给说明与地址** ✓（由各自作者维护 ✓ 本工具不替它更新 ✗ 也不替它担保 ✗）。</summary>
+        /// <summary>日志中心页 ✓✓（roadmap Phase 2 的缺口之一："CLI 已有 log，缺 GUI 表面" ✓）
+        /// 数据全部来自 CLI 的 `log`（**只读** ✓）→ GUI 只解析 ✓ 不自己读文件 ✗。
+        /// 筛选走 **CLI 的参数** ✓（`--level` / `--grep` / `--lines` ✓）—— 与"GUI 只调 CLI"的架构一致 ✓✓
+        /// 导出走 CLI 的 `--export` ✓（CLI 自己带 `--yes` 确认闸门 ✓ 这里再问一次 ✓ 双保险 ✓）。</summary>
+        private static Control LogCenterContent(MainWindow host)
+        {
+            StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
+
+            // —— 顶部：级别筛选 + 搜索 + 行数 + 导出 ✓ ——
+            StackPanel bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            string cur = host.LogFilter;
+            foreach (string lv in new string[] { "全部", "INFO", "WARN", "ERROR" })
+            {
+                string val = lv == "全部" ? "" : lv;
+                bool on = (cur == val);
+                Button b = new Button
+                {
+                    Content = T(lv, 11.5, on ? Palette.OnAccent : Palette.TextDim),
+                    Background = on ? Palette.Accent : Palette.CardHover,
+                    BorderThickness = new Thickness(0),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(12, 5)
+                };
+                b.Click += delegate { host.SetLogFilter(val); };
+                bar.Children.Add(b);
+            }
+            bar.Children.Add(T("行数", 11, Palette.TextFaint));
+            foreach (int n in new int[] { 100, 500, 2000 })
+            {
+                int nn = n;
+                bool on = host.LogLines == nn;
+                Button b = new Button
+                {
+                    Content = T(nn.ToString(), 11.5, on ? Palette.OnAccent : Palette.TextDim),
+                    Background = on ? Palette.Accent : Palette.CardHover,
+                    BorderThickness = new Thickness(0),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(10, 5)
+                };
+                b.Click += delegate { host.SetLogLines(nn); };
+                bar.Children.Add(b);
+            }
+            bar.Children.Add(PrimaryButton("刷新", delegate { host.Refresh(); }));
+            bar.Children.Add(GhostButton(T("导出到文件…", 11.5, Palette.Text), delegate { host.ExportLog(); }, true));
+            s.Children.Add(Card(bar, new Thickness(0), new Thickness(16, 14)));
+
+            // —— 搜索框 ✓（按关键词过滤 ✓ 走 CLI 的 --grep ✓）——
+            StackPanel find = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            TextBox box = new TextBox { Text = host.LogGrep, Width = 320, Watermark = "按关键词过滤（走 CLI 的 --grep）" };
+            find.Children.Add(box);
+            find.Children.Add(GhostButton(T("搜索", 11.5, Palette.Text), delegate { host.SetLogGrep(box.Text == null ? "" : box.Text.Trim()); }, true));
+            find.Children.Add(GhostButton(T("清除", 11.5, Palette.Text), delegate { host.SetLogGrep(""); }, true));
+            find.Children.Add(T("当前：" + (string.IsNullOrEmpty(host.LogGrep) ? "（无过滤）" : host.LogGrep), 11, Palette.TextFaint));
+            s.Children.Add(Card(find, new Thickness(0), new Thickness(16, 12)));
+
+            // —— 内容 ✓（等宽字体 ✓ 逐行 ✓）——
+            string raw = host.RawOutput;
+            if (string.IsNullOrEmpty(raw) || raw.IndexOf("LOG_EMPTY", StringComparison.Ordinal) >= 0)
+            {
+                StackPanel empty = new StackPanel { Spacing = 6 };
+                empty.Children.Add(T("还没有日志", 13, Palette.TextDim, FontWeight.SemiBold));
+                empty.Children.Add(T("工具箱的操作日志会写在状态目录的 logs/launcher.log 里。装过一次、启动过一次之后就会有了。", 11.5, Palette.TextFaint));
+                s.Children.Add(Card(empty, new Thickness(0), new Thickness(16, 20)));
+                return s;
+            }
+
+            StackPanel lines = new StackPanel { Spacing = 1 };
+            string[] all = raw.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            int shown = 0;
+            for (int i = 0; i < all.Length; i++)
+            {
+                string l = all[i] == null ? "" : all[i].TrimEnd();
+                if (l.Length == 0) continue;
+                // CLI 的真实输出是 **`LOG_LINE <内容>`** ✓（VM 实测确认 ✓）→ **剥掉前缀显示内容** ✓
+                // ✗ 不能整行跳过 ✗ —— 那样页面会一片空白 ✓（我第一版就是这么写的 ✗ 实测抓到了 ✓）
+                if (l.StartsWith("LOG_LINE ", StringComparison.Ordinal)) l = l.Substring("LOG_LINE ".Length);
+                else if (l.StartsWith("LOG_OK", StringComparison.Ordinal)) continue;        // 计数行 ✓ 不显示
+                else if (l.StartsWith("LOG_EXPORT", StringComparison.Ordinal)) continue;    // 导出回执 ✓ 由 toast 显示
+                else if (l.StartsWith("LOG_EMPTY", StringComparison.Ordinal)) continue;     // 空状态 ✓ 上面已处理
+                else if (l.StartsWith("INTEGRITY_", StringComparison.Ordinal)) continue;    // 完整性提示 ✓ 不属于日志正文
+                if (l.Trim().Length == 0) continue;
+                IBrush fg = Palette.Text;
+                if (l.IndexOf("ERROR", StringComparison.OrdinalIgnoreCase) >= 0) fg = Palette.Bad;
+                else if (l.IndexOf("WARN", StringComparison.OrdinalIgnoreCase) >= 0) fg = Palette.Warn;
+                else if (l.IndexOf("INFO", StringComparison.OrdinalIgnoreCase) >= 0) fg = Palette.TextDim;
+                lines.Children.Add(Mono(l, 11, fg));
+                shown++;
+            }
+            if (shown == 0)
+            {
+                s.Children.Add(Card(T("筛选后没有匹配的日志行（换个级别或关键词试试）。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 16)));
+                return s;
+            }
+            s.Children.Add(Card(lines, new Thickness(0), new Thickness(16, 14)));
+            s.Children.Add(T("共 " + shown + " 行 · 级别 " + (string.IsNullOrEmpty(host.LogFilter) ? "全部" : host.LogFilter)
+                + " · 关键词 " + (string.IsNullOrEmpty(host.LogGrep) ? "（无）" : host.LogGrep)
+                + " · 最多 " + host.LogLines + " 行（筛选由 CLI 的 --level/--grep/--lines 完成）", 11, Palette.TextFaint));
+            return s;
+        }
+
         private static Control UpdateCenterContent(MainWindow host)
         {
             StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
