@@ -123,6 +123,15 @@ try {
     Check "恢复前自动备份带 -pre-restore 后缀" ($preDir -ne $null -and $preDir.EndsWith("-pre-restore"))
 
     Section "3. 不给 --apply 时不越界：要么被运行中闸门拒绝（零写入），要么真实恢复到隔离根"
+    # 确定性：前面几步的 --apply 恢复各产生一个 -pre-restore 包 → "最新备份"已变 ✗
+    # 不清掉的话，这步恢复的是某个 pre-restore 包，内容当然不是 v1 → 与产品无关的假失败 ✓
+    # 备份根 = 那个已知好包的父目录 ✓（不是 $bkRoot —— 那个变量根本不存在 ✗，被 SilentlyContinue 吞掉了 ✗）
+    # 只留下 $bkDir 这一个包 → "最新备份"确定 ✓ → 默认路径恢复出来的必然是 v1 ✓✓
+    if ($bkDir) {
+        $bkRootReal = Split-Path $bkDir -Parent
+        Get-ChildItem $bkRootReal -Directory -ErrorAction SilentlyContinue | Where-Object { $_.FullName -ne $bkDir } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        Check '（前置）备份根里只剩已知好包，默认路径的"最新"因此确定' (@(Get-ChildItem $bkRootReal -Directory -ErrorAction SilentlyContinue).Count -eq 1)
+    }
     [System.IO.File]::WriteAllText((Join-Path $data "settings.yaml"), "v3-DIRTY")
     $out = Run $exe @("restore")
     $refused = ($out -match "RESTORE_FAIL")
@@ -133,6 +142,7 @@ try {
         Check ("被拒绝（" + $why + "）且零写入") ($now -eq "v3-DIRTY")
     } else {
         # 服务确实没在跑：这是 v2.x 的默认路径，但数据根仍是隔离的，所以安全
+        if ($now -ne "v1") { Write-Host ("      [诊断] 实际内容 = " + $now) }
         Check "服务未运行时默认路径真的恢复了（且只写隔离根）" ($now -eq "v1")
     }
 
