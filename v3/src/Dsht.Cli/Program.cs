@@ -2215,6 +2215,15 @@ Console.WriteLine("  config-get | config-set <key> <value>");
         }
 
         /// <summary>备份导出：校验路径后**复制到目标目录**（会写盘 → 需要 --yes 闸门 ✓）。</summary>
+        // ★★★ **用户反馈（2026-09-30）**：「gui 删除备份好像也有问题」✓✓ → 追出**两个**真 bug ✗✗
+        //   ✗ 这里（export）与下面的 delete **是同一个 bug** ✗：
+        //     校验走 `PathValidator`（内部 `ResolveBackupPath` → **绝对路径** ✓）
+        //     但**实际操作**用的却是**原始的 --path 字符串** ✗（GUI 传的是裸名字 ✓）
+        //     → 于是操作的是**相对于当前工作目录**的同名目录 ✗ 而不是备份根里的那份 ✗
+        //     → delete 那边还会因此**绕过**「删除后仍存在」检查 ✓ → **假报 BKDEL_OK** ✗
+        //     → 用户看到"点了两次但没删" ✓✓ **完全解释通了** ✓
+        //     → **而且危险** ✗：CWD 里恰好有同名目录会被误删 ✓
+        //   ✓ 现在：**校验和操作都用同一个解析后的绝对路径** ✓✓
         private static int BackupExport(string[] args, ServiceRegistry reg)
         {
             IBackupSource bk = reg.Get<IBackupSource>();
@@ -2224,7 +2233,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 delegate(string p) { return System.IO.Path.GetFullPath(p); });
             if (reason != null) { Console.WriteLine("BKEXPORT_FAIL " + T("导出校验失败: " + reason, "export validation failed: " + reason)); return 0; }
             if (!Has(args, "--yes")) { Console.WriteLine("BKEXPORT_PLAN " + T("将把备份复制到目标目录（会写盘）—— 确认请加 --yes", "will copy the backup to the target directory (writes to disk) - add --yes to confirm")); return 0; }
-            string src = (Flag(args, "--path") ?? "").Trim().Trim('"');
+            string src = PathValidator.ResolveBackupPath((Flag(args, "--path") ?? "").Trim().Trim('"'), bk.BackupsRoot);
             string to = (Flag(args, "--to") ?? "").Trim().Trim('"');
             string target = bk.Export(src, System.IO.Path.GetFullPath(to));
             if (target == null) { Console.WriteLine("BKEXPORT_FAIL " + T("导出失败（见 launcher.log）", "export failed (see launcher.log)")); return 0; }
@@ -2241,7 +2250,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 delegate(string p) { return fs.DirectoryExists(p); });
             if (reason != null) { Console.WriteLine("BKDEL_FAIL " + T("删除校验失败: " + reason, "delete validation failed: " + reason)); return 0; }
             if (!Has(args, "--yes")) { Console.WriteLine("BKDEL_PLAN " + T("将删除该备份目录（会丢数据）—— 确认请加 --yes", "will delete that backup directory (data loss) - add --yes to confirm")); return 0; }
-            string src = (Flag(args, "--path") ?? "").Trim().Trim('"');
+            string src = PathValidator.ResolveBackupPath((Flag(args, "--path") ?? "").Trim().Trim('"'), bk.BackupsRoot);
             try
             {
                 bk.Delete(src);
