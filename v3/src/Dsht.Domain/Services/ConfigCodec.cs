@@ -71,8 +71,9 @@ namespace Dsht.Domain.Services
                 {
                     string v = t.Substring(11).Trim().ToLowerInvariant();
                     if (v.Length > 0) c.AutoStart = v != "off";
-            else if (t.StartsWith("auto_start_target=", StringComparison.Ordinal)) c.AutoStartTarget = t.Substring("auto_start_target=".Length).Trim();
                 }
+            // ✗ 上次写成 auto_start= 分支的 else → 只有 auto_start= 为空时才读 ✗ 永远读不到 ✓（CLI 的回读校验抓到 ✓✓）
+            else if (t.StartsWith("auto_start_target=", StringComparison.Ordinal)) c.AutoStartTarget = t.Substring("auto_start_target=".Length).Trim();
             }
             return c;
         }
