@@ -323,3 +323,128 @@ jobs:
             hashes.txt
             hashes.txt.asc
             DeepSeek-Harness-Toolkit_*_upload-package.zip
+  # ---------------------------------------------------------------------------
+  # V3 Windows package. Mirrors the v3-linux job: same three shapes, same
+  # launcher entries, same isolated smoke test. The classic v2.x Windows zip is
+  # produced by the `build` job above and is unchanged by this.
+  #
+  # Two details worth keeping: the zip is written through ZipArchive with
+  # forward-slash entry names, because Compress-Archive on Windows writes
+  # backslashes and those break extraction on Linux, macOS and WSL; and the
+  # smoke test runs against an isolated DSH_HOME so it never touches real data.
+  # ---------------------------------------------------------------------------
+  v3-windows:
+    name: V3 Windows package (win-x64)
+    needs: v3-contracts
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/v3-linux'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      id-token: write        # artifact attestation (OIDC)
+      attestations: write    # release provenance
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2 fixed SHA
+      - name: Publish V3 CLI (self-contained single file)
+        run: dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out/sc --nologo
+      - name: Publish V3 CLI (small, framework-dependent)
+        run: dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r win-x64 --self-contained false -o out/fd --nologo
+      - name: Publish Avalonia GUI (self-contained)
+        run: dotnet publish v3/gui/Dsht.Gui.Avalonia/Dsht.Gui.Avalonia.csproj -c Release -r win-x64 --self-contained true -o out/gui --nologo
+      - name: Smoke test the published CLI (isolated root, never the default port)
+        shell: pwsh
+        run: |
+          $iso = Join-Path $env:RUNNER_TEMP "smoke-iso"
+          New-Item -ItemType Directory -Path (Join-Path $iso "storages") -Force | Out-Null
+          Set-Content -Path (Join-Path $iso "storages/smoke.txt") -Value "smoke" -Encoding UTF8
+          $env:DSH_HOME = $iso
+          $exe = "out/sc/dsh-minato.exe"
+          & $exe version
+          if ($LASTEXITCODE -ne 0) { throw "version failed" }
+          & $exe about
+          $p = (& $exe backup 2>&1 | Select-String "BACKUP_OK" | Select-Object -First 1)
+          if (-not $p) { throw "backup did not report BACKUP_OK" }
+          $v = (& $exe backup-list --verify 2>&1 | Select-String "complete" | Select-Object -First 1)
+          if (-not $v) { throw "verify did not report a complete package" }
+          Write-Output "smoke ok: $p"
+      - name: Assemble the Windows package
+        shell: pwsh
+        run: |
+          $pkg = "dsh-minato-win-x64"
+          Remove-Item $pkg -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path "$pkg/cli-small", "$pkg/gui", "$pkg/icons" -Force | Out-Null
+          Copy-Item out/sc/dsh-minato.exe "$pkg/dsh-minato.exe"
+          Copy-Item out/fd/* "$pkg/cli-small/" -Recurse
+          Copy-Item out/gui/* "$pkg/gui/" -Recurse
+          Copy-Item v3/gui/Dsht.Gui.Avalonia/Assets/logo-icon.png "$pkg/icons/dsh-minato.png"
+          Copy-Item LICENSE "$pkg/" -ErrorAction SilentlyContinue
+          Copy-Item README.md "$pkg/" -ErrorAction SilentlyContinue
+          # Two obvious entry points at the root, so a user does not have to pick a file out of a list.
+          Set-Content -Path "$pkg/START-GUI.cmd" -Encoding ascii -Value @(
+            "@echo off",
+            "chcp 65001 >nul",
+            "cd /d `"%~dp0`"",
+            "if not exist `"gui\dsht-gui.exe`" ( echo   [X] gui\dsht-gui.exe not found. Extract the whole archive. & pause & exit /b 1 )",
+            "start `"`" `"gui\dsht-gui.exe`""
+          )
+          Set-Content -Path "$pkg/START-CLI.cmd" -Encoding ascii -Value @(
+            "@echo off",
+            "chcp 65001 >nul",
+            "cd /d `"%~dp0`"",
+            "if not exist `"dsh-minato.exe`" ( echo   [X] dsh-minato.exe not found. Extract the whole archive. & pause & exit /b 1 )",
+            "`"dsh-minato.exe`"",
+            "pause"
+          )
+          Set-Content -Path "$pkg/READ-ME-FIRST.txt" -Encoding utf8 -Value @(
+            "dsh-minato 3.0 (V3) - Windows package",
+            "=====================================",
+            "",
+            "  Graphical interface : double-click START-GUI.cmd",
+            "  Command line        : double-click START-CLI.cmd",
+            "",
+            "Everything else in this folder is used by those two.",
+            "",
+            "  dsh-minato.exe   command line tool, self-contained, no .NET needed",
+            "  cli-small/       same tool, smaller, needs the .NET 8 runtime",
+            "  gui/dsht-gui.exe graphical interface, self-contained",
+            "  icons/           icon for shortcuts",
+            "",
+            "Safety: without DSH_HOME set it operates on your default dsh data directory.",
+            "To try it safely first:  set DSH_HOME=D:\tmp\dsh-test",
+            "A restore always makes a pre-restore backup first and prints where it went.",
+            "Backups can prove their own completeness:  dsh-minato.exe backup-list --verify",
+            "",
+            "Version shows 3.0.0-dev until a release tag is cut."
+          )
+          # Zip with forward-slash entry names: Compress-Archive writes backslashes on Windows,
+          # and those break extraction on Linux, macOS and WSL.
+          $zip = "$pkg.zip"
+          Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          Add-Type -AssemblyName System.IO.Compression
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $fs = [System.IO.File]::Open((Join-Path (Get-Location) $zip), [System.IO.FileMode]::CreateNew)
+          $arch = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Create)
+          $root = (Resolve-Path $pkg).Path
+          foreach ($f in (Get-ChildItem $root -Recurse -File | Sort-Object FullName)) {
+            $rel = $f.FullName.Substring($root.Length + 1).Replace('\','/')
+            $e = $arch.CreateEntry("$pkg/$rel", [System.IO.Compression.CompressionLevel]::Optimal)
+            $es = $e.Open(); $src = [System.IO.File]::OpenRead($f.FullName); $src.CopyTo($es); $src.Close(); $es.Close()
+          }
+          $arch.Dispose(); $fs.Close()
+          $h = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path "$zip.sha256" -Value "$h  $zip" -Encoding ascii
+          Get-Content "$zip.sha256"
+      - name: Attest Windows V3 build provenance (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be  # v2.4.0, same pinned SHA as the other steps
+        with:
+          subject-path: |
+            dsh-minato-win-x64.zip
+            dsh-minato-win-x64.zip.sha256
+      - name: Upload to the release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          gh release upload $tag dsh-minato-win-x64.zip dsh-minato-win-x64.zip.sha256 --clobber
