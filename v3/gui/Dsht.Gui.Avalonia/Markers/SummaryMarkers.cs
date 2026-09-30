@@ -111,7 +111,7 @@ namespace Dsht.Gui.Avalonia.Markers
                     case "keep_backups": return "自动备份保留份数（最少 3）";
                     case "check_update": return "启动时检查工具箱更新";
                     case "check_dsh_update": return "启动时检查 dsh 更新";
-                    case "update_channel": return "更新通道（stable / beta）";
+                    case "update_channel": return "更新通道（stable / rc）";   // N16 FIX: the CLI accepts stable and rc, not beta
                     case "close_action": return "关闭窗口时的行为";
                     case "auto_start": return "启动时自动启动 dsh";
                     case "dsh_versions": return "已安装的 dsh 版本（只读）";
