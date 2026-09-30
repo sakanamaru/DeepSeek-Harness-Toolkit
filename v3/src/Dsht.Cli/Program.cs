@@ -29,6 +29,20 @@ namespace Dsht.Cli
             _cfg = LoadConfig(reg);
             string cmd = args.Length > 0 ? args[0] : "";
 
+            // —— **反银狐启动闸门** ✓✓（用户要求："反银狐木马感染/伪造的机制，至少被感染无法运行" ✓）
+            // 银狐（SilverFox）的主要手法是**静态感染**：给正常 exe 打补丁/追加代码 → **文件变了** ✓
+            // → 自身 SHA-256 与随包 hashes.txt 不一致就**直接拒绝运行** ✓✓
+            // 纪律（沿用 IntegrityJudge 的语义 ✓）：
+            //   · **Mismatch → 拒绝**（被改过 ✓ 一律不跑 ✓ 不给绕过参数 ✗ —— 绕过参数本身就是洞 ✗✓）
+            //   · **Unknown → 放行**（无清单/源码编译/单独复制 exe ✓ 否则开发者寸步难行 ✓✓）
+            //     但会**明说"跳过校验"** ✓ **不假报"已验证"** ✗✓
+            //   · 例外：`verify-install` 与 `selftest` **放行** ✓✓（被改过的包也要能自证/诊断 ✓）
+            if (cmd != "verify-install" && cmd != "selftest")
+            {
+                int gate = StartupIntegrityGate(reg);
+                if (gate != 0) return gate;
+            }
+
             if (cmd == "") return Menu(reg);
             if (cmd == "status") return Status(reg, Has(args, "--detail"));
             if (cmd == "describe") return Describe(reg);
@@ -935,6 +949,37 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             return "unknown";
         }
 
+        /// <summary>**启动闸门** ✓✓：自身 SHA-256 vs 随包 hashes.txt。
+        /// 返回 0 = 放行 ✓；非 0 = 拒绝运行（并已打印原因 ✓）。
+        /// **绝不因为"读不到清单"就拒绝** ✗ —— 那会把源码编译和单独复制 exe 全挡掉 ✓（Unknown 放行 ✓）。
+        /// **也绝不因为"读不到清单"就说"校验通过"** ✗ —— 明确说"跳过" ✓✓（与 doctor 的措辞一致 ✓）。</summary>
+        private static int StartupIntegrityGate(ServiceRegistry reg)
+        {
+            try
+            {
+                // 用**真实的领域 API** ✓（ManifestParser.ParseHash + IIntegritySource 三成员 ✓）
+                IIntegritySource integ = reg.Get<IIntegritySource>();
+                string expected = Dsht.Domain.Services.ManifestParser.ParseHash(integ.ReadManifest(), integ.SelfFileName());
+                IntegrityVerdict v = IntegrityJudge.Judge(expected, integ.SelfHash());
+                if (v == IntegrityVerdict.Match) return 0;   // 一致 → 静默放行 ✓（不刷屏 ✓）
+                if (v == IntegrityVerdict.Unknown)
+                {
+                    // 明说"跳过" ✓ —— **不假报"已验证"** ✓✓（与 doctor 的措辞一致 ✓）
+                    Console.Error.WriteLine("INTEGRITY_SKIPPED " + T("旁无 hashes.txt（或清单里没有本文件）→ 跳过自身校验。源码编译、单独复制 exe 属正常；官方发布包会带清单。", "no hashes.txt beside this exe (or it does not list this file) - self-check skipped; official releases ship a manifest."));
+                    return 0;
+                }
+                // Mismatch → **拒绝运行** ✓✓（银狐静态感染后文件必然变 ✓）
+                Console.WriteLine("INTEGRITY_FAIL " + T("自身校验失败：本文件的 SHA-256 与随包 hashes.txt **不一致**，可能已被替换或篡改（银狐一类木马会静态感染正常 exe）。", "self-check FAILED: this file does not match the shipped hashes.txt; it may have been replaced or tampered with."));
+                Console.WriteLine("INTEGRITY_EXPECTED " + (expected == null ? "unknown" : expected));
+                Console.WriteLine("INTEGRITY_ACTUAL " + (string.IsNullOrEmpty(integ.SelfHash()) ? "unknown" : integ.SelfHash()));
+                Console.WriteLine("INTEGRITY_HINT " + T("请从**官方 Releases 重新下载**：https://github.com/sakanamaru/dsh-minato/releases —— 本工具拒绝在被改动的情况下运行。", "download again from the official releases; this tool refuses to run when modified."));
+                return 3;
+            }
+            catch
+            {
+                return 0;   // 自检本身出错 → 放行 ✓（不能让自检把工具变成砖 ✓）
+            }
+        }
         private static int UpdateInfo(ServiceRegistry reg)
         {
             IToolchainQuery tc = reg.Get<IToolchainQuery>();
