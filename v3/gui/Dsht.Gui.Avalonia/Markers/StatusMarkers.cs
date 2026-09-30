@@ -14,6 +14,9 @@ namespace Dsht.Gui.Avalonia.Markers
         /// <summary>官方桌面端进程名（`STATUS_DESKTOP <name>` ✓）；空 = 没检测到。
         /// 桌面端**不监听 3080**（实测走 19387 ✓）→ 端口探测会说"未运行" ✓ 但它确实在跑 ✓✓</summary>
         public string DesktopClient = "";
+        public string DesktopPid = "";
+        public string DesktopStart = "";
+        public string DesktopUptime = "";
         /// <summary>未识别的 STATUS_* 标记（原样保留 —— 未来 dsh 加新标记时界面不会漏信息）。</summary>
         public List<KeyValuePair<string, string>> Extras = new List<KeyValuePair<string, string>>();
 
@@ -55,6 +58,9 @@ namespace Dsht.Gui.Avalonia.Markers
                 else if (key == "STATUS_START") { s.Start = val; s.Ok = true; }
                 else if (key == "STATUS_UPTIME") { s.Uptime = val; s.Ok = true; }
                     else if (key == "STATUS_DESKTOP") { s.DesktopClient = val; s.Ok = true; }   // 官方桌面端在跑 ✓
+                    else if (key == "STATUS_DESKTOP_PID") { s.DesktopPid = val; s.Ok = true; }
+                    else if (key == "STATUS_DESKTOP_START") { s.DesktopStart = val; s.Ok = true; }
+                    else if (key == "STATUS_DESKTOP_UPTIME") { s.DesktopUptime = val; s.Ok = true; }
                 else s.Extras.Add(new KeyValuePair<string, string>(key, val));
             }
             return s;

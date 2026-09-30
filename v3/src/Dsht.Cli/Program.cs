@@ -76,7 +76,21 @@ namespace Dsht.Cli
             try
             {
                 if (reg.Get<IProcessQuery>().AnyProcessNamed("DeepSeek Harness"))
+                {
+                    // 带上 pid / 启动时间 / 已运行 ✓（用户要求："概览再更新下 desktop 的 pid 启动时间和已运行" ✓✓）
+                    // 取不到就留空 ✓ 不猜 ✓（STATUS_DESKTOP <name> <pid> <start> <uptime>）
+                    int dpid = 0; string dstart = ""; string dup = "";
+                    try { dpid = reg.Get<IProcessQuery>().PidOfNamed("DeepSeek Harness"); } catch { }
+                    if (dpid > 0)
+                    {
+                        try { System.DateTime? ds = reg.Get<IProcessQuery>().StartTime(dpid); if (ds.HasValue) { dstart = ds.Value.ToString("yyyy-MM-dd HH:mm:ss"); dup = UptimeFormatter.Format(System.DateTime.Now - ds.Value); } } catch { }
+                    }
+                    // 分成**独立标记** ✓（进程名与时长都带空格 ✗ → 挤在一行没法可靠解析 ✓）
                     Console.WriteLine("STATUS_DESKTOP DeepSeek Harness");
+                    if (dpid > 0) Console.WriteLine("STATUS_DESKTOP_PID " + dpid);
+                    if (!string.IsNullOrEmpty(dstart)) Console.WriteLine("STATUS_DESKTOP_START " + dstart);
+                    if (!string.IsNullOrEmpty(dup)) Console.WriteLine("STATUS_DESKTOP_UPTIME " + dup);
+                }
             }
             catch { }
             if (!detail) return 0;
