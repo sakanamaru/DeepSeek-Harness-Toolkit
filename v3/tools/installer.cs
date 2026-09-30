@@ -1186,15 +1186,24 @@ internal static class Installer
             //   ✓ 现在：**只有目录真的删干净了才清理** ✓✓ 否则**全部保留**并说清怎么重试 ✓
             // ★★★ **N-7 修复（安装器复审 MAJOR —— 保留目录时 marker 还在）** ✓✓
             //   ✗ 目录因为**用户数据**被保留时 ✓ marker 也留在里面 ✗
-            //     → 它只是"安装标记" ✓ 不是用户数据 ✓ **没有理由留着** ✗
-            //     → 而留着它会让**下一次**安装把它当成"已有安装" ✓（虽然 N-1 已修 ✓ 但语义不对 ✓）
-            //   ✓ 现在：**在最终决定之后再删一次** ✓✓（无论目录保不保留 ✓）
-            try
+            //   ✓ 现在：**目录真的删干净了才删 marker** ✓✓
+            //   ★★ 最终复审修正（端到端实测发现）：上一版**无条件**删 ✗ ——
+            //     而目录保留时我们**故意留了 `uninstall.exe` + ARP 条目**（N-C ✓ 好让用户重试 ✓）
+            //     → **标记也必须在** ✓✓ 否则重试会被身份校验拒（exit 2 ✗）
+            //       而 ARP 的 `UninstallString` **不带 `--force`** ✗ → 用户点"卸载"**什么都不发生** ✗✗
+            if (gone)
             {
-                string mp3 = Path.Combine(target, ".dsh-minato-install");
-                if (File.Exists(mp3)) { File.Delete(mp3); Log("已删安装标记（目录保留 ✓ 但标记不该留 ✓）"); }
+                try
+                {
+                    string mp3 = Path.Combine(target, ".dsh-minato-install");
+                    if (File.Exists(mp3)) { File.Delete(mp3); Log("已删安装标记 ✓（目录也删干净了 ✓）"); }
+                }
+                catch (Exception mex) { Log("删安装标记失败（不致命 ✓）: " + mex.Message); }
             }
-            catch (Exception mex) { Log("删安装标记失败（不致命 ✓）: " + mex.Message); }
+            else
+            {
+                Log("**保留安装标记** ✓（目录保留了 ✓ 重试卸载需要它 ✓ 否则会被身份校验拒 ✗）");
+            }
             if (gone)
             {
                 try { RemoveShortcuts(); Log("已清理快捷方式 ✓"); } catch (Exception c1) { Log("清理快捷方式失败: " + c1.Message); }
