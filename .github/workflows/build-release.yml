@@ -417,7 +417,7 @@ jobs:
           "$h  $setup" | Set-Content -Path "$setup.sha256" -Encoding ascii
           "安装器 $([Math]::Round((Get-Item $setup).Length/1MB,1)) MB · sha256 $($h.Substring(0,16))…"
 
-
+      - name: Assemble the Windows package
         shell: pwsh
         run: |
           $pkg = "dsh-minato-win-x64"
