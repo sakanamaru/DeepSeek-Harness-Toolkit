@@ -618,7 +618,8 @@ namespace Dsht.Gui.Avalonia
             // ✓✓ **用户要求（2026-09-30）**：「窗口不要始终置顶，要始终置顶至少加个按钮」✓
             //   ✗ 之前窗口被**外部**（我的截图脚本）设成 topmost ✗ → 一直压在最上面 ✓ 很烦 ✓
             //   ✓ 现在：**由用户自己控制** ✓✓ 默认**不置顶** ✓ 点一下才置顶 ✓ 再点取消 ✓
-            //   ✓ 选择会存进配置（`always_on_top` ✓）→ 下次启动恢复 ✓✓
+            //   ✓ 选择只对**本次运行**有效 ✓✓（不写配置 ✓ —— `always_on_top` 从来不是 CLI 认识的键 ✓
+            //     写进去只会让配置文件多一个没人读的项 ✓ 之前的注释说"下次启动恢复"是**错的** ✗）
             PaintPin();
             for (int i = 0; i < 4; i++) PaintSwitchButton("Style" + i, i == Palette.StyleKind);
         }
@@ -806,10 +807,8 @@ namespace Dsht.Gui.Avalonia
             //     → 整个 profilepatch 进程期间**窗口卡死** ✗ → 现在后台跑 ✓ 且写操作会清缓存 ✓✓）
             string args = "profilepatch --profile " + profile + " --id " + entryId + (disable ? "" : " --enable") + " --yes";
             RunCliAction(args, disable ? "隔离插件" : "恢复插件");
-            return;
-            string outp = Run(cli, args);
-            _health = "profilepatch " + (disable ? "--disable" : "--set disabled=false") + " " + entryId + " 的结果：" + Environment.NewLine + outp;
-            BuildShell();
+            // The old synchronous implementation used to sit here and is gone; it was unreachable and the
+            // compiler said so (CS0162). Removed rather than left behind.
         }
 
         /// <summary>在文件管理器里打开插件目录（Windows 资源管理器 / Linux 文件管理器）。</summary>
