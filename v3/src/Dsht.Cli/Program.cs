@@ -2253,8 +2253,37 @@ Console.WriteLine("  config-get | config-set <key> <value>");
         }
 
         /// <summary>backup：非交互备份（手动类）。标记逐条对齐 v2.x 的 NIBackup。</summary>
+        /// <summary>备份 ✓。**用户要求（2026-09-30）**：「第一次备份必须手动设置目录，避免卸载时删掉备份」✓✓
+        /// 背景：备份根默认是 `StateDir/backup` ✓ 而 **Windows 上 StateDir 就是安装目录** ✗
+        ///   → 备份**物理上躺在安装目录里** ✓ 卸载**理论上**会连它一起清 ✗
+        ///   → 安装器侧已加保险（**卸载显式跳过 backup/ 与 logs/** ✓✓）
+        ///   → 这里再**明确警告一次** ✓ 并告诉用户怎么把备份移出去 ✓
+        ///   → 完整做法（让备份根本身可配置 ✓ 第一次强制指定 ✓）见下方 TODO ✓</summary>
+        private static void WarnIfBackupsInsideInstall(ServiceRegistry reg)
+        {
+            try
+            {
+                string bk = reg.Get<IBackupSource>().BackupsRoot;
+                string st = reg.Get<IPaths>().StateDir;
+                if (string.IsNullOrEmpty(bk) || string.IsNullOrEmpty(st)) return;
+                string b = System.IO.Path.GetFullPath(bk).TrimEnd('\\', '/');
+                string s = System.IO.Path.GetFullPath(st).TrimEnd('\\', '/');
+                bool inside = b.StartsWith(s + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(b, s, StringComparison.OrdinalIgnoreCase);
+                if (!inside) return;
+                Console.WriteLine("BACKUP_WARN " + T(
+                    "备份目录在**安装/状态目录内**（" + bk + "）✗ —— 卸载时**可能**被一起清掉 ✓。"
+                    + "建议把备份放到安装目录之外 ✓：手动复制整个 backup 目录到别处（例如 D:\\dsh-backups ✓），"
+                    + "以后用 backup-export --path <备份> --to <目标> ✓ 导出到外面 ✓。"
+                    + "（安装器侧已加保险：卸载会**显式跳过** backup/ ✓ 但放在外面才真正稳妥 ✓）",
+                    "the backup folder is inside the install/state directory - uninstalling may remove it. Move it outside, e.g. D:\\dsh-backups, and use backup-export --to <target> from then on. The installer now explicitly skips backup/ on uninstall, but keeping it outside is safer."));
+            }
+            catch { }
+        }
+
         private static int Backup(ServiceRegistry reg)
         {
+            WarnIfBackupsInsideInstall(reg);   // ✓ 用户要求：备份放在安装目录内要明确警告 ✓✓
             IPaths paths = reg.Get<IPaths>();
             IBackupSource bk = reg.Get<IBackupSource>();
             string src = paths.DataRoot;
