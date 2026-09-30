@@ -226,6 +226,18 @@ internal static class Installer
         }
         Report(progress, 92, "注册…");
         try { WriteArp(target); Log("ARP 注册表已写 ✓"); } catch (Exception ex) { Log("ARP 失败（不致命）: " + ex.Message); }
+        // ★ 写**安装标记** ✓✓（卸载时靠它确认"这里确实是本工具的安装目录" ✓✓
+        //   —— 没有它，单独复制的卸载器就能删掉任意目录 ✗ 实测踩到过 ✓）
+        try
+        {
+            File.WriteAllText(Path.Combine(target, ".dsh-minato-install"),
+                "dsh-minato install marker" + Environment.NewLine +
+                "version=" + SelfVersion() + Environment.NewLine +
+                "installed=" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine +
+                "path=" + target + Environment.NewLine, new UTF8Encoding(false));
+            Log("安装标记已写 ✓ .dsh-minato-install（卸载时的安全凭据 ✓）");
+        }
+        catch (Exception ex) { Log("安装标记写入失败（不致命，但卸载会更保守 ✓）: " + ex.Message); }
         if (wantPath && !noPath)
         {
             try
@@ -270,6 +282,24 @@ internal static class Installer
         string t2 = Environment.GetEnvironmentVariable("DSHT_UNINSTALL_TARGET");
         if (!string.IsNullOrEmpty(t2)) target = t2.TrimEnd('\\');
         if (IsDangerousPath(target)) { Log("拒绝：目录可疑 " + target); return 2; }
+        // ★★★ **最强的一道闸** ✓✓（用户问："卸载器不会和某些大厂一样把整个D盘删了吧" ✓ 这个担心完全正确 ✓）
+        //   光"路径不像盘根"不够 ✗ —— 真正的保险是：**只有目录里确实有本工具的文件才允许删** ✓✓
+        //   大厂那类事故的共同点就是"按计算出来的路径直接删" ✗ 完全没有"这里到底是不是我"的确认 ✓
+        //   ✗✗ 实测教训：原来用 `uninstall.exe` 当标记 → **任何含这个文件名的目录都会被删** ✗
+        //      （把卸载器单独复制到空目录里运行 → 它把那个目录删了 ✓ 实测确认 ✓）
+        //   ✓✓ 现在要求**安装器写下的标记文件** `.dsh-minato-install` —— 单独复制的卸载器**无法满足** ✓✓
+        bool looksOurs = File.Exists(Path.Combine(target, ".dsh-minato-install"));
+        if (!looksOurs)
+        {
+            Log("拒绝卸载：这个目录里**没有本工具的文件** → 它不像安装目录 ✓ **一个字节都不删** ✓");
+            if (!silent) MessageBox.Show(
+                "拒绝卸载。" + Environment.NewLine + Environment.NewLine +
+                "这个目录里没有 dsh-minato 的文件：" + Environment.NewLine + target + Environment.NewLine + Environment.NewLine +
+                "所以它看起来**不是**本工具的安装目录 ✓ 为了安全，**什么都不会删** ✓" + Environment.NewLine + Environment.NewLine +
+                "如果你确实想卸载，请用安装目录里的 uninstall.exe ✓",
+                AppName + " 卸载", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return 2;
+        }
         try
         {
             // 检测在跑的程序 ✓（评审建议 ✓：别让用户对着"删不掉"发呆 ✓ 先提示关闭 ✓）
