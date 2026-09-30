@@ -155,7 +155,45 @@ internal static class Installer
         {
             bool targetEmpty = false;
             try { targetEmpty = Directory.GetFileSystemEntries(target).Length == 0; } catch { }
-            bool targetOurs = File.Exists(Path.Combine(target, ".dsh-minato-install"));
+            // ★★ **C2 修复（审计 CRITICAL）** ✓✓
+        //   ✗ 原来只判 marker **文件存在** ✗ —— 与卸载侧**同一个坑** ✓
+        //     （本文件自己的注释就写着：`echo x > 任意目录\.dsh-minato-install` 能满足 ✓）
+        //     → `--force` 或往目标写一个字节 → **外来目录被当成我们的** ✗
+        //     → 然后**递归删掉用户的 `gui\` / `app-<ver>\`** ✗✗ **exit 0** ✓
+        //   ✓ 现在：**与卸载侧同一套身份校验** ✓（marker 的 token 必须与本用户 ARP 里的 token 一致 ✓
+        //     且 marker 里的 `path=` 必须等于目标 ✓）
+        bool targetOurs = false;
+        try
+        {
+            string mp0 = Path.Combine(target, ".dsh-minato-install");
+            if (File.Exists(mp0))
+            {
+                string mkTok = "", mkPath = "";
+                foreach (string ln in File.ReadAllLines(mp0))
+                {
+                    if (ln == null) continue;
+                    if (ln.StartsWith("token=", StringComparison.Ordinal)) mkTok = ln.Substring(6).Trim();
+                    else if (ln.StartsWith("path=", StringComparison.Ordinal)) mkPath = ln.Substring(5).Trim();
+                }
+                string regTok = "";
+                try
+                {
+                    using (RegistryKey rk0 = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\" + AppName))
+                    { if (rk0 != null) regTok = rk0.GetValue("InstallToken", "") as string; }
+                }
+                catch { }
+                bool tokOk = !string.IsNullOrEmpty(mkTok) && !string.IsNullOrEmpty(regTok) && string.Equals(mkTok, regTok, StringComparison.OrdinalIgnoreCase);
+                bool pthOk = true;
+                if (!string.IsNullOrEmpty(mkPath))
+                {
+                    try { pthOk = string.Equals(Path.GetFullPath(mkPath).TrimEnd('\\'), Path.GetFullPath(target).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase); }
+                    catch { pthOk = false; }
+                }
+                targetOurs = tokOk && pthOk;
+                if (!targetOurs) Log("目标目录里有个 marker，但**身份校验没通过** ✗（tokenOk=" + tokOk + " pathOk=" + pthOk + "）→ 按「不是我们的」处理 ✓");
+            }
+        }
+        catch (Exception ex0) { Log("身份校验读取出错 → 按「不是我们的」处理 ✓: " + ex0.Message); }
             if (!targetEmpty && !targetOurs && !ForceInstall)
             {
                 Log("拒绝安装：目标目录非空且不是本工具的安装目录 ✓ " + target);
@@ -632,6 +670,19 @@ internal static class Installer
                 "DeepSeek Harness 的会话与设置仍在：" + Environment.NewLine + dataDir + Environment.NewLine + Environment.NewLine +
                 "桌面上已生成一份说明文档，写明了这个位置。",
                 AppName + " 卸载", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            // ★★★ **C1 修复（审计 CRITICAL —— 我今天自己造成的）** ✓✓
+            //   ✗✗ `git show 32c1c46` 铁证：我把下面三行删掉、换成了一行注释 ✗
+            //      → **注释写着"先删目录，再清理"，但清理代码根本没加回来** ✗✗
+            //      → 后果（审计逐条列出）：
+            //        · ARP 还在 → **应用和功能里挂着指向已删 exe 的卸载器** ✗
+            //        · `ReadInstalled()` 还返回旧位置 → **下次装到别的目录被拒** ✗✗
+            //        · 开始菜单与桌面快捷方式还在（指向已删文件）✗
+            //        · PATH 里那条死 `bin` 条目**永远留着** ✗（`RemoveFromUserPath` 成了死代码 ✓）
+            //   ✓ 现在：**目录删完之后**再清理 ✓（顺序仍是"先删目录"✓ 只是调用丢了 ✓）
+            //      单个失败不影响其它 ✓ 全部记日志 ✓
+            try { RemoveShortcuts(); Log("已清理快捷方式 ✓"); } catch (Exception c1) { Log("清理快捷方式失败: " + c1.Message); }
+            try { RemoveFromUserPath(Path.Combine(target, "bin")); Log("已清理 PATH 条目 ✓"); } catch (Exception c2) { Log("清理 PATH 失败: " + c2.Message); }
+            try { RemoveArp(); Log("已清理注册表 ✓"); } catch (Exception c3) { Log("清理注册表失败: " + c3.Message); }
             return 0;
         }
         catch (Exception ex)

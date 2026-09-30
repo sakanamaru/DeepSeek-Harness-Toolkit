@@ -91,8 +91,16 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
     if [ ! -f "$PREFIX/$MARKER" ]; then
         die "拒绝卸载：$PREFIX 里没有安装标记 $MARKER → 它不像安装目录 ✓ **一个字节都不删** ✓"
     fi
+    # ★★ m3 修复（审计）✓✓
+    #   ✗ 原来 `[ -n "$recorded" ] && [ "$recorded" != "$PREFIX" ]` ✗
+    #     → **没有 path= 行时直接放行** ✓ → 外来目录 + 一行 marker → **被接受** ✓
+    #     → **然后删掉它的 gui/data.txt** ✗✗（审计实测 ✓）
+    #   ✓ 现在：**没有 path= 行 → 拒绝** ✓（我们自己的安装器**一定**会写 path= ✓）
     recorded=$(sed -n 's/^path=//p' "$PREFIX/$MARKER" 2>/dev/null | head -1)
-    if [ -n "$recorded" ] && [ "$recorded" != "$PREFIX" ]; then
+    if [ -z "$recorded" ]; then
+        die "拒绝卸载：安装标记里**没有记录安装位置** ✓ → 无法确认这个目录是我们装的 ✓ **一个字节都不删** ✓"
+    fi
+    if [ "$recorded" != "$PREFIX" ]; then
         die "拒绝卸载：标记里记录的安装位置是「$recorded」，与本次的「$PREFIX」不一致 ✓ **一个字节都不删** ✓"
     fi
 
@@ -135,17 +143,33 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
         for g in uninstall.exe "$MARKER" hashes.txt install.sh .dsh-minato-files; do
             [ -f "$PREFIX/$g" ] && { rm -f "$PREFIX/$g" 2>/dev/null && removed=$((removed+1)) || kept=$((kept+1)); }
         done
-        for g in gui bin icons app-*; do
-            for d in $PREFIX/$g; do
-                [ -d "$d" ] || continue
-                rm -rf "$d" 2>/dev/null && removed=$((removed+1)) || kept=$((kept+1))
-            done
+        # ★★★ **C1 修复（审计 CRITICAL —— 我重写时引入的）** ✓✓
+        #   ✗✗ 原来 `for d in $PREFIX/$g` **没有引号** ✗ → **IFS 词分割** ✓
+        #      → prefix 含空格时 `/home/u/My Apps/pfx/gui` 会分成 `/home/u/My` + `Apps/pfx/gui` ✓
+        #      → **第一个是真实存在的目录 → rm -rf 递归删掉它** ✗✗
+        #      → 审计实测：`My/victim-data/file.txt` 整个被删 ✓ **还报「你的数据没有被删除」** ✗✗
+        #      → **与重写前的 F1 同类** ✓ —— 我修 F1 时引入了同类的另一个 ✓
+        #   ✓ 现在：**路径全部加引号** ✓ 前缀用 `"$PREFIX"/` 形式 ✓（glob 仍展开 ✓ 前缀不被分割 ✓）
+        # ★★ **M2 修复（审计）** ✓✓
+        #   ✗ 原来整片 `rm -rf gui/bin/icons/app-*` ✗ → **用户放进这些目录的文件一起没** ✗
+        #     （审计实测 gui/USER-NOTE.txt / icons/USER-ICON.txt / app-mine/USER-APP.txt 都被删 ✓）
+        #     → 而我还宣称「只删清单里的」✗ **代码根本不是** ✓
+        #   ✓ 现在：**只删空目录** ✓（文件已在上面按清单逐个删过 ✓）
+        #     非空目录 = 里面还有**不属于清单的东西** → **保留** ✓ 由下面的 leftover 判定如实报告 ✓
+        #   ✗ 注意：全局 `find -empty` 也会删**用户建的空目录** ✗（审计 m2 ✓）
+        #     → 折中：**只清我们已知的那几个目录**下的空目录 ✓ 不碰用户自己建的顶层目录 ✓
+        # ✗ 回归：`cli-small/` 不在上面那几个里 ✗ → 它的文件按清单删了 ✓ 但**空目录本身留下** ✗
+        #   → 正常卸载后目录没删干净 ✓（实测确认 ✓）
+        # ✓ 补上它 ✓（包里的顶层目录就是这几个 ✓ 其它目录一律不碰 ✓ 用户自己建的目录绝不动 ✓）
+        for g in gui bin icons cli-small; do
+            d="$PREFIX/$g"
+            [ -d "$d" ] || continue
+            find "$d" -depth -type d -empty -exec rmdir {} \; 2>/dev/null || true
         done
-        # ✓ 删完文件后，把**空的子目录**也清掉 ✓
-        #   ✗ 原来只删 `gui`/`bin`/`icons`/`app-*` ✗ → **`cli-small/` 这种目录会剩下** ✓
-        #     （VM 实测：文件 0 个、目录还剩 2 个 ✓ → 目录非空 → 目录被保留 ✓）
-        # ✓ `find -depth -type d -empty` 是 POSIX ✓ 自底向上删空目录 ✓
-        find "$PREFIX" -depth -type d -empty -exec rmdir {} \; 2>/dev/null || true
+        for d in "$PREFIX"/app-*; do
+            [ -d "$d" ] || continue
+            find "$d" -depth -type d -empty -exec rmdir {} \; 2>/dev/null || true
+        done
         ok "已删我们自己的 $removed 项"
         # ③ **目录空了才删目录** ✓ 还有别人的东西 → 保留 + 如实报告 ✓✓
         if [ -z "$(ls -A "$PREFIX" 2>/dev/null || true)" ]; then
