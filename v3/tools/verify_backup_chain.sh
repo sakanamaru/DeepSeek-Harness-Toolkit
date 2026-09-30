@@ -36,6 +36,15 @@ A="$WORK/a"; mkdir -p "$A/storages"; printf 'ALPHA\n' > "$A/storages/a.txt"; pri
 cleanup(){ rm -rf "$WORK" "${MT:-/nonexistent}" 2>/dev/null; }
 trap cleanup EXIT
 
+# ★★★ **CI 红修复（2026-10-01 真机复现）—— 必须切到中性目录再跑** ✓✓
+#   ✗ 工作区**自动探测**取的是**当前目录**（`LinuxPaths.WorkspaceRoot` ✓）
+#     → 从仓库根调用本脚本时 → **整个仓库被当成工作区一起备份** ✗✗
+#       （真机 CI 实测：`标记计数与内容一致（1015）` ✗ 而夹具里只有 2 个文件 ✓）
+#     → 于是"包内混格式（顶层文件 19）"与"恢复报 UNRECOGNIZED"两条必然失败 ✓
+#   ✓ 现在：**切到 $WORK**（在 /tmp 下 ✓ 而 /tmp 在**禁用工作区**列表里 ✓✓）
+#     → 探测不到工作区 ✓ → 备份源就是夹具本身 ✓✓
+#   ✓ 所有路径都是绝对路径 ✓ 所以 cd 是安全的 ✓
+cd "$WORK" || exit 2
 echo "== 备份可信链验证 =="
 echo "  CLI: $($CLI version 2>/dev/null || echo '(version 失败)')"
 
