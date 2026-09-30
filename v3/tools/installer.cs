@@ -32,6 +32,9 @@ internal static class Installer
     internal const string ReleasesUrl = "https://github.com/sakanamaru/dsh-minato/releases";   // internal ✓ 窗体类要用 ✓
     /// <summary>上次载荷校验的结果 ✓（空 = 通过或未跑；否则 = 对不上的文件名 ✓ 完成页要显示 ✓）。</summary>
     internal static string LastVerifyResult = "";
+    /// <summary>本次安装的随机身份令牌 ✓✓（同时写进 marker 与 ARP ✓ 卸载时双向比对 ✓
+    /// 这是审计发现的 C1 修复：原来只判 marker 文件存在 → 谁都能复制一个 → 就能删任意目录 ✗）。</summary>
+    internal static string InstallToken = "";
     private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "dsh-minato-install.log");
     private static readonly StringBuilder LogBuf = new StringBuilder();
 
@@ -229,17 +232,26 @@ internal static class Installer
             catch (Exception ex) { Log("快捷方式失败（不致命）: " + ex.Message); }
         }
         Report(progress, 92, "注册…");
-        try { WriteArp(target); Log("ARP 注册表已写 ✓"); } catch (Exception ex) { Log("ARP 失败（不致命）: " + ex.Message); }
-        // ★ 写**安装标记** ✓✓（卸载时靠它确认"这里确实是本工具的安装目录" ✓✓
-        //   —— 没有它，单独复制的卸载器就能删掉任意目录 ✗ 实测踩到过 ✓）
+        // ★★ **先生成身份令牌，再写 ARP** ✓✓（顺序错了实测踩到 ✓：
+        //   原来生成在 marker 那段（ARP 之后）→ **注册表里的 token 是空的** ✗ → 卸载时双向比对失败 ✗✗
+        //   → **正常卸载也被拒** ✓ 幸好回归测试抓到了 ✓）
+        InstallToken = Guid.NewGuid().ToString("N");
+        try { WriteArp(target); Log("ARP 注册表已写 ✓（含 token ✓）"); } catch (Exception ex) { Log("ARP 失败（不致命）: " + ex.Message); }
+        // ★ 写**安装标记** ✓✓
+        //   ✗✗ 审计发现（子代理实测）：原来只判"文件存在" ✗ —— `echo x > 任意目录\.dsh-minato-install`
+        //      就能满足 ✓ → **任何被放进该 marker 的目录都会被整棵删除** ✗✗（我的注释还自称"无法满足" ✗ 错的）
+        //   ✓✓ 现在：**随机 token** 同时写进 marker 和 ARP 注册表 ✓ → 卸载时必须**两边对上** ✓✓
+        //       单独复制一个 marker 到别的目录**对不上 ARP** ✓ → 拒绝 ✓✓
+        //       另外 marker 里的 `path=` 也会被校验（原来记了却从不读 ✗）
         try
         {
             File.WriteAllText(Path.Combine(target, ".dsh-minato-install"),
                 "dsh-minato install marker" + Environment.NewLine +
                 "version=" + SelfVersion() + Environment.NewLine +
                 "installed=" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine +
+                "token=" + InstallToken + Environment.NewLine +
                 "path=" + target + Environment.NewLine, new UTF8Encoding(false));
-            Log("安装标记已写 ✓ .dsh-minato-install（卸载时的安全凭据 ✓）");
+            Log("安装标记已写 ✓（含 token ✓ 卸载时与注册表双向比对 ✓）");
         }
         catch (Exception ex) { Log("安装标记写入失败（不致命，但卸载会更保守 ✓）: " + ex.Message); }
         if (wantPath && !noPath)
@@ -309,7 +321,45 @@ internal static class Installer
         //   ✗✗ 实测教训：原来用 `uninstall.exe` 当标记 → **任何含这个文件名的目录都会被删** ✗
         //      （把卸载器单独复制到空目录里运行 → 它把那个目录删了 ✓ 实测确认 ✓）
         //   ✓✓ 现在要求**安装器写下的标记文件** `.dsh-minato-install` —— 单独复制的卸载器**无法满足** ✓✓
-        bool looksOurs = File.Exists(Path.Combine(target, ".dsh-minato-install"));
+        // ★★★ **真正的身份校验** ✓✓（审计 C1/C2 修复 ✓）
+        //   ① marker 必须存在 ✓  ② marker 里的 token 必须与**本用户 ARP 注册表**里的 InstallToken 一致 ✓
+        //   ③ marker 里的 path= 必须与要删的目录一致 ✓（原来记了却从不读 ✗）
+        //   → 单独复制一个 marker 到别的目录：**对不上 ARP** ✓ → 拒绝 ✓✓
+        //   → DSHT_UNINSTALL_TARGET 指向别的目录：**token/path 都对不上** ✓ → 拒绝 ✓✓（C2 ✓）
+        string markerPath = Path.Combine(target, ".dsh-minato-install");
+        string markerToken = "", markerPathVal = "";
+        bool looksOurs = false;
+        try
+        {
+            if (File.Exists(markerPath))
+            {
+                foreach (string ln in File.ReadAllLines(markerPath))
+                {
+                    if (ln == null) continue;
+                    if (ln.StartsWith("token=", StringComparison.Ordinal)) markerToken = ln.Substring(6).Trim();
+                    else if (ln.StartsWith("path=", StringComparison.Ordinal)) markerPathVal = ln.Substring(5).Trim();
+                }
+                string regToken = "";
+                try
+                {
+                    using (RegistryKey rk = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\" + AppName))
+                    { if (rk != null) regToken = rk.GetValue("InstallToken", "") as string; }
+                }
+                catch { }
+                bool tokenOk = !string.IsNullOrEmpty(markerToken) && !string.IsNullOrEmpty(regToken)
+                            && string.Equals(markerToken, regToken, StringComparison.OrdinalIgnoreCase);
+                bool pathOk = true;
+                if (!string.IsNullOrEmpty(markerPathVal))
+                {
+                    try { pathOk = string.Equals(Path.GetFullPath(markerPathVal).TrimEnd('\\'), Path.GetFullPath(target).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase); }
+                    catch { pathOk = false; }
+                }
+                looksOurs = tokenOk && pathOk;
+                if (File.Exists(markerPath) && !looksOurs)
+                    Log("身份校验未通过 ✓ tokenOk=" + tokenOk + " pathOk=" + pathOk + "（markerToken=" + (markerToken.Length > 8 ? markerToken.Substring(0,8) : markerToken) + " regToken=" + (regToken.Length > 8 ? regToken.Substring(0,8) : regToken) + "）");
+            }
+        }
+        catch (Exception ex) { Log("身份校验读取出错 → 按不通过处理 ✓: " + ex.Message); }
         if (!looksOurs)
         {
             Log("拒绝卸载：这个目录里**没有本工具的文件** → 它不像安装目录 ✓ **一个字节都不删** ✓");
@@ -327,7 +377,11 @@ internal static class Installer
             bool running = false;
             try
             {
-                foreach (string pn in new string[] { "dsht-gui", "DeepSeek Harness" })
+                // ✗✗ 审计 M4：原来查的是 "dsht-gui" 与 "DeepSeek Harness" ✗
+                //   而**安装器自己创建的是** dsh-minato.exe / dsh-minato-gui.exe ✗ → **一个都没查** ✓
+                //   反过来 "DeepSeek Harness" 是**通用进程名** → **误报无关进程** ✓
+                // ✓ 现在查真正的占用者 ✓（payload 校验也只要求这两个 ✓）
+                foreach (string pn in new string[] { "dsh-minato", "dsh-minato-gui", "dsht-gui" })
                     if (Process.GetProcessesByName(pn).Length > 0) running = true;
             }
             catch { }
@@ -347,12 +401,28 @@ internal static class Installer
             string dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh");
             WriteDataNote(dataDir);   // ✓ 桌面文档：指出数据在哪 ✓（**不删数据** ✓✓）
             // 先改名再删 ✓（文件被占用也能改名成功 ✓ 避免"需要重启" ✓）
-            string doomed = target + ".removing-" + DateTime.Now.ToString("HHmmss");
+            // ✓ 审计 M8：实测 `Directory.Delete(root,true)` 会**先删根下的文件**（marker 首当其冲 ✗）
+        //   然后才在锁定的文件上抛错 → **目录还在、marker 已没** → 用户重跑卸载会因身份校验失败而 exit 2 ✗✗
+        //   → 没有重试路径，README 建议的"再执行一次"根本不成立 ✓
+        // ✓ 修：删之前**记下 marker 内容** ✓ 失败后**写回去** ✓ → 重试路径恢复 ✓✓
+        string markerBackup = "";
+        try { if (File.Exists(Path.Combine(target, ".dsh-minato-install"))) markerBackup = File.ReadAllText(Path.Combine(target, ".dsh-minato-install")); } catch { }
+        string doomed = target + ".removing-" + DateTime.Now.ToString("HHmmss");
             string parent = Path.GetDirectoryName(target);
             string mover = Path.Combine(parent == null ? Path.GetTempPath() : parent, Path.GetFileName(doomed));
             try { Directory.Move(target, mover); } catch { mover = target; }
             TryDelete(mover);
             bool gone = !Directory.Exists(target);
+            // ✓ M8：没删干净 → **把 marker 写回去** ✓ 让用户能重试（配合"先关程序再卸载" ✓）
+            if (!gone && markerBackup.Length > 0)
+            {
+                try
+                {
+                    string mp = Path.Combine(target, ".dsh-minato-install");
+                    if (!File.Exists(mp)) { File.WriteAllText(mp, markerBackup, new UTF8Encoding(false)); Log("已把安装标记写回 ✓ 目录没删干净，但**可以重试卸载** ✓"); }
+                }
+                catch { }
+            }
             Log(gone
                 ? "卸载完成 ✓（目录已删干净 ✓ **你的数据没有被删除** ✓ 见桌面说明文档 ✓）"
                 : "卸载完成（但目录里还有文件被占用 ✓ 已如实报告 ✗ 不假报干净 ✗）：" + target);
@@ -612,6 +682,8 @@ internal static class Installer
             if (k == null) return;
             k.SetValue("DisplayName", AppName + " — DeepSeek Harness 工具箱（非官方）");
             k.SetValue("DisplayVersion", ShortVersion());
+            // ✓ C1 的另一半：token 也要进注册表 ✓ 否则卸载器的双向比对**永远对不上** ✗✗（会锁死卸载 ✓）
+            if (!string.IsNullOrEmpty(InstallToken)) k.SetValue("InstallToken", InstallToken);
             k.SetValue("Publisher", Publisher);
             k.SetValue("DisplayIcon", Path.Combine(target, "dsh-minato-gui.exe"));
             k.SetValue("InstallLocation", target);
