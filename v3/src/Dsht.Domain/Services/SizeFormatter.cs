@@ -6,9 +6,9 @@ namespace Dsht.Domain.Services
         public static string Human(long b)
         {
             if (b < 1024) return b + " B";
-            if (b < 1024L * 1024) return (b / 1024.0).ToString("0.0") + " KB";
-            if (b < 1024L * 1024 * 1024) return (b / (1024.0 * 1024)).ToString("0.0") + " MB";
-            return (b / (1024.0 * 1024 * 1024)).ToString("0.00") + " GB";
+            if (b < 1024L * 1024) return (b / 1024.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " KB";
+            if (b < 1024L * 1024 * 1024) return (b / (1024.0 * 1024)).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " MB";
+            return (b / (1024.0 * 1024 * 1024)).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + " GB";
         }
     }
 }
