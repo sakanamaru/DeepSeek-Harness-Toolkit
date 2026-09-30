@@ -375,7 +375,7 @@ internal static class Installer
                         break;
                     }
                 }
-                Log("**已尽力回滚** ✓ 若仍异常请用卸载器或手动检查 ✓（不会假装"什么都没发生" ✗）");
+                Log("**已尽力回滚** ✓ 若仍异常请用卸载器或手动检查 ✓（不会假装「什么都没发生」✗）");
             }
             catch (Exception rb) { Log("回滚失败（请手动查看 ✓）: " + rb.Message); }
             return 4;
