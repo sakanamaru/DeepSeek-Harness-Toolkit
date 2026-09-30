@@ -459,6 +459,22 @@ jobs:
             "",
             "Version shows 3.0.0-dev until a release tag is cut."
           )
+          # ★★★ **N-15 修复（安装器复审 MAJOR —— 便携 zip 从来不带插件）** ✓✓
+          #   ✗ 这个 Assemble 步骤**先**打好 `$pkg.zip` ✗ 而 `plugin/` 是**之后**的
+          #     `build_installer.ps1` 才拷进同一个目录的（为了给安装器做载荷 ✓）
+          #     → **zip 里没有 `plugin/`** ✗✗ → 用户从 zip 装的那份
+          #       `bridge-install` **永远报 `BRIDGE_NO_PLUGIN`** ✓
+          #     （实测：桌面上的 `dsh-minato-win-x64.zip` 242 条目 · **0 个 plugin** ✓）
+          #   ✓ 现在：**打包前先把插件拷进 `$pkg`** ✓✓（和安装器载荷用同一份源码 ✓）
+          $repoRootZip = (Resolve-Path (Join-Path $PWD "..")).Path
+          $pluginSrcZip = Join-Path $repoRootZip "plugin\dsh-minato-bridge"
+          if (Test-Path $pluginSrcZip) {
+            $pluginDstZip = Join-Path $pkg "plugin\dsh-minato-bridge"
+            New-Item -ItemType Directory -Path $pluginDstZip -Force | Out-Null
+            Copy-Item (Join-Path $pluginSrcZip "*") $pluginDstZip -Recurse -Force
+            $pnZip = @(Get-ChildItem $pluginDstZip -Recurse -File).Count
+            Write-Output ("  bridge plugin in the zip: " + $pnZip + " files")
+          } else { Write-Output ("  ! plugin source not found: " + $pluginSrcZip) }
           # ✓✓ **M9 修复（审计 MAJOR）**：**zip 里必须带 hashes.txt** ✓✓
           #   ✗ 上面 `Remove-Item $pkg -Recurse -Force` 会**连构建脚本刚写的清单一起删掉** ✗
           #     → 这个 zip 里**没有清单** ✗ → `launcher.cs` 的
@@ -504,6 +520,10 @@ jobs:
           $vtag = "${{ github.ref_name }}"
           if ($vtag -in @('main','master','')) { $vtag = "${{ inputs.release_tag }}" }
           if ($vtag -eq '') { $vtag = '3.0.0' }
+          # N-14 FIX (installer audit MAJOR): every real tag is v-prefixed, and this pattern
+          # rejected all of them - so a v3.1.0 tag silently built 3.0.0, while the upload step
+          # asked for the v-prefixed name and could not find it. Strip the prefix first.
+          $vtag = $vtag.TrimStart('v', 'V')
           if ($vtag -notmatch '^\d+(\.\d+){1,3}$') { $vtag = '3.0.0' }   # branch or non-tag ref -> dev version
           Write-Output "installer version: $vtag (ref: ${{ github.ref_name }})"
           pwsh -File v3/tools/build_installer.ps1 -PayloadDir "dsh-minato-win-x64" -Version "$vtag" -Out "dsh-minato-$vtag-win-x64-setup.exe"
@@ -515,17 +535,26 @@ jobs:
           # payload and the marker landed, then uninstall and confirm our own files are gone.
           $smoke = Join-Path $env:TEMP ("dsht-smoke-" + [guid]::NewGuid().ToString("N").Substring(0,8))
           Write-Output "smoke: installing into $smoke"
-          & $setup --silent "--dir=$smoke"
-          if ($LASTEXITCODE -ne 0) { throw "smoke: the installer exited $LASTEXITCODE" }
+          # N-13 FIX (installer audit MAJOR): `& $exe` on a GUI executable does not wait under
+          # Windows PowerShell and leaves $LASTEXITCODE unset, so this threw immediately - and
+          # the checks below never asserted the uninstall exit code at all. Start-Process waits
+          # and gives a real exit code.
+          $sp = Start-Process -FilePath $setup -ArgumentList "--silent", "--dir=$smoke" -Wait -PassThru
+          if ($sp.ExitCode -ne 0) { throw "smoke: the installer exited $($sp.ExitCode)" }
           if (-not (Test-Path (Join-Path $smoke "dsh-minato.exe"))) { throw "smoke: dsh-minato.exe is missing" }
           if (-not (Test-Path (Join-Path $smoke ".dsh-minato-install"))) { throw "smoke: the install marker is missing" }
           $smokeUninst = Join-Path $smoke "uninstall.exe"
           if (-not (Test-Path $smokeUninst)) { throw "smoke: uninstall.exe is missing" }
-          & $smokeUninst --uninstall --silent
-          $rc = $LASTEXITCODE
+          $spu = Start-Process -FilePath $smokeUninst -ArgumentList "--uninstall", "--silent" -Wait -PassThru
+          $rc = $spu.ExitCode
           Write-Output "smoke: the uninstaller exited $rc"
+          if ($rc -ne 0) { throw "smoke: the uninstaller exited $rc" }   # N-13 FIX: was printed, never asserted
           if (Test-Path (Join-Path $smoke "dsh-minato.exe")) { throw "smoke: the uninstaller left dsh-minato.exe behind - the exact bug that shipped once" }
           if (Test-Path (Join-Path $smoke "gui")) { throw "smoke: the uninstaller left the gui folder behind" }
+          if (Test-Path (Join-Path $smoke ".dsh-minato-install")) { throw "smoke: the uninstaller left the install marker behind" }
+          if (Test-Path (Join-Path $smoke "plugin")) { throw "smoke: the uninstaller left the plugin folder behind" }
+          $arp = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\dsh-minato" -ErrorAction SilentlyContinue
+          if ($null -ne $arp) { throw "smoke: the registry entry survived the uninstall" }   # N-13 FIX: the audit found this in 4 of 8 runs
           Write-Output "smoke: OK - install and uninstall both did what they should"
           Remove-Item $smoke -Recurse -Force -ErrorAction SilentlyContinue
           $h = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
@@ -547,4 +576,4 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           gh release upload $tag dsh-minato-win-x64.zip dsh-minato-win-x64.zip.sha256 --clobber
-            gh release upload $tag "dsh-minato-${{ github.ref_name }}-win-x64-setup.exe" "dsh-minato-${{ github.ref_name }}-win-x64-setup.exe.sha256" --clobber
+            gh release upload $tag "dsh-minato-$vtag-win-x64-setup.exe" "dsh-minato-$vtag-win-x64-setup.exe.sha256" --clobber   # N-14 FIX: use the normalised version, not the raw ref
