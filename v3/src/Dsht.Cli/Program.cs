@@ -227,6 +227,14 @@ namespace Dsht.Cli
         private static int BridgeInstall(string[] args, ServiceRegistry reg)
         {
             string profile = Flag(args, "--profile");
+            // N11 FIX (CLI audit MINOR): this value is pasted into a dsh command line, and the
+            // plugin-patching command already validates its profile names - a name like "web&calc"
+            // would otherwise chain a command on Windows. Same rule here.
+            if (!string.IsNullOrEmpty(profile) && !System.Text.RegularExpressions.Regex.IsMatch(profile, @"^[A-Za-z0-9._-]+$"))
+            {
+                Console.WriteLine("BRIDGE_FAIL " + T("profile 名字不合法（只允许字母数字与 . _ - ✓）：" + profile, "invalid profile name: " + profile));
+                return 0;
+            }
             if (string.IsNullOrEmpty(profile)) profile = "web";
             bool yes = Has(args, "--yes");
 
@@ -474,7 +482,7 @@ namespace Dsht.Cli
                         int q2 = t2.IndexOf('"', q1 + 1);
                         if (q2 < 0) break;
                         string cid = t2.Substring(q1 + 1, q2 - q1 - 1);
-                        if (cid.Length > 0) Console.WriteLine("SESSION_CHILD " + pid2 + " " + cid);
+                        if (cid.Length > 0) Console.WriteLine("SESSION_CHILD " + MarkerText.Encode(pid2) + " " + MarkerText.Encode(cid));   // N10 FIX: both fields came straight from file names/content
                         at = q2 + 1;
                     }
                 }

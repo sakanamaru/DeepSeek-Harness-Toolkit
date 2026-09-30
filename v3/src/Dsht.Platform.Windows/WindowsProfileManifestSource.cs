@@ -66,7 +66,7 @@ namespace Dsht.Platform.Windows
                 bool bom = raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF;
                 string original = new System.Text.UTF8Encoding(false).GetString(raw, bom ? 3 : 0, raw.Length - (bom ? 3 : 0));
 
-                backupPath = p + ".bak-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff");
+                backupPath = p + ".bak-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff", System.Globalization.CultureInfo.InvariantCulture);
                 File.WriteAllText(backupPath, original, new System.Text.UTF8Encoding(bom));
                 File.WriteAllText(p, newText, new System.Text.UTF8Encoding(bom));
 
