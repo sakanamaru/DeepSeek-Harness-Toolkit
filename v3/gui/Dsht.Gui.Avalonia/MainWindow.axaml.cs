@@ -908,7 +908,19 @@ namespace Dsht.Gui.Avalonia
         }
 
         private bool _busy;
-        public void Refresh() { if (_busy) return; _busy = true; _ = RefreshGuardedAsync(); }   // 重入保护：刷新期间再点不叠加
+        private bool _refreshQueued;
+        /// <summary>刷新 ✓。**用户反馈（2026-09-30）**：「按钮交互还是有延迟，并且不低」✓
+        ///   ✗ 原来 `if (_busy) return;` ✗ → **刷新期间的点击被直接丢掉** ✗
+        ///     → 表现："点了没反应，过一会儿界面才变" ✓✓ **这就是延迟感的来源** ✓
+        ///   ✓ 现在：**排队再刷一次** ✓ 不丢点击 ✓✓
+        ///   注：真正耗时的是 CLI 子进程（`config-get` / `status` 各启动一个 66 MB 的 exe ✓）✓
+        ///       已并行化 ✓ 见 RefreshGuardedAsync ✓</summary>
+        public void Refresh()
+        {
+            if (_busy) { _refreshQueued = true; return; }   // ✓ 不丢 ✓ 排队再刷 ✓
+            _busy = true;
+            _ = RefreshGuardedAsync();
+        }
 
         /// <summary>GUI 启动时按 `auto_start` **自动起一次** dsh ✓（用户要求："GUI/CLI 启动时自动起" ✓✓）
         /// 约束（重要 ✓）：① **每次 GUI 会话只试一次** ✗（不能每次刷新都起 ✓）
@@ -964,7 +976,9 @@ namespace Dsht.Gui.Avalonia
         private async System.Threading.Tasks.Task RefreshGuardedAsync()
         {
             try { await RefreshAsync(); }
-            finally { _busy = false; }
+            // ✓ 用户反馈（2026-09-30）：刷新期间的点击原来被**直接丢掉** ✗ → 表现"点了没反应" ✓
+            //   现在：收尾时若**有排队的刷新** → 立刻再刷一次 ✓✓
+            finally { _busy = false; if (_refreshQueued) { _refreshQueued = false; Refresh(); } }
         }
 
         private async System.Threading.Tasks.Task RefreshAsync()
