@@ -69,6 +69,9 @@ case "$PREFIX" in
     /*) ;;
     *) PREFIX="$(pwd)/$PREFIX" ;;
 esac
+# N5 FIX (Linux audit MINOR): S7 guarded only --prefix=; --prefix "" fell through to $(pwd)
+# and installed into the current directory. The guard must run after every parse path.
+[ -n "$PREFIX" ] || die "安装位置不能为空 ✓（--prefix= 空值会装到当前目录 ✗ 已拒绝 ✓）"
 PREFIX=$(printf '%s' "$PREFIX" | sed 's:/*$::')      # 去掉尾部斜杠 ✓
 # S4 FIX (Linux audit MINOR): the path was only made absolute and stripped of trailing
 # slashes, so "sub/../pfx" and "pfx" recorded different strings in the marker and the
@@ -76,6 +79,13 @@ PREFIX=$(printf '%s' "$PREFIX" | sed 's:/*$::')      # 去掉尾部斜杠 ✓
 if [ -d "$PREFIX" ]; then
     _canon=$( cd -- "$PREFIX" 2>/dev/null && pwd -P ) || _canon=""
     if [ -n "$_canon" ]; then PREFIX="$_canon"; fi
+else
+    # N4 FIX (Linux audit MINOR): a first install through a symlinked parent recorded the
+    # LOGICAL path; a later uninstall canonicalised to the real one and refused - a permanent
+    # lockout. Canonicalise the parent even when the leaf does not exist yet.
+    _pdir=$(dirname -- "$PREFIX"); _pbase=$(basename -- "$PREFIX")
+    _pcanon=$( cd -- "$_pdir" 2>/dev/null && pwd -P ) || _pcanon=""
+    if [ -n "$_pcanon" ]; then PREFIX="$_pcanon/$_pbase"; fi
 fi
 [ -n "$PREFIX" ] || die "安装位置为空"
 # S5 FIX (Linux audit MINOR): the marker records path= as one line, so a newline in the
@@ -150,7 +160,7 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
         removed=0; kept=0
         # ① **优先用安装时记录的文件清单** ✓✓（它才是完整的 ✓ 包内 hashes.txt 可能只覆盖几个 ✓）
         LIST=""
-        [ -f "$PREFIX/.dsh-minato-files" ] && LIST="$PREFIX/.dsh-minato-files"
+        [ -s "$PREFIX/.dsh-minato-files" ] && LIST="$PREFIX/.dsh-minato-files"   # N8 FIX: -s, so an empty list falls back to hashes.txt
         if [ -n "$LIST" ]; then
             while read -r name; do
                 [ -n "${name:-}" ] || continue
@@ -294,7 +304,7 @@ if [ -L "$BINDIR/$APP" ]; then
     _tgt=$(readlink "$BINDIR/$APP" 2>/dev/null || true)
     case "$_tgt" in
         "$PREFIX"/*) : ;;   # 指向我们（重装 ✓）→ 可以覆盖 ✓
-        *) die "拒绝：$BINDIR/$APP 已经是一个指向「$_tgt」的符号链接 ✓
+        *) die "拒绝：$BINDIR/$APP 已经指向另一个 dsh-minato 安装「$_tgt」✓ 它确实是我们建的 ✓ 只是**不是这一个 prefix** ✓（先卸载那一份，或改用同一个 --prefix ✓）
   它不是本工具建的 ✓ 为了不动别人的东西，请先自行处理它（或换 DSH_MINATO_BINDIR ✓）" ;;
     esac
 elif [ -e "$BINDIR/$APP" ]; then
@@ -317,7 +327,15 @@ if [ -d "$PREFIX" ]; then
                 esac
                 rm -f "$OLD/$rel" 2>/dev/null || true
             done < "$OLD/.dsh-minato-files"
-            find "$OLD" -type d -empty -delete 2>/dev/null || true
+            # N1 FIX (Linux audit MINOR): the uninstall path deliberately refuses to sweep user
+            # directories, but this one ran a global find -empty -delete and removed empty dirs
+            # the user had created. Only remove dirs inside our own layout.
+            for _kd in gui bin icons cli-small plugin; do
+                [ -d "$OLD/$_kd" ] && rmdir "$OLD/$_kd" 2>/dev/null || true
+            done
+            for _kd in app-*; do
+                [ -d "$OLD/$_kd" ] && rmdir "$OLD/$_kd" 2>/dev/null || true
+            done
             if [ -n "$(ls -A "$OLD" 2>/dev/null || true)" ]; then
                 warn "旧目录里**还有不属于本工具的文件** ✓ → 保留在 $OLD ✓（没有删 ✗ 你可以自己看 ✓）"
             else
