@@ -77,6 +77,26 @@ esac
 # and installed into the current directory. The guard must run after every parse path.
 [ -n "$PREFIX" ] || die "安装位置不能为空 ✓（--prefix= 空值会装到当前目录 ✗ 已拒绝 ✓）"
 PREFIX=$(printf '%s' "$PREFIX" | sed 's:/*$::')      # 去掉尾部斜杠 ✓
+# ★★★ **NB8 修复（最终复审 MINOR —— `.` / `..` 段被原样记进标记）** ✓✓
+#   ✗ 原来只做"变绝对 + 去尾斜杠" ✗ → `--prefix sub/../pfx`（`sub` 不存在时）**原样记录** ✗
+#     → 标记里写 `/cwd/sub/../pfx` ✓ 而真实目录是 `/cwd/pfx` ✓ → 下次卸载对不上 ✓
+#     → 而且 `mkdir -p` 会**顺手建出一个空的 `sub`** ✗（审计实测 ✓）
+#   ✓ 现在：**词法规范化** ✓✓（纯字符串 ✓ 不碰磁盘 ✓ 段内 `..` 就地消掉 ✓ 不建多余目录 ✓）
+_normpath() {
+    _in=$1; _out=""
+    _oldifs=$IFS; IFS=/
+    for _seg in $_in; do
+        case "$_seg" in
+            ''|.) continue ;;
+            ..) _out=$(printf '%s' "$_out" | sed 's|/[^/]*$||') ;;
+            *) _out="$_out/$_seg" ;;
+        esac
+    done
+    IFS=$_oldifs
+    [ -n "$_out" ] || _out="/"
+    printf '%s' "$_out"
+}
+PREFIX=$(_normpath "$PREFIX")
 # S4 FIX (Linux audit MINOR): the path was only made absolute and stripped of trailing
 # slashes, so "sub/../pfx" and "pfx" recorded different strings in the marker and the
 # uninstall then refused - a permanent lockout (--force could not rescue it before S3).

@@ -777,6 +777,9 @@ namespace Dsht.Gui.Avalonia
             string cli = CliPath();
             if (cli == null) { _health = "未找到工具箱 CLI。"; BuildShell(); return; }
             _healthBusy = true;
+            // F12 residual (GUI final review): the comment above promised an immediate "checking…" line but no
+            // such text existed anywhere, so the page stayed blank for up to ~30 s. Set it before the rebuild.
+            _health = "检查中…（profilecheck + doctor，doctor 要查网络，最坏约 30 秒）";
             BuildShell();
             string h = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "profilecheck"); });
             string d = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "doctor"); });
