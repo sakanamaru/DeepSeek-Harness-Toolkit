@@ -571,8 +571,13 @@ namespace Dsht.Gui.Avalonia.Shells
                 StackPanel both = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(12, 0, 12, 6) };
                 both.Children.Add(T("两个都在跑 →", 10.5, Palette.Warn));
                 Button sw = GhostButton(T("停 web", 11, Palette.Text), delegate { host.StopWebOnly(); }, true);
+        // F9 FIX (GUI audit MAJOR): ModeBtnW was declared and never used, so these buttons sized
+        // themselves to their labels and the row had visibly unequal widths - the defect the user
+        // reported twice. A shared minimum width and centred content fixes it.
+        sw.MinWidth = ModeBtnW; sw.HorizontalContentAlignment = global::Avalonia.Layout.HorizontalAlignment.Center;
                 both.Children.Add(sw);
                 Button sd = GhostButton(T("停桌面端", 11, Palette.Text), delegate { host.StopDesktopOnly(); }, true);
+        sd.MinWidth = ModeBtnW; sd.HorizontalContentAlignment = global::Avalonia.Layout.HorizontalAlignment.Center;   // F9 FIX
                 both.Children.Add(sd);
                 s.Children.Add(both);
             }
@@ -638,7 +643,7 @@ namespace Dsht.Gui.Avalonia.Shells
             StackPanel s = new StackPanel { Spacing = 4 };
             if (withMargin) s.Margin = new Thickness(24, 18, 24, 12);
             s.Children.Add(T(host.PageTitle, 20, Palette.Text, FontWeight.SemiBold));
-            s.Children.Add(new TextBlock { Text = host.SubtitleText, Foreground = Palette.TextDim, FontSize = 12.5, TextWrapping = TextWrapping.Wrap });
+            s.Children.Add(new TextBlock { Text = StripMd(host.SubtitleText), Foreground = Palette.TextDim, FontSize = 12.5, TextWrapping = TextWrapping.Wrap });
             return s;
         }
 
