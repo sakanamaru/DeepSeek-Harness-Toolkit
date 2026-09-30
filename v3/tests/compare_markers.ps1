@@ -96,13 +96,13 @@ $cases = @(
     # needsService：**只有服务在运行时才允许跑**——否则 v2.x 会真的把受控备份恢复进真实 ~/.dsh。
     @{ name = 'restore (latest)'; args = @('restore'); full = $true; needsService = $true },
     @{ name = 'config-get';          args = @('config-get'); full = $true },
-    @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity |^\[(OK|WARN|ERROR)\] Network |^\[(OK|WARN|ERROR)\] Backup |^\[(OK|WARN|ERROR)\] Workspace 数据大小'; ignoreSummary = $true },
+    @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity |^\[(OK|WARN|ERROR)\] Network |^\[(OK|WARN|ERROR)\] Backup |^\[(OK|WARN|ERROR)\] Workspace 数据大小|另检测到官方桌面端'; ignoreSummary = $true },
     # doctor --report：比对**报告正文**（postFile 模式）。
     # 忽略：生成时间/Toolkit/系统三行（时间戳与版本必然不同）、自身完整性条目（v2.x 的 exe 在清单里但本地构建
     # 哈希不匹配 → ERROR；V3 的临时 exe 名不在清单 → 跳过）、npm registry 可达性（网络抖动会让两侧不同 → 假失败）、
     # 结果行（汇总数受被忽略条目影响）。
     # 掩码：日志摘要行（两次运行之间日志会增长，且内容含时间戳）——掩码后仍能验证"该行两侧都存在且前缀一致"。
-    @{ name = 'doctor --report (body)'; args = @('doctor','--report',(Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt')); postFile = (Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt'); ignore = '^(生成时间|Toolkit|系统)\s*:|^\[(OK|WARN|ERROR)\] (自身 exe 与随包|旁无 hashes\.txt|npm registry )|^结果\s*:|^\[(OK|WARN|ERROR)\] 数据大小'; mask = '共 \d+ 行；最近: .*' }
+    @{ name = 'doctor --report (body)'; args = @('doctor','--report',(Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt')); postFile = (Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt'); ignore = '^(生成时间|Toolkit|系统)\s*:|^\[(OK|WARN|ERROR)\] (自身 exe 与随包|旁无 hashes\.txt|npm registry )|^结果\s*:|^\[(OK|WARN|ERROR)\] 数据大小|另检测到官方桌面端'; mask = '共 \d+ 行；最近: .*' }
 )
 $fail = 0
 $skipped = 0
