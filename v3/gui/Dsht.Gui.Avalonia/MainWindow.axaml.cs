@@ -118,7 +118,7 @@ namespace Dsht.Gui.Avalonia
                     try { if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) BeginMoveDrag(e); }
                     catch { /* 某些平台/状态下不允许拖动：忽略，不要因此崩 */ }
                 };
-                bar.DoubleTapped += delegate(object s, TappedEventArgs e) { ToggleMaximize(); };
+                bar.DoubleTapped += delegate(object s, TappedEventArgs e) { if (IsFromButton(e.Source as Control)) return; ToggleMaximize(); };   // F18 FIX
             }
             if (right != null)
             {
@@ -740,6 +740,7 @@ namespace Dsht.Gui.Avalonia
         /// <summary>健康检查（profilecheck）的原始输出（懒加载一次）。</summary>
         public string Health { get { return _health; } }
         private string _health = "";
+        private bool _healthBusy = false;   // F12 FIX: explicit in-progress flag
         public void LoadHealth() { _ = LoadHealthAsync(); }
 
         /// <summary>体检：**异步**跑 profilecheck + doctor ✓✓
@@ -748,14 +749,14 @@ namespace Dsht.Gui.Avalonia
         /// 现在：先立刻显示"检查中…"（页面有反馈 ✓），两次调用都在后台线程 ✓，完成后刷新 ✓</summary>
         private async System.Threading.Tasks.Task LoadHealthAsync()
         {
-            if (!string.IsNullOrEmpty(_health) && _health != "检查中…") { BuildShell(); return; }
+            if (_healthBusy) { BuildShell(); return; }
             string cli = CliPath();
             if (cli == null) { _health = "未找到工具箱 CLI。"; BuildShell(); return; }
-            _health = "检查中…（profilecheck 与 doctor 在后台运行；doctor 会查网络，慢时可能十几秒）";
+            _healthBusy = true;
             BuildShell();
             string h = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "profilecheck"); });
             string d = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "doctor"); });
-            _health = h;
+            _healthBusy = false;
             _doctor = SummaryMarkers.ParseDoctor(d);
             BuildShell();
         }

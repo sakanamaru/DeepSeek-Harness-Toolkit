@@ -1456,6 +1456,7 @@ namespace Dsht.Gui.Avalonia.Shells
                 else if (l.StartsWith("LOG_EXPORT", StringComparison.Ordinal)) continue;    // 导出回执 ✓ 由 toast 显示
                 else if (l.StartsWith("LOG_EMPTY", StringComparison.Ordinal)) continue;     // 空状态 ✓ 上面已处理
                 else if (l.StartsWith("INTEGRITY_", StringComparison.Ordinal)) continue;    // 完整性提示 ✓ 不属于日志正文
+                else if (l.StartsWith("[stderr]", StringComparison.Ordinal)) continue;   // F17 FIX: stderr text is not a log record
                 if (l.Trim().Length == 0) continue;
                 IBrush fg = Palette.Text;
                 if (l.IndexOf("ERROR", StringComparison.OrdinalIgnoreCase) >= 0) fg = Palette.Bad;
@@ -1771,11 +1772,11 @@ namespace Dsht.Gui.Avalonia.Shells
                 string day = created.Substring(0, 10);
                 for (int k = 0; k < days; k++)
                 {
-                    if (labels[k].Length == 5 && day.Length == 10 && day.Substring(5, 5) == labels[k]) { counts[k]++; if (counts[k] > max) max = counts[k]; break; }
+                    if (labels[k].Length == 5 && day.Length == 10 && day.Substring(0, 10).EndsWith(labels[k], StringComparison.Ordinal)) { counts[k]++; if (counts[k] > max) max = counts[k]; break; }
                 }
             }
             StackPanel c1 = new StackPanel { Spacing = 8 };
-            c1.Children.Add(T("近 14 天新增会话（按 dsh 记录的创建时间，UTC 日期）", 13, Palette.Text, FontWeight.Bold));
+            c1.Children.Add(T("近 " + days + " 天新增会话（按 dsh 记录的创建时间，UTC 日期）", 13, Palette.Text, FontWeight.Bold));
             c1.Children.Add(BarChart(labels, counts, max, Palette.Accent, "个"));
             c1.Children.Add(T("最高 " + max + " 个/天　合计 " + Sum(counts) + " 个（创建时间缺失的会话不计入，不猜）", 11.5, Palette.TextFaint));
             s.Children.Add(Card(c1, new Thickness(0), new Thickness(18, 16)));
@@ -1808,15 +1809,16 @@ namespace Dsht.Gui.Avalonia.Shells
                 string dy = cr.Substring(0, 10);
                 for (int k = 0; k < days; k++)
                 {
-                    if (labels[k].Length == 5 && dy.Length == 10 && dy.Substring(5, 5) == labels[k]) dayTok[k] += d.Rows[i].In;
+                    if (labels[k].Length == 5 && dy.Length == 10 && dy.Substring(0, 10).EndsWith(labels[k], StringComparison.Ordinal)) dayTok[k] += d.Rows[i].In;
                 }
             }
             for (int k = 0; k < days; k++) if (dayTok[k] > maxTok) maxTok = dayTok[k];
+            long tokDiv = maxTok >= 1000 ? 1000 : 1;   // F11 FIX: unit follows the data, so a sub-1000 day is not rounded to zero
             long[] dayTokK = new long[days];
-            for (int k = 0; k < days; k++) dayTokK[k] = dayTok[k] / 1000;   // 以 k token 为单位，标签才读得下
+            for (int k = 0; k < days; k++) dayTokK[k] = dayTok[k] / tokDiv;
             StackPanel c3 = new StackPanel { Spacing = 8 };
-            c3.Children.Add(T("近 14 天 token 消耗（输入侧合计，k token；按 dsh 记录的创建时间归日）", 13, Palette.Text, FontWeight.Bold));
-            c3.Children.Add(BarChart(labels, dayTokK, maxTok / 1000, Palette.Warn, "k tok"));
+            c3.Children.Add(T("近 " + days + " 天 token 消耗（输入侧合计，k token；按 dsh 记录的创建时间归日）", 13, Palette.Text, FontWeight.Bold));
+            c3.Children.Add(BarChart(labels, dayTokK, maxTok / tokDiv, Palette.Warn, maxTok >= 1000 ? "k tok" : "tok"));   // F11 FIX: unit follows the data
             c3.Children.Add(T("合计 " + SessionRow.Human(Sum(dayTok)) + " token　最高 " + SessionRow.Human(maxTok) + "/天（创建时间缺失的会话不计入，不猜）", 11.5, Palette.TextFaint));
             s.Children.Add(Card(c3, new Thickness(0), new Thickness(18, 16)));
 
@@ -1941,7 +1943,7 @@ namespace Dsht.Gui.Avalonia.Shells
             string fPid = deskUp ? st.DesktopPid : st.Pid;
             string fStart = deskUp ? st.DesktopStart : st.Start;
             string fUp = deskUp ? st.DesktopUptime : st.Uptime;
-            facts.Children.Add(StatCard(Symbol.NumberSymbol, deskUp ? "桌面端 PID" : "进程 PID", string.IsNullOrEmpty(fPid) ? "—" : fPid, "运'行 dsh 的进程号", Palette.Text, -1, 0, 3));
+            facts.Children.Add(StatCard(Symbol.NumberSymbol, deskUp ? "桌面端 PID" : "进程 PID", (string.IsNullOrEmpty(fPid) || fPid == "0") ? "—" : fPid, "运'行 dsh 的进程号", Palette.Text, -1, 0, 3));
             facts.Children.Add(StatCard(Symbol.Calendar, "启动时间", string.IsNullOrEmpty(st.Start) ? "—" : st.Start, "dsh 启动的时刻", Palette.Text, -1, 1, 3));
             facts.Children.Add(StatCard(Symbol.Clock, "已运行", string.IsNullOrEmpty(st.Uptime) ? "—" : st.Uptime, "从启动到现在", Palette.Accent, -1, 2, 3));
             s.Children.Add(facts);
