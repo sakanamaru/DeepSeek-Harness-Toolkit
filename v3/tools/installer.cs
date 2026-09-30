@@ -243,6 +243,13 @@ internal static class Installer
                 bool legacyOurs = legacyDefaultDir && !string.IsNullOrEmpty(mkPath) && pthOk && !string.IsNullOrEmpty(mkVer)
                                   && File.Exists(Path.Combine(target, "uninstall.exe")) && File.Exists(Path.Combine(target, "dsh-minato.exe"));
                 if (legacyOurs && !tokOk) Log("旧版安装标记（默认目录 + 有 version/path + 旁边有我们自己的 exe ✓）→ 认作我们自己的 ✓ 可以升级 ✓");
+                // ★★★ **N-1 修复（安装器复审 CRITICAL —— 我的 M-3 编辑**删掉了这一行**）** ✓✓
+                //   ✗ `targetOurs` 初值是 `false` ✗ 而这一行赋值**被我的 M-3 替换吃掉了** ✗✗
+                //     → **永远 false** ✓ → 250 行**每次都拒绝** ✗✗
+                //     → **任何在已有安装上升级/重装都被拒（exit 2）** ✗ 只有 `--force` 能用 ✓
+                //       日志证据：`身份校验没通过 ✗（tokenOk=True pathOk=True）` ✓✓
+                //   ✓ 现在：**把这行加回来** ✓✓（`legacyOurs` 才算有用 ✓）
+                targetOurs = (tokOk || legacyOurs) && pthOk;
                 if (!targetOurs) Log("目标目录里有个 marker，但**身份校验没通过** ✗（tokenOk=" + tokOk + " pathOk=" + pthOk + "）→ 按「不是我们的」处理 ✓");
             }
         }
@@ -611,7 +618,12 @@ internal static class Installer
                 psi.UseShellExecute = false;
                 psi.EnvironmentVariables["DSHT_UNINSTALL_RELOCATED"] = "1";
                 psi.EnvironmentVariables["DSHT_UNINSTALL_TARGET"] = target;
-                Process.Start(psi);
+                // ★★★ **N-2 修复（安装器复审 CRITICAL —— 起了两个子进程）** ✓✓
+                //   ✗ 这里原来有一个裸的 `Process.Start(psi);` ✗ 而我的 M5 修复**又在下面加了一个**
+                //     `using (Process child = Process.Start(psi))` ✗✗
+                //     → **每次卸载同时起两个卸载器** ✗ → 互相抢着删同一个目录 ✓
+                //     → 实测 8 次：**3 次 exit 5（删干净了却报失败）· 4 次 exit 0（目录还在）· 1 次正常** ✗✗
+                //   ✓ 现在：**只留下面那一个** ✓✓（它有 WaitForExit ✓ 有退出码传播 ✓）
                 Log("已迁移到 " + tmp + " 并从那里继续 ✓（这样目标目录才能被删掉 ✓）");
                 // m-3 FIX (installer audit MINOR): every uninstall used to leave a copy of the
                 // uninstaller in the temporary folder forever (21 had accumulated on the test
@@ -640,6 +652,26 @@ internal static class Installer
                 //     （父进程已自我迁移到 %TEMP% ✓ 所以等着不会挡住子进程删安装目录 ✓）
                 try
                 {
+                    // ★★★ **N-3 修复（安装器复审 CRITICAL —— 父进程挡住子进程删自己）** ✓✓
+                    //   ✗ 父进程**就是** `<target>\uninstall.exe` 本身 ✗
+                    //     → 它 `WaitForExit()` 期间**这个文件一直被占用** ✗
+                    //     → 子进程**永远删不掉它** ✗（实测：access denied ✓）
+                    //     → `leftover` 为真 → 目录被搬回来 → `gone=false` ✓
+                    //     → **ARP/快捷方式/PATH 全保留 ✓ 而退出码却是 0** ✗✗ **假报成功** ✓
+                    //   ✓ 现在：**先把自己改名** ✓✓ —— Windows **允许**给正在运行的镜像改名 ✓
+                    //     （只不允许删 ✓）→ 子进程就能删掉 `uninstall.exe` 这个名字 ✓✓
+                    //     · 改名失败也不致命 ✓ 只是会退回"删不干净"的旧行为 ✓
+                    string selfNow = Process.GetCurrentProcess().MainModule.FileName;
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(selfNow) && File.Exists(selfNow))
+                        {
+                            string renamed = selfNow + ".running-" + Guid.NewGuid().ToString("N").Substring(0, 6);
+                            File.Move(selfNow, renamed);
+                            Log("已把自己改名（让子进程能删掉 uninstall.exe ✓）: " + renamed);
+                        }
+                    }
+                    catch (Exception rmx) { Log("自我改名失败（子进程可能删不掉 uninstall.exe ✓ 不致命 ✓）: " + rmx.Message); }
                     using (Process child = Process.Start(psi))
                     {
                         if (child == null) { Log("无法启动迁移后的卸载器 ✗"); return 9; }
@@ -652,6 +684,27 @@ internal static class Installer
             }
             catch (Exception ex) { Log("自我迁移失败 → 就地卸载（可能有文件删不掉 ✓ 会如实报告 ✓）: " + ex.Message); }
         }
+        // ★★★ **N-11 修复（安装器复审 MINOR —— 自我删除是死代码）** ✓✓
+        //   ✗ 原来那段只在**非重定位的父进程**里跑 ✗ 而它测的是**父进程自己的路径**
+        //     （`<target>\uninstall.exe` ✓ 永远不在 %TEMP% 里 ✗）→ **条件永远为假** ✓
+        //     → 而重定位后的**子进程**直接跳过了整块 ✗✗ → **%TEMP% 里越积越多**
+        //        （实测 39 个 ✓ 审计也实测 24→25 ✓）
+        //   ✓ 现在：**在子进程里安排删掉自己** ✓✓（`ping` 等一秒让本进程先退出 ✓ 然后 `del` ✓）
+        try
+        {
+            string selfReloc = Process.GetCurrentProcess().MainModule.FileName;
+            if (!string.IsNullOrEmpty(selfReloc)
+                && string.Equals(Path.GetDirectoryName(selfReloc), Path.GetTempPath().TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)
+                && Path.GetFileName(selfReloc).StartsWith("dsh-minato-uninstall-", StringComparison.OrdinalIgnoreCase))
+            {
+                System.Diagnostics.ProcessStartInfo selfDel = new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c ping -n 2 127.0.0.1 >nul & del /f /q \"" + selfReloc + "\"");
+                selfDel.UseShellExecute = false;
+                selfDel.CreateNoWindow = true;
+                System.Diagnostics.Process.Start(selfDel);
+                Log("已安排删除自己的临时副本 ✓（" + selfReloc + " ✓）");
+            }
+        }
+        catch (Exception sdx) { Log("安排删除临时副本失败（不致命 ✓）: " + sdx.Message); }
         string t2 = Environment.GetEnvironmentVariable("DSHT_UNINSTALL_TARGET");
         if (!string.IsNullOrEmpty(t2)) target = t2.TrimEnd('\\');
         if (IsDangerousPath(target)) { Log("拒绝：目录可疑 " + target); return 2; }
@@ -968,6 +1021,17 @@ internal static class Installer
             //     → 而**卸载器自己已经被删**（它也在清单里 ✓）→ **用户没有任何办法重试** ✗✗
             //     （应用和功能里的卸载入口指向已删的 exe ✓ 本地也没有 uninstall.exe 了 ✓）
             //   ✓ 现在：**只有目录真的删干净了才清理** ✓✓ 否则**全部保留**并说清怎么重试 ✓
+            // ★★★ **N-7 修复（安装器复审 MAJOR —— 保留目录时 marker 还在）** ✓✓
+            //   ✗ 目录因为**用户数据**被保留时 ✓ marker 也留在里面 ✗
+            //     → 它只是"安装标记" ✓ 不是用户数据 ✓ **没有理由留着** ✗
+            //     → 而留着它会让**下一次**安装把它当成"已有安装" ✓（虽然 N-1 已修 ✓ 但语义不对 ✓）
+            //   ✓ 现在：**在最终决定之后再删一次** ✓✓（无论目录保不保留 ✓）
+            try
+            {
+                string mp3 = Path.Combine(target, ".dsh-minato-install");
+                if (File.Exists(mp3)) { File.Delete(mp3); Log("已删安装标记（目录保留 ✓ 但标记不该留 ✓）"); }
+            }
+            catch (Exception mex) { Log("删安装标记失败（不致命 ✓）: " + mex.Message); }
             if (gone)
             {
                 try { RemoveShortcuts(); Log("已清理快捷方式 ✓"); } catch (Exception c1) { Log("清理快捷方式失败: " + c1.Message); }
