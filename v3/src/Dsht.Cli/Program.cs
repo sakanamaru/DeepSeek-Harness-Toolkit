@@ -790,6 +790,17 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             { Console.WriteLine("WIPE_REFUSED " + T("备份目录位于数据根内，清除会连备份一起删除，已拒绝。请先把备份目录移出数据根。", "the backups root is inside the data root, so wiping would delete the backups too; move it out first") + " (" + bkFull + ")"); return 0; }
             int files = 0, dirs = 0;
             try { files = System.IO.Directory.GetFiles(dataFull, "*", System.IO.SearchOption.AllDirectories).Length; dirs = System.IO.Directory.GetDirectories(dataFull, "*", System.IO.SearchOption.AllDirectories).Length; } catch { }
+            // ★★★ **用户要求（2026-09-30）**：「删除 CLI 和 GUI 备份里的清除数据操作按钮，点击只弹出手动删除路径」✓✓
+            //   → **本命令永不删除任何东西** ✓✓ 无论有没有 `--yes` ✓
+            //   → 只输出：① 数据根里有多少东西（信息 ✓）② **手动删除的确切路径** ✓
+            //   → 保留 `WIPE_PLAN` / `WIPE_PLAN_NOTE` 标记 ✓（门槛与 GUI 的解析不用改 ✓）
+            Console.WriteLine("WIPE_PLAN " + T("数据根内有 ", "the data root holds ") + files + T(" 个文件、", " files and ") + dirs + T(" 个目录", " folders") + " — " + dataFull);
+            Console.WriteLine("WIPE_PLAN_NOTE " + T("**本工具不再执行清除** ✓ 请**手动**删除上面那个目录 ✓ 删前请先备份 ✓（备份目录：" + backups + " ✓）", "this tool no longer wipes data - delete the folder above yourself, after backing up"));
+            Console.WriteLine("WIPE_MANUAL " + dataFull);
+            return 0;
+            // ↓↓↓ 以下是**旧实现**（保留在源码里但**不可达** ✗ 因为上面已经 return ✓）
+            //     留着的唯一理由是：将来若要恢复清除能力，逻辑与五道闸门都在 ✓
+            //     但**现在它永远不会执行** ✓✓
             if (!Has(args, "--yes"))
             {
                 Console.WriteLine("WIPE_PLAN " + T("将删除数据根内的 ", "will delete ") + files + T(" 个文件、", " files and ") + dirs + T(" 个子目录：", " subdirectories in ") + dataFull);

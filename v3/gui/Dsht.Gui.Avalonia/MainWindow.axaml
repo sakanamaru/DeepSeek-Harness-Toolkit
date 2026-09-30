@@ -32,7 +32,6 @@
               <Button x:Name="Shell0" />
               <Button x:Name="Shell1" />
               <Button x:Name="Shell2" />
-              <Button x:Name="Shell3" />
               <Button x:Name="Shell4" />
             </StackPanel>
           </Border>
