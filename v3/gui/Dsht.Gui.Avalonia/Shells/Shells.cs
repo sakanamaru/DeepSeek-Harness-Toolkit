@@ -485,6 +485,20 @@ namespace Dsht.Gui.Avalonia.Shells
             };
             dep.Click += delegate { host.DeployForMode(); };
             s.Children.Add(dep);
+            // **两个都开着时给两个停止按钮** ✓✓（用户要求："如果两个都开着，工具可以选择停止一个" ✓）
+            StatusSnapshot st2 = host.Status;
+            bool deskOn = st2 != null && st2.Ok && !string.IsNullOrEmpty(st2.DesktopClient);
+            bool webOn = st2 != null && st2.Ok && st2.State == 0;
+            if (deskOn && webOn)
+            {
+                StackPanel both = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(12, 0, 12, 6) };
+                both.Children.Add(T("两个都在跑 →", 10.5, Palette.Warn));
+                Button sw = GhostButton(T("停 web", 11, Palette.Text), delegate { host.StopWebOnly(); }, true);
+                both.Children.Add(sw);
+                Button sd = GhostButton(T("停桌面端", 11, Palette.Text), delegate { host.StopDesktopOnly(); }, true);
+                both.Children.Add(sd);
+                s.Children.Add(both);
+            }
             return s;
         }
         private static Control StartStopButton(MainWindow host)
