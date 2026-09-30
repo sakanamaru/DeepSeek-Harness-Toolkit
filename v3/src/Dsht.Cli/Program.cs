@@ -2548,9 +2548,9 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             //   → **第一次备份**（备份根里还没有任何有效备份 ✓）**必须指定目录** ✓✓
             //   → 没给 `--to` 就**拒绝** ✓ 并说清怎么给 ✓（放在安装目录之外才稳妥 ✓）
             //   → 已有备份 → **沿用上次的根** ✓ 不再每次追问 ✓✓
+            bool hasAny = false;   // ✓ 提到 if 外面 ✓ 后面 WarnIfBackupsInsideInstall 要用 ✓✓
             if (string.IsNullOrEmpty(toDir))
             {
-                bool hasAny = false;
                 try
                 {
                     string br = reg.Get<IBackupSource>().BackupsRoot;   // ✓ 这里 `bk` 还没声明 ✓ 直接取 ✓
@@ -2566,7 +2566,11 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     return 0;
                 }
             }
-            WarnIfBackupsInsideInstall(reg);   // ✓ 用户要求：备份放在安装目录内要明确警告 ✓✓
+            // ✓✓ **用户反馈（2026-10-01）**：「现在备份还是受阻」✗
+            //   真因之一：这条 `BACKUP_WARN` **每次备份都弹** ✗
+            //     → toast 第一行永远是「建议用 --to …」✓ → **读起来像"你得先做什么"** ✓✓
+            //   ✓ 现在：**只在第一次备份时提示一次** ✓✓（之后就安静 ✓ 备份本来就成功 ✓）
+            if (!hasAny) WarnIfBackupsInsideInstall(reg);
             IPaths paths = reg.Get<IPaths>();
             IBackupSource bk = reg.Get<IBackupSource>();
             string src = paths.DataRoot;
