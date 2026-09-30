@@ -28,7 +28,7 @@ namespace Dsht.Platform.Windows
                 //   （2026-09-30 真机：Windows 侧日志文件根本不存在 ✓ 而 CLI 又要从日志读 URL ✓）
                 // 改成**逐行流式写日志** ✓ 与 Linux 侧同一路径 ✓ → 两个平台一致 ✓✓
                 string logPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsh-minato-start.log");
-                try { System.IO.File.WriteAllText(logPath, "== dsh-minato start " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine); } catch { }
+                try { System.IO.File.WriteAllText(logPath, "== dsh-minato start " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + Environment.NewLine); } catch { }
                 System.Threading.Tasks.Task.Run(delegate
                 {
                     try { string ln; while ((ln = p.StandardOutput.ReadLine()) != null) { try { System.IO.File.AppendAllText(logPath, ln + Environment.NewLine); } catch { } } } catch { }

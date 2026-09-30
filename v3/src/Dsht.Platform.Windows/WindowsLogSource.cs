@@ -26,7 +26,7 @@ namespace Dsht.Platform.Windows
             {
                 string dir = Path.GetDirectoryName(LogPath);
                 if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-                File.AppendAllText(LogPath, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + level + " " + message + Environment.NewLine);
+                File.AppendAllText(LogPath, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + " " + level + " " + message + Environment.NewLine);
             }
             catch { }
         }

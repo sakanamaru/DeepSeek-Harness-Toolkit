@@ -50,7 +50,7 @@ namespace Dsht.Platform.Linux
                 Process p = Process.Start(psi);
                 if (p == null) { error = "Process.Start 返回 null"; return false; }
                 string logPath = LastLogPath;
-                try { System.IO.File.WriteAllText(logPath, "== dsh-minato start " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " ==" + Environment.NewLine); } catch { }
+                try { System.IO.File.WriteAllText(logPath, "== dsh-minato start " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + " ==" + Environment.NewLine); } catch { }
                 // ✗ 原来用 ReadToEnd()：**阻塞到子进程退出**才返回 ✗
                 //   而 dsh 是常驻服务、**永不退出** → 输出永远写不进日志 ✗✗
                 //   （2026-09-30 实测：日志只有 43 字节、只有头行 ✓ → 带 token 的 URL 取不到 ✓）
