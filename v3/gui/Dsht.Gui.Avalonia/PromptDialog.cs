@@ -60,7 +60,11 @@ namespace Dsht.Gui.Avalonia
             };
             // 打开就**全选** ✓ → 想照抄就按 Ctrl+C ✓ 想手打就直接敲 ✓✓
             _box.AttachedToVisualTree += delegate { _box.SelectAll(); _box.Focus(); };
-            _box.KeyDown += delegate(object sender, KeyEventArgs e)
+            KeyDown += delegate(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape) { _result = null; Close(); }   // F19 FIX: works from a button too
+        };
+        _box.KeyDown += delegate(object sender, KeyEventArgs e)
             {
                 if (e.Key == Key.Enter) { _result = _box.Text; Close(); }
                 else if (e.Key == Key.Escape) { _result = null; Close(); }
