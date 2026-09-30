@@ -197,13 +197,13 @@ Write-Host "编译安装器…"
 $r = & $roslyn @args 2>&1
 $errs = @($r | Where-Object { $_ -match "error" })
 $warns = @($r | Where-Object { $_ -match "warning CS" })   # N-16 FIX: a warning means dead or unreachable code shipped silently
-if ($warns.Count -gt 0) {
-    $warns | Select-Object -First 8 | ForEach-Object { Write-Host ("  WARN " + $_.ToString().Trim()) }
-    throw "安装器编译有警告（$($warns.Count) 个）✗ 警告往往意味着死代码或不可达代码 ✓ 请修掉再发版 ✓"
-}
 if ($errs.Count -gt 0) {
     $errs | Select-Object -First 8 | ForEach-Object { Write-Host ("  " + $_.ToString().Trim()) }
     throw "编译失败（$($errs.Count) 个错）"
+}
+if ($warns.Count -gt 0) {
+    $warns | Select-Object -First 8 | ForEach-Object { Write-Host ("  WARN " + $_.ToString().Trim()) }
+    throw "安装器编译有警告（$($warns.Count) 个）✗ 警告往往意味着死代码或不可达代码 ✓ 请修掉再发版 ✓"
 }
 $fi = Get-Item $Out
 Write-Host ("✓ 安装器生成：" + $Out)

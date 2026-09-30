@@ -612,7 +612,27 @@ internal static class Installer
             Log("**安装标记写入失败** ✗ " + ex.Message);
             Log("→ **中止安装** ✓（否则这份安装**永远卸载不掉** ✗ 卸载器要求 marker 存在 ✓）");
             Log("→ 常见原因：杀毒软件锁住文件 / 磁盘满 / 权限不足 ✓ 解决后重试即可 ✓");
-            throw new RefusalException("安装标记写入失败 ✓ 已中止 ✓（原因：" + ex.Message + " ✓ 不会有半份注册残留 ✓）");
+            // N-B FIX (installer audit MAJOR): this is OUTSIDE the placement try, so a marker failure
+            // left a complete set of files on disk with no marker - the directory could not be
+            // reinstalled into and the uninstaller refused it. Delete what was placed so that
+            // "aborted" is true for the disk too.
+            try
+            {
+                string[] placedByUs = new string[] { "dsh-minato.exe", "dsh-minato-gui.exe", "gui", "bin", "plugin", "hashes.txt", "uninstall.exe", "app-" + ShortVersion() };
+                for (int pi = 0; pi < placedByUs.Length; pi++)
+                {
+                    string pp = Path.Combine(target, placedByUs[pi]);
+                    try
+                    {
+                        if (Directory.Exists(pp)) Directory.Delete(pp, true);
+                        else if (File.Exists(pp)) File.Delete(pp);
+                    }
+                    catch { }
+                }
+                Log("已把就位后写入的文件删掉 ✓（「中止」对磁盘也成立 ✓ 你可以直接重试 ✓）");
+            }
+            catch { }
+            throw new RefusalException("安装标记写入失败 ✓ 已中止 ✓（原因：" + ex.Message + " ✓ 已就位的文件也删掉了 ✓ 不会有半份安装残留 ✓）");
         }
         // N-5 FIX: ARP only AFTER the marker succeeded, so a marker failure leaves no registry entry
         try { WriteArp(target); Log("ARP 注册表已写 ✓（含 token ✓ · 在 marker 之后 ✓ 不会有半份注册残留 ✓）"); } catch (Exception arpx) { Log("ARP 失败（不致命）: " + arpx.Message); }
@@ -1067,6 +1087,7 @@ internal static class Installer
             //   （**是"如实报告"抓到它的** ✓✓ —— 日志写了"还有文件被占用"✓ 而不是假报干净 ✓）
             try { string b2 = Path.Combine(mover, "bin"); if (Directory.Exists(b2)) { Directory.Delete(b2, true); removedOur++; } } catch { }
             Log("已删我们自己的 " + removedOur + " 项 ✓（清单 " + ourFiles.Count + " 条 ✓）");
+            if (skipped > 0) Log("**有 " + skipped + " 项删不掉**（被占用或权限 ✓）→ 目录会保留 ✓ 关掉占用它的程序后重试即可 ✓");   // N-D FIX: report the count
             bool leftover = false;
             try { leftover = Directory.Exists(mover) && Directory.GetFileSystemEntries(mover).Length > 0; } catch { }
             if (leftover)
@@ -1086,6 +1107,29 @@ internal static class Installer
                 {
                     string mp = Path.Combine(target, ".dsh-minato-install");
                     if (!File.Exists(mp)) { File.WriteAllText(mp, markerBackup, new UTF8Encoding(false)); Log("已把安装标记写回 ✓ 目录没删干净，但**可以重试卸载** ✓"); }
+            // N-C FIX (installer audit MAJOR): the registry entry is kept so the user can retry, but
+            // the uninstaller had already been deleted, so that entry pointed at nothing and the
+            // logged advice was impossible. Put the uninstaller back from the embedded resource.
+            try
+            {
+                string uexe = Path.Combine(target, "uninstall.exe");
+                if (!File.Exists(uexe))
+                {
+                    Assembly uasm = Assembly.GetExecutingAssembly();
+                    string ures = null;
+                    foreach (string un in uasm.GetManifestResourceNames())
+                        if (un.EndsWith("uninstall.exe", StringComparison.OrdinalIgnoreCase)) { ures = un; break; }
+                    if (ures != null)
+                    {
+                        using (Stream us = uasm.GetManifestResourceStream(ures))
+                        using (FileStream ud = File.Create(uexe))
+                            us.CopyTo(ud);
+                        Log("已把 uninstall.exe 放回去 ✓（ARP 保留着 ✓ 现在真的能重试了 ✓）");
+                    }
+                    else Log("找不到内嵌卸载器 ✗ 请用安装包里的 uninstall.exe 或 --force ✓");
+                }
+            }
+            catch (Exception uex) { Log("放回 uninstall.exe 失败（请用 --force 重试 ✓）: " + uex.Message); }
                 }
                 catch { }
             }
