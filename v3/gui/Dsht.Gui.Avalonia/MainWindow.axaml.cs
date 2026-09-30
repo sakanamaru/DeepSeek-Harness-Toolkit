@@ -216,7 +216,68 @@ namespace Dsht.Gui.Avalonia
         public string ActionLog { get { return _actionLog; } }
 
         /// <summary>一键启动 dsh（调用工具箱核心的 `start`：非交互，GUI 用）。</summary>
-        public void StartDsh() { RunCliAction("start --yes", "启动"); }
+        /// <summary>一键启动的方式：0 = webui（dsh web，走 CLI ✓）；1 = desktop（官方桌面端应用 ✓）。
+        /// （用户要求："一键启动按钮底下可选默认启动 desktop 还是 webui" ✓✓）</summary>
+        public int StartMode = 0;
+        public void SetStartMode(int m) { StartMode = m; BuildShell(); }
+
+        /// <summary>一键部署：按当前方式行动 ✓（用户要求："web/desktop 也要加一键部署，desktop 直接官网下安装包就行" ✓✓）
+        /// · webui   → 调 CLI 的 install（装/升级 dsh 本体 ✓ 官方 npm 包 ✓）
+        /// · desktop → **打开官方下载页** ✓（本工具不重打包、不改官方安装包 ✓）</summary>
+        public void DeployForMode()
+        {
+            if (StartMode == 1)
+            {
+                bool win = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+                bool mac = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX);
+                if (!win && !mac)
+                {
+                    _actionLog = "官方桌面端**暂未发行 Linux 版**（官方目前只提供 Windows 与 macOS）。\nLinux 请用「webui」方式一键部署：装 dsh 本体 + 启动 dsh web。";
+                    Refresh();
+                    return;
+                }
+                _actionLog = "官方桌面端请在官网下载安装包（那是官方自己的安装包，本工具不重打包、也不改它）：\nhttps://download.deepseek.com/\n装好后回到这里，把方式切到 desktop 点「一键启动」即可。";
+                OpenUrl("https://download.deepseek.com/");
+                Refresh();
+                return;
+            }
+            RunCliAction("install --yes", "一键部署 dsh（webui）");
+        }
+
+        public void StartDsh()
+        {
+            if (StartMode == 1) { StartDesktopApp(); return; }
+            RunCliAction("start --yes", "启动");
+        }
+
+        /// <summary>启动**官方桌面端**（Electron 应用 ✓ 独立安装 ✓ 不走 3080 ✓）。
+        /// 找不到就**如实说明** ✓ —— Linux 上官方**暂未发行** ✓（用户要求："如果 Linux 没有，就提示暂未发行" ✓✓）</summary>
+        public void StartDesktopApp()
+        {
+            try
+            {
+                bool win = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+                bool mac = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX);
+                if (!win && !mac)
+                {
+                    _actionLog = "官方桌面端**暂未发行 Linux 版**（官方目前只提供 Windows 与 macOS）。\nLinux 上请用「webui」方式：启动 dsh web 后在浏览器里打开。";
+                    Refresh();
+                    return;
+                }
+                if (win)
+                {
+                    string p = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "DeepSeek Harness", "DeepSeek Harness.exe");
+                    if (System.IO.File.Exists(p)) { Process.Start(new ProcessStartInfo(p) { UseShellExecute = true }); _actionLog = "已启动官方桌面端：" + p; Refresh(); return; }
+                    _actionLog = "没找到官方桌面端。默认安装位置：\n" + p + "\n装好后这个按钮就能直接启动它。";
+                    Refresh();
+                    return;
+                }
+                Process.Start(new ProcessStartInfo("open", "-a \"DeepSeek Harness\"") { UseShellExecute = false });
+                _actionLog = "已尝试启动官方桌面端（macOS）。";
+                Refresh();
+            }
+            catch (Exception ex) { _actionLog = "启动官方桌面端失败：" + ex.Message; Refresh(); }
+        }
 
         /// <summary>停止 dsh（核心的 `stop`）。</summary>
         public void StopDsh() { RunCliAction("stop --yes", "停止"); }
