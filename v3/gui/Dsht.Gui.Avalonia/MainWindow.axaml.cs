@@ -178,14 +178,19 @@ namespace Dsht.Gui.Avalonia
 
         public void ExportBackup(string name) { RunCliAction("backup-export --path " + name + " --to " + Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "export"), "导出备份"); }
 
-        public void DeleteBackup(string name) { RunCliAction("backup-delete --path " + name, "删除备份"); }
+        /// <summary>删除一份备份 ✓。**用户反馈（2026-09-30）**：「gui 删除备份好像也有问题」✓✓
+        ///   ✗ 原来 `backup-delete --path <名>` **没有 --yes** ✗
+        ///     → 而 CLI 要求 `--yes` ✓（`BKDEL_PLAN … 确认请加 --yes` ✓ 它只打印计划**什么都不删** ✗）
+        ///     → 界面上**两次点击确认都点完了** ✓ 结果**备份还在** ✓✓ **完全解释通了** ✓
+        ///   ✓ 现在：**补上 --yes** ✓（界面的两次点击本身就是确认 ✓ 与 house style 一致 ✓）</summary>
+        public void DeleteBackup(string name) { RunCliAction("backup-delete --path " + name + " --yes", "删除备份"); }
 
         public void DryRunRestore(string name) { RunCliAction("restore --dry-run --path " + name, "恢复预览"); }
 
         /// <summary>应用恢复。**只在隔离数据根里允许**（CLI 自己的准入闸门会拒绝其它情况，界面把它的话原样显示）。</summary>
         public void ApplyRestore(string name) { RunCliAction("restore --path " + name + " --apply", "应用恢复"); }
 
-        public void SetConfig(string key, string value) { RunCliAction("config-set " + key + " \"" + (value == null ? "" : value.Replace("\"", "")) + "\"", "保存设置 " + key); }
+        public void SetConfig(string key, string value) { InvalidateCfgCache(); RunCliAction("config-set " + key + " \"" + (value == null ? "" : value.Replace("\"", "")) + "\"", "保存设置 " + key); }
 
         private void RunCliAction(string args, string label)
         {
@@ -500,6 +505,13 @@ namespace Dsht.Gui.Avalonia
         private void PaintSwitchButton(string name, bool active)
         {
             Button b = this.FindControl<Button>(name);
+            // ★★ **用户反馈（2026-09-30）**：「概览底下的五个按钮宽度也不一样」✓✓
+            //   ✗ 它们在 `StackPanel Orientation=Horizontal` 里 ✗ → **宽度 = 各自文字宽度** ✗
+            //     （「侧栏式」3 字 ✓「顶部标签式」5 字 ✓「卡片网格」4 字 ✓ → 三个宽度 ✓）
+            //   ✓ 现在：**统一 MinWidth + 文字居中** ✓✓
+            //     · 短文字被撑到同一宽度 ✓ 长文字仍可自然变宽 ✓（不会被截断 ✓）
+            //     · 这一处同时覆盖 `ShellSwitch`（5 个壳 ✓）与 `StyleSwitch`（4 个样式 ✓）✓✓
+            if (b != null) { b.MinWidth = 86; b.HorizontalContentAlignment = HorizontalAlignment.Center; }
             if (b == null) return;
             b.Padding = new Thickness(10, 5);
             b.CornerRadius = new CornerRadius(7);
@@ -1001,7 +1013,7 @@ namespace Dsht.Gui.Avalonia
                 // ✗ 原来是**串行** await 三次 → 每次切页都等 3×100~200ms ≈ 0.5~1 秒 ✗（用户反馈"切换卡片响应不及时" ✓）
                 // 现在**并行** ✓✓ —— 三者互相独立（profiles / sessions / backup-list ✓）→ 总耗时 = 最慢那个 ✓
                 // 先读一次排障开关 ✓（必须**在读之前** ✓ 否则 UiParallel 永远是默认值 ✗ —— 我上一轮就是漏了这步 ✓）
-                string cfgText2 = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "config-get"); });
+                string cfgText2 = await System.Threading.Tasks.Task.Run(delegate { return CfgCached(cli); });   // ✓ 缓存 ✓ 省一次进程启动 ✓✓
                 ParseTroubleshootSwitches(cfgText2);
                 if (!UiParallel)
                 {
@@ -1130,6 +1142,23 @@ namespace Dsht.Gui.Avalonia
             return null;
         }
 
+        // ★★★ **用户反馈（2026-09-30）**：「按钮交互还是有延迟，并且不低」✓✓
+        //   根因：**每次刷新都要启动 CLI 子进程** ✗ 而 CLI 是 **66 MB 自包含 exe** ✓
+        //     → 一次 `config-get` 就是几百毫秒的进程启动 ✓
+        //   而 `config-get` 的结果**极少变化** ✗ → 每次刷新都重跑纯属浪费 ✓
+        //   ✓ 现在：**缓存 60 秒** ✓✓ + **任何 config-set 之后立刻失效** ✓✓
+        //     （设置页改了配置 → `SetConfig` 清缓存 → 下一次刷新读到新值 ✓ 不会看不到变化 ✗）
+        private string _cfgCache;
+        private System.DateTime _cfgCacheAt = System.DateTime.MinValue;
+        private string CfgCached(string cli)
+        {
+            if (_cfgCache != null && (System.DateTime.UtcNow - _cfgCacheAt).TotalSeconds < 60.0) return _cfgCache;
+            _cfgCache = Run(cli, "config-get");
+            _cfgCacheAt = System.DateTime.UtcNow;
+            return _cfgCache;
+        }
+        /// <summary>配置写入后**立刻让缓存失效** ✓✓（否则设置页改了看不到变化 ✗）。</summary>
+        private void InvalidateCfgCache() { _cfgCache = null; _cfgCacheAt = System.DateTime.MinValue; }
         private static string Run(string cli, string args)
         {
             try

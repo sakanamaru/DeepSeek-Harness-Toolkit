@@ -264,6 +264,38 @@ namespace Dsht.Gui.Avalonia.Shells
 
         // ================================================================ 外壳
 
+        // ★★★ **用户反馈（2026-09-30）**：「多个布局要么没主菜单要么没子菜单」✓✓
+        //   逐条核对 5 个壳（读源码确认 ✓）：
+        //     ① 侧栏式    → 有主菜单 ✓ **无子菜单** ✗
+        //     ② 顶部标签式 → **无主菜单** ✗✗ 只有子菜单 ✓
+        //     ③ 卡片网格   → **无主菜单** ✗✗ 只有子菜单 ✓
+        //     ④ 主从式    → 会话页时左栏变成会话列表 → **主菜单消失** ✗✗
+        //     ⑤ 混合式    → 主菜单 ✓ 子菜单 ✓ **唯一完整的** ✓✓
+        //   → 根因：`MainMenu` 只在 ①⑤ 被调用 ✓ 而 `Segmented(SubTabs)` 只在 ②③⑤ ✓
+        //   ✓ 现在：**每个壳都必须同时给出主菜单与子菜单** ✓✓
+        //     · 新增 `MainNavStrip`（**横向**主菜单 ✓ 供 ②③ 使用 ✓）
+        //     · ① 补子菜单 ✓ ④ 左栏永远保留主菜单 ✓
+
+        /// <summary>主菜单的**横向**版本 ✓✓（②顶部标签式 / ③卡片网格 原来没有主导航 ✗）。
+        /// 排不下时**横向滚动** ✓（与 `Segmented` 同一策略 ✓ 用户报过"不同布局可能不显示" ✓）。</summary>
+        private static Control MainNavStrip(MainWindow host)
+        {
+            StackPanel sp = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            for (int i = 0; i < MainWindow.NavItems.Length; i++) sp.Children.Add(NavItem(host, i));
+            return new Border
+            {
+                BorderBrush = Palette.Border,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(20, 10, 20, 10),
+                Child = new ScrollViewer
+                {
+                    Content = sp,
+                    HorizontalScrollBarVisibility = global::Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                    VerticalScrollBarVisibility = global::Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
+                }
+            };
+        }
+
         // ---------------- ① 侧栏式 ----------------
 
         private static Control BuildSidebar(MainWindow host)
@@ -278,14 +310,23 @@ namespace Dsht.Gui.Avalonia.Shells
             };
             Grid.SetColumn(side, 0);
 
-            Grid body = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
+            // ✓ 用户反馈：① 原来**只有主菜单没有子菜单** ✗ → 补上子菜单 ✓✓
+            Grid body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto") };
+            Border subs = new Border
+            {
+                BorderBrush = Palette.Border,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(24, 10, 24, 10),
+                Child = Segmented(host.SubTabs, host.SubTab, delegate(int i) { host.SetSubTab(i); })
+            };
+            Grid.SetRow(subs, 0);
             Control title = PageHeader(host);
-            Grid.SetRow(title, 0);
+            Grid.SetRow(title, 1);
             Control content = SectionBody(host);
-            Grid.SetRow(content, 1);
+            Grid.SetRow(content, 2);
             Control foot = Footer(host);
-            Grid.SetRow(foot, 2);
-            body.Children.Add(title); body.Children.Add(content); body.Children.Add(foot);
+            Grid.SetRow(foot, 3);
+            body.Children.Add(subs); body.Children.Add(title); body.Children.Add(content); body.Children.Add(foot);
             Grid.SetColumn(body, 1);
             g.Children.Add(side); g.Children.Add(body);
             return g;
@@ -295,14 +336,17 @@ namespace Dsht.Gui.Avalonia.Shells
 
         private static Control BuildTopTabs(MainWindow host)
         {
-            Grid g = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*") };
+            // ✓ 用户反馈：② 原来**只有子菜单没有主菜单** ✗ → 补上横向主菜单 ✓✓
+            Grid g = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
+            Control nav = MainNavStrip(host);
+            Grid.SetRow(nav, 0);
             Border tabs = new Border { Margin = new Thickness(24, 14, 24, 0), Child = Segmented(host.SubTabs, host.SubTab, delegate(int i) { host.SetSubTab(i); }) };
-            Grid.SetRow(tabs, 0);
+            Grid.SetRow(tabs, 1);
             Control title = PageHeader(host);
-            Grid.SetRow(title, 1);
+            Grid.SetRow(title, 2);
             Control content = SectionBody(host);
-            Grid.SetRow(content, 2);
-            g.Children.Add(tabs); g.Children.Add(title); g.Children.Add(content);
+            Grid.SetRow(content, 3);
+            g.Children.Add(nav); g.Children.Add(tabs); g.Children.Add(title); g.Children.Add(content);
             return g;
         }
 
@@ -310,9 +354,12 @@ namespace Dsht.Gui.Avalonia.Shells
 
         private static Control BuildCardGrid(MainWindow host)
         {
-            Grid g = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
+            // ✓ 用户反馈：③ 原来**只有子菜单没有主菜单** ✗ → 补上横向主菜单 ✓✓
+            Grid g = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*") };
+            Control nav = MainNavStrip(host);
+            Grid.SetRow(nav, 0);
             Border tabs = new Border { Margin = new Thickness(24, 14, 24, 0), Child = Segmented(host.SubTabs, host.SubTab, delegate(int i) { host.SetSubTab(i); }) };
-            Grid.SetRow(tabs, 0);
+            Grid.SetRow(tabs, 1);
 
             StackPanel body = new StackPanel { Margin = PageMargin, Spacing = 14 };
             body.Children.Add(PageHeader(host, false));
@@ -328,8 +375,8 @@ namespace Dsht.Gui.Avalonia.Shells
             }
             body.Children.Add(Explain());
             Control scroll = new ScrollViewer { Content = body };
-            Grid.SetRow(scroll, 1);
-            g.Children.Add(tabs); g.Children.Add(scroll);
+            Grid.SetRow(scroll, 2);
+            g.Children.Add(nav); g.Children.Add(tabs); g.Children.Add(scroll);
             return g;
         }
 
@@ -340,15 +387,14 @@ namespace Dsht.Gui.Avalonia.Shells
             Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("300,*") };
 
             StackPanel left = new StackPanel { Margin = new Thickness(14), Spacing = 10 };
+            // ✓ 用户反馈：④ **会话页时左栏变成会话列表 → 主菜单消失** ✗✗
+            //   → 现在：**主菜单永远在最上面** ✓ 会话列表放在它下面 ✓✓（不再互相顶掉 ✓）
+            for (int i = 0; i < MainWindow.NavItems.Length; i++) left.Children.Add(NavItem(host, i));
             left.Children.Add(T(host.IsSessionsSection ? "会话列表" : "页面", 13, Palette.Text, FontWeight.SemiBold));
             if (host.IsSessionsSection)
             {
                 left.Children.Add(Segmented(new string[] { "全部", "非空", "运行中" }, host.Filter, delegate(int i) { host.SetFilter(i); }));
                 left.Children.Add(MasterList(host));
-            }
-            else
-            {
-                for (int i = 0; i < MainWindow.NavItems.Length; i++) left.Children.Add(NavItem(host, i));
             }
             Border leftCard = new Border
             {
