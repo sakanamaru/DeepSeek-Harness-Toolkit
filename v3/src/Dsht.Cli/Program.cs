@@ -1031,7 +1031,9 @@ namespace Dsht.Cli
         {
             try
             {
-                string logPath = Dsht.Platform.Linux.LinuxServiceControl.LastLogPath;
+                // ✗ 原来写死 Linux 的 LastLogPath → **Windows 上取不到** ✗（真机：Windows 侧日志根本不存在 ✓）
+                // 改成**平台中立**的同一路径 ✓✓ 两个平台的平台层都往这里写 ✓
+                string logPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsh-minato-start.log");
                 if (string.IsNullOrEmpty(logPath)) return "";
                 string text = "";
                 try { if (System.IO.File.Exists(logPath)) text = System.IO.File.ReadAllText(logPath); } catch { return ""; }
@@ -1121,7 +1123,7 @@ namespace Dsht.Cli
                 }
             }
             ServiceReport last = target.Probe();
-            Console.WriteLine("START_FAIL " + T("命令已发出但 30 秒内未观测到端口/HTTP 就绪；子进程输出见 ", "launched but not observed ready within 30s; child output: ") + Dsht.Platform.Linux.LinuxServiceControl.LastLogPath);
+            Console.WriteLine("START_FAIL " + T("命令已发出但 30 秒内未观测到端口/HTTP 就绪；子进程输出见 ", "launched but not observed ready within 30s; child output: ") + System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsh-minato-start.log"));
             Console.WriteLine("START_OBSERVED " + last.State.ToString().ToLowerInvariant() + " " + last.Basis);
             return 0;
         }

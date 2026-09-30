@@ -1264,6 +1264,7 @@ namespace Dsht.Gui.Avalonia.Shells
             StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
             if (host.SubTab == 1) { s.Children.Add(ChartsBody(host)); return s; }
             s.Children.Add(KpiStrip(host));
+            s.Children.Add(ChartsBody(host));   // ✗ 原来只在 SubTab==1 → 第一页看不到 ✗（2026-09-30 用户反馈 ✓）
             if (!string.IsNullOrEmpty(host.ActionLog)) s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
             if (!string.IsNullOrEmpty(host.ActionLog))
                 s.Children.Add(Card(T(host.ActionLog, 11.5, Palette.TextDim), new Thickness(0), new Thickness(16, 12)));
@@ -1281,7 +1282,9 @@ namespace Dsht.Gui.Avalonia.Shells
             }
 
             // —— 状态 hero ——
-            IBrush stateBrush = st.State == 0 ? Palette.Good : (st.State == 1 ? Palette.Warn : Palette.Bad);
+            // 桌面端在跑 → 用 Good 色 ✓（不是红 ✗ —— 它没坏，只是不走 3080 ✓）
+            bool desktopUp = st.State == 2 && !string.IsNullOrEmpty(st.DesktopClient);
+            IBrush stateBrush = st.State == 0 ? Palette.Good : (desktopUp ? Palette.Good : (st.State == 1 ? Palette.Warn : Palette.Bad));
             Grid hero = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
             Grid halo = new Grid { Width = 44, Height = 44, VerticalAlignment = VerticalAlignment.Center };
             halo.Children.Add(new Ellipse { Width = 44, Height = 44, Fill = Palette.SoftOf(stateBrush) });
