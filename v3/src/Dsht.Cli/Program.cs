@@ -824,6 +824,11 @@ Console.WriteLine("  config-get | config-set <key> <value>");
         {
             try
             {
+                // ✗✗ 真机实测（2026-09-30）：CLI 用 csc / .NET 4.0 编译 ✓ 默认**只有 TLS 1.0** ✗
+                //    → GitHub 要求 TLS 1.2 → 请求抛异常 → 被 catch 吞掉 → "取不到更新日志" ✓✓
+                //    （PowerShell 测试却成功 ✓ 因为它跑在 4.x 上、默认开了 TLS 1.2 ✓ 这个差异把人骗了 ✓）
+                // .NET 4.0 **没有** SecurityProtocolType.Tls12 枚举 ✗ → 用数值 3072 ✓
+                try { System.Net.ServicePointManager.SecurityProtocol = (System.Net.SecurityProtocolType)3072; } catch { }
                 string url = "https://api.github.com/repos/" + owner + "/" + repo + "/releases?per_page=1";
                 System.Net.HttpWebRequest req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(url);
                 req.UserAgent = "dsh-minato";
@@ -842,7 +847,35 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     return one;
                 }
             }
-            catch { return ""; }
+            catch { }
+            // 兜底：**atom 源**（GitHub 的 RSS ✓ 走 www.github.com ✓ 有些网络下比 api 更通 ✓）
+            try
+            {
+                string url2 = "https://github.com/" + owner + "/" + repo + "/releases.atom";
+                System.Net.HttpWebRequest r2 = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(url2);
+                r2.UserAgent = "dsh-minato";
+                r2.Timeout = 6000;
+                r2.ReadWriteTimeout = 6000;
+                using (System.Net.HttpWebResponse resp2 = (System.Net.HttpWebResponse)r2.GetResponse())
+                using (System.IO.StreamReader sr2 = new System.IO.StreamReader(resp2.GetResponseStream()))
+                {
+                    string body2 = sr2.ReadToEnd();
+                    int ti = body2.IndexOf("<title", StringComparison.Ordinal);
+                    if (ti >= 0)
+                    {
+                        int t1 = body2.IndexOf('>', ti);
+                        int t2 = t1 < 0 ? -1 : body2.IndexOf("</title>", t1, StringComparison.Ordinal);
+                        if (t1 > 0 && t2 > t1)
+                        {
+                            string one2 = body2.Substring(t1 + 1, t2 - t1 - 1).Trim().Replace("\r", " ").Replace("\n", " ");
+                            if (one2.Length > 160) one2 = one2.Substring(0, 160) + "…";
+                            return one2;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return "";
         }
 
         /// <summary>本工具自己的版本串 ✓（取不到就 unknown ✓ 不猜 ✗）。</summary>
