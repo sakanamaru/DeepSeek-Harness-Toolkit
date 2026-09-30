@@ -728,6 +728,7 @@ namespace Dsht.Gui.Avalonia.Shells
             s.Children.Add(new TextBlock { Text = host.FocusText, Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap });
             // 三视图 ✓：0=整体（全部，子代理随后归类进父会话）1=父会话 2=子代理 3=统计 ✓
             if (host.SubTab == 3) s.Children.Add(StatsBody(host));
+            else if (host.SubTab == 0) s.Children.Add(SessionListGrouped(host));   // 整体：子代理**折叠进父会话**（下拉框 ✓✓ 用户要求 ✓）
             else s.Children.Add(SessionList(host, host.SubTab));
             s.Children.Add(Explain());
             if (!string.IsNullOrEmpty(host.ActionLog))
@@ -809,6 +810,40 @@ namespace Dsht.Gui.Avalonia.Shells
 
         /// <summary>按当前风格选会话列表形态：C=紧凑行（密度优先），D=大条形卡片，其余=标准卡片。</summary>
         /// <summary>会话列表 ✓ mode：0=整体 1=父会话（有子会话的）2=子代理（有父会话的）✓✓</summary>
+        /// <summary>**整体视图**：父会话照常显示 ✓，它的子代理**折叠在下拉框里** ✓✓
+        /// （用户要求："整体列出子代理时归类到父会话内（做下拉框）" ✓✓）
+        /// 98/98 的子 id 都有 SESSION 行 ✓ → 不会出现"找不到父"的孤儿 ✓</summary>
+        private static Control SessionListGrouped(MainWindow host)
+        {
+            StackPanel s = new StackPanel { Spacing = 8 };
+            List<SessionRowVm> src = host.ListSource;
+            for (int i = 0; i < src.Count; i++)
+            {
+                SessionRowVm vm = src[i];
+                if (vm.Row == null) continue;
+                if (vm.Row.IsSubAgent) continue;   // 子代理不在顶层重复显示 ✓（下面折叠 ✓）
+                s.Children.Add(SessionCard(vm));
+                if (vm.Row.ChildIds.Count > 0)
+                {
+                    StackPanel kids = new StackPanel { Spacing = 6, Margin = new Thickness(18, 4, 0, 0) };
+                    for (int k = 0; k < vm.Row.ChildIds.Count; k++)
+                    {
+                        SessionRowVm kv = null;
+                        for (int m = 0; m < src.Count; m++) { if (src[m].Row != null && src[m].Row.Id == vm.Row.ChildIds[k]) { kv = src[m]; break; } }
+                        if (kv != null) kids.Children.Add(SessionCard(kv));
+                    }
+                    Expander ex = new Expander
+                    {
+                        Header = T("▸ 子代理 " + vm.Row.ChildIds.Count + " 个（点开看明细）", 11.5, Palette.TextDim),
+                        Content = kids,
+                        IsExpanded = false,
+                        Margin = new Thickness(0, 2, 0, 0)
+                    };
+                    s.Children.Add(ex);
+                }
+            }
+            return s;
+        }
         private static Control SessionList(MainWindow host, int mode)
         {
             // 过滤 ✓（vm.Row 就是 SessionRow ✓ 解析层已带 IsSubAgent ✓）
