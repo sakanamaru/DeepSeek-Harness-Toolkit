@@ -1022,6 +1022,26 @@ namespace Dsht.Cli
             Console.WriteLine("UNINSTALL_OBSERVED " + (after.Length > 0 ? after : "installed"));
             return 0;
         }
+        /// <summary>从**启动日志**里取出 dsh 打印的那个 URL ✓✓
+        /// 为什么必须用它：dsh web 打印的是 `http://127.0.0.1:<port>/?token=…` ✓
+        /// —— **裸端口会认证失败** ✗（2026-09-30 真机反馈："dsh web authentication required; reopen the URL
+        /// printed by dsh web" ✓）。启动日志由平台层写（LinuxServiceControl.LastLogPath ✓）。
+        /// 取不到就返回空串 ✓ —— 不猜、不拼一个可能错的 URL ✗</summary>
+        private static string StartUrlFromLog()
+        {
+            try
+            {
+                string logPath = Dsht.Platform.Linux.LinuxServiceControl.LastLogPath;
+                if (string.IsNullOrEmpty(logPath)) return "";
+                string text = "";
+                try { if (System.IO.File.Exists(logPath)) text = System.IO.File.ReadAllText(logPath); } catch { return ""; }
+                System.Text.RegularExpressions.Match m =
+                    System.Text.RegularExpressions.Regex.Match(text, @"http://[^\s""']*\?token=[^\s""']+");
+                return m.Success ? m.Value : "";
+            }
+            catch { return ""; }
+        }
+
         private static int StartCmd(string[] args, ServiceRegistry reg)
         {
             IServiceTarget target = TargetForStart(args, reg);   // 先解析 --port 再选目标（顺序敏感）
@@ -1041,6 +1061,7 @@ namespace Dsht.Cli
                     return 0;
                 }
                 Console.WriteLine("START_OK " + (before.Pid > 0 ? before.Pid.ToString() : "0"));
+                { string su2 = StartUrlFromLog(); if (su2 != "") Console.WriteLine("START_URL " + su2); else Console.WriteLine("START_URL_UNKNOWN " + T("已在运行，但读不到 dsh 打印的带 token 地址；请在启动它的终端里复制那条地址（裸端口会认证失败）", "already running, but the token URL could not be read; copy it from the terminal that started dsh (a bare port fails authentication)")); }
             OpLog(reg, "INFO", "start OK (already running)");
                 Console.WriteLine("START_OBSERVED " + st.ToLowerInvariant() + (before.Pid > 0 ? T("（观测到已在运行，未重复启动）", "(already running; not started again)") : T("（观测到已在运行；PID 不可得，未能确认身份）", "(already running; no PID available, identity unconfirmed)")));
                 return 0;
@@ -1094,6 +1115,8 @@ namespace Dsht.Cli
                     Console.WriteLine("START_OK " + (now.Pid > 0 ? now.Pid.ToString() : pid.ToString()));
             OpLog(reg, "INFO", "start OK");
                     Console.WriteLine("START_OBSERVED " + s2.ToLowerInvariant());
+                    string su = StartUrlFromLog();
+                    if (su != "") Console.WriteLine("START_URL " + su);
                     return 0;
                 }
             }

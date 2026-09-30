@@ -197,7 +197,19 @@ namespace Dsht.Gui.Avalonia
             // 启动成功后**自动打开浏览器** ✓✓（用户点"启动"就是想用它 ✓）
             // 失败时不打开 ✗；"已在运行"也算成功 ✓（那时打开正好能用 ✓）
             if (args != null && args.StartsWith("start", StringComparison.Ordinal) && outp.IndexOf("START_FAIL", StringComparison.Ordinal) < 0)
-                OpenUrl("http://127.0.0.1:3080");
+                // ✗ 原来打开的是**硬编码裸端口** → dsh 会要求 token → 认证失败 ✗
+                // （2026-09-30 真机反馈："dsh web authentication required; reopen the URL printed by dsh web" ✓）
+                // 现在只用 CLI 报的 START_URL ✓；取不到就**不打开** ✗（宁可不跳，也不跳到一个必然失败的地址 ✓）
+                {
+                    string su = "";
+                    int ui = outp.IndexOf("START_URL ", StringComparison.Ordinal);
+                    if (ui >= 0)
+                    {
+                        int end = outp.IndexOf('\n', ui);
+                        su = (end < 0 ? outp.Substring(ui + 10) : outp.Substring(ui + 10, end - ui - 10)).Trim();
+                    }
+                    if (su.StartsWith("http", StringComparison.OrdinalIgnoreCase)) OpenUrl(su);
+                }
         }
         /// <summary>看板上的操作日志（一键启动/停止的结果，原样展示给用户）。</summary>
         private string _actionLog = "";

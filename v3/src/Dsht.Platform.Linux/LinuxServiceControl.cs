@@ -8,7 +8,8 @@ namespace Dsht.Platform.Linux
     public sealed class LinuxServiceControl : IServiceControl
     {
         /// <summary>最近一次启动的子进程输出日志路径（失败时 CLI 会指向它 ✓）。</summary>
-        public static string LastLogPath = "";
+        /// <summary>启动日志路径：**固定路径**（原来只在 StartDetached 里赋值 ✗ → "已在运行"分支读不到 ✗）</summary>
+        public static readonly string LastLogPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsh-minato-start.log");
 
         /// <summary>Quote a path when it contains spaces (setsid would otherwise split it).</summary>
         private static string QuoteIfNeeded(string s)
@@ -48,11 +49,20 @@ namespace Dsht.Platform.Linux
                 if (!string.IsNullOrEmpty(workingDirectory)) psi.WorkingDirectory = workingDirectory;
                 Process p = Process.Start(psi);
                 if (p == null) { error = "Process.Start 返回 null"; return false; }
-                LastLogPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsh-minato-start.log");
                 string logPath = LastLogPath;
                 try { System.IO.File.WriteAllText(logPath, "== dsh-minato start " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " ==" + Environment.NewLine); } catch { }
-                System.Threading.Tasks.Task.Run(delegate { try { string o = p.StandardOutput.ReadToEnd(); if (o.Length > 0) System.IO.File.AppendAllText(logPath, o); } catch { } });
-                System.Threading.Tasks.Task.Run(delegate { try { string e2 = p.StandardError.ReadToEnd(); if (e2.Length > 0) System.IO.File.AppendAllText(logPath, e2); } catch { } });
+                // ✗ 原来用 ReadToEnd()：**阻塞到子进程退出**才返回 ✗
+                //   而 dsh 是常驻服务、**永不退出** → 输出永远写不进日志 ✗✗
+                //   （2026-09-30 实测：日志只有 43 字节、只有头行 ✓ → 带 token 的 URL 取不到 ✓）
+                // 改成**逐行流式** → 日志实时有内容 ✓ → CLI 等待期间就能读出 URL ✓✓
+                System.Threading.Tasks.Task.Run(delegate
+                {
+                    try { string ln; while ((ln = p.StandardOutput.ReadLine()) != null) { try { System.IO.File.AppendAllText(logPath, ln + Environment.NewLine); } catch { } } } catch { }
+                });
+                System.Threading.Tasks.Task.Run(delegate
+                {
+                    try { string ln2; while ((ln2 = p.StandardError.ReadLine()) != null) { try { System.IO.File.AppendAllText(logPath, ln2 + Environment.NewLine); } catch { } } } catch { }
+                });
                 pid = p.Id;   // setsid 通常直接 exec 目标程序 → PID 即目标；即便不是，stop 也是按端口观测取 PID ✓
                 return true;
             }
