@@ -514,13 +514,22 @@ namespace Dsht.Gui.Avalonia
                 }
                 // Linux：**不加引号** ✓（没有 shell 参与 ✓）· 并**检测退出码** ✗ —— 系统没设默认浏览器时 xdg-open 会失败 ✓
                 // （2026-09-30 真机：xdg-settings 返回空 → xdg-open 静默失败 ✗ 而 Process.Start 成功 ✓ → 用户看不到任何反应 ✓）
+                // ✗✗ 真机实测（2026-09-30）：GNOME 的 xdg-open(gio) **自己会用 HTTP 客户端请求这个 URL** ✓
+                //    → dsh 对它的请求返回 401 ✗ → gio 报 "Unauthorized" 就**放弃** ✗ → 浏览器永远打不开 ✓✓
+                //    （URL 本身是对的 ✓ 带 token ✓ —— 问题在 xdg-open 的实现 ✗）
+                // → 所以 Linux 上**先直接试浏览器** ✓✓（装了哪个用哪个 ✓）；xdg-open 只给 2 秒做兜底 ✓
+                string[] browsers0 = new string[] { "firefox", "chromium", "chromium-browser", "google-chrome", "epiphany" };
+                for (int bi0 = 0; bi0 < browsers0.Length; bi0++)
+                {
+                    try { Process.Start(new ProcessStartInfo(browsers0[bi0], url) { UseShellExecute = false }); return; } catch { }
+                }
                 bool opened = false;
                 try
                 {
                     ProcessStartInfo xp = new ProcessStartInfo("xdg-open", url) { UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true };
                     using (Process xp2 = Process.Start(xp))
                     {
-                        if (xp2 != null) { xp2.WaitForExit(6000); opened = xp2.HasExited && xp2.ExitCode == 0; }
+                        if (xp2 != null) { xp2.WaitForExit(2000); opened = xp2.HasExited && xp2.ExitCode == 0; }   // 只等 2 秒 ✓（它在 GNOME 上必然失败 ✗ 不值得等 6 秒 ✓）
                     }
                 }
                 catch { opened = false; }
