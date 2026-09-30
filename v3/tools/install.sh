@@ -65,6 +65,10 @@ while [ $# -gt 0 ]; do
 done
 
 # ✓ F5：**规范化路径** ✓（相对路径会让符号链接悬空 ✗ 原来的坑 ✓）
+# NB3 FIX (Linux audit MAJOR): this check used to run AFTER the case below, and that case turns
+# an empty value into "$(pwd)/" - so `--prefix ""` was no longer empty and installed into the
+# current directory (the audit reproduced it, and the directory was renamed to .old.<pid>).
+[ -n "$PREFIX" ] || die "安装位置不能为空 ✓（--prefix \"\" 会装到当前目录 ✗ 已拒绝 ✓）"
 case "$PREFIX" in
     /*) ;;
     *) PREFIX="$(pwd)/$PREFIX" ;;
@@ -167,6 +171,10 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
         if [ -n "$LIST" ]; then
             while read -r name; do
                 [ -n "${name:-}" ] || continue
+                # NB7 FIX (Linux audit MINOR, reproduced): the reinstall path already refused
+                # absolute paths and "..", but this loop did not - an edited manifest line could
+                # delete a file outside the prefix. Same rule here.
+                case "$name" in /*|*..*) warn "**跳过可疑清单条目**（越界 ✓ 不删 ✓）: $name"; continue ;; esac
                 f="$PREFIX/$name"
                 if [ -f "$f" ]; then rm -f "$f" 2>/dev/null && removed=$((removed+1)) || kept=$((kept+1)); fi
             done < "$LIST"
@@ -175,6 +183,7 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
             warn "没有安装文件清单（老版本装的 ✓）→ 回退用包内 hashes.txt ✓ 可能不完整 ✓"
             while read -r _h name; do
                 [ -n "${name:-}" ] || continue
+                case "$name" in /*|*..*) warn "**跳过可疑条目**（越界 ✓ 不删 ✓）: $name"; continue ;; esac   # NB7 FIX
                 f="$PREFIX/$name"
                 if [ -f "$f" ]; then rm -f "$f" 2>/dev/null && removed=$((removed+1)) || kept=$((kept+1)); fi
             done < "$PREFIX/hashes.txt"
@@ -370,21 +379,37 @@ if [ -n "$OLD" ] && [ -d "$OLD" ]; then
         done
         # ⑤ 剩下的都是**用户的东西** → 搬进新 prefix ✓（**在清单之后** ✓ 不会被误记 ✓✓）
         _moved=0
-        # NB4 FIX: 用 `-print0` + `read -d` ✓（原来的 `$(find …)` 没引号 ✓ 含空格的 prefix 会造垃圾树 ✗）
-        while IFS= read -r -d "" _f; do
+        # ★★★ **NB4 修复（最终复审 MAJOR —— 含空格的 prefix 会造垃圾树）** ✓✓
+        #   ✗ 上一轮用 `$(find … -print0)` ✗ —— **命令替换会把 NUL 字节丢掉** ✗✗
+        #     → `read -d ""` 读到的是**一整块**（不是一条一条 ✓）→ 仍然错 ✗
+        #     → 而且 `read -d` 是 bash 专有 ✓ **dash 下直接失败** ✗（Ubuntu 的 /bin/sh 就是 dash ✓）
+        #   ✓ 现在：**find 写进临时文件 ✓ 再逐行读** ✓✓（`IFS= read -r` 保留空格 ✓ POSIX ✓）
+        #     · 先搬**文件**（缺父目录就建 ✓）
+        #     · 再按 `-depth` 处理**目录** ✓ —— 在新 prefix 里**重建**（保住用户建的空目录 ✓ 不违反 N1 ✓）
+        #       然后 `rmdir` 旧的 ✓（我们自己的布局目录已存在 ✓ rmdir 只在空时成功 ✓）
+        _fl="$OLD/.dsh-minato-moveback.$$"
+        find "$OLD" -type f -print 2>/dev/null > "$_fl"
+        while IFS= read -r _f; do
             [ -n "$_f" ] || continue
             _rel=${_f#"$OLD"/}
             case "$_rel" in
-                gui|bin|icons|cli-small|plugin|app-*) continue ;;
-                */*) ;;
+                .dsh-minato-files|.dsh-minato-install) continue ;;
             esac
             if [ -e "$PREFIX/$_rel" ]; then continue; fi
             if mkdir -p "$(dirname -- "$PREFIX/$_rel")" 2>/dev/null && mv -- "$_f" "$PREFIX/$_rel" 2>/dev/null; then
                 _moved=$((_moved + 1))
             fi
-        done <<EOF_FIND
-$(find "$OLD" -mindepth 1 -print0 2>/dev/null)
-EOF_FIND
+        done < "$_fl"
+        rm -f "$_fl" 2>/dev/null || true
+        find "$OLD" -depth -type d -print 2>/dev/null > "$_fl"
+        while IFS= read -r _d; do
+            [ -n "$_d" ] || continue
+            [ "$_d" = "$OLD" ] && continue
+            _drel=${_d#"$OLD"/}
+            [ -d "$PREFIX/$_drel" ] || mkdir -p "$PREFIX/$_drel" 2>/dev/null || true
+            rmdir "$_d" 2>/dev/null || true
+        done < "$_fl"
+        rm -f "$_fl" 2>/dev/null || true
         if [ "$_moved" -gt 0 ]; then
             ok "已把 $_moved 项你自己的文件**搬回新安装目录** ✓（不再留在 $OLD ✓）"
         fi
@@ -392,6 +417,9 @@ EOF_FIND
         warn "旧目录里没有文件清单 ✓ → **不删它** ✓ 保留在 $OLD ✓（请自行确认后删除 ✓）"
     fi
     # ⑥ NB6 FIX: 搬空了就**删掉 OLD** ✓（原来只有"本来就空"的分支会删 ✗ 干净重装也会留一个空目录 ✗）
+    #   ★ NB6 补全：搬回循环**故意跳过** `.dsh-minato-files` ✓ → 它留在 OLD 里 →
+    #     `ls -A` 非空 → **OLD 永远删不掉** ✗（实测残留 1 个 ✓）→ 先删掉我们的管理文件 ✓
+    rm -f "$OLD/.dsh-minato-files" "$OLD/.dsh-minato-install" 2>/dev/null || true
     if [ -z "$(ls -A "$OLD" 2>/dev/null || true)" ]; then
         rmdir "$OLD" 2>/dev/null && ok "已删掉空的旧目录 ✓ $OLD" || true
     else
