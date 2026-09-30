@@ -407,13 +407,21 @@ if [ -n "$OLD" ] && [ -d "$OLD" ]; then
         #     · 先搬**文件**（缺父目录就建 ✓）
         #     · 再按 `-depth` 处理**目录** ✓ —— 在新 prefix 里**重建**（保住用户建的空目录 ✓ 不违反 N1 ✓）
         #       然后 `rmdir` 旧的 ✓（我们自己的布局目录已存在 ✓ rmdir 只在空时成功 ✓）
-        _fl="$OLD/.dsh-minato-moveback.$$"
+        # ★★★ **真机抓到的 bug（VM 端到端）—— 临时文件建在 `$OLD` 里，被自己搬走了** ✓✓
+        #   ✗ `_fl="$OLD/.dsh-minato-moveback.$$"` ✗ → 而下面的搬回循环**搬 `$OLD` 里所有文件** ✗
+        #     → **它把自己搬进了新 prefix** ✗ → 末尾 `rm -f "$_fl"` 已经找不到它 ✗
+        #     → **永久残留 `.dsh-minato-moveback.<pid>`** ✗✗
+        #     → 而卸载时它算"不属于本工具的文件" → **每一次卸载都判"目录没删干净"** ✗✗
+        #       （真机实测：40/42 通过，唯一真问题就是它 ✓ 另一条是测试脚本自己的 bug ✓）
+        #   ✓ 现在：**① 临时文件建在 `$OLD` **外面** ✓（放在 prefix 的父目录里 ✓ 刚建过 prefix 所以可写 ✓）
+        #     ② 搬回循环**跳过一切 `.dsh-minato-*` 管理文件** ✓✓（双保险 ✓）
+        _fl="$(dirname -- "$OLD")/.dsh-minato-moveback.$$"
         find "$OLD" -type f -print 2>/dev/null > "$_fl"
         while IFS= read -r _f; do
             [ -n "$_f" ] || continue
             _rel=${_f#"$OLD"/}
             case "$_rel" in
-                .dsh-minato-files|.dsh-minato-install) continue ;;
+                .dsh-minato-*) continue ;;   # 我们的管理文件（清单/标记/临时文件）**绝不搬回** ✓✓
             esac
             if [ -e "$PREFIX/$_rel" ]; then continue; fi
             if mkdir -p "$(dirname -- "$PREFIX/$_rel")" 2>/dev/null && mv -- "$_f" "$PREFIX/$_rel" 2>/dev/null; then
