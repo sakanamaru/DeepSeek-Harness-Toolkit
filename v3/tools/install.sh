@@ -70,7 +70,18 @@ case "$PREFIX" in
     *) PREFIX="$(pwd)/$PREFIX" ;;
 esac
 PREFIX=$(printf '%s' "$PREFIX" | sed 's:/*$::')      # 去掉尾部斜杠 ✓
+# S4 FIX (Linux audit MINOR): the path was only made absolute and stripped of trailing
+# slashes, so "sub/../pfx" and "pfx" recorded different strings in the marker and the
+# uninstall then refused - a permanent lockout (--force could not rescue it before S3).
+if [ -d "$PREFIX" ]; then
+    _canon=$( cd -- "$PREFIX" 2>/dev/null && pwd -P ) || _canon=""
+    if [ -n "$_canon" ]; then PREFIX="$_canon"; fi
+fi
 [ -n "$PREFIX" ] || die "安装位置为空"
+# S5 FIX (Linux audit MINOR): the marker records path= as one line, so a newline in the
+# prefix truncated it on read-back and the install could never be uninstalled.
+_pnl=$(printf '%s' "$PREFIX" | wc -l | tr -d ' ')
+[ "$_pnl" = "0" ] || die "安装位置里不能有换行符 ✓（标记按行记录路径 ✗ 会永远卸载不掉 ✓）"
 case "$BINDIR" in /*) ;; *) BINDIR="$(pwd)/$BINDIR" ;; esac
 BINDIR=$(printf '%s' "$BINDIR" | sed 's:/*$::')
 
@@ -127,7 +138,9 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
         esac
     fi
     # 菜单项：**只删内容是我们的** ✓（F7）
-    if [ -f "$DESKTOP_DIR/$APP.desktop" ] && grep -q "$PREFIX" "$DESKTOP_DIR/$APP.desktop" 2>/dev/null; then
+        # S10 FIX (Linux audit MINOR): an unescaped prefix is a basic regex, so a '[' in the
+    # path made grep fail and the stale menu entry was never removed. -F is literal.
+    if [ -f "$DESKTOP_DIR/$APP.desktop" ] && grep -qF "$PREFIX" "$DESKTOP_DIR/$APP.desktop" 2>/dev/null; then
         rm -f "$DESKTOP_DIR/$APP.desktop" && ok "已删菜单项"
     fi
     command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
@@ -334,7 +347,12 @@ ok "已安装到 $PREFIX"
 #   ✗ 包内 `hashes.txt` 只覆盖 2 个文件（248 个里的 2 个 ✗ 与 Windows 侧审计 #3 同类 ✓）
 #     → 卸载时"只删清单里的"会**剩 246 个文件** ✗✗（VM 实测确认 ✓）
 #   ✓ 现在：安装时**把真实装进去的每个文件都记下来** ✓ → 卸载时删这份清单 ✓✓
-find "$PREFIX" -type f 2>/dev/null | sed "s:^$PREFIX/::" > "$PREFIX/.dsh-minato-files" 2>/dev/null \
+    # S6 FIX (Linux audit MINOR): the prefix was interpolated into a sed program that used
+    # ':' as its delimiter, so a ':' in the path made sed fail (empty list) and a glob
+    # character left absolute paths in the file. Uninstall then deleted only the four fixed
+    # names and reported nine of our own files as the user's. Running from inside the prefix
+    # avoids both problems entirely.
+    ( cd "$PREFIX" && find . -type f 2>/dev/null | sed 's|^\./||' ) > "$PREFIX/.dsh-minato-files" 2>/dev/null \
     && ok "已记录安装文件清单（$(wc -l < "$PREFIX/.dsh-minato-files" | tr -d ' ') 个文件 ✓）" \
     || warn "记录文件清单失败（卸载会更保守 ✓）"
 
