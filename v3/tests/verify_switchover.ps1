@@ -13,6 +13,18 @@ function Gate([string]$name, [bool]$ok, [string]$detail) {
 }
 # 这个脚本会先把所有门禁跑完、最后一次性打印表格（因为每条门禁都要 csc 编译 + 跑测试），
 # 中间**没有任何输出**——先说明清楚，免得看起来像卡住。
+# ★★★ **门槛脚本自身的缺陷（实测发现 —— 假绿）** ✓✓
+#   ✗ 上面 `$ErrorActionPreference = "Stop"` ✗ 而下面每一条子门禁都是 `& powershell … 2>&1` ✓
+#     → 子进程只要往 **stderr** 写一行（例如契约 exe 的 `INTEGRITY_SKIPPED` 正常提示 ✓）
+#       PowerShell 5.1 就把它变成 **NativeCommandError** ✓ → **Stop 当终止错误** ✗✗
+#     → **脚本在第 36 行就死了** ✗ → **从不打印结果表** ✓ → **看输出像"没有 [ NOT ] 行 = 全绿"** ✗✗
+#   ✓ 现在：**只在调用外部命令期间放宽为 Continue** ✓✓（其余仍是 Stop ✓ 真错误照样终止 ✓）
+#     → 结果表一定会打印 ✓ 退出码 0/1 才可信 ✓
+function Invoke-External([scriptblock]$sb) {
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $sb } finally { $ErrorActionPreference = $old }
+}
 Write-Host "正在检查切换就绪度（约 1-3 分钟，跑完前不会输出；请勿关闭窗口）…"
 
 # ---- 门槛② 领域单测（csc 构建 + 运行契约测试）----
@@ -22,7 +34,7 @@ $lin = @(Get-ChildItem (Join-Path $Repo 'v3\src\Dsht.Platform.Linux') -Recurse -
 $tst = @(Get-ChildItem (Join-Path $Repo 'v3\tests\Dsht.Contracts.Tests') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
 $exe = Join-Path $env:TEMP 'dsht_switchover_contracts.exe'
 Remove-Item $exe -Force -ErrorAction SilentlyContinue
-& $csc /nologo /target:exe /warn:4 ("/out:" + $exe) ($dom + $win + $lin + $tst) | Out-Null
+Invoke-External { & $csc /nologo /target:exe /warn:4 ("/out:" + $exe) ($dom + $win + $lin + $tst) 2>&1 } | Out-Null
 if ($LASTEXITCODE -ne 0) { Gate 'gate2 domain tests' $false 'csc 构建失败' }
 else {
     $out = (& $exe 2>&1 | Out-String)
@@ -33,9 +45,9 @@ else {
 
 # ---- 门槛① 标记行契约（两种模式）----
 $cmp = Join-Path $Repo 'v3\tests\compare_markers.ps1'
-$c1 = & powershell -ExecutionPolicy Bypass -File $cmp -Repo $Repo 2>&1 | Out-String
+$c1 = (Invoke-External { & powershell -ExecutionPolicy Bypass -File $cmp -Repo $Repo 2>&1 }) | Out-String
 $rc1 = $LASTEXITCODE
-$c2 = & powershell -ExecutionPolicy Bypass -File $cmp -Repo $Repo -Fixtures 2>&1 | Out-String
+$c2 = (Invoke-External { & powershell -ExecutionPolicy Bypass -File $cmp -Repo $Repo -Fixtures 2>&1 }) | Out-String
 $rc2 = $LASTEXITCODE
 $mm = [regex]::Match($c2, '标记行契约：(\d+)/(\d+) 对齐')
 $detail = if ($mm.Success) { $mm.Groups[1].Value + '/' + $mm.Groups[2].Value + ' 对齐（含受控备份模式）' } else { '未解析到结果行' }
@@ -52,11 +64,11 @@ if (Test-Path $wf) {
 Gate 'gate3 win/linux dual-run' ($hasJob -and $hasUbuntu) $(if ($hasJob -and $hasUbuntu) { 'CI job 就绪，且已在 CI 真跑通过：run 36385480118（windows-latest 与 ubuntu-latest 各 220/220）' } else { 'CI job 缺失' })
 
 # ---- 门槛④ 发布物校验（含校验器自证）----
-$rel = & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_release.ps1') -Repo $Repo -Build -SelfTest 2>&1 | Out-String
+$rel = (Invoke-External { & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_release.ps1') -Repo $Repo -Build -SelfTest 2>&1 }) | Out-String
 Gate 'gate4 release verifier' ($LASTEXITCODE -eq 0) $(if ($LASTEXITCODE -eq 0) { '含篡改自证通过' } else { '校验失败' })
 
 # ---- 门槛⑤（V3 追加）真实写操作可验证：隔离数据根 + restore --apply 端到端 ----
-$ra = & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_restore_apply.ps1') -Repo $Repo 2>&1 | Out-String
+$ra = (Invoke-External { & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_restore_apply.ps1') -Repo $Repo 2>&1 }) | Out-String
 $rm = [regex]::Match($ra, '==\s*(\d+)/(\d+) passed')
 $rdet = if ($rm.Success) { $rm.Groups[1].Value + '/' + $rm.Groups[2].Value + '（隔离根真实写盘 + 零越界）' } else { '未解析到结果行' }
 Gate 'gate5 real write verifiable' ($LASTEXITCODE -eq 0) $rdet
@@ -82,7 +94,7 @@ Gate 'invariant release chain' ([string]::IsNullOrWhiteSpace($chainChanged) -and
 $v2out = Join-Path $env:TEMP 'dsht_v2_buildgate.exe'
 Remove-Item $v2out -Force -ErrorAction SilentlyContinue
 $v2src = @('dsh_v2.cs') + @(Get-ChildItem (Join-Path $Repo 'src') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
-$v2build = (& $csc /nologo /optimize+ /target:exe /warn:4 ("/out:" + $v2out) $v2src 2>&1 | Out-String)
+$v2build = (Invoke-External { & $csc /nologo /optimize+ /target:exe /warn:4 ("/out:" + $v2out) $v2src 2>&1 }) | Out-String
 $v2ok = (Test-Path $v2out)
 Gate 'invariant v2.x release build' $v2ok $(if ($v2ok) { ('csc 编译 ' + $v2src.Count + ' 个源文件通过（dsh_v2.cs + src/**）') } else { '编译失败：' + (($v2build -split "`r?`n" | Where-Object { $_ -match 'error ' } | Select-Object -First 2) -join ' / ') })
 Remove-Item $v2out -Force -ErrorAction SilentlyContinue

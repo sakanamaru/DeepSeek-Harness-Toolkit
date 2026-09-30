@@ -1209,6 +1209,13 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 if (v == IntegrityVerdict.Unknown)
                 {
                     // 明说"跳过" ✓ —— **不假报"已验证"** ✓✓（与 doctor 的措辞一致 ✓）
+                    // ★★★ **假绿修复（实测发现 —— 这一行把整条门槛链拖死过）** ✓✓
+                    //   · 它是**诊断提示**（"源码编译属正常" ✓）→ 走 **stderr** 是对的 ✓（不是命令输出 ✓）
+                    //   · 但门槛脚本用 `& powershell … 2>&1` + `$ErrorActionPreference = "Stop"` ✓
+                    //     → PS 5.1 把子进程 stderr 变成 **NativeCommandError** → **Stop 终止** ✗✗
+                    //     → **脚本在第一条子门禁就死掉、从不打印结果表** ✗ → **看输出像全绿** ✗✗
+                    //   ✓ 已在**门槛脚本**里修（只在调外部命令时放宽 ✓）✓
+                    //   ✓ 并在 `compare_markers` 里**全局忽略这一行** ✓✓（两边 exe 身份不同 → 天然不对称 ✓）
                     Console.Error.WriteLine("INTEGRITY_SKIPPED " + T("旁无 hashes.txt（或清单里没有本文件）→ 跳过自身校验。源码编译、单独复制 exe 属正常；官方发布包会带清单。", "no hashes.txt beside this exe (or it does not list this file) - self-check skipped; official releases ship a manifest."));
                     return 0;
                 }

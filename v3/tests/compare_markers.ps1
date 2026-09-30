@@ -5,6 +5,17 @@
 # 退出码：0=全部对齐；1=有差异；2=环境不足（缺 v2.x exe 或 csc）
 param([string]$Repo = ".", [switch]$Fixtures, [switch]$Heavy)
 $ErrorActionPreference = "Stop"
+# ★★★ **假绿修复（实测发现）** ✓✓
+#   ✗ `Stop` + 下面 `& $v3exe … 2>&1` ✗ —— V3 exe 会往 stderr 打**诊断**（`INTEGRITY_SKIPPED` ✓）
+#     → PS 5.1 把它变成 NativeCommandError → **Stop 终止** ✗✗
+#     → **脚本在第一个用例就死掉** ✗ → **从不打印结果行** ✓ → **看输出像"没有 FAIL = 绿"** ✗✗
+#       （而它实际有 **15 个 FAIL** ✓ 全是那行诊断造成的假差异 ✓）
+#   ✓ 现在：**只在调外部命令时放宽为 Continue** ✓✓
+function Invoke-External([scriptblock]$sb) {
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $sb } finally { $ErrorActionPreference = $old }
+}
 # 统一转成绝对路径：v2.x 的 P() 会给相对路径加 \\?\ 前缀（\\?\.\backup\x 是非法 Win32 路径），
 # 于是 `--path .\backup\...` 在 v2.x 里源侧遍历静默失败（DRYRUN_NEW/OVERWRITE 全 0），
 # 而 V3 用相对路径能正常遍历 → 用 `-Repo .` 调用时会比对出**假差异**。绝对路径两边都正确。
@@ -15,7 +26,7 @@ $v2 = Join-Path $Repo 'DeepSeek Harness Toolkit.exe'
 if (-not (Test-Path $v2)) { Write-Host "SKIP: 找不到 v2.x exe（$v2）——先在仓库根构建 v2.x"; exit 2 }
 $v3exe = Join-Path $Repo 'dsht_v3_contract.exe'          # 与 v2.x 同目录 → 状态目录一致
 $files = @(Get-ChildItem (Join-Path $Repo 'v3\src') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
-& $csc /nologo /target:exe /warn:4 ("/out:" + $v3exe) $files | Out-Null
+Invoke-External { & $csc /nologo /target:exe /warn:4 ("/out:" + $v3exe) $files 2>&1 } | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: V3 编译失败"; exit 2 }
 
 $created = New-Object System.Collections.Generic.List[string]
@@ -70,8 +81,10 @@ $cases = @(
     @{ name = 'status --detail';      args = @('status','--detail'); ignore = '^STATUS_DESKTOP(_PID|_START|_UPTIME)? ' },
     @{ name = 'profilecheck';         args = @('profilecheck') ; ignore = 'PROFILECHK_READ_ERRORS|PROFILECHK_INCOMPLETE' },
     @{ name = 'profilecheck --abs';   args = @('profilecheck','--abs') },
-    @{ name = 'backup-list';          args = @('backup-list'); full = $true; ignore = '^BACKUP_LIST_IGNORED ' },
-    @{ name = 'backup-list --detail'; args = @('backup-list','--detail'); full = $true; ignore = '^BACKUP_LIST_IGNORED ' },
+    # 忽略规则新增 `^BACKUP_ITEM_INVALID ` ✓✓：这是 V3 **新加**的标记（无效备份条目的提示 ✓
+    # 由 N10 修复引入 ✓ 以前那个标记**永远不可达** ✗）→ v2.x 没有它 ✓ 属**预期的契约增量** ✓
+    @{ name = 'backup-list';          args = @('backup-list'); full = $true; ignore = '^BACKUP_LIST_IGNORED |^BACKUP_ITEM_INVALID ' },
+    @{ name = 'backup-list --detail'; args = @('backup-list','--detail'); full = $true; ignore = '^BACKUP_LIST_IGNORED |^BACKUP_ITEM_INVALID ' },
     # doctor：Integrity 行依赖 exe 身份（v2.x 的 exe 名在 hashes.txt 里、本地构建哈希不匹配 → ERROR；V3 临时 exe 名不在清单 → 跳过校验）。正式发布时 V3 用同名 exe，该类别行为一致。
     @{ name = 'bootdiag (no input)';   args = @('bootdiag'); full = $true },
     @{ name = 'bootdiag (fixture)';    args = @('bootdiag','--from',(Join-Path $env:TEMP 'dsht_bootdiag_fixture.txt')); full = $true },
@@ -125,13 +138,16 @@ if ($bkExisted) { $bkBefore = @(Get-ChildItem $bkRoot2 -Directory -ErrorAction S
 foreach ($c in $cases) {
     if ($c.heavy -and -not $Heavy) { Write-Host ("  {0,-18} SKIP  （需 -Heavy）" -f $c.name); $script:skipped++; continue }
     if ($c.needsService -and -not $svcUp) { Write-Host ("  {0,-18} SKIP  （服务未运行：真实恢复用例只在服务运行时才安全）" -f $c.name); $script:skipped++; continue }
-    $o2 = (& $v2 @($c.args) 2>&1 | Out-String)
+    # ★ 不要 `2>&1` ✓✓ —— PS 5.1 会把子进程的 stderr 转成 **ErrorRecord 文本**混进 `$o2`/`$o3` ✗
+    #   → 比对必然失败（而那是**诊断**，不是命令输出 ✓）
+    #   → 让诊断**直接打到控制台**（可见 ✓ 诚实 ✓）而**不进比对** ✓
+    $o2 = (Invoke-External { & $v2 @($c.args) }) | Out-String
     if ($c.post -eq 'report') {
         $rp = Join-Path $env:TEMP 'dsh_selftest.txt'
         if (Test-Path $rp) { $o2 = [System.IO.File]::ReadAllText($rp) }
     }
     if ($c.postFile) { if (Test-Path -LiteralPath $c.postFile) { $o2 = [System.IO.File]::ReadAllText($c.postFile) } }
-    $o3 = (& $v3exe @($c.args) 2>&1 | Out-String)
+    $o3 = (Invoke-External { & $v3exe @($c.args) }) | Out-String
     if ($c.post -eq 'report') {
         $rp2 = Join-Path $env:TEMP 'dsh_selftest.txt'
         if (Test-Path $rp2) { $o3 = [System.IO.File]::ReadAllText($rp2) }
@@ -167,6 +183,12 @@ foreach ($c in $cases) {
             $ignored = $before - $m2.Count
         }
     }
+    # 全局忽略：exe 自身的完整性诊断（本地源码构建的 exe 旁边没有 hashes.txt → 正常 ✓）
+    # 它不是命令结果，而是**诊断**；v2.x exe 与 V3 临时 exe 的身份天然不同 → 两边必然不对称 ✓
+    # （修这个之前它造成 15 个假 FAIL ✓ 而脚本又早退，谁也看不见 ✓✓）
+    $g = '^INTEGRITY_SKIPPED '
+    $m2 = @($m2 | Where-Object { $_ -notmatch $g })
+    $m3 = @($m3 | Where-Object { $_ -notmatch $g })
     if ($c.mask) {
         $m2 = @($m2 | ForEach-Object { [regex]::Replace($_, $c.mask, 'dsh-data-TS') })
         $m3 = @($m3 | ForEach-Object { [regex]::Replace($_, $c.mask, 'dsh-data-TS') })

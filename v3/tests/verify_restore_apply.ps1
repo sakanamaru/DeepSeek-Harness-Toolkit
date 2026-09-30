@@ -20,6 +20,18 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# ★★★ **假绿修复（实测发现 —— 与 `compare_markers` / `verify_switchover` 同源）** ✓✓
+#   ✗ `Stop` + 下面 `Run()` 里的 `& $exe @cmdArgs 2>&1` ✗ —— V3 exe 会往 stderr 打**诊断**
+#     （`INTEGRITY_SKIPPED`：本地源码构建的 exe 旁没有 hashes.txt ✓ 完全正常 ✓）
+#     → PS 5.1 把它变成 **NativeCommandError** → **Stop 终止** ✗✗
+#     → **脚本在第 55 行就死掉** ✗ → **从不打印 `== N/N passed`** ✗
+#     → 调用它的 `verify_switchover` 的 gate5 **只能报"未解析到结果行"** ✓✓
+#   ✓ 现在：**只在调外部命令时放宽为 Continue** ✓✓ 并**不再用 `2>&1` 把诊断混进输出** ✓
+function Invoke-External([scriptblock]$sb) {
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $sb } finally { $ErrorActionPreference = $old }
+}
 $script:pass = 0
 $script:fail = 0
 
@@ -52,7 +64,7 @@ function Read-Text([string]$p) {
 }
 
 function Run([string]$exe, [string[]]$cmdArgs) {
-    $all = (& $exe @cmdArgs 2>&1 | Out-String)
+    $all = (Invoke-External { & $exe @cmdArgs }) | Out-String
     return $all
 }
 
@@ -81,7 +93,7 @@ try {
     if (-not (Test-Path -LiteralPath $csc)) { Write-Host ("找不到 csc: " + $csc); exit 2 }
     if (Test-Path -LiteralPath $exe) { Remove-Item -LiteralPath $exe -Force }   # 绝不留下旧 exe 造成"假通过"
     $src = @(Get-ChildItem -LiteralPath $v3src -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object { $_.FullName })
-    $build = (& $csc /nologo /target:exe /warn:4 "/out:$exe" $src 2>&1 | Out-String)
+    $build = (Invoke-External { & $csc /nologo /target:exe /warn:4 "/out:$exe" $src }) | Out-String
     Check ("构建成功（" + $src.Count + " 个源文件）") (Test-Path -LiteralPath $exe)
     if (-not (Test-Path -LiteralPath $exe)) { Write-Host $build; exit 2 }
 
@@ -92,7 +104,15 @@ try {
     $env:DSH_HOME = $data
 
     Section "1. 隔离根下真实备份（备份应落在 exe 目录旁，而不是真实数据根）"
-    $out = Run $exe @("backup")
+    # ★★★ **假绿修复的连锁（实测发现）** ✓✓
+    #   ✗ 这里原来是裸 `backup` ✗ —— 而产品的契约是**第一次备份必须显式给目录**
+    #     （`BACKUP_NEEDS_DIR` + "请加 --to <目录>" ✓ 由 D4 修复引入 ✓）
+    #     → 隔离根下没有 `backup/` → 产品**拒绝** ✓ → 后面 11 项**全部连锁失败** ✗✗
+    #     → 而脚本第 55 行早就死了 ✓ **这个红一直没人看见** ✓✓
+    #   ✓ 现在：**按产品契约传 `--to`** ✓✓（意图不变：备份必须落在隔离目录内 ✓）
+    $bkTo = Join-Path $iso 'backups'
+    New-Item -ItemType Directory -Path $bkTo -Force | Out-Null
+    $out = Run $exe @("backup", "--to", $bkTo)
     Check "backup 打印 BACKUP_OK" ($out -match "BACKUP_OK")
     $bkLine = ($out -split "`r?`n" | Where-Object { $_ -match "^BACKUP_OK " } | Select-Object -First 1)
     $bkDir = $null
