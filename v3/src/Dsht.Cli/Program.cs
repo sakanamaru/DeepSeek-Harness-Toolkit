@@ -61,6 +61,7 @@ namespace Dsht.Cli
             if (cmd == "backup") return Backup(reg);
             if (cmd == "backup-export") return BackupExport(args, reg);
             if (cmd == "backup-delete") return BackupDelete(args, reg);
+            if (cmd == "autostart") return AutoStartCmd(args, reg);
             Usage();
             return 2;
         }
@@ -1086,6 +1087,99 @@ namespace Dsht.Cli
             catch { return ""; }
         }
 
+        /// <summary>开机自启（用户要求："开启自启服务功能还在吗" + "按平台选 + 做成设置项让你选" ✓✓）
+        /// · 目标：`auto_start_target` = auto（**按平台** ✓ Win/Mac→官方桌面端 · Linux→dsh web）/ desktop / web
+        /// · 实现：**不需要管理员/root** ✓
+        ///     Windows → 启动目录放一个 .cmd ✓（%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup）
+        ///     Linux   → systemd **user** unit ✓（~/.config/systemd/user/ + systemctl --user enable ✓）
+        /// · 全部**可回退** ✓（--disable 删掉 ✓；也会打印文件路径让你自己看 ✓）
+        /// 标记：`AUTOSTART_STATUS <on|off> target=<desktop|web|auto>` / `AUTOSTART_OK <动作>` / `AUTOSTART_FAIL <原因>`</summary>
+        private static int AutoStartCmd(string[] args, ServiceRegistry reg)
+        {
+            bool win = PlatformIsWindows();
+            string cfgTarget = _cfg == null || string.IsNullOrEmpty(_cfg.AutoStartTarget) ? "auto" : _cfg.AutoStartTarget;
+            string effective = cfgTarget;
+            if (effective == "auto") effective = win ? "desktop" : "web";
+            string label = effective == "desktop" ? T("官方桌面端", "the official desktop app") : T("dsh web", "dsh web");
+
+            string path = win
+                ? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "dsh-minato-autostart.cmd")
+                : System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "systemd", "user", "dsh-minato-autostart.service");
+
+            bool enabled = FileExists(path);
+            Console.WriteLine("AUTOSTART_STATUS " + (enabled ? "on" : "off") + " target=" + effective + " configured=" + cfgTarget);
+
+            if (!Has(args, "--enable") && !Has(args, "--disable"))
+            {
+                Console.WriteLine("AUTOSTART_PATH " + path);
+                Console.WriteLine("AUTOSTART_WOULD " + T("将启动：", "would start: ") + label + (effective == "desktop" && !win ? T("（注意：Linux 上官方桌面端暂未发行 ✓ 请把 auto_start_target 改成 web ✓）", " (note: no Linux desktop app yet; set auto_start_target=web)") : ""));
+                return 0;
+            }
+
+            if (Has(args, "--disable"))
+            {
+                try
+                {
+                    if (enabled) System.IO.File.Delete(path);
+                    if (!win) RunQuiet("systemctl", "--user disable dsh-minato-autostart");
+                    Console.WriteLine("AUTOSTART_OK disable");
+                    OpLog(reg, "INFO", "autostart disabled");
+                }
+                catch (Exception ex) { Console.WriteLine("AUTOSTART_FAIL " + ex.Message); }
+                return 0;
+            }
+
+            try
+            {
+                string dir = System.IO.Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && !System.IO.Directory.Exists(dir)) System.IO.Directory.CreateDirectory(dir);
+                if (win)
+                {
+                    string body;
+                    if (effective == "desktop")
+                    {
+                        string exe = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "DeepSeek Harness", "DeepSeek Harness.exe");
+                        body = "@echo off\r\nrem dsh-minato 开机自启（设置里可关：dsh-minato autostart --disable）\r\nstart \"\" \"" + exe + "\"\r\n";
+                    }
+                    else
+                    {
+                        string cli = System.Reflection.Assembly.GetEntryAssembly() == null ? "dsh-minato" : System.Reflection.Assembly.GetEntryAssembly().Location;
+                        body = "@echo off\r\nrem dsh-minato 开机自启（设置里可关：dsh-minato autostart --disable）\r\n\"" + cli + "\" start --yes\r\n";
+                    }
+                    System.IO.File.WriteAllText(path, body, new System.Text.UTF8Encoding(false));
+                }
+                else
+                {
+                    string cli2 = System.Reflection.Assembly.GetEntryAssembly() == null ? "dsh-minato" : System.Reflection.Assembly.GetEntryAssembly().Location;
+                    string exec = effective == "web" ? "\"" + cli2 + "\" start --yes" : "echo 'desktop app not available on Linux'";
+                    string unit = "[Unit]\nDescription=dsh-minato autostart (dsh)\nAfter=network.target\n\n[Service]\nType=oneshot\nExecStart=" + exec + "\n\n[Install]\nWantedBy=default.target\n";
+                    System.IO.File.WriteAllText(path, unit, new System.Text.UTF8Encoding(false));
+                    RunQuiet("systemctl", "--user daemon-reload");
+                    RunQuiet("systemctl", "--user enable dsh-minato-autostart");
+                }
+                Console.WriteLine("AUTOSTART_OK enable");
+                Console.WriteLine("AUTOSTART_PATH " + path);
+                OpLog(reg, "INFO", "autostart enabled target=" + effective);
+            }
+            catch (Exception ex) { Console.WriteLine("AUTOSTART_FAIL " + ex.Message); }
+            return 0;
+        }
+
+        /// <summary>跑一条命令并丢弃输出（systemctl 之类 ✓ 失败不影响主流程 ✓）。</summary>
+        private static void RunQuiet(string exe, string args)
+        {
+            try
+            {
+                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(exe, args);
+                psi.UseShellExecute = false; psi.CreateNoWindow = true;
+                psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
+                using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
+                {
+                    if (p != null) { p.StandardOutput.ReadToEnd(); p.StandardError.ReadToEnd(); p.WaitForExit(8000); }
+                }
+            }
+            catch { }
+        }
         private static int StartCmd(string[] args, ServiceRegistry reg)
         {
             IServiceTarget target = TargetForStart(args, reg);   // 先解析 --port 再选目标（顺序敏感）
