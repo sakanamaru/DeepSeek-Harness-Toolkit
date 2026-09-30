@@ -1014,7 +1014,7 @@ internal static class Installer
                     // delete fails with access denied (reproduced). Schedule it with a delayed command
                     // that runs after the parent exits.
                     try { File.Delete(rn); removedOur++; Log("已删自我改名留下的副本 ✓ " + Path.GetFileName(rn)); }
-                    catch (Exception rnx)
+                    catch (Exception)   // the message is not needed; the cause is known and logged below
                     {
                         Log("副本被父进程占着（正常 ✓）→ 安排父进程退出后删除 ✓: " + Path.GetFileName(rn));
                         try
