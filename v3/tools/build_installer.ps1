@@ -77,7 +77,14 @@ $manifest = Join-Path $PayloadDir "hashes.txt"
 $lines = New-Object System.Collections.Generic.List[string]
 $all = Get-ChildItem $PayloadDir -Recurse -File | Where-Object { $_.Name -ne 'hashes.txt' } | Sort-Object FullName
 foreach ($f in $all) {
-    $rel = $f.FullName.Substring($PayloadDir.TrimEnd('\').Length).TrimStart('\')
+    # ✗✗ C5（审计 CRITICAL）：原来用 `$PayloadDir` 的**字符串长度**去截 `$f.FullName`（绝对路径）✗
+    #   → 传**相对路径**时（**CI 正是相对路径** ✓）算出的 rel 是垃圾 ✓
+    #   → 例：`dsh-minato-win-x64`（18 字符）+ `D:\a\...\dsh-minato-win-x64\gui\x.exe`
+    #         → rel = `h-minato\dsh-minato-win-x64\gui\x.exe` ✗ → 清单全错 ✓
+    #   → 安装器找不到这些文件 → 覆盖数 0 → **拒绝安装** ✗✗
+    # ✓ 现在：**先把 PayloadDir 解析成绝对路径** ✓ 再截 ✓
+    $payloadFull = (Resolve-Path -LiteralPath $PayloadDir).Path.TrimEnd('\')
+    $rel = $f.FullName.Substring($payloadFull.Length).TrimStart('\')
     $h = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower()
     $lines.Add($h + "  " + $rel)
 }
@@ -92,7 +99,7 @@ if (-not (Test-Path $PayloadZip)) { throw "载荷 zip 不存在：$PayloadZip" }
 # ---- ② AssemblyInfo（csc 没有 /version: ✓ 必须自己给 ✓ 否则 ARP 里显示 0.0.0 ✗）----
 $ai = @"
 using System.Reflection;
-[assembly: AssemblyVersion("$Version.0")]
+[assembly: AssemblyVersion("$verNum.0")]
 [assembly: AssemblyFileVersion("$Version.0")]
 [assembly: AssemblyTitle("dsh-minato setup")]
 [assembly: AssemblyProduct("dsh-minato")]
