@@ -432,6 +432,22 @@ static class ContractTests
         Check("delete：不存在 → not-found", Dsht.Domain.Services.PathValidator.ValidateDeletePath("C:\\bk\\dsh-data-1", "C:\\bk", invalid) == "not-found");
         Check("delete：通过 → null", Dsht.Domain.Services.PathValidator.ValidateDeletePath("C:\\bk\\dsh-data-1", "C:\\bk", exists) == null);
         Console.WriteLine("[19] Windows 数据根支持 DSH_HOME（隔离测试与多环境部署的前提）");
+        // ★★★ **CI 红修复（2026-10-01 实测：ubuntu-latest 上 333/334 · 唯一失败就是这里）** ✓✓
+        //   ✗ 这一段**没有平台门控** ✗ —— 而它测的是 `Dsht.Platform.Windows.WindowsPaths` ✓
+        //     → 在 Linux 上 `C:\tmp\v3-win-home` **不是绝对路径** ✗
+        //       → `Path.GetFullPath` 会把它接到**当前工作目录**后面 ✓ → 断言必然失败 ✗
+        //     → 于是**每次推 v3-linux/main，ubuntu 那个 job 都是红的** ✗✗
+        //       （windows 那个 job 照样绿 ✓ —— 所以本地在 Windows 上跑永远看不到 ✓）
+        //   ✓ 现在：**非 Windows 上如实跳过** ✓✓（并说明由 windows-latest job 覆盖 ✓ 不是掩盖 ✓）
+        //   ✓ 用 `Environment.OSVersion.Platform` 而不是 `OperatingSystem.IsWindows()` ✓
+        //     —— 因为这份源码**同时**被 csc（.NET Framework 4.x）和 dotnet（net8）编译 ✓
+        bool onWindows = Environment.OSVersion.Platform == PlatformID.Win32NT;
+        if (!onWindows)
+        {
+            Console.WriteLine("  [SKIP] WindowsPaths 用例在非 Windows 上跳过（Windows 专属 ✓ 由 windows-latest job 覆盖 ✓）");
+        }
+        else
+        {
         string oldWinHome = Environment.GetEnvironmentVariable("DSH_HOME");
         try
         {
@@ -443,6 +459,7 @@ static class ContractTests
             Check("未设置时回退到 <home>/.dsh（与 v2.x 一致）", wdr != null && wdr.EndsWith(".dsh"));
         }
         finally { Environment.SetEnvironmentVariable("DSH_HOME", oldWinHome); }
+        }
         Console.WriteLine("[20] restore --apply 准入（V3 独有：真实写盘只允许隔离数据根）");
         string[] defs = new string[] { @"C:\Users\u\.dsh", @"C:\Users\u\AppData\Roaming\.dsh", @"C:\Users\u\AppData\Local\.dsh" };
         Check("未给 --apply → 判定不介入（放行）", Dsht.Domain.Services.RestoreApplyPolicy.Judge(false, null, null, defs) == null);
