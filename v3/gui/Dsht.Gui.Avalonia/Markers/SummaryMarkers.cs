@@ -29,7 +29,7 @@ namespace Dsht.Gui.Avalonia.Markers
     {
         public bool Ok;
         public int Count;
-        public string Latest = "";
+        // N15 FIX: a `Latest` field used to live here, parsed from the first BACKUP_ITEM line and
     }
 
     public static class SummaryMarkers
@@ -70,8 +70,6 @@ namespace Dsht.Gui.Avalonia.Markers
                     if (int.TryParse(rest, out n)) b.Count = n;
                     continue;
                 }
-                if (line.StartsWith("BACKUP_ITEM", StringComparison.Ordinal)) { if (b.Latest.Length == 0) b.Latest = line.Substring("BACKUP_ITEM".Length).Trim(); continue; }
-                if (!line.StartsWith("BACKUP_", StringComparison.Ordinal) && b.Latest.Length == 0 && line.IndexOf(':') == 1) b.Latest = line;
             }
             return b;
         }

@@ -396,6 +396,9 @@ namespace Dsht.Gui.Avalonia.Shells
 
         // ---------------- ④ 主从式 ----------------
 
+        // N15 NOTE: unreachable on purpose. `MasterDetail` maps to `BuildHybrid` (line 55) because the
+        // user asked for the master-detail layout to be removed, and no button selects it any more.
+        // Kept as a reference for whoever wants that layout back; it is not dead by accident.
         private static Control BuildMasterDetail(MainWindow host)
         {
             Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("300,*") };
