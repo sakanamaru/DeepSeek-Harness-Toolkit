@@ -65,6 +65,7 @@ namespace Dsht.Domain.Services
             else if (k == "update_channel") c.UpdateChannel = v == "rc" ? "rc" : "stable";
             else if (k == "close_action") c.CloseAction = (v == "tray" || v == "exit") ? v : (v == "ask" ? "ask" : "");
             else if (k == "auto_start") c.AutoStart = v != "off";
+            else if (k == "auto_start_target") c.AutoStartTarget = v;
             return c;
         }
     }

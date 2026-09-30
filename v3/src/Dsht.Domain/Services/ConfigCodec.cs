@@ -71,6 +71,7 @@ namespace Dsht.Domain.Services
                 {
                     string v = t.Substring(11).Trim().ToLowerInvariant();
                     if (v.Length > 0) c.AutoStart = v != "off";
+            else if (t.StartsWith("auto_start_target=", StringComparison.Ordinal)) c.AutoStartTarget = t.Substring("auto_start_target=".Length).Trim();
                 }
             }
             return c;
@@ -90,6 +91,7 @@ namespace Dsht.Domain.Services
             sb.Append("update_channel=").Append(c.UpdateChannel).Append("\r\n");
             sb.Append("close_action=").Append(c.CloseAction).Append("\r\n");
             sb.Append("auto_start=").Append(c.AutoStart ? "on" : "off").Append("\r\n");
+            sb.Append("auto_start_target=").Append(c.AutoStartTarget).Append("\r\n");
             return sb.ToString();
         }
 
