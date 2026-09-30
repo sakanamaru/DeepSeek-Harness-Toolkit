@@ -102,7 +102,7 @@ $cases = @(
     # 哈希不匹配 → ERROR；V3 的临时 exe 名不在清单 → 跳过）、npm registry 可达性（网络抖动会让两侧不同 → 假失败）、
     # 结果行（汇总数受被忽略条目影响）。
     # 掩码：日志摘要行（两次运行之间日志会增长，且内容含时间戳）——掩码后仍能验证"该行两侧都存在且前缀一致"。
-    @{ name = 'doctor --report (body)'; args = @('doctor','--report',(Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt')); postFile = (Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt'); ignore = '^(生成时间|Toolkit|系统)\s*:|^\[(OK|WARN|ERROR)\] (自身 exe 与随包|旁无 hashes\.txt|npm registry )|^结果\s*:|^\[(OK|WARN|ERROR)\] Workspace 数据大小'; mask = '共 \d+ 行；最近: .*' }
+    @{ name = 'doctor --report (body)'; args = @('doctor','--report',(Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt')); postFile = (Join-Path $env:TEMP 'dsht_doctor_report_cmp.txt'); ignore = '^(生成时间|Toolkit|系统)\s*:|^\[(OK|WARN|ERROR)\] (自身 exe 与随包|旁无 hashes\.txt|npm registry )|^结果\s*:|^\[(OK|WARN|ERROR)\] 数据大小'; mask = '共 \d+ 行；最近: .*' }
 )
 $fail = 0
 $skipped = 0
