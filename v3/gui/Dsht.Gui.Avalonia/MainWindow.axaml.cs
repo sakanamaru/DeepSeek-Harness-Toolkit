@@ -188,7 +188,12 @@ namespace Dsht.Gui.Avalonia
             //     → 第一次备份**永远做不成** ✓（把失败当结果弹出来 ✓ 弹窗选择器永不出现 ✗）
             //   ✓ 现在：**看机器标记** ✓✓（`BACKUP_OK` = 成功 ✓ `BACKUP_FAIL` = 失败 ✓）
             bool backupOk = outp != null && outp.IndexOf("BACKUP_OK", StringComparison.Ordinal) >= 0;
-            bool needsFolder = !backupOk && outp != null && outp.IndexOf("BACKUP_FAIL", StringComparison.Ordinal) >= 0;
+            // ★★★ **N9 修复（复审 MAJOR —— 判定太宽）** ✓✓
+            //   ✗ 原来只认 `BACKUP_FAIL` ✗ → 而 CLI 对**每一种失败**都打它 ✓
+            //     → 配置目录不存在 / `--to` 没生效 / 数据目录不存在 / 备份真的失败
+            //       全都会**静默弹出文件夹选择器** ✗✗（真正的错误被吞掉 ✓）
+            //   ✓ 现在：**只认 CLI 专用的 `BACKUP_NEEDS_DIR`** ✓✓ 其余错误照常显示 ✓
+            bool needsFolder = !backupOk && outp != null && outp.IndexOf("BACKUP_NEEDS_DIR", StringComparison.Ordinal) >= 0;
             if (backupOk || !needsFolder)
             {
                 // ✓✓ **用户反馈（2026-10-01）**：「现在备份还是受阻」✗

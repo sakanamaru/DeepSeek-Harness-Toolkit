@@ -542,10 +542,14 @@ namespace Dsht.Gui.Avalonia.Shells
                     BorderThickness = new Thickness(0),
                     CornerRadius = new CornerRadius(6),
                     Padding = new Thickness(10, 4),
-                    // ✓✓ 用户反馈（2026-09-30）：**概览/侧栏底部那 5 个按钮宽度不一样** ✗
-                    //   （`web` 3 字符 · `desktop` 7 字符 · `安装` 2 汉字 · `停 web` · `停桌面端` ✓）
-                    //   → 每个都是**文字宽度** ✗ → 五个各不相同 ✓✓
-                    //   → **统一 MinWidth** ✓ 且文字居中 ✓✓
+                    // ★★★ **N7 修复（复审 MAJOR —— 注释说了但代码没做）** ✓✓
+                    //   ✗ 这里原来只有注释、**没有 MinWidth** ✗ → 每个按钮仍是**文字宽度** ✗
+                    //     → `web`(3) / `desktop`(7) 各不相同 ✓ 用户报过两次的"宽度不一样"仍在 ✗✗
+                    //     （我上一轮把 `ModeBtnW` 加到了**条件才出现的**"停 web/停桌面端"上 ✗
+                    //      而那一条是**默认可见**的 ✓ —— 加错了行 ✓）
+                    //   ✓ 现在：**真正的这一行**也统一最小宽度 ✓ 并居中 ✓✓
+                    MinWidth = ModeBtnW,
+                    HorizontalContentAlignment = global::Avalonia.Layout.HorizontalAlignment.Center
                 };
                 b.Click += delegate { host.SetStartMode(idx); };
                 s.Children.Add(b);
@@ -558,6 +562,8 @@ namespace Dsht.Gui.Avalonia.Shells
                 BorderThickness = new Thickness(0),
                 CornerRadius = new CornerRadius(6),
                 Padding = new Thickness(10, 4),
+                MinWidth = ModeBtnW,   // N7 FIX: same row, same minimum width
+                HorizontalContentAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
                 Margin = new Thickness(6, 0, 0, 0)
             };
             dep.Click += delegate { host.DeployForMode(); };
