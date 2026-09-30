@@ -738,15 +738,43 @@ namespace Dsht.Gui.Avalonia.Shells
         private static Control KpiStrip(MainWindow host)
         {
             SessionsSnapshot d = host.Data;
+            // 用户要求（绿色框那条 ✓✓）：**统计随选择的父子视图变化** ✓
+            //  · **整体**视图 → 仍用 CLI 给的精确合计 ✓（口径与 CLI 完全一致 ✓ 不自己算 ✗）
+            //  · **父会话 / 子代理** → 按**当前显示的那些行**重算 ✓（求和是确定的 ✓ 不是猜 ✓）
+            List<SessionRowVm> src = host.ListSource;
+            bool filtered = src != null && host.Data != null && src.Count != host.Data.Rows.Count;
+            int fCount = 0, fNonBlank = 0, fLive = 0, fSubs = 0;
+            long fIn = 0, fOut = 0, fCache = 0;
+            double hitNum = 0, hitDen = 0, tpsNum = 0, tpsDen = 0;
+            if (filtered)
+            {
+                for (int fi = 0; fi < src.Count; fi++)
+                {
+                    SessionRow r = src[fi].Row;
+                    if (r == null) continue;
+                    fCount++;
+                    if (!r.Blank) fNonBlank++;
+                    if (r.Live) fLive++;
+                    if (r.IsSubAgent) fSubs++;
+                    fIn += r.In; fOut += r.Out; fCache += r.CacheRead;
+                    // 加权：命中率按**输入量**加权 ✓ 解码速度按**输出量**加权 ✓（与 CLI 合计口径同源 ✓）
+                    if (r.HitPercent >= 0 && r.In > 0) { hitNum += r.HitPercent * r.In; hitDen += r.In; }
+                    if (r.DecodeTps >= 0 && r.Out > 0) { tpsNum += r.DecodeTps * r.Out; tpsDen += r.Out; }
+                }
+            }
+            string tag = filtered ? (host.SubTab == 2 ? "（子代理）" : "（父会话）") : "";
             Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
-            g.Children.Add(KpiCard(Symbol.ChatMultiple, "会话总数", d == null ? "—" : d.Count.ToString(),
-                "非空 " + (d == null ? "—" : d.NonBlank.ToString()) + " · 运行中 " + (d == null ? "—" : d.Live.ToString()) + " · 子代理 " + (d == null ? "—" : d.SubAgentCount.ToString()) + " / 根 " + (d == null ? "—" : d.RootCount.ToString()), Palette.Text, 0, -1));
-            g.Children.Add(KpiCard(Symbol.Database, "缓存命中率", PctText(d == null ? -1 : d.TotalHitPercent),
-                "缓存读 " + (d == null ? "—" : SessionRow.Human(d.TotalCacheRead)), Palette.Good, 1, d == null ? -1 : d.TotalHitPercent));
-            g.Children.Add(KpiCard(Symbol.Gauge, "解码速度", TpsText(d == null ? -1 : d.TotalDecodeTps),
-                "tok/s，按合计加权", Palette.Accent, 2, -1));
-            g.Children.Add(KpiCard(Symbol.DataUsage, "累计 token", d == null ? "—" : SessionRow.Human(d.TotalIn),
-                "输出 " + (d == null ? "—" : SessionRow.Human(d.TotalOut)) + " · 输入含缓存读", Palette.Text, 3, -1));
+            g.Children.Add(KpiCard(Symbol.ChatMultiple, "会话总数" + tag, d == null ? "—" : (filtered ? fCount : d.Count).ToString(),
+                "非空 " + (d == null ? "—" : (filtered ? fNonBlank : d.NonBlank).ToString()) + " · 运行中 " + (d == null ? "—" : (filtered ? fLive : d.Live).ToString()) + " · 子代理 " + (d == null ? "—" : (filtered ? fSubs : d.SubAgentCount).ToString()) + " / 根 " + (d == null ? "—" : (filtered ? fCount - fSubs : d.RootCount).ToString()), Palette.Text, 0, -1));
+            double hitPct = filtered ? (hitDen > 0 ? hitNum / hitDen : -1) : (d == null ? -1 : d.TotalHitPercent);
+            g.Children.Add(KpiCard(Symbol.Database, "缓存命中率" + tag, PctText(hitPct),
+                "缓存读 " + (d == null ? "—" : SessionRow.Human(filtered ? fCache : d.TotalCacheRead)), Palette.Good, 1, hitPct));
+            double tps = filtered ? (tpsDen > 0 ? tpsNum / tpsDen : -1) : (d == null ? -1 : d.TotalDecodeTps);
+            g.Children.Add(KpiCard(Symbol.Gauge, "解码速度" + tag, TpsText(tps),
+                "tok/s", Palette.Accent, 2, -1));
+            g.Children.Add(KpiCard(Symbol.DataUsage, "累计 token" + tag, d == null ? "—" : SessionRow.Human(filtered ? fIn : d.TotalIn),
+                "输出 " + (d == null ? "—" : SessionRow.Human(filtered ? fOut : d.TotalOut)), Palette.Text, 3, -1));
+            return g;
             return g;
         }
 
