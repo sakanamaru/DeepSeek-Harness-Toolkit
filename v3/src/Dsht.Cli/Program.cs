@@ -969,10 +969,32 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     return 0;
                 }
                 // Mismatch → **拒绝运行** ✓✓（银狐静态感染后文件必然变 ✓）
-                Console.WriteLine("INTEGRITY_FAIL " + T("自身校验失败：本文件的 SHA-256 与随包 hashes.txt **不一致**，可能已被替换或篡改（银狐一类木马会静态感染正常 exe）。", "self-check FAILED: this file does not match the shipped hashes.txt; it may have been replaced or tampered with."));
-                Console.WriteLine("INTEGRITY_EXPECTED " + (expected == null ? "unknown" : expected));
-                Console.WriteLine("INTEGRITY_ACTUAL " + (string.IsNullOrEmpty(integ.SelfHash()) ? "unknown" : integ.SelfHash()));
-                Console.WriteLine("INTEGRITY_HINT " + T("请从**官方 Releases 重新下载**：https://github.com/sakanamaru/dsh-minato/releases —— 本工具拒绝在被改动的情况下运行。", "download again from the official releases; this tool refuses to run when modified."));
+                // —— 被改动时的提示 ✓✓（用户要求："被感染检测后，提示，文件被感染之类的提示" ✓）
+                // 措辞纪律：说**事实**（"已经被改动" ✓ 指纹对不上是确定的 ✓）
+                //           说**可能**（"可能被木马感染" ✓ 也可能是别的原因 ✗ 不把可能说成一定 ✗）
+                //           给**能照着做的步骤** ✓✓（比一句"校验失败"有用得多 ✓）
+                Console.WriteLine("");
+                Console.WriteLine("  ╔══════════════════════════════════════════════════════════════╗");
+                Console.WriteLine("  ║   警告：这个文件**已经被改动**，可能被木马感染              ║");
+                Console.WriteLine("  ╚══════════════════════════════════════════════════════════════╝");
+                Console.WriteLine("");
+                Console.WriteLine(T("  本工具的每个文件都有官方指纹（SHA-256）。现在这个文件的指纹和官方清单**对不上** ——", "  Every file in this tool has an official SHA-256 fingerprint, and this one does not match."));
+                Console.WriteLine(T("  说明它**被改过**。银狐一类木马正是这样干的：给正常程序打补丁，让它在你运行时同时干别的事。", "  SilverFox-class trojans work exactly this way: they patch a legitimate program."));
+                Console.WriteLine("");
+                Console.WriteLine(T("  **已拒绝运行**（刻意的：宁可你打不开，也不让你在不知情的情况下运行被改过的程序）", "  **Refused to run** - deliberately: better that it will not open than that it runs modified."));
+                Console.WriteLine("");
+                Console.WriteLine(T("  请这样做：", "  What to do:"));
+                Console.WriteLine(T("    1. **不要**继续使用这个文件", "    1. Do not keep using this file"));
+                Console.WriteLine(T("    2. 把它**删掉**（或先移到隔离目录）", "    2. Delete it (or move it somewhere isolated first)"));
+                Console.WriteLine(T("    3. 从**官方 Releases 重新下载**：", "    3. Download again from the official releases:"));
+                Console.WriteLine("       https://github.com/sakanamaru/dsh-minato/releases");
+                Console.WriteLine(T("    4. 建议用杀毒软件**全盘扫描**一次（木马通常不止感染一个文件）", "    4. Run a full antivirus scan - trojans rarely infect only one file"));
+                Console.WriteLine("");
+                Console.WriteLine("  ---- " + T("技术细节（给排查用）", "technical details for diagnosis") + " ----");
+                Console.WriteLine("  INTEGRITY_FAIL " + T("自身指纹与官方清单不一致", "self fingerprint does not match the official manifest"));
+                Console.WriteLine("  INTEGRITY_EXPECTED " + (expected == null ? "unknown" : expected));
+                Console.WriteLine("  INTEGRITY_ACTUAL " + (string.IsNullOrEmpty(integ.SelfHash()) ? "unknown" : integ.SelfHash()));
+                Console.WriteLine("  INTEGRITY_HINT " + T("从官方 Releases 重新下载；本工具拒绝在被改动的情况下运行。", "download again from the official releases; this tool refuses to run when modified."));
                 return 3;
             }
             catch
