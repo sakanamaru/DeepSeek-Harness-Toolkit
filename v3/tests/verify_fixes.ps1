@@ -142,7 +142,9 @@ if ($onlyTable.Count -gt 0) { foreach ($x in $onlyTable) { $miss += ("命令面�
 if ($onlyCode.Count -eq 0 -and $onlyTable.Count -eq 0) { Write-Host "  [OK]   命令面一一对应 ✓" }
 # #43：**总项数下限**断言 ✓✓ —— 否则"删掉一条非命令类检查"**无人会察觉** ✗
 # （命令面有"一一对应"自检 ✓ 但总项数一直没有断言 ✗ —— 本轮补上 ✓）
-$EXPECTED_MIN_CHECKS = 67
+# 审计发现（门槛完整性审计 §5.3）：原来是 67，而表里有 **71** 项 → **最多 4 项可被静默删掉** ✗
+# → 现在**必须正好等于表长** ✓（任何一项被删都会红 ✓）
+$EXPECTED_MIN_CHECKS = 71
 if ($checks.Count -lt $EXPECTED_MIN_CHECKS) {
     $miss += ("检查表项数不足：" + $checks.Count + " < " + $EXPECTED_MIN_CHECKS)
     Write-Host ("  [MISS] 检查表项数不足：只有 " + $checks.Count + " 项（需 >= " + $EXPECTED_MIN_CHECKS + "）")

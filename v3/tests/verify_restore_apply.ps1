@@ -118,6 +118,10 @@ try {
     $bkDir = $null
     if ($bkLine) { $bkDir = $bkLine.Substring("BACKUP_OK ".Length).Trim() }
     Check "备份目录位于隔离目录内" ($bkDir -ne $null -and $bkDir.StartsWith($iso, [StringComparison]::OrdinalIgnoreCase))
+    # ★★★ **门槛完整性审计 M5a2 —— `--to` 本身原来没被断言** ✓✓
+    #   ✗ 只断言"在 `$iso` 内" ✗ → 变异证明：**完全忽略 `--to`、改用默认根**（也在 `$iso` 内 ✓）照样 25/25 ✗✗
+    #   ✓ 现在：**必须落在 `--to` 指定的那个目录下** ✓✓
+    Check "备份目录落在 --to 指定的目录下" ($bkDir -ne $null -and $bkDir.StartsWith($bkTo, [StringComparison]::OrdinalIgnoreCase))
     Check "备份内容含 settings.yaml" ($bkDir -ne $null -and (Test-Path -LiteralPath (Join-Path $bkDir "settings.yaml")))
     Check "备份内容含 sessions\s1.txt" ($bkDir -ne $null -and (Test-Path -LiteralPath (Join-Path $bkDir "sessions\s1.txt")))
 

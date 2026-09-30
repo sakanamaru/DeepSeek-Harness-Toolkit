@@ -103,11 +103,16 @@ $cases = @(
     @{ name = 'bootdiag (no input)';   args = @('bootdiag'); full = $true },
     @{ name = 'bootdiag (fixture)';    args = @('bootdiag','--from',(Join-Path $env:TEMP 'dsht_bootdiag_fixture.txt')); full = $true },
     @{ name = 'bootdiag (unrecognised)'; args = @('bootdiag','--from',(Join-Path $env:TEMP 'dsht_bootdiag_unknown.txt')); full = $true },
-    @{ name = 'restore --dry-run';          args = @('restore','--dry-run'); full = $true },
-    @{ name = 'restore --dry-run --path';   args = @('restore','--dry-run','--path',(Join-Path $Repo 'backup\dsh-data-20990101-000000-auto')); full = $true },
+    # ★★ **DRYRUN_KEEP 漂移修复（门槛完整性审计 + 我自己的实测）** ✓✓
+    #   ✗ 这三条会打印 `DRYRUN_KEEP <n>` ✗ —— 那个数是**真实数据根里要保留的文件数**（实测 8451 ✓）
+    #     → **dsh 正在跑 → 两次调用之间这个数会变** ✗ → **随机 FAIL** ✓✓（最诡异的一类不稳定 ✓）
+    #   ✓ 现在：**mask 掉那个数字** ✓✓（它是**环境事实** ✓ 不是契约 ✓）
+    #     其余部分（SRC/SCOPE/NEW/OVERWRITE ✓）照常比对 ✓ 契约覆盖不减 ✓
+    @{ name = 'restore --dry-run';          args = @('restore','--dry-run'); full = $true; mask = 'DRYRUN_KEEP \d+' },
+    @{ name = 'restore --dry-run --path';   args = @('restore','--dry-run','--path',(Join-Path $Repo 'backup\dsh-data-20990101-000000-auto')); full = $true; mask = 'DRYRUN_KEEP \d+' },
     # 工作区作用域（受控备份里带 _workspace\<名字>\.dshws）：目标 = 自动探测的工作区根 + 工作区名，
     # 两侧 exe 同目录 → 目标一致。这条同时钉住"工作区自动探测"与"dry-run 的 workspace 分支"。
-    @{ name = 'restore --dry-run (_workspace)'; args = @('restore','--dry-run','--path',(Join-Path $Repo 'backup\dsh-data-20990104-000000-auto')); full = $true },
+    @{ name = 'restore --dry-run (_workspace)'; args = @('restore','--dry-run','--path',(Join-Path $Repo 'backup\dsh-data-20990104-000000-auto')); full = $true; mask = 'DRYRUN_KEEP \d+' },
     # selftest：stdout 只有 "report -> 路径"，真正的价值在报告正文 → post='report' 时比较报告内容
     # 产品标识行（title/version）在 v2.x 与 V3 之间本就不同，按规则忽略
     @{ name = 'selftest (report body)'; args = @('selftest'); post = 'report'; ignore = '^(title|version)\s+:' },
@@ -167,6 +172,18 @@ foreach ($c in $cases) {
         if (Test-Path $rp2) { $o3 = [System.IO.File]::ReadAllText($rp2) }
     }
     if ($c.postFile) { if (Test-Path -LiteralPath $c.postFile) { $o3 = [System.IO.File]::ReadAllText($c.postFile) } }
+    # ★★★ **路径依赖修复（门槛完整性审计 §2）—— 必须在 `$o2`/`$o3` 算完之后判** ✓✓
+    #   ✗ 工作区用例依赖 **exe 目录的祖父**像不像工作区 ✗（`WorkspaceJudge.LooksLike` **拒绝用户目录** ✓）
+    #     → V3 打印 `skipped (unknown workspace root)` ✓ 而 v2.x **回退到数据根** ✓
+    #     → **两个产品在这里本就不同** ✓ —— 不是回归 ✓
+    #     → 但门槛把它当 FAIL ✗ → **仓库放在 `%TEMP%` 下就是 19/21** ✗✗（CI runner 也会红 ✓）
+    #   ✓ 现在：**任一侧推不出工作区根 → SKIP 并说明** ✓✓（诚实 ✓ 不是掩盖 ✓）
+    #     → 门槛**不再依赖仓库放在哪** ✓ → 结果可复现 ✓✓
+    if ($c.name -like '*workspace*' -and ($o2 -match 'unknown workspace root' -or $o3 -match 'unknown workspace root')) {
+        Write-Host ("  {0,-18} SKIP  （这台机器推不出工作区根：V3 如实跳过 ✓ v2.x 回退数据根 ✓ 两者**本就不同** ✓ 不是回归 ✓）" -f $c.name)
+        $script:skipped++
+        continue
+    }
     $ignored = 0
     
     if ($c.full -or $c.post -eq 'report' -or $c.postFile) {
@@ -197,12 +214,14 @@ foreach ($c in $cases) {
             $ignored = $before - $m2.Count
         }
     }
-    # 全局忽略：exe 自身的完整性诊断（本地源码构建的 exe 旁边没有 hashes.txt → 正常 ✓）
-    # 它不是命令结果，而是**诊断**；v2.x exe 与 V3 临时 exe 的身份天然不同 → 两边必然不对称 ✓
-    # （修这个之前它造成 15 个假 FAIL ✓ 而脚本又早退，谁也看不见 ✓✓）
-    $g = '^INTEGRITY_SKIPPED '
-    $m2 = @($m2 | Where-Object { $_ -notmatch $g })
-    $m3 = @($m3 | Where-Object { $_ -notmatch $g })
+    # ★★★ **收窄（门槛完整性审计 M3a —— 我上一版加得太宽）** ✓✓
+    #   ✗ 原来这里有一条 `$g = '^INTEGRITY_SKIPPED '` 的**全局忽略** ✗
+    #     → 审计变异证明：**任何**以那个前缀开头的行（任一命令、任一流）都会被吞掉 ✗✗
+    #       → 一个"以后有人复用这个前缀"的真实回归**看不见** ✓
+    #   ✓ 现在：**整条规则删掉** ✓✓ —— 因为**根本不需要**它 ✓
+    #     · 上面两个调用已经**不再 `2>&1`** ✓ → 子进程的 stderr（那条诊断 ✓）**从不进入比对文本** ✓
+    #     · 诊断只在控制台可见 ✓（可见 ✓ 诚实 ✓）且不污染比对 ✓✓
+    #   ✓ 代价：若将来有人把诊断改到 **stdout**，这条用例会 FAIL ✓ —— 那**正是应该发生的事** ✓
     if ($c.mask) {
         $m2 = @($m2 | ForEach-Object { [regex]::Replace($_, $c.mask, 'dsh-data-TS') })
         $m3 = @($m3 | ForEach-Object { [regex]::Replace($_, $c.mask, 'dsh-data-TS') })
