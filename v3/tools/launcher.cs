@@ -110,7 +110,10 @@ internal static class Launcher
                 bool inAttackSurface = rel.StartsWith("gui" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
                     || rel.IndexOf(guiMark, StringComparison.OrdinalIgnoreCase) >= 0
                     || rel.IndexOf(Path.DirectorySeparatorChar) < 0
-                    || rel.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && rel.StartsWith("bin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+                    || rel.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && rel.StartsWith("bin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                    // N-I FIX (installer audit MODERATE): the plugin is JavaScript that the bridge installer
+                    // hands to dsh, so it is code and belongs in the attack surface.
+                    || rel.StartsWith("plugin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
                 if (!inAttackSurface) { checkedCount++; continue; }   // 计数 ✓ 但不哈希 ✓（存在性已验证 ✓）
                 string got = Sha256(full);
                 if (string.IsNullOrEmpty(got)) continue;

@@ -26,7 +26,7 @@ namespace Dsht.Gui.Avalonia.Shells
         /// <summary>侧栏底部那组按钮（`web` / `desktop` / `安装` / `停 web` / `停桌面端`）的**统一宽度** ✓✓
         /// 用户反馈（2026-09-30）：「概览里五个按钮宽度不一样」✓ —— 它们原来都是**文字宽度** ✗。
         /// 76 能放下最长的 `desktop` ✓ 短文字（`web` ✓ `安装` ✓）被撑到同宽 ✓✓。</summary>
-        private const double ModeBtnW = 76;
+        private const double ModeBtnW = 62;   // MAJOR FIX: 76 overflowed the 232px sidebar (web+desktop+install+padding+3 gaps); 62 keeps the row inside it
         public const int MasterDetail = 3;
         public const int Hybrid = 4;
 
@@ -1783,9 +1783,19 @@ namespace Dsht.Gui.Avalonia.Shells
             s.Children.Add(Card(range, new Thickness(0), new Thickness(14, 10)));
             int days = host.ChartDays;   // 7/14/30 可切 ✓（用户要求："看板第二页图表内可以切换日期分布查看图表" ✓✓）
             string[] labels = new string[days];
+            // ★★★ **日期桶修复（GUI 复审 MAJOR —— 我上一轮的"修好了"是假的）** ✓✓
+            //   ✗ `labels[k]` 只有 5 个字符（MM-dd）✗ → 用 `EndsWith(labels[k])` 比**仍然只比后 5 位** ✗✗
+            //     → **跨年还是算错** ✓（2025-09-30 会被算进 2026-09-30 那个桶 ✓ 审计实测复现 ✓）
+            //   ✓ 现在：**另存一份完整日期 labelsFull** ✓✓ 比较用完整的 ✓ 显示（坐标轴）仍用 MM-dd ✓
+            string[] labelsFull = new string[days];
             long[] counts = new long[days];
             System.DateTime today = System.DateTime.UtcNow.Date;
-            for (int i = 0; i < days; i++) labels[i] = today.AddDays(i - (days - 1)).ToString("MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            for (int i = 0; i < days; i++)
+            {
+                System.DateTime dday = today.AddDays(i - (days - 1));
+                labels[i] = dday.ToString("MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                labelsFull[i] = dday.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            }
             long max = 0;
             for (int i = 0; i < d.Rows.Count; i++)
             {
@@ -1794,7 +1804,7 @@ namespace Dsht.Gui.Avalonia.Shells
                 string day = created.Substring(0, 10);
                 for (int k = 0; k < days; k++)
                 {
-                    if (labels[k].Length == 5 && day.Length == 10 && day.Substring(0, 10).EndsWith(labels[k], StringComparison.Ordinal)) { counts[k]++; if (counts[k] > max) max = counts[k]; break; }
+                    if (labelsFull[k].Length == 10 && day.Length >= 10 && string.Equals(day.Substring(0, 10), labelsFull[k], StringComparison.Ordinal)) { counts[k]++; if (counts[k] > max) max = counts[k]; }   // MAJOR FIX: full date, not MM-dd
                 }
             }
             StackPanel c1 = new StackPanel { Spacing = 8 };
@@ -1831,7 +1841,7 @@ namespace Dsht.Gui.Avalonia.Shells
                 string dy = cr.Substring(0, 10);
                 for (int k = 0; k < days; k++)
                 {
-                    if (labels[k].Length == 5 && dy.Length == 10 && dy.Substring(0, 10).EndsWith(labels[k], StringComparison.Ordinal)) dayTok[k] += d.Rows[i].In;
+                    if (labelsFull[k].Length == 10 && dy.Length >= 10 && string.Equals(dy.Substring(0, 10), labelsFull[k], StringComparison.Ordinal)) dayTok[k] += d.Rows[i].In;   // MAJOR FIX
                 }
             }
             for (int k = 0; k < days; k++) if (dayTok[k] > maxTok) maxTok = dayTok[k];
