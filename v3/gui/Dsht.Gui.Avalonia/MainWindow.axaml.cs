@@ -527,8 +527,23 @@ namespace Dsht.Gui.Avalonia
             //     · 文字按钮 → **86px 等宽** ✓（这是用户原本的诉求 ✓ 短文字不再长短不一 ✓）
             if (b != null)
             {
-                bool isIcon = b.Content is SymbolIcon;
-                b.MinWidth = isIcon ? 34 : 86;
+                // ★★★ **用户反馈（2026-09-30 两次）** ✓✓：
+                //   第一次"五个按钮宽度不一样" → 我加了 MinWidth=86 ✗
+                //   第二次"宽体普京/普及" → 我改成"图标 34 / 文字 86" ✗✗ **还是错** ✓
+                //     · `ShellSwitch` = 图标 ✓ 已修好 ✓
+                //     · `StyleSwitch` = **单个字母 A B C D** ✗ —— **86px 对单字符当然还是太宽** ✗✗
+                //   ✓ 现在：**按内容长度判** ✓✓（这才是对的判据 ✓）
+                //     · 图标 → **34 方形** ✓
+                //     · **短文字（≤2 字符 ✓ 如 A B C D）→ 34** ✓✓
+                //     · 长文字（如"侧栏式"这种将来若改成文字 ✓）→ 86 等宽 ✓
+                bool compact = b.Content is SymbolIcon;
+                if (!compact)
+                {
+                    TextBlock tb0 = b.Content as TextBlock;
+                    string txt = tb0 != null ? tb0.Text : (b.Content as string);
+                    if (txt != null && txt.Length <= 2) compact = true;
+                }
+                b.MinWidth = compact ? 34 : 86;
                 b.HorizontalContentAlignment = HorizontalAlignment.Center;
             }
             if (b == null) return;
