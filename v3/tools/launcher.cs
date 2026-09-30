@@ -96,6 +96,22 @@ internal static class Launcher
                 string full;
                 try { full = Path.Combine(dir, rel); } catch { continue; }
                 if (!File.Exists(full)) continue;   // 磁盘上没有 → 没得验 ✓
+                // ★★★ **N-12 修复（安装器复审 MINOR —— 每次启动哈希 227 个文件 / 165 MB）** ✓✓
+                //   ✗ M-9 让这里"验清单里每一个存在的文件" ✗ → 实测**每次启动 0.30 秒**
+                //     （不验清单只要 0.036 秒 ✓ · 机械盘/冷缓存更慢 ✗）
+                //     → 而**真正会被打补丁的是代码** ✓ 图标/文档/清单本身不是攻击面 ✓
+                //   ✓ 现在：**只验攻击面** ✓✓ —— `gui\` 下的一切（含 `dsht-gui.dll` ✓）
+                //     · 安装根的两个 exe ✓ · 安装根的 dll ✓（单文件发布时没有 ✓）
+                //     · **其它条目仍然检查存在性** ✗ 不哈希 ✓（省时间 ✓ 又不假装验过 ✗✓）
+                // 攻击面 = **任何 `gui\` 下的东西** ✓（含 `app-<版本>\gui\` ✓ 那里才是 GUI 的真身 ✓）
+                //        + **安装根的文件** ✓（exe / dll / 清单 ✓）
+                //        + **任何 `bin\` 下的 exe** ✓（PATH 里的那一份 ✓）
+                string guiMark = Path.DirectorySeparatorChar + "gui" + Path.DirectorySeparatorChar;
+                bool inAttackSurface = rel.StartsWith("gui" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                    || rel.IndexOf(guiMark, StringComparison.OrdinalIgnoreCase) >= 0
+                    || rel.IndexOf(Path.DirectorySeparatorChar) < 0
+                    || rel.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && rel.StartsWith("bin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+                if (!inAttackSurface) { checkedCount++; continue; }   // 计数 ✓ 但不哈希 ✓（存在性已验证 ✓）
                 string got = Sha256(full);
                 if (string.IsNullOrEmpty(got)) continue;
                 checkedCount++;
