@@ -71,6 +71,24 @@ if ($PayloadZip -eq "") {
 #     → 实测：篡改 gui\Avalonia.Base.dll（不在清单里）→ **exit 0 装上了带木马的 DLL** ✗✗
 #   ✓ 现在：**载荷里每个文件都算 SHA-256** ✓ → 覆盖 100% ✓ 篡改任何一个都会被拒 ✓✓
 #   （哈希 165MB 约 1 秒 ✓ 值得 ✓）
+# ---- ③-0 **先编 GUI 启动器壳** ✓✓（审计 C6 CRITICAL）----
+#   ✗✗ 原来**没有任何脚本编译 launcher.cs** ✗ → 载荷里**从来没有 `dsh-minato-gui.exe`** ✓
+#      → 而安装器要求它（稳定入口 ✓ 快捷方式目标 ✓ ARP 的 DisplayIcon ✓）
+#      → **每次安装都会失败** ✗✗（审计实测 exit 4 ✓ 而且 target 留下非空无 marker ✓ → 重试被拒 ✗）
+#   ✓ 现在：**构建时就编出来并放进载荷** ✓ → 清单也会覆盖它 ✓✓
+$guiExe = Join-Path $PayloadDir "dsh-minato-gui.exe"
+$launcherSrc = Join-Path $Repo "v3\tools\launcher.cs"
+if (-not (Test-Path $launcherSrc)) { throw "找不到启动器源码：$launcherSrc" }
+Write-Host "编译 GUI 启动器壳（dsh-minato-gui.exe）…"
+$argsG = @("/nologo", "/target:winexe", "/platform:anycpu", "/win32icon:$ico", "/out:$guiExe",
+           "/r:System.Windows.Forms.dll", "/r:System.Drawing.dll", $launcherSrc)
+$rg = & $roslyn @argsG 2>&1
+$eg = @($rg | Where-Object { $_ -match "error" })
+if ($eg.Count -gt 0) {
+    $eg | Select-Object -First 6 | ForEach-Object { Write-Host ("  " + $_.ToString().Trim()) }
+    throw "GUI 启动器编译失败"
+}
+Write-Host ("  启动器 " + [Math]::Round((Get-Item $guiExe).Length / 1KB, 1) + " KB ✓（已放进载荷 ✓）")
 if (-not $SkipManifest) {
 Write-Host "重算整份清单（覆盖载荷内**所有**文件）…"
 $manifest = Join-Path $PayloadDir "hashes.txt"
@@ -96,11 +114,25 @@ Write-Host ("清单已写 ✓ " + $lines.Count + " 个文件（覆盖 100% ✓�
 }
 if (-not (Test-Path $PayloadZip)) { throw "载荷 zip 不存在：$PayloadZip" }
 
+# ---- ①b **版本号归一化** ✓✓（审计 C4 CRITICAL）----
+#   ✗ CI 传 `-Version "${{ github.ref_name }}"` ✓ 而 tag 是 `v3.0.0` ✓
+#     → `AssemblyVersion("v3.0.0.0")` → **Roslyn CS7034** ✗ → 构建必然失败 ✓
+#     （`workflow_dispatch` 在分支上更糟：传 `"main"` ✓）
+#   ✓ 现在：**去前导 v、校验成数字点分** ✓ 不合格就报错说清 ✓
+#   （注：这个定义曾经加过又被后续替换冲掉 ✗ → 实测 CS7034 复现 ✓ 现在固定在 AssemblyInfo 之前 ✓）
+if (-not (Get-Variable -Name verNum -ErrorAction SilentlyContinue)) {
+    $verNum = "$Version".Trim().TrimStart('v', 'V')
+}
+if ($verNum -notmatch '^\d+(\.\d+){0,3}$') {
+    throw "版本号必须是数字点分形式（如 3.0.0）✓ 收到的是「$Version」✗（tag 名要先去 v ✓）"
+}
+Write-Host "版本号: $Version → $verNum ✓"
+
 # ---- ② AssemblyInfo（csc 没有 /version: ✓ 必须自己给 ✓ 否则 ARP 里显示 0.0.0 ✗）----
 $ai = @"
 using System.Reflection;
 [assembly: AssemblyVersion("$verNum.0")]
-[assembly: AssemblyFileVersion("$Version.0")]
+[assembly: AssemblyFileVersion("$verNum.0")]
 [assembly: AssemblyTitle("dsh-minato setup")]
 [assembly: AssemblyProduct("dsh-minato")]
 [assembly: AssemblyCompany("dsh-minato (unofficial)")]
