@@ -2238,10 +2238,17 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 Console.WriteLine("BACKUP_LIST_IGNORED " + notValid + T(" 项在备份根里但不是有效备份（**仍会列出** ✓ 但不能用于恢复 ✓）", " entries are not valid packages (listed, but not restorable)"));
             foreach (BackupEntry e in all)
             {
-                if (!BackupPackage.IsValidPackage(e.Snapshot)) continue;   // A1: v2.x listed valid packages only
+                // ★★★ **N10 修复（复审 MAJOR —— 这个标记**从来没被打印过**）** ✓✓
+                //   ✗ 原来 `continue` 在前 ✗ → 下面那行 `BACKUP_ITEM_INVALID` **永远不可达** ✗✗
+                //     （编译器其实早就报 CS0162 ✓ 而门槛只 grep 字符串 ✓ → 绿着）
+            //   ✓ 现在：**先判无效并打标记 ✓ 再 `continue` 跳过路径行** ✓✓
+                //     无效条目不列路径 ✓（与 v2.x 的"只列有效包路径"一致 ✓ 契约安全 ✓）
+                if (!BackupPackage.IsValidPackage(e.Snapshot))
+                {
+                    Console.WriteLine("BACKUP_ITEM_INVALID " + e.Name);
+                    continue;
+                }
                 Console.WriteLine(e.Path);
-                // ✓ 无效包**明确标注** ✓（新标记 ✓ 不认识它的解析器会忽略它 ✓ 不影响契约 ✓）
-                if (!BackupPackage.IsValidPackage(e.Snapshot)) Console.WriteLine("BACKUP_ITEM_INVALID " + e.Name);
                 if (detail)
                 {
                     long bytes = src.DirSize(e.Path);

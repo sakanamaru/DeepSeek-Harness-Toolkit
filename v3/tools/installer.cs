@@ -857,6 +857,24 @@ internal static class Installer
             {
                 try { string fp = Path.Combine(mover, gen); if (File.Exists(fp)) { File.Delete(fp); removedOur++; } } catch { }
             }
+            // ★★★ **BUG-4 修复（端到端实测发现）** ✓✓
+            //   ✗ `plugin\` 是**安装器从载荷里搬过去的** ✗（和 `gui\` 一样 ✓）
+            //     → 它**不在载荷清单里** ✗（清单是载荷的相对路径 ✓ 而 plugin 在载荷里是 `plugin\\…` ✓
+            //       hmm 其实在 ✓ 但清单校验只核对载荷 ✓ 删除列表来自清单 ✓ 而清单里的相对路径
+            //       `plugin\\dsh-minato-bridge\\index.js` **确实会被删** ✓ —— 实测却残留 ✓
+            //       因为 `mover` 是改名后的目录 ✓ 而清单条目在 `mover` 下 ✓ 应该能删 ✓）
+            //   → 实测：`plugin` **留下来了** ✗ → 干脆**显式删整个目录** ✓✓（和 app-* 同一策略 ✓）
+            try
+            {
+                string plugDir = Path.Combine(mover, "plugin");
+                if (Directory.Exists(plugDir))
+                {
+                    Directory.Delete(plugDir, true);
+                    removedOur++;
+                    Log("已删安装器放入的 plugin/ ✓ " + plugDir);
+                }
+            }
+            catch (Exception pex) { Log("删 plugin/ 失败（不致命 ✓）: " + pex.Message); }
             // ★★★ **用户要求（2026-09-30）** ✓✓：**卸载绝不能删掉备份** ✗✗
             //   ✗ 备份目录默认是 `StateDir/backup` ✓ 而 Windows 上 StateDir **就是安装目录** ✗
             //     → 备份**物理上躺在安装目录里** ✓ → 现在没被删**只是因为它不在删除列表里** ✗
