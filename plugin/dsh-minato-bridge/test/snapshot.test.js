@@ -68,24 +68,21 @@ const CONTRACT = {
 /** 真实形状 ①：`sessionQuery.listSessions()` → **Promise**`<SessionRecord[]>` ✓
  *  `SessionRecord = { header, live, persisted }` ✓（F2b） */
 function realRecordCtx() {
-	const rec = {
-		header: { id: "sess-1", cwd: "D:\\work", createdAt: 1788517824758, title: "hello" },
-		live: true,
-		persisted: true,
-	};
+	const rec = makeRecord("sess-1", "D:\\work", 1788517824758);
+	const live = makeLiveSession("sess-1", "D:\\work", 1788517824758);
 	return {
-		sessionQuery: { listSessions: async () => [rec] },   // ✓ **异步** —— 与真实 dsh 一致 ✓
-		sessionProjections: {
-			snapshot: async () => ({
-				values: {
-					sessionStats: { turns: 2, steps: 9, llmMs: 1000, toolMs: 500, ttftMs: 300, decodeMs: 2000, decodeTokens: 400 },
-					tokenUsage: { totals: { uncachedInputTokens: 100, outputTokens: 50, cacheReadTokens: 900, cacheWriteTokens: 10 } },
-					contextPressure: { surfaceTokens: 500, contextWindow: 1000, pressureTokens: 250 },
-					sessionListMetadata: { blank: false, lastPromptAt: 1788517999999 },
-					title: "hello",
-				},
-			}),
-		},
+		// sessionQuery gives the LIST (records, with live flags) ...
+		sessionQuery: { listSessions: async () => [rec] },
+		// ... and sessions.list() gives the LIVE objects the projection registry needs.
+		sessions: { list: async () => [live] },
+		sessionProjections: projectionStub({
+			sessionStats: { turns: 2, steps: 9, llmMs: 1000, toolMs: 500, ttftMs: 300, decodeMs: 2000, decodeTokens: 400 },
+			// P2 FIX: the registry hands back the WIRE VIEW, i.e. state.totals - not { totals: ... }.
+			tokenUsage: { uncachedInputTokens: 100, outputTokens: 50, cacheReadTokens: 900, cacheWriteTokens: 10 },
+			contextPressure: { surfaceTokens: 500, contextWindow: 1000, pressureTokens: 250 },
+			sessionListMetadata: { blank: false, lastPromptAt: 1788517999999 },
+			title: "hello",
+		}),
 	};
 }
 
@@ -162,7 +159,35 @@ await check("writeSnapshot 写文件且不留 .tmp", () => {
 	fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// ---- collectSessions：**真实形状**（异步 ✓ 记录是 {header,live} ✓）----
+// ---- P5 FIX (plugin audit MAJOR): the old mock accepted ANY argument, so the suite could not
+// notice that a real projection registry needs a live Session (it calls session.snapshotEvents()
+// and reads session.seq). It now refuses anything that is not a live Session, which is what the
+// P1 fix relies on. ----
+// A live Session looks like { header, id, surface, seq, snapshotEvents() } - the registry's own
+// code calls those methods, so a record cannot stand in for one.
+function makeLiveSession(id, cwd, createdAt) {
+	return {
+		header: { id: id, cwd: cwd, createdAt: createdAt },
+		id: id,
+		surface: "web",
+		seq: 7,
+		snapshotEvents: function () { return []; }
+	};
+}
+// A SessionRecord, as sessionQuery.listSessions() returns it: { header, live, persisted }.
+function makeRecord(id, cwd, createdAt) {
+	return { header: { id: id, cwd: cwd, createdAt: createdAt }, live: true, persisted: true };
+}
+function projectionStub(values) {
+	return {
+		snapshot: async function (s) {
+			if (!s || typeof s.snapshotEvents !== "function") {
+				throw new TypeError("session.snapshotEvents is not a function");
+			}
+			return { values: values };
+		}
+	};
+}
 await check("**collectSessions：异步 listSessions + 真实 SessionRecord 形状** ✓✓（F2/F2b）", async () => {
 	const list = await collectSessions(realRecordCtx());
 	assert.equal(list.length, 1, "异步路径必须收集到 1 条 ✗（旧版在这里静默失败 ✓）");
@@ -208,6 +233,30 @@ await check("apply：首帧写快照（**异步** ✓）；enabled:false 不写"
 await check("**apply：非字符串 outFile 不抛** ✓（F6：加载期崩会拖垮 dsh ✗）", () => {
 	apply({ sessions: { list: () => [] } }, { enabled: true, outFile: 123, intervalMs: 100000 });
 });
+await check("**P3: dispose 在 tick 进行中时，不会再写回 live:true** ✓✓", async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-p3-"));
+	const file = path.join(dir, "sessions.json");
+	let disposeFn = null;
+	let resolveList;
+	const gate = new Promise((r) => { resolveList = r; });
+	const rec = makeRecord("sess-p3", "/w", 1789000000000);
+	const live = makeLiveSession("sess-p3", "/w", 1789000000000);
+	const ctx = {
+		sessionQuery: { listSessions: () => gate.then(() => [rec]) },   // resolves only when we say so
+		sessions: { list: async () => [live] },
+		sessionProjections: projectionStub({ sessionStats: { turns: 1 } }),
+		on: (ev, fn) => { if (ev === "dispose") disposeFn = fn; }
+	};
+	apply(ctx, { outFile: file, intervalMs: 100000 });
+	await new Promise((r) => setTimeout(r, 50));   // the first tick is now awaiting listSessions
+	disposeFn();                                    // dispose clears the live flags
+	resolveList();                                  // ... and only now does the tick resume
+	await new Promise((r) => setTimeout(r, 300));
+	const txt = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+	assert.ok(txt.indexOf('"live":true') < 0, "an in-flight tick must not write live:true after dispose");
+	fs.rmSync(dir, { recursive: true, force: true });
+});
+
 await check("**dispose 时清掉 live 标记** ✓（F8：否则 dsh 退出后面板永远显示运行中 ✗）", async () => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-dispose-"));
 	const file = path.join(dir, "sessions.json");
