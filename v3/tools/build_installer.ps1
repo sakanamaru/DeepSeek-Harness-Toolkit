@@ -89,6 +89,31 @@ if ($eg.Count -gt 0) {
     throw "GUI 启动器编译失败"
 }
 Write-Host ("  启动器 " + [Math]::Round((Get-Item $guiExe).Length / 1KB, 1) + " KB ✓（已放进载荷 ✓）")
+# ---- ①a **把可选的桥接插件放进载荷** ✓✓（用户要求：「安装桥接插件有按钮吗」✓）
+#   ✗ 原来载荷里**没有插件** ✗（实测：安装目录与桌面载荷的相关文件都是 0 个 ✓）
+#     → 用户装了工具箱也**拿不到插件** ✗ → 「运行中」这个功能对用户等于不存在 ✓
+#   ★★ **m-1 修复（安装器审计 MINOR）** ✓✓：**位置必须在清单与 zip 之前** ✓✓
+#     ✗ 原来这一段在 `CreateFromDirectory` **之后** ✗ → 两个后果：
+#        ① `-PayloadDir`：插件是在**清单算完**之后才拷进去的 → **不被指纹清单覆盖** ✗
+#           而且 zip **已经打好了** → **插件根本不在 payload.zip 里** ✗✗
+#        ② `-PayloadZip`：`$PayloadDir` 是空串 → `Join-Path` **抛异常 → 整个脚本死掉** ✗✗
+#           （脚本头部文档说 `-PayloadZip` 是支持的 ✓ → **那条路从来没走通过** ✓）
+#     ✓ 现在：**移到清单生成之前** ✓✓ 且**只在有载荷目录时执行** ✓（用 zip 时没什么可拷 ✓）
+#     ★ 注意：这里**不能**判断 `$PayloadZip` 是否为空 ✗ —— 上面第 65 行已经把它赋成非空了 ✓
+#       → 必须判断 `$PayloadDir` ✓✓
+if ($PayloadDir -ne '' -and (Test-Path $PayloadDir)) {
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$pluginSrc = Join-Path $repoRoot 'plugin\dsh-minato-bridge'
+if (Test-Path $pluginSrc) {
+    $pluginDst = Join-Path $PayloadDir 'plugin\dsh-minato-bridge'
+    New-Item -ItemType Directory -Path $pluginDst -Force | Out-Null
+    Copy-Item (Join-Path $pluginSrc '*') $pluginDst -Recurse -Force
+    $pn = @(Get-ChildItem $pluginDst -Recurse -File).Count
+    Write-Host ("  桥接插件已放进载荷 ✓（" + $pn + " 个文件 ✓ 供 bridge-install 命令使用 ✓ 已进指纹清单 ✓）")
+} else {
+    Write-Host ("  ! 没找到插件源码 " + $pluginSrc + " ✓ 载荷里不会有插件 ✓（bridge-install 会明确说不存在 ✓）")
+}
+}
 if (-not $SkipManifest) {
 Write-Host "重算整份清单（覆盖载荷内**所有**文件）…"
 $manifest = Join-Path $PayloadDir "hashes.txt"
@@ -114,22 +139,12 @@ Write-Host ("清单已写 ✓ " + $lines.Count + " 个文件（覆盖 100% ✓�
 }
 if (-not (Test-Path $PayloadZip)) { throw "载荷 zip 不存在：$PayloadZip" }
 
-# ---- ①a **把可选的桥接插件放进载荷** ✓✓（用户要求：「安装桥接插件有按钮吗」✓）
-#   ✗ 原来载荷里**没有插件** ✗（实测：安装目录与桌面载荷的相关文件都是 0 个 ✓）
-#     → 用户装了工具箱也**拿不到插件** ✗ → 「运行中」这个功能对用户等于不存在 ✓
-#   ✓ 现在：把仓库的 `plugin/dsh-minato-bridge` 拷进 `<载荷>/plugin/` ✓
-#     清单是**递归整个载荷目录**生成的 ✓ → 插件文件会被自动覆盖 ✓✓
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$pluginSrc = Join-Path $repoRoot 'plugin\dsh-minato-bridge'
-if (Test-Path $pluginSrc) {
-    $pluginDst = Join-Path $PayloadDir 'plugin\dsh-minato-bridge'
-    New-Item -ItemType Directory -Path $pluginDst -Force | Out-Null
-    Copy-Item (Join-Path $pluginSrc '*') $pluginDst -Recurse -Force
-    $pn = @(Get-ChildItem $pluginDst -Recurse -File).Count
-    Write-Host ("  桥接插件已放进载荷 ✓（" + $pn + " 个文件 ✓ 供 bridge-install 命令使用 ✓）")
-} else {
-    Write-Host ("  ! 没找到插件源码 " + $pluginSrc + " ✓ 载荷里不会有插件 ✓（bridge-install 会明确说不存在 ✓）")
-}
+# ---- ①a **桥接插件已在上面放进载荷** ✓✓（m-1 修复：必须早于清单与 zip ✓）
+#   原来的位置在这里（zip 之后 ✓）→ 两个问题：
+#     ✗ `-PayloadDir` 时插件是在**清单算完之后**才拷进去的 → **不被指纹清单覆盖** ✗
+#       而且是在 **zip 打好之后** → **根本进不了 payload.zip** ✗✗
+#     ✗ `-PayloadZip` 时 `$PayloadDir` 是空的 → `Join-Path` 抛异常 → **脚本直接死** ✗✗
+#   ✓ 现在：块被移到 `if (-not $SkipManifest)` 之前 ✓ 并且只在**有载荷目录**时执行 ✓✓
 # ---- ①b **版本号归一化** ✓✓（审计 C4 CRITICAL）----
 #   ✗ CI 传 `-Version "${{ github.ref_name }}"` ✓ 而 tag 是 `v3.0.0` ✓
 #     → `AssemblyVersion("v3.0.0.0")` → **Roslyn CS7034** ✗ → 构建必然失败 ✓

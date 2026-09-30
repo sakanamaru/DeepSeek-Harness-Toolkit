@@ -56,7 +56,7 @@ internal static class Installer
     [STAThread]
     private static int Main(string[] args)
     {
-        bool uninstall = false, silent = false, noPath = false, noShortcuts = false;
+        bool uninstall = false, silent = false, noPath = false, noShortcuts = false, addPath = false;
         bool installExplicit = false;
         string dirArg = null;
         // ✓✓ 审计 M9 修复：**双击 uninstall.exe 应当卸载** ✓
@@ -77,6 +77,7 @@ internal static class Installer
             if (a == "--uninstall") uninstall = true;
             else if (a == "--silent") silent = true;
             else if (a == "--no-path") noPath = true;
+            else if (a == "--path") addPath = true;   // m-3 FIX: explicit opt-in for a silent install
             else if (a == "--no-shortcuts") noShortcuts = true;
             else if (a.StartsWith("--dir=", StringComparison.Ordinal)) dirArg = a.Substring(6).Trim('"');
             else if (a == "--install") installExplicit = true;   // ✓ 叫 uninstall.exe 时想装回来，加这个 ✓
@@ -99,7 +100,11 @@ internal static class Installer
         try
         {
             if (uninstall || (calledAsUninstaller && !installExplicit)) return RunUninstall(silent);   // ✓ M9 ✓
-            if (silent) return RunInstall(dirArg, false, noPath, noShortcuts, null);
+            // m-3 FIX (installer audit MINOR): this used to pass wantPath=false unconditionally, so
+        // --no-path was a no-op and a silent install could never add the PATH entry at all, which
+        // contradicts what the build script and the README describe. PATH is added only when the
+        // user asks for it with --path.
+        if (silent) return RunInstall(dirArg, addPath, noPath, noShortcuts, null);
             // AppUserModelID ✓（任务栏分组与图标更可靠 ✓ 也让"固定到任务栏"认得出是本程序 ✓）
             try { SetCurrentProcessExplicitAppUserModelID("dsh-minato.installer"); } catch { }
             Application.EnableVisualStyles();
@@ -579,6 +584,24 @@ internal static class Installer
                 psi.EnvironmentVariables["DSHT_UNINSTALL_TARGET"] = target;
                 Process.Start(psi);
                 Log("已迁移到 " + tmp + " 并从那里继续 ✓（这样目标目录才能被删掉 ✓）");
+                // m-3 FIX (installer audit MINOR): every uninstall used to leave a copy of the
+                // uninstaller in the temporary folder forever (21 had accumulated on the test
+                // machine). The relocated child deletes itself on the way out; the parent cannot do
+                // it because the file is locked while the child runs.
+                try
+                {
+                    string selfTmp = Process.GetCurrentProcess().MainModule.FileName;
+                    if (!string.IsNullOrEmpty(selfTmp) && selfTmp.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(Path.GetDirectoryName(selfTmp), Path.GetTempPath().TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                    {
+                        System.Diagnostics.ProcessStartInfo killer = new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c ping -n 2 127.0.0.1 >nul & del /f /q \"" + selfTmp + "\"");
+                        killer.UseShellExecute = false;
+                        killer.CreateNoWindow = true;
+                        System.Diagnostics.Process.Start(killer);
+                        Log("已安排删除自己的临时副本 ✓（" + selfTmp + " ✓ 不再在 %TEMP% 里堆积 ✓）");
+                    }
+                }
+                catch (Exception tmx) { Log("安排删除临时副本失败（不致命 ✓）: " + tmx.Message); }
                 // ★★★ **M5 修复（审计 MAJOR —— 卸载器报成功但其实什么都没做）** ✓✓
                 //   ✗ 原来 `Process.Start(psi); … return 0;` ✗ —— **子进程的退出码被丢掉** ✗✗
                 //     → 身份校验拒绝（返回 2 ✓）· 用户点了"否"（返回 2 ✓）· 删除失败（返回 5 ✓）
@@ -838,7 +861,7 @@ internal static class Installer
                     for (int vi = 0; vi < ver.Length; vi++)
                     {
                         char c = ver[vi];
-                        if (!(char.IsDigit(c) || c == '.' || c == '-' || c == '_')) { looksVersion = false; break; }
+                        if (!(char.IsDigit(c) || c == '.')) { looksVersion = false; break; }   // m-3 FIX: a version is digits and dots; dashes and underscores let names like app-2024-01 through, and the folder was then deleted recursively.
                     }
                     if (!looksVersion) { Log("**跳过** " + nm + " ✓（名字不像版本目录 ✓ 可能是你自己的 ✓ 不删 ✓）"); continue; }
                     try { Directory.Delete(dd, true); removedOur++; } catch { }
