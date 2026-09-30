@@ -250,7 +250,24 @@ await check("**N6：有投影值的会话照常发行（值原样带上）** ✓
 // ---- index.js 的 cordis 声明（旧测试完全没覆盖 ✗）----
 await check("**index.js 的 cordis 声明** ✓（name 与 patch 的 id 一致 ✓ inject 是真实服务 ✓）", () => {
 	assert.equal(pluginName, "shio-bridge");
-	assert.deepEqual(pluginInject, ["sessions", "sessionProjections"]);
+	assert.deepEqual(pluginInject, ["sessions", "sessionQuery", "sessionProjections"]);
+});
+
+// ---- ★★★ 回归护栏：inject 必须覆盖 snapshot.js 真正用到的每个 ctx 服务 ----
+// 起因（2026-10-01 真机 dsh 实测抓到）：`inject` 里漏了 `sessionQuery` ✗
+//   → cordis 不给未声明的服务 → `ctx.sessionQuery` 是 undefined ✗
+//   → `collectSessions` 内部 catch 吞掉 → 返回空 → `tick()` 直接 return → **永不写快照** ✗✗
+//   → 而**单元测试天然测不出来** ✗（它自己喂 ctx，所以"少声明一个依赖"永远是绿的 ✓）
+//   → 真机表现：插件装上了、`--dump-config` 里配置也注入了 ✓ **但什么都不发生** ✓
+// 这条测试把"声明与使用必须一致"变成一次就报出来的失败 ✓✓
+await check("**inject 覆盖 snapshot.js 用到的每个 ctx 服务** ✓✓（真机 bug 的护栏）", () => {
+	const src = fs.readFileSync(new URL("../snapshot.js", import.meta.url), "utf8");
+	const used = new Set();
+	for (const m of src.matchAll(/ctx\.([A-Za-z_][A-Za-z0-9_]*)/g)) used.add(m[1]);
+	used.delete("on");   // cordis 的通用事件接口 ✓ 不是服务 ✓ 不用声明 ✓
+	const missing = [...used].filter((u) => !pluginInject.includes(u));
+	assert.deepEqual(missing, [],
+		"这些 ctx 服务没写进 inject → 真 dsh 里会是 undefined → 插件静默什么都不做 ✗: " + missing.join(", "));
 });
 
 // ---- apply ----
