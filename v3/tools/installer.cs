@@ -42,7 +42,20 @@ internal static class Installer
     private static int Main(string[] args)
     {
         bool uninstall = false, silent = false, noPath = false, noShortcuts = false;
+        bool installExplicit = false;
         string dirArg = null;
+        // ✓✓ 审计 M9 修复：**双击 uninstall.exe 应当卸载** ✓
+        //   ✗ 原来它打开的是**安装向导**（标题"dsh-minato 安装程序"、主按钮"安装"）✗
+        //     → 用户点下去会**把它重新装回来/覆盖** ✓ 而 README 明说"卸载用安装目录里的 uninstall.exe" ✗✓
+        //   ✓ 现在按**自身文件名**判断：叫 uninstall.exe → 默认走卸载 ✓（要装回来用 --install ✓）
+        bool calledAsUninstaller = false;
+        try
+        {
+            string selfName = Process.GetCurrentProcess().MainModule.FileName;
+            if (!string.IsNullOrEmpty(selfName))
+                calledAsUninstaller = string.Equals(Path.GetFileNameWithoutExtension(selfName), "uninstall", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { }
         for (int i = 0; i < args.Length; i++)
         {
             string a = args[i] == null ? "" : args[i].Trim();
@@ -51,12 +64,13 @@ internal static class Installer
             else if (a == "--no-path") noPath = true;
             else if (a == "--no-shortcuts") noShortcuts = true;
             else if (a.StartsWith("--dir=", StringComparison.Ordinal)) dirArg = a.Substring(6).Trim('"');
+            else if (a == "--install") installExplicit = true;   // ✓ 叫 uninstall.exe 时想装回来，加这个 ✓
         }
         Log("=== dsh-minato installer " + (uninstall ? "(uninstall)" : "(install)") + " ===");
         Log("args: " + string.Join(" ", args));
         try
         {
-            if (uninstall) return RunUninstall(silent);
+            if (uninstall || (calledAsUninstaller && !installExplicit)) return RunUninstall(silent);   // ✓ M9 ✓
             if (silent) return RunInstall(dirArg, false, noPath, noShortcuts, null);
             // AppUserModelID ✓（任务栏分组与图标更可靠 ✓ 也让"固定到任务栏"认得出是本程序 ✓）
             try { SetCurrentProcessExplicitAppUserModelID("dsh-minato.installer"); } catch { }
@@ -393,7 +407,14 @@ internal static class Installer
                     "建议先关掉它们再卸载。" + Environment.NewLine + Environment.NewLine +
                     "要**先卸载、剩下的重启后再删**吗？",
                     AppName + " 卸载", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
-                if (dr != DialogResult.Yes) { Log("用户选择先关闭程序再卸载"); return 0; }
+                if (dr != DialogResult.Yes)
+                {
+                    // ✓✓ 审计 M1 修复：拒绝就是拒绝 ✓ 必须返回 2 ✗ 不能返回 0 ✓
+                    //   ✗ 原来返回 0 → 静默/自动化调用方把"什么都没做"读成"卸载成功" ✓
+                    //     （而且与本文件 268-269 行自己的注释直接矛盾 ✓）
+                    Log("用户选择先关闭程序再卸载 → 拒绝，未做任何改动（退出码 2 ✓）");
+                    return 2;
+                }
             }
             RemoveShortcuts();
             RemoveFromUserPath(Path.Combine(target, "bin"));
@@ -590,7 +611,27 @@ internal static class Installer
                     if (mismatch == 1) { LastVerifyResult = name; return name; }   // 记下来 ✓ 完成页要显示 ✓
                 }
             }
-            Log("载荷校验：核对 " + checkedCount + " 个文件，不符 " + mismatch + " 个 ✓");
+            // ★★ 审计发现 #3（子代理实测）：清单原来只覆盖 **3 / 244** 个文件 ✗
+            //    → 篡改 `gui\Avalonia.Base.dll`（不在清单里）→ **exit 0 装上了带木马的 DLL** ✗✗
+            //    → 而日志还宣称「**每个文件**的指纹都与包内清单一致」✗✗ ← **假承诺** ✓
+            //   ✓ 现在：**数清载荷里的文件总数** ✓ 与清单覆盖数比对 ✓ **覆盖不全就拒绝** ✓✓
+            int payloadFiles = 0;
+            // ✗ 不能把 `hashes.txt` 自己算进去 ✗ —— 清单无法包含自己的哈希 ✓
+            //   （第一版就这么写的 → 清单 243 / 计数 244 → **正常安装被误拒** ✗ 回归测试抓到了 ✓）
+            try
+            {
+                payloadFiles = 0;
+                foreach (string pf in Directory.GetFiles(staging, "*", SearchOption.AllDirectories))
+                    if (!string.Equals(Path.GetFileName(pf), "hashes.txt", StringComparison.OrdinalIgnoreCase)) payloadFiles++;
+            }
+            catch { }
+            Log("载荷校验：清单覆盖 " + checkedCount + " / 载荷共 " + payloadFiles + " 个文件，不符 " + mismatch + " 个");
+            if (payloadFiles > 0 && checkedCount < payloadFiles)
+            {
+                LastVerifyResult = "清单只覆盖 " + checkedCount + "/" + payloadFiles + " 个文件";
+                Log("载荷校验不完整 ✗ 清单只覆盖 " + checkedCount + " / " + payloadFiles + " 个文件 → **拒绝安装** ✓（覆盖不全等于没校验 ✓）");
+                return "清单只覆盖 " + checkedCount + "/" + payloadFiles + " 个文件（未覆盖的文件无法验证 ✓）";
+            }
             LastVerifyResult = "";
             return null;
         }

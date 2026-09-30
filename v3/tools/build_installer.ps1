@@ -16,7 +16,9 @@ param(
     [string]$PayloadZip = "",
     [string]$Version = "3.0.0",
     [string]$Out = "",
-[string]$Roslyn = "",
+    [string]$Roslyn = "",
+    # 测试用：保留包内现有清单，不重算 ✓（用来验证"清单不全必须拒绝" ✓）
+    [switch]$SkipManifest = $false,
     [string]$Repo = (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent)
 )
 $ErrorActionPreference = "Stop"
@@ -64,7 +66,25 @@ if ($PayloadZip -eq "") {
     Write-Host "打包载荷：$PayloadDir"
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     # 用 ZipFile 但**统一正斜杠** ✓（解压侧也做了 zip-slip 校验 ✓）
-    [System.IO.Compression.ZipFile]::CreateFromDirectory($PayloadDir, $PayloadZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+    # ★★ 审计发现 #3 修复：**打包前重算整份 hashes.txt** ✓✓
+#   ✗ 原来清单只覆盖 3 个文件（dsh-minato.exe / dsh-minato-gui.exe / gui/dsht-gui.exe）✗
+#     → 实测：篡改 gui\Avalonia.Base.dll（不在清单里）→ **exit 0 装上了带木马的 DLL** ✗✗
+#   ✓ 现在：**载荷里每个文件都算 SHA-256** ✓ → 覆盖 100% ✓ 篡改任何一个都会被拒 ✓✓
+#   （哈希 165MB 约 1 秒 ✓ 值得 ✓）
+if (-not $SkipManifest) {
+Write-Host "重算整份清单（覆盖载荷内**所有**文件）…"
+$manifest = Join-Path $PayloadDir "hashes.txt"
+$lines = New-Object System.Collections.Generic.List[string]
+$all = Get-ChildItem $PayloadDir -Recurse -File | Where-Object { $_.Name -ne 'hashes.txt' } | Sort-Object FullName
+foreach ($f in $all) {
+    $rel = $f.FullName.Substring($PayloadDir.TrimEnd('\').Length).TrimStart('\')
+    $h = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower()
+    $lines.Add($h + "  " + $rel)
+}
+[System.IO.File]::WriteAllLines($manifest, $lines, (New-Object System.Text.UTF8Encoding($false)))
+Write-Host ("清单已写 ✓ " + $lines.Count + " 个文件（覆盖 100% ✓）")
+} else { Write-Host "跳过清单重算 ✓（-SkipManifest ✓ 用于测试 ✓）" }
+[System.IO.Compression.ZipFile]::CreateFromDirectory($PayloadDir, $PayloadZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
     Write-Host ("  载荷 " + [Math]::Round((Get-Item $PayloadZip).Length / 1MB, 1) + " MB ✓")
 }
 if (-not (Test-Path $PayloadZip)) { throw "载荷 zip 不存在：$PayloadZip" }
