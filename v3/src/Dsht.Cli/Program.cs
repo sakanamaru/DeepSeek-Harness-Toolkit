@@ -230,7 +230,10 @@ namespace Dsht.Cli
             // N11 FIX (CLI audit MINOR): this value is pasted into a dsh command line, and the
             // plugin-patching command already validates its profile names - a name like "web&calc"
             // would otherwise chain a command on Windows. Same rule here.
-            if (!string.IsNullOrEmpty(profile) && !System.Text.RegularExpressions.Regex.IsMatch(profile, @"^[A-Za-z0-9._-]+$"))
+            // F-E FIX (CLI final review): the character class allows dots, so "." and ".." passed - and the name
+            // is joined into a path later, making the verification read a parent directory instead of a profile.
+            if (!string.IsNullOrEmpty(profile) && (profile == "." || profile == ".."
+                || !System.Text.RegularExpressions.Regex.IsMatch(profile, @"^[A-Za-z0-9._-]+$")))
             {
                 Console.WriteLine("BRIDGE_FAIL " + T("profile 名字不合法（只允许字母数字与 . _ - ✓）：" + profile, "invalid profile name: " + profile));
                 return 0;
@@ -504,8 +507,11 @@ namespace Dsht.Cli
                 // fake marker line into the output the GUI parses.
                 Console.WriteLine("SESSION " + MarkerText.Encode(s.Id)
                     + " title=" + MarkerText.Encode(s.Title)
-                    + " created=" + (string.IsNullOrEmpty(s.CreatedAt) ? "unknown" : s.CreatedAt)
-                    + " last=" + (string.IsNullOrEmpty(s.LastPromptAt) ? "unknown" : s.LastPromptAt)
+                    // F-D FIX (CLI final review): the id and title were escaped but these two were not, and a
+                    // timestamp read from a session file is external text - a newline in it injected a fake
+                    // marker line into the output the GUI parses (the reviewer reproduced SESSIONS_OK 9999).
+                    + " created=" + (string.IsNullOrEmpty(s.CreatedAt) ? "unknown" : MarkerText.Encode(s.CreatedAt))
+                    + " last=" + (string.IsNullOrEmpty(s.LastPromptAt) ? "unknown" : MarkerText.Encode(s.LastPromptAt))
                     + " turns=" + s.Turns
                     + " steps=" + s.Steps
                     + " in=" + s.TotalInputTokens
@@ -2767,9 +2773,14 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     bool explicitlySet = false;
                     try
                     {
+                        // F-H FIX (CLI final review): an empty or whitespace-only file, or a whitespace-only
+                        // environment variable, counted as "explicitly configured" even though the source ignores
+                        // it - so a fresh install could still show the misleading "configured folder is missing".
                         string selFile = System.IO.Path.Combine(reg.Get<IPaths>().StateDir, ".backup-dir");
-                        explicitlySet = System.IO.File.Exists(selFile)
-                            || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DSH_MINATO_BACKUP_DIR"));
+                        bool selSet = false;
+                        try { selSet = System.IO.File.Exists(selFile) && System.IO.File.ReadAllText(selFile).Trim().Length > 0; } catch { }
+                        string envSel = Environment.GetEnvironmentVariable("DSH_MINATO_BACKUP_DIR");
+                        explicitlySet = selSet || !string.IsNullOrEmpty((envSel == null ? "" : envSel).Trim());
                     }
                     catch { }
                     if (explicitlySet && !string.IsNullOrEmpty(br2) && !System.IO.Directory.Exists(br2))

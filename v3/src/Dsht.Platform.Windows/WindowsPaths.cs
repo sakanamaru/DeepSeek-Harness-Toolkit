@@ -39,7 +39,13 @@ namespace Dsht.Platform.Windows
                             if (File.Exists(sel))
                             {
                                 string chosen = File.ReadAllText(sel).Trim();
-                                if (chosen.Length > 0) return chosen;
+                                // F-G FIX (CLI final review): the environment branch below was normalised but this
+                                // one was returned verbatim, so a hand-edited relative value resolved against the
+                                // current directory. Normalise it the same way.
+                                if (chosen.Length > 0)
+                                {
+                                    try { return Path.GetFullPath(chosen); } catch { return chosen; }
+                                }
                             }
                         }
                         catch { }
