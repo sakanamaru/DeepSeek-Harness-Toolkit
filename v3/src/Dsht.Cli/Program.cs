@@ -430,30 +430,43 @@ namespace Dsht.Cli
             ISessionStatsSource src = reg.Get<ISessionStatsSource>();
             List<SessionStat> list = new List<SessionStat>();
             string source = "disk";
+            // ★★★ **插件 N6 补全（插件复审 —— 快照非空就**独占**了历史）** ✓✓
+            //   ✗ 原来：快照里只要有**一条**（插件在 dsh 运行时必然有活会话 ✓）
+            //     → 整个磁盘投影**被跳过** ✗✗ → **只有历史记录、没有活会话的那些会话从面板消失** ✓
+            //       （N6 之前它们至少还在 ✓ 只是 turns=0 ✓ —— 所以"回退到磁盘"只在不跑 dsh 时成立 ✗）
+            //   ✓ 现在：**合并** ✓✓ —— 快照优先（活会话的实时数字 ✓），磁盘**补齐**快照没覆盖的会话 ✓
+            System.Collections.Generic.HashSet<string> have =
+                new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
             string snap = src.ReadText(src.SnapshotPath);
             if (snap != null)
             {
                 SessionStat[] fromSnap = SessionStats.ParseSnapshot(snap);
-                if (fromSnap.Length > 0) { list.AddRange(fromSnap); source = "snapshot"; }
+                if (fromSnap.Length > 0)
+                {
+                    list.AddRange(fromSnap);
+                    for (int i = 0; i < fromSnap.Length; i++) if (fromSnap[i].Id != null) have.Add(fromSnap[i].Id);
+                    source = "snapshot";
+                }
             }
+            // 磁盘投影：**总是扫** ✓ 只补快照里没有的 id ✓（有快照的那条用快照的数字 ✓ 更实时 ✓）
+            int fromDisk = 0;
+            string[] files = src.ListSessionFiles();
+            for (int i = 0; i < files.Length; i++)
+            {
+                string id = System.IO.Path.GetFileNameWithoutExtension(files[i]);
+                if (id != null && id.StartsWith("session-", StringComparison.Ordinal)) id = id.Substring("session-".Length);
+                if (id != null && have.Contains(id)) continue;
+                SessionStat s = SessionStats.ParseSessionProjection(src.ReadText(files[i]), id);
+                if (s != null) { list.Add(s); if (id != null) have.Add(id); fromDisk++; }
+            }
+            if (fromDisk > 0) source = (source == "snapshot") ? "snapshot+disk" : "disk";
             if (list.Count == 0)
             {
-                string[] files = src.ListSessionFiles();
-                for (int i = 0; i < files.Length; i++)
+                string agg = src.ReadText(src.AggregatePath);
+                if (agg != null)
                 {
-                    string id = System.IO.Path.GetFileNameWithoutExtension(files[i]);
-                    if (id != null && id.StartsWith("session-", StringComparison.Ordinal)) id = id.Substring("session-".Length);
-                    SessionStat s = SessionStats.ParseSessionProjection(src.ReadText(files[i]), id);
-                    if (s != null) list.Add(s);
-                }
-                if (list.Count == 0)
-                {
-                    string agg = src.ReadText(src.AggregatePath);
-                    if (agg != null)
-                    {
-                        SessionStat[] a = SessionStats.ParseAggregate(agg);
-                        if (a.Length > 0) { list.AddRange(a); source = "aggregate"; }
-                    }
+                    SessionStat[] a = SessionStats.ParseAggregate(agg);
+                    if (a.Length > 0) { list.AddRange(a); source = "aggregate"; }
                 }
             }
             if (list.Count == 0)
