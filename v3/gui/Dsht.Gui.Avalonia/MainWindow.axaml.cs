@@ -523,9 +523,33 @@ namespace Dsht.Gui.Avalonia
                 //      "…is not a snap cgroup for tag snap.firefox.firefox" ✓✓
                 //    → **`snap run firefox` 能自建正确的 cgroup** ✓✓ 实测只差 DISPLAY ✓（GUI 在会话内有 ✓✓）
                 // → 所以 Linux 上顺序：snap run firefox → firefox → chromium 系 → xdg-open ✓
+                // ✗✗ 第三层（真机实测 2026-09-30）：snap firefox 还**必须有 `WAYLAND_DISPLAY`** ✓✓
+                //    报错原文：Missing Wayland display, WAYLAND_DISPLAY is empty ✓
+                //    → 如果 GUI 自己的环境里没有它（例如被非常规方式启动 ✗）→ **替它探测出来** ✓✓
+                string wd = Environment.GetEnvironmentVariable("WAYLAND_DISPLAY");
+                if (string.IsNullOrEmpty(wd))
+                {
+                    try
+                    {
+                        string rd = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
+                        if (string.IsNullOrEmpty(rd)) rd = "/run/user/" + Environment.GetEnvironmentVariable("UID");
+                        if (!string.IsNullOrEmpty(rd) && System.IO.Directory.Exists(rd))
+                        {
+                            string[] socks = System.IO.Directory.GetFiles(rd, "wayland-*");
+                            for (int si = 0; si < socks.Length; si++)
+                            {
+                                string nm = System.IO.Path.GetFileName(socks[si]);
+                                if (nm.EndsWith(".lock", StringComparison.Ordinal)) continue;
+                                wd = nm; break;
+                            }
+                        }
+                    }
+                    catch { }
+                }
                 try
                 {
                     ProcessStartInfo sp = new ProcessStartInfo("snap", "run firefox \"" + url + "\"") { UseShellExecute = false };
+                    if (!string.IsNullOrEmpty(wd)) sp.Environment["WAYLAND_DISPLAY"] = wd;   // 补上它 ✓✓
                     Process p0 = Process.Start(sp);
                     if (p0 != null) return;   // snap 不在的话会抛异常 ✓ 落到下面的候选 ✓
                 }
