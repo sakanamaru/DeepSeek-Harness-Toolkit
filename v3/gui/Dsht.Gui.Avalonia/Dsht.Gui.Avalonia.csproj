@@ -13,6 +13,8 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <AssemblyName>dsht-gui</AssemblyName>
+    <!-- 窗口/任务栏图标 ✓（用户实测：GUI 的图标是占位符 ✗ 加上这个就对了 ✓） -->
+    <ApplicationIcon>Assets\logo-icon.ico</ApplicationIcon>
     <RootNamespace>Dsht.Gui.Avalonia</RootNamespace>
     <!-- Avalonia 自带 DPI 处理，不需要 Win32 清单 -->
   </PropertyGroup>

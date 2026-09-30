@@ -55,6 +55,8 @@ internal static class Installer
         {
             if (uninstall) return RunUninstall(silent);
             if (silent) return RunInstall(dirArg, false, noPath, noShortcuts, null);
+            // AppUserModelID ✓（任务栏分组与图标更可靠 ✓ 也让"固定到任务栏"认得出是本程序 ✓）
+            try { SetCurrentProcessExplicitAppUserModelID("dsh-minato.installer"); } catch { }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             using (InstallerForm f = new InstallerForm(dirArg))
@@ -636,6 +638,9 @@ internal static class Installer
     // ---- PATH：**绝不用 setx** ✗（会截断 PATH ✓）→ HKCU\Environment + 广播 ✓ ----
     private const int HWND_BROADCAST = 0xffff;
     private const int WM_SETTINGCHANGE = 0x1a;
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+
     [DllImport("user32.dll")] internal static extern bool ReleaseCapture();
     [DllImport("user32.dll")] internal static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
 
@@ -757,6 +762,10 @@ internal sealed class InstallerForm : Form
         FormBorderStyle = FormBorderStyle.None;   // ✓ 去掉 Windows 自带的框 ✓（用户要求："X 和 minato 一样在里面" ✓）
         MaximizeBox = false; MinimizeBox = false;
         Font = new Font("Microsoft YaHei UI", 9f);
+        // ★ 显式设窗口图标 ✓✓（用户实测："启动后内部的和任务栏的"还是占位符 ✗）
+        //   原因：**无边框窗口 + 自绘标题栏**时，WinForms 不会自动采用 exe 的图标 ✗
+        //   → 显式从**自己的 exe** 取图标 ✓ → 任务栏 / Alt+Tab / 窗口都对了 ✓✓
+        try { this.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         BackColor = Color.FromArgb(250, 250, 252);
 
         _title = new Label { Text = "安装 dsh-minato", Font = new Font("Microsoft YaHei UI", 16f, FontStyle.Bold), ForeColor = Color.FromArgb(30, 30, 40), AutoSize = true, Location = new Point(28, 70) };
