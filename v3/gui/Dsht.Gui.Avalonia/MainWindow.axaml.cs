@@ -183,6 +183,12 @@ namespace Dsht.Gui.Avalonia
         ///     → 而 CLI 要求 `--yes` ✓（`BKDEL_PLAN … 确认请加 --yes` ✓ 它只打印计划**什么都不删** ✗）
         ///     → 界面上**两次点击确认都点完了** ✓ 结果**备份还在** ✓✓ **完全解释通了** ✓
         ///   ✓ 现在：**补上 --yes** ✓（界面的两次点击本身就是确认 ✓ 与 house style 一致 ✓）</summary>
+        /// <summary>安装**可选的桥接插件** ✓✓（用户要求：「安装桥接插件有按钮吗」✓）。
+        /// 它只读 ✓ 不联网 ✓ 不发模型请求 ✓ 不改 dsh 状态 ✓
+        /// 装了 → 工具箱能显示「运行中」（运行态是进程内事实 ✓ 磁盘投影给不了 ✗）
+        /// 不装 → 那一格显示 unknown ✓ 其余功能不缺 ✓✓
+        /// 写操作 → 走**两次点击确认**（house style ✓ 与删除备份/清除数据一致 ✓）✓</summary>
+        public void InstallBridge() { RunCliAction("bridge-install --yes", "安装桥接插件"); }
         public void DeleteBackup(string name) { RunCliAction("backup-delete --path " + name + " --yes", "删除备份"); }
 
         public void DryRunRestore(string name) { RunCliAction("restore --dry-run --path " + name, "恢复预览"); }
