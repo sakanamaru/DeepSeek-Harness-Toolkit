@@ -2033,6 +2033,36 @@ namespace Dsht.Gui.Avalonia.Shells
                 Foreground = Palette.TextDim, FontSize = 12, TextWrapping = TextWrapping.Wrap
             });
 
+            // ★★★ **用户要求（2026-09-30）**：「安装桥接插件有按钮吗」✓✓ → 这里补上 ✓
+            //   **它是什么**：把 dsh 的会话/token 状态写成一份**只读快照** ✓
+            //     装了 → 工具箱能显示「**运行中**」✓ 这是**磁盘投影给不了的事实** ✓
+            //             （运行态是 dsh 进程内的 ✓ 不落盘 ✓）
+            //     不装 → 那一格显示 unknown ✓ **其余功能一点都不缺** ✓✓
+            //   **为什么值得装**：这是**唯一**需要插件才能拿到的事实 ✓ 也是插件存在的唯一理由 ✓
+            //   **诚实边界**：装不装**由用户决定** ✓ 本工具不替他决定 ✓ 也不假装它必需 ✓
+            //   **实测过的坑**（写进按钮下方说明 ✓ 用户会踩 ✓）：
+            //     · 需要 pnpm ✗ 而 dsh **不会**替你装 ✓
+            //     · 装上了但 patch 缺行 → **不会加载且不报错** ✗ → 命令会**如实报** ✓✓
+            {
+                StackPanel bc = new StackPanel { Spacing = 8 };
+                bc.Children.Add(T("可选的桥接插件", 13, Palette.Text, FontWeight.SemiBold));
+                bc.Children.Add(T("装了它，工具箱才能显示「运行中」—— 运行态是 dsh 进程内的事实，磁盘投影给不了。不装也能用，那一格显示 unknown。插件只读、不联网、不发模型请求、不改 dsh 状态。", 11.5, Palette.TextDim));
+                bool armed = host.PendingDelete == "bridge";
+                Button ib = GhostButton(
+                    T(armed ? "再点一次确认安装" : "安装桥接插件", 12, armed ? Brushes.White : Palette.Accent),
+                    delegate
+                    {
+                        if (host.PendingDelete != "bridge") { host.PendingDelete = "bridge"; host.Rebuild(); return; }
+                        host.PendingDelete = "";
+                        host.InstallBridge();
+                    },
+                    true);
+                if (armed) ib.Background = Palette.Accent;
+                bc.Children.Add(ib);
+                bc.Children.Add(T("需要 dsh 与 pnpm（dsh 不会替你装 pnpm，先 npm i -g pnpm）。装完重启 dsh 生效。结果如实显示，包括「包已 link 但 patch 缺行 → 不会加载」这种情形。", 11, Palette.TextFaint));
+                s.Children.Add(Card(bc, new Thickness(0), new Thickness(16, 14)));
+            }
+
             // —— 工具行：过滤 + 搜索（搜索框就地刷新下面的卡片列表，不重建整页，避免输入框丢焦点）——
             Grid tools = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
             Control chips = Segmented(new string[] { "全部", "只看第三方", "只看官方" }, host.ProfilesFilter, delegate(int i) { host.SetProfilesFilter(i); });

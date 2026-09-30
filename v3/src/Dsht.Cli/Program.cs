@@ -46,6 +46,7 @@ namespace Dsht.Cli
             if (cmd == "") return Menu(reg);
             if (cmd == "status") return Status(reg, Has(args, "--detail"));
             if (cmd == "describe") return Describe(reg);
+            if (cmd == "bridge-install") return BridgeInstall(args, reg);   // ✓ 可选的桥接插件 ✓（用户要求"安装桥接插件有按钮吗" ✓）
             if (cmd == "profilecheck") return ProfileCheck(args, reg);
             if (cmd == "profilepatch") return ProfilePatch(args, reg);
             if (cmd == "profiles") return Profiles(reg);
@@ -136,6 +137,196 @@ namespace Dsht.Cli
         }
 
         /// <summary>profilecheck：标记行逐条对齐 v2.x 的 ProfileCheckCli。</summary>
+        // ================================================================ 桥接插件（可选）
+
+        /// <summary>在 PATH 里找一个可执行文件 ✓（找不到返回空串 ✓ 不猜 ✓）。</summary>
+        private static string WhichOnPath(string name)
+        {
+            try
+            {
+                string pathVar = Environment.GetEnvironmentVariable("PATH") ?? "";
+                string[] dirs = pathVar.Split(System.IO.Path.PathSeparator);
+                string[] exts = new string[] { ".exe", ".cmd", ".bat", "" };
+                for (int i = 0; i < dirs.Length; i++)
+                {
+                    string d = dirs[i];
+                    if (string.IsNullOrEmpty(d)) continue;
+                    for (int j = 0; j < exts.Length; j++)
+                    {
+                        try
+                        {
+                            string f = System.IO.Path.Combine(d.Trim(), name + exts[j]);
+                            if (System.IO.File.Exists(f)) return f;
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+            return "";
+        }
+
+        /// <summary>工具箱自己所在的目录 ✓（单文件发布下 `Assembly.Location` 是空的 ✗ → 用 MainModule ✓）。</summary>
+        private static string SelfDir()
+        {
+            string exe = "";
+            try { exe = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName; } catch { }
+            if (!string.IsNullOrEmpty(exe))
+            {
+                try { string d = System.IO.Path.GetDirectoryName(exe); if (!string.IsNullOrEmpty(d)) return d; } catch { }
+            }
+            return AppDomain.CurrentDomain.BaseDirectory;
+        }
+
+        /// <summary>跑一个外部命令并拿回 stdout+stderr ✓（超时 120 秒 ✓ 超时如实说 ✓）。</summary>
+        private static string RunExternal(string file, string argLine, out int exitCode)
+        {
+            exitCode = -1;
+            try
+            {
+                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(file, argLine);
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
+                psi.StandardOutputEncoding = new System.Text.UTF8Encoding(false);
+                psi.StandardErrorEncoding = new System.Text.UTF8Encoding(false);
+                using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
+                {
+                    System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                    System.Threading.Tasks.Task<string> so = System.Threading.Tasks.Task.Run(delegate { return p.StandardOutput.ReadToEnd(); });
+                    System.Threading.Tasks.Task<string> se = System.Threading.Tasks.Task.Run(delegate { return p.StandardError.ReadToEnd(); });
+                    if (!p.WaitForExit(120000)) { try { p.Kill(); } catch { } exitCode = -2; return "（超时 120 秒，已结束该进程）"; }
+                    exitCode = p.ExitCode;
+                    sb.Append(so.Result);
+                    string err = se.Result;
+                    if (!string.IsNullOrEmpty(err)) sb.Append(Environment.NewLine).Append("[stderr] ").Append(err);
+                    return sb.ToString();
+                }
+            }
+            catch (Exception ex) { return "（无法启动 " + file + "：" + ex.Message + "）"; }
+        }
+
+        /// <summary>安装**可选的桥接插件** ✓✓（用户要求：「安装桥接插件有按钮吗」✓）。
+        ///
+        /// **它做什么**：把 dsh 的会话/token 状态写成一份**只读快照** ✓
+        ///   让工具箱能显示「**运行中**」—— 这是**磁盘投影给不了的事实** ✓
+        ///   也是这个插件存在的**唯一理由** ✓✓（不装 → 工具箱降级为磁盘投影 ✓ 功能不缺 ✓ 只是没有运行态 ✓）
+        /// **它不做什么**：不发模型请求 ✓ 不改 dsh 状态 ✓ 不读会话正文 ✓ 不联网 ✓ 任何失败静默 ✓
+        ///
+        /// ★★ **实测踩过的三个坑**（2026-09-30 真机 ✓ 我都验证过 ✓）：
+        ///   ① `dsh plugin add` **需要 pnpm** ✗ —— 而 dsh **不会**替你装它 ✓
+        ///      → 没有 pnpm 就**明确告诉用户怎么装** ✓ **绝不假装成功** ✗
+        ///   ② `add` 成功时会 link 进 profile ✓ **并把插件的 patch 合并进 `cordis.patch.yml`** ✓
+        ///   ③ **必须验证 patch 里真的有 `shio-bridge` 行** ✗✗ ——
+        ///      否则插件**根本不会加载** ✓ 而 dsh **不会报任何错** ✗（"0 处加载错误"是**假绿** ✓ 我踩过 ✓）
+        ///
+        /// 标记行：BRIDGE_PLAN / BRIDGE_NO_PNPM / BRIDGE_NO_DSH / BRIDGE_NO_PLUGIN / BRIDGE_OK
+        ///         / BRIDGE_FAIL / BRIDGE_VERIFY / BRIDGE_NOTE</summary>
+        private static int BridgeInstall(string[] args, ServiceRegistry reg)
+        {
+            string profile = Flag(args, "--profile");
+            if (string.IsNullOrEmpty(profile)) profile = "web";
+            bool yes = Has(args, "--yes");
+
+            string selfDir = SelfDir();
+            string plugin = System.IO.Path.Combine(System.IO.Path.Combine(selfDir, "plugin"), "dsh-minato-bridge");
+
+            Console.WriteLine("BRIDGE_PLAN " + T(
+                "把可选的桥接插件装进 dsh 的 profile「" + profile + "」✓ 它只读 ✓ 不联网 ✓ 不发模型请求 ✓ 不改 dsh 状态 ✓",
+                "install the optional bridge plugin into dsh profile '" + profile + "' - read-only, no network, no model calls, no writes to dsh state"));
+            Console.WriteLine("BRIDGE_NOTE " + T(
+                "装了它，工具箱才能显示「运行中」（运行态是进程内事实，磁盘投影给不了 ✗）；不装也能用 ✓ 只是那一位显示 unknown ✓",
+                "with it, the toolkit can show which sessions are running; without it, that one field is unknown"));
+
+            if (!System.IO.Directory.Exists(plugin))
+            {
+                Console.WriteLine("BRIDGE_NO_PLUGIN " + T(
+                    "随包分发的插件目录不存在：" + plugin + " ✓（官方发布包会带 plugin/dsh-minato-bridge ✓ 源码编译请从仓库的 plugin/ 目录取 ✓）",
+                    "bundled plugin folder not found: " + plugin));
+                return 0;
+            }
+
+            string dsh = ResolveDsh(reg);
+            if (string.IsNullOrEmpty(dsh))
+            {
+                Console.WriteLine("BRIDGE_NO_DSH " + T("没有找到 dsh ✓ 请先装 dsh 再装插件 ✓", "dsh not found; install dsh first"));
+                return 0;
+            }
+
+            string pnpm = WhichOnPath("pnpm");
+            if (string.IsNullOrEmpty(pnpm))
+            {
+                Console.WriteLine("BRIDGE_NO_PNPM " + T(
+                    "没有找到 pnpm ✗ —— 而 `dsh plugin add` **依赖它** ✓ 请先装：npm i -g pnpm ✓ 然后重跑本命令 ✓"
+                    + "（dsh 自己**不会**替你装 pnpm ✓ 这一步不能省 ✓）",
+                    "pnpm not found - dsh's plugin command needs it. Install it with: npm i -g pnpm, then run this again."));
+                return 0;
+            }
+            Console.WriteLine("BRIDGE_NOTE " + T("pnpm: " + pnpm + " ✓ · dsh: " + dsh + " ✓ · 插件: " + plugin + " ✓",
+                                                "pnpm: " + pnpm + " / dsh: " + dsh + " / plugin: " + plugin));
+
+            if (!yes)
+            {
+                Console.WriteLine("BRIDGE_PLAN " + T("这是写操作（会改 profile 的 package.json 与 cordis.patch.yml ✓ 装前 dsh 自己会保留原状 ✓）—— 确认请加 --yes ✓",
+                                                     "this writes to the profile - add --yes to proceed"));
+                return 0;
+            }
+
+            int rc = -1;
+            string outp = RunExternal(dsh, "plugin --profile " + profile + " add \"" + plugin + "\"", out rc);
+            Console.WriteLine("BRIDGE_FAIL_RAW " + rc + " " + (outp == null ? "" : outp.Trim().Replace("\r", "").Replace("\n", " | ")));
+
+            // ③ **验证**：profile 的 patch 里必须真的有 shio-bridge ✓✓（否则装了也不加载 ✗ 且不报错 ✗）
+            string profileDir = "";
+            try
+            {
+                string dataRoot = reg.Get<IPaths>().DataRoot;
+                profileDir = System.IO.Path.Combine(System.IO.Path.Combine(dataRoot, "profiles"), profile);
+            }
+            catch { }
+
+            bool linked = false, patched = false;
+            if (!string.IsNullOrEmpty(profileDir))
+            {
+                try { linked = System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.Combine(profileDir, "node_modules"), "dsh-minato-bridge")); } catch { }
+                try
+                {
+                    string patch = System.IO.Path.Combine(profileDir, "cordis.patch.yml");
+                    if (System.IO.File.Exists(patch))
+                    {
+                        string txt = System.IO.File.ReadAllText(patch);
+                        patched = txt != null && txt.IndexOf("shio-bridge", StringComparison.Ordinal) >= 0;
+                    }
+                }
+                catch { }
+            }
+
+            Console.WriteLine("BRIDGE_VERIFY linked=" + (linked ? "1" : "0") + " patched=" + (patched ? "1" : "0"));
+
+            if (linked && patched)
+            {
+                Console.WriteLine("BRIDGE_OK " + T(
+                    "插件已装好并**已注册进加载树** ✓✓ 重启 dsh 后生效 ✓ 届时工具箱的「运行中」会变成真实值 ✓",
+                    "plugin installed and registered in the load tree; restart dsh to take effect"));
+            }
+            else if (linked && !patched)
+            {
+                Console.WriteLine("BRIDGE_FAIL " + T(
+                    "包已经 link 进 profile ✓ 但 `cordis.patch.yml` 里**没有 `shio-bridge` 行** ✗✗ → 插件**不会加载** ✓ 而且 dsh **不会报错** ✗"
+                    + "（实测过的坑 ✓）。请手动把插件自带的 cordis.patch.yml 追加到该 profile 的 cordis.patch.yml ✓ 然后重启 dsh ✓",
+                    "package linked but the patch entry is missing, so the plugin will not load and dsh will not report an error; append the plugin's cordis.patch.yml to the profile's"));
+            }
+            else
+            {
+                Console.WriteLine("BRIDGE_FAIL " + T(
+                    "安装没有成功 ✓ 退出码 " + rc + " ✓ 上面 BRIDGE_FAIL_RAW 是原始输出 ✓（最常见原因：pnpm 不在 PATH ✓ 或 dsh 的 profile 名不对 ✓）",
+                    "install did not succeed; exit code " + rc + "; see BRIDGE_FAIL_RAW above"));
+            }
+            return 0;
+        }
+
+
         private static int ProfileCheck(string[] args, ServiceRegistry reg)
         {
             string dir = Flag(args, "--dir");
