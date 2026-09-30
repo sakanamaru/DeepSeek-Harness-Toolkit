@@ -47,6 +47,10 @@ $checks = @(
   @('stop 守卫条件',             'IsDshCommandLine(r.Pid) && !Has(args, "--force")', 1),
   @('标记哈希辅助',              'private static void AddContentHashToMarker', 1),
   @('多工作区打包',              'private static int PackageAllWorkspaces', 1),
+  @('命令 backup-dir',           'cmd == "backup-dir"', 1),
+  @('命令 bridge-install',       'cmd == "bridge-install"', 1),
+  @('命令 update-center',        'cmd == "update-center"', 1),
+  @('命令 autostart',            'cmd == "autostart"', 1),
   @('多工作区前置约束',          '_wss.Length >= 2 ? null', 1),
   @('通道说明',                  'CHANNEL_NOTE', 1),
   # ---- 命令面（31 个 ✓）：删掉任何一个 = **静默失去一个功能** ✗ ----

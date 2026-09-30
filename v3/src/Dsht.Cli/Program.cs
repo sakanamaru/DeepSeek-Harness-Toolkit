@@ -2120,7 +2120,23 @@ Console.WriteLine("  config-get | config-set <key> <value>");
 
             if (Has(args, "--reset"))
             {
-                try { if (!string.IsNullOrEmpty(sel) && System.IO.File.Exists(sel)) System.IO.File.Delete(sel); } catch { }
+                // D1 FIX (CLI audit MAJOR): the delete was wrapped in an empty catch and success was
+                // printed unconditionally, so a read-only or locked settings file left the user told
+                // the reset had worked while every later backup kept going to the old folder. Verify.
+                if (!string.IsNullOrEmpty(sel) && System.IO.File.Exists(sel))
+                {
+                    try { System.IO.File.Delete(sel); }
+                    catch (Exception dex)
+                    {
+                        Console.WriteLine("BACKUP_DIR_FAIL " + T("无法恢复默认（删不掉设置文件）：" + dex.Message, "cannot reset: " + dex.Message));
+                        return 0;
+                    }
+                    if (System.IO.File.Exists(sel))
+                    {
+                        Console.WriteLine("BACKUP_DIR_FAIL " + T("设置文件删掉后**仍然存在** ✓ 请手动删除：" + sel, "the settings file still exists: " + sel));
+                        return 0;
+                    }
+                }
                 Console.WriteLine("BACKUP_DIR_RESET " + bk.BackupsRoot + " " + T("已恢复默认备份位置 ✓", "reset to the default backups folder"));
                 return 0;
             }
@@ -2132,7 +2148,15 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 return 0;
             }
 
-            // 校验：必须是绝对路径 ✓ 必须能创建 ✓（失败就说清原因 ✓ 不猜 ✓）
+            // D3 FIX (CLI audit MAJOR): the comment said "must be an absolute path" but nothing
+            // checked it, so a relative value was resolved against the current directory and then
+            // stored - making every later command depend on where it was run from, including which
+            // folder a delete targeted.
+            if (!System.IO.Path.IsPathRooted(set))
+            {
+                Console.WriteLine("BACKUP_DIR_FAIL " + T("必须是**绝对路径** ✓ 相对路径会随当前目录变化 ✗：" + set, "the path must be absolute: " + set));
+                return 0;
+            }
             string full;
             try { full = System.IO.Path.GetFullPath(set); }
             catch (Exception ex) { Console.WriteLine("BACKUP_DIR_FAIL " + T("路径无效：" + ex.Message, "invalid path: " + ex.Message)); return 0; }
