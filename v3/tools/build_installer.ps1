@@ -199,10 +199,15 @@ $errs = @($r | Where-Object { $_ -match "error" })
 $warns = @($r | Where-Object { $_ -match "warning CS" })   # N-16 FIX: a warning means dead or unreachable code shipped silently
 if ($errs.Count -gt 0) {
     $errs | Select-Object -First 8 | ForEach-Object { Write-Host ("  " + $_.ToString().Trim()) }
+    # N-H FIX (installer final review): csc has already written the output file by the time we get here, so a
+    # failed build used to leave a broken executable on disk for a later step to pick up.
+    Remove-Item $Out -Force -ErrorAction SilentlyContinue
     throw "编译失败（$($errs.Count) 个错）"
 }
 if ($warns.Count -gt 0) {
     $warns | Select-Object -First 8 | ForEach-Object { Write-Host ("  WARN " + $_.ToString().Trim()) }
+    # N-H FIX: same here - the exe exists, but the build is refused, so it must not survive.
+    Remove-Item $Out -Force -ErrorAction SilentlyContinue
     throw "安装器编译有警告（$($warns.Count) 个）✗ 警告往往意味着死代码或不可达代码 ✓ 请修掉再发版 ✓"
 }
 $fi = Get-Item $Out
