@@ -1195,6 +1195,40 @@ namespace Dsht.Gui.Avalonia.Shells
             c2.Children.Add(BarChart(hl, hc, Math.Max(Math.Max(low, mid), Math.Max(high, unknown)), Palette.Good, "个"));
             c2.Children.Add(T("命中率越高越省钱；unknown 表示该会话没有这个字段（空会话），我们不会把它算成 0%。", 11.5, Palette.TextFaint));
             s.Children.Add(Card(c2, new Thickness(0), new Thickness(18, 16)));
+
+            // ③ 近 14 天 **token 消耗趋势**（A 类：会话视角，但看的是"花了多少"而不是"开了几个" ✓）
+            long[] dayTok = new long[days];
+            long maxTok = 0;
+            for (int i = 0; i < d.Rows.Count; i++)
+            {
+                string cr = d.Rows[i].Created;
+                if (string.IsNullOrEmpty(cr) || cr.Length < 10) continue;
+                string dy = cr.Substring(0, 10);
+                for (int k = 0; k < days; k++)
+                {
+                    if (labels[k].Length == 5 && dy.Length == 10 && dy.Substring(5, 5) == labels[k]) dayTok[k] += d.Rows[i].In;
+                }
+            }
+            for (int k = 0; k < days; k++) if (dayTok[k] > maxTok) maxTok = dayTok[k];
+            long[] dayTokK = new long[days];
+            for (int k = 0; k < days; k++) dayTokK[k] = dayTok[k] / 1000;   // 以 k token 为单位，标签才读得下
+            StackPanel c3 = new StackPanel { Spacing = 8 };
+            c3.Children.Add(T("近 14 天 token 消耗（输入侧合计，k token；按 dsh 记录的创建时间归日）", 13, Palette.Text, FontWeight.Bold));
+            c3.Children.Add(BarChart(labels, dayTokK, maxTok / 1000, Palette.Warn, "k tok"));
+            c3.Children.Add(T("合计 " + SessionRow.Human(Sum(dayTok)) + " token　最高 " + SessionRow.Human(maxTok) + "/天（创建时间缺失的会话不计入，不猜）", 11.5, Palette.TextFaint));
+            s.Children.Add(Card(c3, new Thickness(0), new Thickness(18, 16)));
+
+            // ④ **体检结论分布**（B 类：运维视角 —— 这台机器现在健康吗 ✓）
+            DoctorSummary dsum = host.Doctor;
+            string[] dl = new string[] { "通过", "提醒", "错误" };
+            long[] dv = dsum == null || !dsum.Ok ? new long[] { 0, 0, 0 } : new long[] { dsum.Pass, dsum.Warn, dsum.Error };
+            StackPanel c4 = new StackPanel { Spacing = 8 };
+            c4.Children.Add(T("体检结论分布（条目数）", 13, Palette.Text, FontWeight.Bold));
+            c4.Children.Add(BarChart(dl, dv, Math.Max(Math.Max(dv[0], dv[1]), dv[2]), Palette.Accent, "项"));
+            c4.Children.Add(T(dsum == null || !dsum.Ok
+                ? "还没有体检结果 —— 进「体检」页会自动跑一次 doctor。这里**不显示 0**，因为没跑过和跑过且全过是两件事（不猜）。"
+                : "来自 doctor 的分级条目；错误项在「体检」页可以逐条看到原因。", 11.5, Palette.TextFaint));
+            s.Children.Add(Card(c4, new Thickness(0), new Thickness(18, 16)));
             return s;
         }
 
