@@ -1373,22 +1373,49 @@ namespace Dsht.Gui.Avalonia.Shells
         /// <summary>柱状图：等宽柱子 + 底部标签（纯 Grid/Border，零依赖）。</summary>
         private static Control BarChart(string[] labels, long[] values, long max, IBrush brush, string unit)
         {
-            Grid g = new Grid { Height = 132 };
+            bool allZero = true;
+            for (int i = 0; i < values.Length; i++) if (values[i] != 0) { allZero = false; break; }
+
+            if (allZero)
+            {
+                // ① 空状态 ✓✓（用户"美化一下前端" ✓）：原来是一排 2px 小条 ✗ 看着就是空的 ✓
+                //    现在居中说明 ✓ —— 而且**不假造数据** ✓ 与项目诚实原则一致 ✓
+                StackPanel es = new StackPanel { Spacing = 5, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
+                es.Children.Add(T("暂无数据", 13.5, Palette.TextDim, FontWeight.SemiBold));
+                es.Children.Add(T("这个区间里没有可统计的记录（是没有，不是 0）", 11, Palette.TextFaint));
+                return new Border { Height = 132, Child = es };
+            }
+
+            Grid outer = new Grid { Height = 132 };
+            // ② 水平网格线 ✓（4 条淡线 ✓ 让空白区有结构 ✓ 不再是一片白 ✓）
+            Grid glines = new Grid { RowDefinitions = new RowDefinitions("*,*,*,*") };
+            for (int k = 0; k < 4; k++)
+            {
+                Border ln = new Border { Height = 1, Background = Palette.Border, Opacity = 0.45, VerticalAlignment = VerticalAlignment.Top };
+                Grid.SetRow(ln, k);
+                glines.Children.Add(ln);
+            }
+            outer.Children.Add(glines);
+
+            Grid g = new Grid();
             for (int i = 0; i < labels.Length; i++) g.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
             for (int i = 0; i < labels.Length; i++)
             {
                 long v = values[i];
-                double h = max <= 0 ? 2 : 4 + (v * 88.0 / max);
+                double h = 4 + (v * 88.0 / max);
                 StackPanel col = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Spacing = 3, Margin = new Thickness(2, 0) };
                 col.Children.Add(T(v == 0 ? "" : v.ToString(), 10, Palette.TextDim));
-                col.Children.Add(new Border { Height = h, CornerRadius = new CornerRadius(3), Background = v == 0 ? Palette.BarTrack : brush });
+                col.Children.Add(new Border { Height = h, CornerRadius = new CornerRadius(4), Background = v == 0 ? Palette.BarTrack : brush });
                 // 列多时（如 30 天）标签会挤在一起 ✗ → 只标每 3 个 ✓（条形本身照画 ✓ 数据不省略 ✓）
                 bool showLabel = labels.Length <= 16 || (i % 3) == 0 || i == labels.Length - 1;
                 col.Children.Add(T(showLabel ? labels[i] : "", 9.5, Palette.TextFaint));
                 Grid.SetColumn(col, i);
                 g.Children.Add(col);
             }
-            return g;
+            outer.Children.Add(g);
+            // ③ 基线 ✓（一条实一点的底线 ✓ 让条形有"落地"感 ✓）
+            outer.Children.Add(new Border { Height = 1, Background = Palette.Border, VerticalAlignment = VerticalAlignment.Bottom });
+            return outer;
         }
         private static Control OverviewContent(MainWindow host)
         {
