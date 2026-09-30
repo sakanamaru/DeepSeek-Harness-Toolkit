@@ -11,7 +11,23 @@ namespace Dsht.Platform.Linux
     {
         public string SelfPath()
         {
-            try { return Assembly.GetExecutingAssembly().Location; } catch { return ""; }
+            try
+            {
+                string loc = Assembly.GetExecutingAssembly().Location;
+                if (!string.IsNullOrEmpty(loc) && File.Exists(loc)) return loc;
+                // ✗✗ 单文件发布（.NET 5+）时 Location 是**空的** ✗
+                //    → 实测：SelfHash/SelfFileName/ReadManifest **全为 null** → Judge 得 Unknown → 整条自检"跳过" ✓✓
+                //    （与版本号那次是**同一个坑** ✓ 单文件下要用**进程主模块路径** ✓）
+                try
+                {
+                    System.Diagnostics.Process proc = System.Diagnostics.Process.GetCurrentProcess();
+                    if (proc != null && proc.MainModule != null && !string.IsNullOrEmpty(proc.MainModule.FileName))
+                        return proc.MainModule.FileName;
+                }
+                catch { }
+                return "";
+            }
+            catch { return ""; }
         }
 
         public string SelfFileName()
