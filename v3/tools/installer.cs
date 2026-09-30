@@ -35,6 +35,8 @@ internal static class Installer
     /// <summary>本次安装的随机身份令牌 ✓✓（同时写进 marker 与 ARP ✓ 卸载时双向比对 ✓
     /// 这是审计发现的 C1 修复：原来只判 marker 文件存在 → 谁都能复制一个 → 就能删任意目录 ✗）。</summary>
     internal static string InstallToken = "";
+    /// <summary>--force：允许装进非空目录 ✓（审计 C1 的显式逃生口 ✓ 默认关闭 ✓）。</summary>
+    internal static bool ForceInstall = false;
     private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "dsh-minato-install.log");
     private static readonly StringBuilder LogBuf = new StringBuilder();
 
@@ -65,6 +67,7 @@ internal static class Installer
             else if (a == "--no-shortcuts") noShortcuts = true;
             else if (a.StartsWith("--dir=", StringComparison.Ordinal)) dirArg = a.Substring(6).Trim('"');
             else if (a == "--install") installExplicit = true;   // ✓ 叫 uninstall.exe 时想装回来，加这个 ✓
+            else if (a == "--force") ForceInstall = true;        // ✓ 审计 C1：显式允许装进非空目录 ✓
         }
         Log("=== dsh-minato installer " + (uninstall ? "(uninstall)" : "(install)") + " ===");
         Log("args: " + string.Join(" ", args));
@@ -125,6 +128,27 @@ internal static class Installer
         // ✗ 原来暂存放在 target **里面** → CreateDirectory 会把 target 一起建出来 ✗
         //    → 于是"篡改包被拒绝"时磁盘上**留下一个空目录** ✗（实测确认 ✓）
         // ✓ 改放在 **target 的父目录**：同卷 ✓（改名才能成功 ✓）且**完全不碰 target** ✓✓
+        // ★★★ **C1 修复（审计 CRITICAL）** ✓✓
+        //   ✗ 原来安装**接受任意目录** ✗ 从不拒绝非空目录 ✓ 也从不告诉用户"卸载会删整棵树" ✗
+        //   → 装进 `D:\dev\myproject`（里面有别人的东西 ✓）→ **卸载时整棵树被递归删除** ✗✗
+        //   → 最坏：`--dir=\\srv\share\` → 在**共享根**装成功 → 卸载**递归删共享内容** ✗✗
+        //   ✓ 修：目标**存在、非空、且没有我们的标记** → **拒绝** ✓（要么换目录 ✓ 要么显式 --force ✓）
+        //     这样"我们装过的地方"才允许被卸载器整棵删除 ✓✓
+        if (Directory.Exists(target))
+        {
+            bool targetEmpty = false;
+            try { targetEmpty = Directory.GetFileSystemEntries(target).Length == 0; } catch { }
+            bool targetOurs = File.Exists(Path.Combine(target, ".dsh-minato-install"));
+            if (!targetEmpty && !targetOurs && !ForceInstall)
+            {
+                Log("拒绝安装：目标目录非空且不是本工具的安装目录 ✓ " + target);
+                throw new InvalidOperationException(
+                    "**这个目录里已经有别的东西了。**" + Environment.NewLine + Environment.NewLine +
+                    "为了安全，安装器**不会**装进一个非空目录 —— 因为卸载时会删除整个安装目录 ✓" + Environment.NewLine + Environment.NewLine +
+                    "目录：" + target + Environment.NewLine + Environment.NewLine +
+                    "请换一个空目录（推荐默认位置 ✓），或者确认里面没有重要文件后用 --force 强制安装 ✓");
+            }
+        }
         string parentDir = Path.GetDirectoryName(target);
         if (string.IsNullOrEmpty(parentDir)) parentDir = Path.GetTempPath();
         Directory.CreateDirectory(parentDir);
@@ -368,7 +392,14 @@ internal static class Installer
                     try { pathOk = string.Equals(Path.GetFullPath(markerPathVal).TrimEnd('\\'), Path.GetFullPath(target).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase); }
                     catch { pathOk = false; }
                 }
-                looksOurs = tokenOk && pathOk;
+                // ✗✗ 审计 #2：**不对称 = 锁死** ✗
+                //   装的时候 token 写入是"非致命"✓（catch 只记日志 ✓）
+                //   卸的时候却"必须"✓ → 注册表被清理工具删掉 / 二次安装改写共享 key → **永久卸不掉** ✗✗
+                // ✓ 修：**注册表里没有 token 时，不因此拒绝** ✓（回退到 marker + path 检查 ✓）
+                //       但 **token 存在且不匹配 → 拒绝** ✓（那才是伪造 ✓✓）
+                bool regMissing = string.IsNullOrEmpty(regToken);
+                looksOurs = (regMissing ? true : tokenOk) && pathOk;
+                if (regMissing) Log("注册表里没有 token（被清理过或二次安装 ✓）→ 回退到 marker+path 判定 ✓ 不因此拒绝 ✓");
                 if (File.Exists(markerPath) && !looksOurs)
                     Log("身份校验未通过 ✓ tokenOk=" + tokenOk + " pathOk=" + pathOk + "（markerToken=" + (markerToken.Length > 8 ? markerToken.Substring(0,8) : markerToken) + " regToken=" + (regToken.Length > 8 ? regToken.Substring(0,8) : regToken) + "）");
             }
@@ -416,9 +447,11 @@ internal static class Installer
                     return 2;
                 }
             }
-            RemoveShortcuts();
-            RemoveFromUserPath(Path.Combine(target, "bin"));
-            RemoveArp();
+            // ✗✗ 审计 #1：原来**先** RemoveArp/RemoveShortcuts/RemoveFromUserPath ✗
+            //   而 marker 回写（M8）需要 token 还在注册表里才能通过身份校验 ✗
+            //   → ARP 已删 → tokenOk=false → **重试永远拒绝** ✗✗（我的 M8 修复是死代码 ✓）
+            // ✓ 修：**先删目录，再清理注册表/快捷方式/PATH** ✓✓
+            //   目录没删干净时**保留 ARP 与快捷方式** ✓ → 用户能从"应用和功能"再试 ✓✓
             string dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh");
             WriteDataNote(dataDir);   // ✓ 桌面文档：指出数据在哪 ✓（**不删数据** ✓✓）
             // 先改名再删 ✓（文件被占用也能改名成功 ✓ 避免"需要重启" ✓）
@@ -580,9 +613,20 @@ internal static class Installer
         try
         {
             string mf = Path.Combine(staging, "hashes.txt");
-            if (!File.Exists(mf)) { Log("包内没有 hashes.txt → 跳过载荷校验（开发构建属正常 ✓ 但会明确记录 ✓）"); return null; }
+            // ✗✗ 审计 #4：**没有清单 → 跳过校验** ✗ → 而安装器**只用于发布包** ✓ 发布包**必须**有清单 ✓
+            //   ✓ 修：**没有清单 = 拒绝** ✓（开发构建用 build_installer.ps1 会生成 ✓）
+            if (!File.Exists(mf))
+            {
+                LastVerifyResult = "包里没有清单";
+                Log("包内没有 hashes.txt ✗ → **拒绝安装**（发布包必须带清单 ✓）");
+                return "安装包里没有 hashes.txt（无法校验任何文件 ✓）";
+            }
             string[] lines = File.ReadAllLines(mf);
             int checkedCount = 0, mismatch = 0;
+            // ✓ 审计 #3：**用集合而不是计数** ✓（计数可被"重复行"或"指向任意已存在文件"骗过 ✗）
+            System.Collections.Generic.HashSet<string> verified = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string stagingFull = "";
+            try { stagingFull = Path.GetFullPath(staging).TrimEnd(Path.DirectorySeparatorChar); } catch { }
             for (int i = 0; i < lines.Length; i++)
             {
                 string t = lines[i] == null ? "" : lines[i].Trim();
@@ -601,13 +645,29 @@ internal static class Installer
                     if (File.Exists(c2)) full = c2;
                 }
                 if (full == null) { Log("清单里有但包里没有（跳过 ✓ 不误报 ✗）: " + name); continue; }
+                // ✓ 审计 #3：**必须限制在 staging 内** ✗（Path.Combine 接受绝对路径与 `..\..` ✗）
+                if (stagingFull.Length > 0)
+                {
+                    string fullAbs = "";
+                    try { fullAbs = Path.GetFullPath(full); } catch { }
+                    if (fullAbs.Length == 0 || !fullAbs.StartsWith(stagingFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Log("清单条目指向包外 ✗ " + name + " → **拒绝安装** ✓");
+                        LastVerifyResult = "清单条目指向包外：" + name;
+                        return "清单条目指向包外：" + name;
+                    }
+                    verified.Add(fullAbs);
+                }
                 checkedCount++;
                 string got = Sha256Of(full);
                 if (string.IsNullOrEmpty(got)) continue;
                 if (!string.Equals(want, got, StringComparison.OrdinalIgnoreCase))
                 {
                     mismatch++;
-                    Log("指纹不符 ✗ " + name + " 期望=" + want.Substring(0, 12) + "… 实际=" + got.Substring(0, 12) + "…");
+                    // ✗✗ 审计 #4：`want.Substring(0, 12)` 遇**短哈希**直接抛 ArgumentOutOfRangeException ✗
+                    //   → 外层 catch → 返回 null → **被当成"已验证"** ✗✗（木马只要让清单格式坏掉就绕过 ✓）
+                    // ✓ 修：安全截断 ✓
+                    Log("指纹不符 ✗ " + name + " 期望=" + Brief(want) + "… 实际=" + Brief(got) + "…");
                     if (mismatch == 1) { LastVerifyResult = name; return name; }   // 记下来 ✓ 完成页要显示 ✓
                 }
             }
@@ -622,10 +682,32 @@ internal static class Installer
             {
                 payloadFiles = 0;
                 foreach (string pf in Directory.GetFiles(staging, "*", SearchOption.AllDirectories))
-                    if (!string.Equals(Path.GetFileName(pf), "hashes.txt", StringComparison.OrdinalIgnoreCase)) payloadFiles++;
+                    // ✓ 审计 #3：**只排除根目录的清单** ✗（原来任意深度的 hashes.txt 都被排除 ✗
+                    //   → 走私一个 `gui\hashes.txt` 既不计也不验 ✗✗）
+                    {
+                        string rel = pf.Substring(staging.TrimEnd(Path.DirectorySeparatorChar).Length).TrimStart(Path.DirectorySeparatorChar);
+                        if (!string.Equals(rel, "hashes.txt", StringComparison.OrdinalIgnoreCase)) payloadFiles++;
+                    }
             }
             catch { }
             Log("载荷校验：清单覆盖 " + checkedCount + " / 载荷共 " + payloadFiles + " 个文件，不符 " + mismatch + " 个");
+            // ✓ 审计 #3：**逐个检查每个载荷文件是否都被验证过** ✓✓（集合判定 ✓ 计数判定可绕过 ✗）
+            if (stagingFull.Length > 0)
+            {
+                foreach (string pf in Directory.GetFiles(staging, "*", SearchOption.AllDirectories))
+                {
+                    string rel = pf.Substring(staging.TrimEnd(Path.DirectorySeparatorChar).Length).TrimStart(Path.DirectorySeparatorChar);
+                    if (string.Equals(rel, "hashes.txt", StringComparison.OrdinalIgnoreCase)) continue;
+                    string abs = "";
+                    try { abs = Path.GetFullPath(pf); } catch { }
+                    if (abs.Length > 0 && !verified.Contains(abs))
+                    {
+                        LastVerifyResult = "未覆盖：" + rel;
+                        Log("载荷校验不完整 ✗ 这个文件**不在清单里** → **拒绝安装** ✓：" + rel);
+                        return "有文件不在清单里（无法验证 ✓）：" + rel;
+                    }
+                }
+            }
             if (payloadFiles > 0 && checkedCount < payloadFiles)
             {
                 LastVerifyResult = "清单只覆盖 " + checkedCount + "/" + payloadFiles + " 个文件";
@@ -635,7 +717,22 @@ internal static class Installer
             LastVerifyResult = "";
             return null;
         }
-        catch (Exception ex) { Log("载荷校验本身出错 → 放行（不能让校验把安装变成砖 ✓）: " + ex.Message); return null; }
+        // ✗✗ 审计 #4 的另一半：**校验本身出错 → 放行** ✗ → fail-open ✓
+        //   ✓ 修：**出错 = 无法确认 = 拒绝** ✓（fail-closed ✓ 校验的默认姿态必须是"不通过" ✓）
+        catch (Exception ex)
+        {
+            LastVerifyResult = "校验过程出错";
+            Log("载荷校验本身出错 ✗ → **拒绝安装**（无法确认包是否被改动 ✓）: " + ex.Message);
+            return "校验过程出错：" + ex.Message + "（无法确认包是否被改动，因此拒绝安装）";
+        }
+    }
+
+    /// <summary>安全截断哈希用于日志 ✓（审计 #4：`want.Substring(0,12)` 遇短哈希会抛异常 ✗
+    /// → 外层 catch → **被当成已验证** ✗✗ → 修：短于 12 就原样返回 ✓ 绝不抛 ✓）。</summary>
+    private static string Brief(string h)
+    {
+        if (string.IsNullOrEmpty(h)) return "";
+        return h.Length <= 12 ? h : h.Substring(0, 12);
     }
 
     private static string Sha256Of(string path)
@@ -1009,6 +1106,9 @@ internal sealed class InstallerForm : Form
         _title.Text = "正在安装…";
         _sub.Text = "窗口在解压前就已经显示出来了 ✓（冻结的窗口最像恶意软件 ✗）";
         bool wantPath = _chkPath.Checked, wantSc = _chkShortcuts.Checked;
+        // ✗✗ 审计 m4：`_chkDesktop.Checked` **从来没被读过** ✗ → 勾了没用 ✓（用户专门要求的功能 ✗）
+        // ✓ 修：把桌面选项**真的传下去** ✓
+        InstallerForm.WantDesktopShortcut = _chkDesktop.Checked;
         BackgroundWorker bw = new BackgroundWorker();
         bw.DoWork += delegate(object s, DoWorkEventArgs e)
         {
