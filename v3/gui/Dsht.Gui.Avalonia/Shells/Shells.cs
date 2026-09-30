@@ -1069,8 +1069,7 @@ namespace Dsht.Gui.Avalonia.Shells
             List<BackupItem> items = BackupItems.Parse(host.RawOutput);
 
             StackPanel bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            Button mk = new Button { Content = "＋ 立即备份" };
-            mk.Click += delegate { host.CreateBackup(); };
+            Button mk = PrimaryButton("＋ 立即备份", delegate { host.CreateBackup(); });   // 统一到工厂 ✓
             bar.Children.Add(mk);
             bar.Children.Add(T("共 " + items.Count + " 份（" + (host.Backups != null && host.Backups.Ok ? "backup-list 有效包" : "未读到清单") + "）", 12, Palette.TextDim));
             s.Children.Add(Card(bar, new Thickness(0), new Thickness(16, 14)));
@@ -1087,30 +1086,21 @@ namespace Dsht.Gui.Avalonia.Shells
                 head.Children.Add(T(b.SizeText + "　" + b.Time, 11.5, Palette.TextFaint));
                 row.Children.Add(head);
                 StackPanel acts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-                Button ex = new Button { Content = "导出", FontSize = 11.5 };
-                ex.Click += delegate { host.ExportBackup(b.Name); };
+                Button ex = GhostButton(T("导出", 11.5, Palette.Text), delegate { host.ExportBackup(b.Name); }, true);
                 acts.Children.Add(ex);
-                Button dr = new Button { Content = "恢复预览", FontSize = 11.5 };
-                dr.Click += delegate { host.DryRunRestore(b.Name); };
+                Button dr = GhostButton(T("恢复预览", 11.5, Palette.Text), delegate { host.DryRunRestore(b.Name); }, true);
                 acts.Children.Add(dr);
-                Button ap = new Button { Content = "应用恢复（仅隔离数据根）", FontSize = 11.5 };
-                ap.Click += delegate { host.ApplyRestore(b.Name); };
+                Button ap = GhostButton(T("应用恢复（仅隔离数据根）", 11.5, Palette.Text), delegate { host.ApplyRestore(b.Name); }, true);
                 acts.Children.Add(ap);
                 string key = "del:" + b.Name;
                 bool armed = host.PendingDelete == key;
-                Button del = new Button
-                {
-                    Content = armed ? "再点一次确认删除" : "删除",
-                    FontSize = 11.5,
-                    Background = armed ? Palette.Bad : Palette.WarnSoft,
-                    Foreground = armed ? Brushes.White : Palette.Warn
-                };
-                del.Click += delegate
+                Button del = GhostButton(T(armed ? "再点一次确认删除" : "删除", 11.5, armed ? Brushes.White : Palette.Warn), delegate
                 {
                     if (host.PendingDelete != key) { host.PendingDelete = key; host.Rebuild(); return; }
                     host.PendingDelete = "";
                     host.DeleteBackup(b.Name);
-                };
+                }, true);
+                del.Background = armed ? Palette.Bad : Palette.WarnSoft;
                 acts.Children.Add(del);
                 row.Children.Add(acts);
                 s.Children.Add(Card(row, new Thickness(0), new Thickness(16, 14)));
