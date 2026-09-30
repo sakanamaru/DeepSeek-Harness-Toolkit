@@ -382,13 +382,23 @@ namespace Dsht.Gui.Avalonia
         /// <summary>健康检查（profilecheck）的原始输出（懒加载一次）。</summary>
         public string Health { get { return _health; } }
         private string _health = "";
-        public void LoadHealth()
+        public void LoadHealth() { _ = LoadHealthAsync(); }
+
+        /// <summary>体检：**异步**跑 profilecheck + doctor ✓✓
+        /// 原来这两次调用是同步的、跑在 UI 线程上 ✗ —— doctor 要查网络，最坏各 30 秒超时
+        /// → 点"运行检查"会让整个窗口冻结近一分钟 ✗（2026-09-30 真机反馈"体检页面卡住" ✓）
+        /// 现在：先立刻显示"检查中…"（页面有反馈 ✓），两次调用都在后台线程 ✓，完成后刷新 ✓</summary>
+        private async System.Threading.Tasks.Task LoadHealthAsync()
         {
-            if (!string.IsNullOrEmpty(_health)) { BuildShell(); return; }
+            if (!string.IsNullOrEmpty(_health) && _health != "检查中…") { BuildShell(); return; }
             string cli = CliPath();
             if (cli == null) { _health = "未找到工具箱 CLI。"; BuildShell(); return; }
-            _health = Run(cli, "profilecheck");
-            _doctor = SummaryMarkers.ParseDoctor(Run(cli, "doctor"));
+            _health = "检查中…（profilecheck 与 doctor 在后台运行；doctor 会查网络，慢时可能十几秒）";
+            BuildShell();
+            string h = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "profilecheck"); });
+            string d = await System.Threading.Tasks.Task.Run(delegate { return Run(cli, "doctor"); });
+            _health = h;
+            _doctor = SummaryMarkers.ParseDoctor(d);
             BuildShell();
         }
 

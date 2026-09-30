@@ -66,8 +66,8 @@ if ($Fixtures) {
 }
 
 $cases = @(
-    @{ name = 'status';               args = @('status') },
-    @{ name = 'status --detail';      args = @('status','--detail') },
+    @{ name = 'status';               args = @('status'); ignore = '^STATUS_DESKTOP ' },
+    @{ name = 'status --detail';      args = @('status','--detail'); ignore = '^STATUS_DESKTOP ' },
     @{ name = 'profilecheck';         args = @('profilecheck') ; ignore = 'PROFILECHK_READ_ERRORS|PROFILECHK_INCOMPLETE' },
     @{ name = 'profilecheck --abs';   args = @('profilecheck','--abs') },
     @{ name = 'backup-list';          args = @('backup-list'); full = $true; ignore = '^BACKUP_LIST_IGNORED ' },
@@ -158,6 +158,14 @@ foreach ($c in $cases) {
     } else {
         $m2 = @(($o2 -split "`r?`n") | Where-Object { $_ -match '^(STATUS|PROFILECHK|DOCTOR|BACKUP|DRYRUN)_[A-Z0-9_]+' } | ForEach-Object { $_.Trim() })
         $m3 = @(($o3 -split "`r?`n") | Where-Object { $_ -match '^(STATUS|PROFILECHK|DOCTOR|BACKUP|DRYRUN)_[A-Z0-9_]+' } | ForEach-Object { $_.Trim() })
+        # ✗ 原先这里没有 ignore 过滤 → 非 full 用例声明 ignore 等于没写 ✗✗
+        # （2026-09-30 由 STATUS_DESKTOP 发现：status 声明了 ignore 却仍 FAIL ✓）
+        if ($c.ignore) {
+            $before = $m2.Count
+            $m2 = @($m2 | Where-Object { $_ -notmatch $c.ignore })
+            $m3 = @($m3 | Where-Object { $_ -notmatch $c.ignore })
+            $ignored = $before - $m2.Count
+        }
     }
     if ($c.mask) {
         $m2 = @($m2 | ForEach-Object { [regex]::Replace($_, $c.mask, 'dsh-data-TS') })
