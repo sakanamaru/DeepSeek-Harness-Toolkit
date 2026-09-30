@@ -2746,11 +2746,31 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     // first-backup rule.
                     string br2 = "";
                     try { br2 = reg.Get<IBackupSource>().BackupsRoot; } catch { }
-                    if (!string.IsNullOrEmpty(br2) && !System.IO.Directory.Exists(br2))
+                    // ★★★ **N6 修复（复审 MINOR —— D4 的回归）** ✓✓
+                    //   ✗ 原来只要"根不存在"就报"配置的备份目录不存在" ✗
+                    //     → 而**全新安装**时默认根 `<StateDir>\backup` **本来就不存在** ✗
+                    //     → **第一次备份**看到的是"你可能移动或删除了它" ✗✗ **完全误导** ✓
+                    //   ✓ 现在：**只有**显式配置过（`.backup-dir` 或环境变量）**而且**那个目录没了
+                    //     才走 D4 分支 ✓ 否则照常走"第一次备份"提示 ✓✓
+                    bool explicitlySet = false;
+                    try
+                    {
+                        string selFile = System.IO.Path.Combine(reg.Get<IPaths>().StateDir, ".backup-dir");
+                        explicitlySet = System.IO.File.Exists(selFile)
+                            || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DSH_MINATO_BACKUP_DIR"));
+                    }
+                    catch { }
+                    if (explicitlySet && !string.IsNullOrEmpty(br2) && !System.IO.Directory.Exists(br2))
                     {
                         Console.WriteLine("BACKUP_FAIL " + T("**配置的备份目录不存在** ✗：" + br2 + " ✓（你可能移动或删除了它 ✓）请用 `backup-dir --reset` 恢复默认 ✓ 或用 `--to <目录>` 指定新的 ✓", "the configured backups folder does not exist: " + br2));
                         return 0;
                     }
+                    // ★★★ **N9 修复（复审 MAJOR —— GUI 把**所有** BACKUP_FAIL 都当成"要选目录"）** ✓✓
+                    //   ✗ GUI 只认 `BACKUP_FAIL` ✗ → 而 CLI 对**每一种失败**都打它 ✓
+                    //     （配置目录不存在 ✓ `--to` 没生效 ✓ 数据目录不存在 ✓ 备份真的失败 ✓）
+                    //     → 那些**真正的错误**会被 GUI 静默地变成"弹文件夹选择器" ✗✗
+                    //   ✓ 现在：**打一个专用标记** ✓✓ GUI 只认它 ✓ 其余错误照常显示 ✓
+                    Console.WriteLine("BACKUP_NEEDS_DIR 第一次备份需要先选一个目录");
                     Console.WriteLine("BACKUP_FAIL " + T(
                         "**第一次备份必须指定目录** ✓ 请加 `--to <目录>` ✓（建议放在安装目录之外 ✓ 例如 D:\\dsh-backups ✓）"
                         + "；GUI 里第一次点「立即备份」也会弹窗让你选 ✓✓",
