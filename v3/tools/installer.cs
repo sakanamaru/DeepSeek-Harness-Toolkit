@@ -722,6 +722,13 @@ internal static class Installer
                     Log("**跳过越界条目** ✗（清单里写了安装目录之外的路径 ✓ 不删 ✓）: " + rel);
                     continue;
                 }
+                // ★★★ **C-1 修复（安装器审计 CRITICAL —— 我上一轮的自伤）** ✓✓
+                //   ✗✗ M2 的围栏修复把**删除本身**换成了检查**却没把删除加回来** ✗✗
+                //     → 卸载器**什么都不删** ✗（实测：`dsh-minato.exe` / `gui` / `plugin` 全留下 ✓）
+                //     → 却仍然打印「卸载完成。」+ 返回 **0** ✗ · ARP/快捷方式/PATH 还**已经清了** ✗
+                //     → 用户**无法重试**（卸载器自己也被删了 ✓）→ 只能手动下载 + `--force` ✗
+                //   ✓ 现在：**删除放在围栏之后** ✓✓（越界的跳过 ✓ 界内的照删 ✓）
+                if (File.Exists(fp)) { File.Delete(fp); removedOur++; }
             }
             foreach (string gen in new string[] { "uninstall.exe", ".dsh-minato-install", "hashes.txt" })
             {

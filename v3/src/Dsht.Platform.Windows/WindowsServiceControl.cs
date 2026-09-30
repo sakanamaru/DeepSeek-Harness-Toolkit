@@ -15,6 +15,11 @@ namespace Dsht.Platform.Windows
                 ProcessStartInfo psi = new ProcessStartInfo(fileName, arguments);
                 psi.UseShellExecute = false;
                 psi.CreateNoWindow = true;
+                // B2 FIX (audit MAJOR): the comment below claims the child is streamed into the start log,
+                // but without these two the ReadLine loops throw at once, the child inherits the console,
+                // and START_URL can never be found on Windows.
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
                 // 不继承调用方 stdio；并后台抽干（否则子进程占住管道，脚本/CI 场景会挂住 ✗ —— 与 Linux 侧同类问题）
                 if (!string.IsNullOrEmpty(workingDirectory)) psi.WorkingDirectory = workingDirectory;
                 Process p = Process.Start(psi);
@@ -47,8 +52,15 @@ namespace Dsht.Platform.Windows
             try
             {
                 ProcessStartInfo psi = new ProcessStartInfo("taskkill", "/T /F /PID " + pid);
+                psi.RedirectStandardOutput = true;   // B1 FIX (audit MAJOR): without this StandardOutput.ReadToEnd() throws, so every stop reported failure while taskkill had actually killed the process.
+                psi.RedirectStandardError = true;
                 psi.UseShellExecute = false;
                 psi.CreateNoWindow = true;
+                // B2 FIX (audit MAJOR): the comment below claims the child is streamed into the start log,
+                // but without these two the ReadLine loops throw at once, the child inherits the console,
+                // and START_URL can never be found on Windows.
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
                 using (Process k = Process.Start(psi))
                 {
                     string outp = k.StandardOutput.ReadToEnd();
