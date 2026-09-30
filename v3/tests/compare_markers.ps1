@@ -96,7 +96,7 @@ $cases = @(
     # needsService：**只有服务在运行时才允许跑**——否则 v2.x 会真的把受控备份恢复进真实 ~/.dsh。
     @{ name = 'restore (latest)'; args = @('restore'); full = $true; needsService = $true },
     @{ name = 'config-get';          args = @('config-get'); full = $true },
-    @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity |^\[(OK|WARN|ERROR)\] Network |^\[(OK|WARN|ERROR)\] Backup |^\[(OK|WARN|ERROR)\] Workspace 数据大小|另检测到官方桌面端|端口 3080 未监听|(CONFIGNOTE |CONFIG (browser_mode|ui_parallel|scan_children) )'; ignoreSummary = $true },
+    @{ name = 'doctor';               args = @('doctor'); full = $true; ignore = '^\[(OK|WARN|ERROR)\] Integrity |^\[(OK|WARN|ERROR)\] Network |^\[(OK|WARN|ERROR)\] Backup |^\[(OK|WARN|ERROR)\] Workspace 数据大小|另检测到官方桌面端|端口 3080 未监听'; ignoreSummary = $true },
     # doctor --report：比对**报告正文**（postFile 模式）。
     # 忽略：生成时间/Toolkit/系统三行（时间戳与版本必然不同）、自身完整性条目（v2.x 的 exe 在清单里但本地构建
     # 哈希不匹配 → ERROR；V3 的临时 exe 名不在清单 → 跳过）、npm registry 可达性（网络抖动会让两侧不同 → 假失败）、
