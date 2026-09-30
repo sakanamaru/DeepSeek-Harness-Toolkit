@@ -715,22 +715,14 @@ internal static class Installer
                 Log("已迁移到 " + tmp + " 并从那里继续 ✓（这样目标目录才能被删掉 ✓）");
                 // m-3 FIX (installer audit MINOR): every uninstall used to leave a copy of the
                 // uninstaller in the temporary folder forever (21 had accumulated on the test
-                // machine). The relocated child deletes itself on the way out; the parent cannot do
-                // it because the file is locked while the child runs.
-                try
-                {
-                    string selfTmp = Process.GetCurrentProcess().MainModule.FileName;
-                    if (!string.IsNullOrEmpty(selfTmp) && selfTmp.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(Path.GetDirectoryName(selfTmp), Path.GetTempPath().TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
-                    {
-                        System.Diagnostics.ProcessStartInfo killer = new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c ping -n 2 127.0.0.1 >nul & del /f /q \"" + selfTmp + "\"");
-                        killer.UseShellExecute = false;
-                        killer.CreateNoWindow = true;
-                        System.Diagnostics.Process.Start(killer);
-                        Log("已安排删除自己的临时副本 ✓（" + selfTmp + " ✓ 不再在 %TEMP% 里堆积 ✓）");
-                    }
-                }
-                catch (Exception tmx) { Log("安排删除临时副本失败（不致命 ✓）: " + tmx.Message); }
+                // machine). The relocated child deletes itself on the way out.
+                //
+                // N-F FIX (installer final review): a second copy of that cleanup used to sit here, in the
+                // PARENT, testing the parent's own image path. The parent is `<target>\uninstall.exe`, which is
+                // never directly inside the temp folder, so the condition could not be true and the block never
+                // ran. Removed rather than left as dead code - the child's own cleanup (further down) is the
+                // one that works, and the audit measured zero leftovers after it.
+
                 // ★★★ **M5 修复（审计 MAJOR —— 卸载器报成功但其实什么都没做）** ✓✓
                 //   ✗ 原来 `Process.Start(psi); … return 0;` ✗ —— **子进程的退出码被丢掉** ✗✗
                 //     → 身份校验拒绝（返回 2 ✓）· 用户点了"否"（返回 2 ✓）· 删除失败（返回 5 ✓）
