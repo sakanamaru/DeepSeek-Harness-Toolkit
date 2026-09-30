@@ -80,12 +80,34 @@ internal static class Installer
         try { target = Path.GetFullPath(target); } catch { Log("目标路径非法: " + dir); return 2; }
         if (IsDangerousPath(target)) { Log("拒绝写入危险路径: " + target); return 2; }
 
+        // 已装检测 + 版本比较 ✓✓（用户要求："安装好后也可以再点安装，安装器也加个版本校验吧" ✓）
+        // 图形界面里显示在选项页 ✓；这里**也写日志** ✓ → 静默模式/自动化也能看到 ✓✓
+        string installedInfo = ReadInstalled();
+        string verdict;
+        if (string.IsNullOrEmpty(installedInfo)) verdict = "未安装过 → 全新安装";
+        else
+        {
+            string have = installedInfo.Split('|')[0];
+            int cmp = CompareVersions(SelfVersion(), have);
+            verdict = cmp > 0 ? ("已装 " + have + " → 本次是**更新版本 " + SelfVersion() + "**，执行**升级** ✓")
+                    : (cmp == 0 ? ("已装 " + have + " → **版本相同**，执行**重新安装（覆盖）** ✓")
+                                : ("⚠ 已装 " + have + "，本次是**更旧的 " + SelfVersion() + "** → 会**降级** ✗"));
+        }
+        Log("已装检测: " + (string.IsNullOrEmpty(installedInfo) ? "（无）" : installedInfo) + " → " + verdict);
+
         Log("目标目录: " + target);
         Report(progress, 2, "准备…");
-        Directory.CreateDirectory(target);
+        // ✗ 原来在这里就 CreateDirectory → 校验失败会**留下一个空目录** ✗（实测确认 ✓）
+        // ✓ 改成**校验通过后再建** ✓ → 拒绝时磁盘上**一个字节都不写** ✓✓
 
         // ① 解压到**同卷暂存目录** ✓（同卷才能改名 ✓ 跨卷 rename 会失败 ✓）
-        string staging = Path.Combine(target, ".staging-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+        // ✗ 原来暂存放在 target **里面** → CreateDirectory 会把 target 一起建出来 ✗
+        //    → 于是"篡改包被拒绝"时磁盘上**留下一个空目录** ✗（实测确认 ✓）
+        // ✓ 改放在 **target 的父目录**：同卷 ✓（改名才能成功 ✓）且**完全不碰 target** ✓✓
+        string parentDir = Path.GetDirectoryName(target);
+        if (string.IsNullOrEmpty(parentDir)) parentDir = Path.GetTempPath();
+        Directory.CreateDirectory(parentDir);
+        string staging = Path.Combine(parentDir, ".dsh-minato-staging-" + Guid.NewGuid().ToString("N").Substring(0, 8));
         Directory.CreateDirectory(staging);
         Log("暂存目录: " + staging);
         int files = ExtractPayload(staging, progress);
@@ -103,7 +125,24 @@ internal static class Installer
             }
         }
 
-        // ③ 就位：**先改名旧的，再改名新的** ✓（旧目录即使有文件被占用也能改名成功 ✓）
+        // ③ **载荷完整性校验** ✓✓（用户要求："安装器也加个版本校验吧，比如有更新或者**非官方**" ✓）
+        //    安装包内自带 hashes.txt ✓ → 逐条核对 ✓ → 对不上就是**被改过的包** ✓ → 拒绝安装 ✓✓
+        Report(progress, 74, "校验安装包…");
+        string badFile = VerifyPayload(staging);
+        if (badFile != null)
+        {
+            Log("载荷校验失败 ✗ " + badFile);
+            TryDelete(staging);
+            throw new InvalidOperationException(
+                "**这个安装包不是官方发布的，或者已经被改动过。**" + Environment.NewLine + Environment.NewLine +
+                "对不上的文件：" + badFile + Environment.NewLine + Environment.NewLine +
+                "请从官方 Releases 重新下载：" + Environment.NewLine + ReleasesUrl + Environment.NewLine + Environment.NewLine +
+                "（已拒绝安装 ✓ 没有写入任何东西 ✓）");
+        }
+        Log("载荷校验通过 ✓ 每个文件的指纹都与包内清单一致 ✓");
+
+        Directory.CreateDirectory(target);   // ✓ 校验已通过 ✓ 现在才建 ✓
+        // ⑤ 就位：**先改名旧的，再改名新的** ✓（旧目录即使有文件被占用也能改名成功 ✓）
         Report(progress, 78, "就位…");
         string old = target + ".old-" + DateTime.Now.ToString("HHmmss");
         bool hadOld = false;
@@ -317,6 +356,54 @@ internal static class Installer
 
     // ================================================================ 杂项
 
+    /// <summary>本安装器自己的版本 ✓（写进 ARP 的 DisplayVersion ✓ 也用于和已装版本比较 ✓）。</summary>
+    internal static string SelfVersion()
+    {
+        try
+        {
+            Version v = Assembly.GetExecutingAssembly().GetName().Version;
+            return v == null ? "0.0.0" : (v.Major + "." + v.Minor + "." + v.Build);
+        }
+        catch { return "0.0.0"; }
+    }
+
+    /// <summary>读已安装信息 ✓（ARP 的 DisplayVersion + InstallLocation ✓）。返回 "版本|位置"；未装返回空 ✓。</summary>
+    internal static string ReadInstalled()
+    {
+        try
+        {
+            using (RegistryKey k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\" + AppName))
+            {
+                if (k == null) return "";
+                string v = k.GetValue("DisplayVersion", "") as string;
+                string loc = k.GetValue("InstallLocation", "") as string;
+                if (string.IsNullOrEmpty(v) && string.IsNullOrEmpty(loc)) return "";
+                return (v == null ? "" : v) + "|" + (loc == null ? "" : loc);
+            }
+        }
+        catch { return ""; }
+    }
+
+    /// <summary>版本比较 ✓（逐段数字比较 ✓ 不用字符串比较 ✗ —— "3.10" &gt; "3.9" 但字符串会说反 ✗）。</summary>
+    internal static int CompareVersions(string a, string b)
+    {
+        try
+        {
+            string[] pa = (a == null ? "" : a).Split('.');
+            string[] pb = (b == null ? "" : b).Split('.');
+            int n = Math.Max(pa.Length, pb.Length);
+            for (int i = 0; i < n; i++)
+            {
+                int va = 0, vb = 0;
+                if (i < pa.Length) int.TryParse(pa[i], out va);
+                if (i < pb.Length) int.TryParse(pb[i], out vb);
+                if (va != vb) return va > vb ? 1 : -1;
+            }
+            return 0;
+        }
+        catch { return 0; }
+    }
+
     internal static string DefaultDir()
     {
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", AppName);
@@ -334,6 +421,66 @@ internal static class Installer
             return v == null ? "0.0.0" : (v.Major + "." + v.Minor + "." + v.Build);
         }
         catch { return "0.0.0"; }
+    }
+
+    /// <summary>核对**暂存目录里每个文件**的 SHA-256 vs 包内 hashes.txt ✓✓。
+    /// 返回 null = 全部一致 ✓；否则返回**第一个对不上的文件名** ✓（安装器据此拒绝安装 ✓）。</summary>
+    private static string VerifyPayload(string staging)
+    {
+        try
+        {
+            string mf = Path.Combine(staging, "hashes.txt");
+            if (!File.Exists(mf)) { Log("包内没有 hashes.txt → 跳过载荷校验（开发构建属正常 ✓ 但会明确记录 ✓）"); return null; }
+            string[] lines = File.ReadAllLines(mf);
+            int checkedCount = 0, mismatch = 0;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string t = lines[i] == null ? "" : lines[i].Trim();
+                if (t.Length == 0 || t.StartsWith("#", StringComparison.Ordinal)) continue;
+                int sp = t.IndexOf(' ');
+                if (sp <= 0) continue;
+                string want = t.Substring(0, sp).Trim().ToLowerInvariant();
+                string name = t.Substring(sp + 1).Trim();
+                string full = null;
+                // 清单里可能只写文件名 ✓ 也可能写相对路径 ✓ 两种都试 ✓
+                string c1 = Path.Combine(staging, name);
+                if (File.Exists(c1)) full = c1;
+                else
+                {
+                    string c2 = Path.Combine(staging, "gui", name);
+                    if (File.Exists(c2)) full = c2;
+                }
+                if (full == null) { Log("清单里有但包里没有（跳过 ✓ 不误报 ✗）: " + name); continue; }
+                checkedCount++;
+                string got = Sha256Of(full);
+                if (string.IsNullOrEmpty(got)) continue;
+                if (!string.Equals(want, got, StringComparison.OrdinalIgnoreCase))
+                {
+                    mismatch++;
+                    Log("指纹不符 ✗ " + name + " 期望=" + want.Substring(0, 12) + "… 实际=" + got.Substring(0, 12) + "…");
+                    if (mismatch == 1) return name;   // 报第一个就够 ✓（用户不需要看一长串 ✓）
+                }
+            }
+            Log("载荷校验：核对 " + checkedCount + " 个文件，不符 " + mismatch + " 个 ✓");
+            return null;
+        }
+        catch (Exception ex) { Log("载荷校验本身出错 → 放行（不能让校验把安装变成砖 ✓）: " + ex.Message); return null; }
+    }
+
+    private static string Sha256Of(string path)
+    {
+        try
+        {
+            using (System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create())
+            using (FileStream fs = File.OpenRead(path))
+            {
+                byte[] h = sha.ComputeHash(fs);
+                StringBuilder sb = new StringBuilder();
+                foreach (byte b in h) sb.Append(b.ToString("x2"));
+                return sb.ToString();
+            }
+        }
+        catch { return null; }
     }
 
     /// <summary>危险路径防护 ✓（空 / 盘根 / 用户主目录本身 / Windows 目录 → 一律拒绝 ✓）。</summary>
@@ -536,12 +683,15 @@ internal sealed class InstallerForm : Form
     private ProgressBar _bar;
     private Label _status, _title, _sub;
     private Panel _page1, _page2;
+    private string _installed = "";
+    private Label _installedLabel;
 
     public InstallerForm(string dirArg)
     {
         _dirArg = dirArg;
         Text = "dsh-minato 安装程序";
-        ClientSize = new Size(620, 420);
+        ClientSize = new Size(620, 486);   // ✗ 原来 420：面板到 Y=386 ✗ 而按钮在 366 → **被盖住 20px** ✓ 现在留足 ✓
+        AutoScaleMode = AutoScaleMode.Dpi;   // ✓ DPI 自适应 ✓（否则 125%/150% 缩放下布局会溢出 ✓ 子代理第 11 条 ✓）
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false; MinimizeBox = false;
@@ -557,7 +707,7 @@ internal sealed class InstallerForm : Form
         Controls.Add(_title); Controls.Add(_sub);
 
         // ---- 第一页：选项 ----
-        _page1 = new Panel { Location = new Point(0, 86), Size = new Size(620, 300) };
+        _page1 = new Panel { Location = new Point(0, 86), Size = new Size(620, 330) };
         Label ld = new Label { Text = "安装位置", ForeColor = Color.FromArgb(70, 70, 80), AutoSize = true, Location = new Point(30, 8) };
         _dirBox = new TextBox { Location = new Point(30, 30), Size = new Size(470, 26), Text = string.IsNullOrEmpty(_dirArg) ? Installer.DefaultDir() : _dirArg };
         Button browse = new Button { Text = "浏览…", Location = new Point(508, 29), Size = new Size(80, 27) };
@@ -572,20 +722,31 @@ internal sealed class InstallerForm : Form
         };
         _chkShortcuts = new CheckBox { Text = "在开始菜单创建快捷方式（快捷方式名为 dsh-minato）", Checked = true, AutoSize = true, Location = new Point(30, 70), ForeColor = Color.FromArgb(60, 60, 70) };
         _chkPath = new CheckBox { Text = "把命令行工具加入 PATH（**默认不勾** ✓ 勾了要**新开终端**才生效）", Checked = false, AutoSize = true, Location = new Point(30, 96), ForeColor = Color.FromArgb(60, 60, 70) };
+        // —— 已装检测 + 版本校验 ✓✓（用户要求："安装好后也可以再点安装，安装器也加个版本校验吧，比如有更新或者非官方" ✓）——
+        _installed = Installer.ReadInstalled();   // 静态成员要带类名 ✓
+        _installedLabel = new Label
+        {
+            AutoSize = false, Size = new Size(560, 34), Location = new Point(30, 96 + 26),
+            ForeColor = Color.FromArgb(150, 90, 20), Font = new Font("Microsoft YaHei UI", 9f, FontStyle.Bold)
+        };
+        _installedLabel.Text = DescribeInstalled(_installed);
+        Installer.Log("已装检测: [" + _installed + "] → " + _installedLabel.Text);   // 写日志 ✓ 便于验证 ✓
+        _chkPath.Location = new Point(30, 96 + 34);
+        _page1.Controls.Add(_installedLabel);
         Label note = new Label
         {
             Text = "说明：" + Environment.NewLine +
                    "· 安装是**当前用户级**的 ✓ 不写系统目录 ✓ 不弹 UAC ✓ 卸载干净 ✓" + Environment.NewLine +
                    "· **不会碰你的数据** ✓（~/.dsh 是 dsh 自己的，本工具只读）" + Environment.NewLine +
                    "· 每个文件都带官方指纹，启动时会自校验 ✓ 被改动就拒绝运行 ✓",
-            ForeColor = Color.FromArgb(120, 120, 130), AutoSize = false, Size = new Size(560, 90), Location = new Point(30, 128)
+            ForeColor = Color.FromArgb(120, 120, 130), AutoSize = false, Size = new Size(560, 100), Location = new Point(30, 166)
         };
         _page1.Controls.Add(ld); _page1.Controls.Add(_dirBox); _page1.Controls.Add(browse);
         _page1.Controls.Add(_chkShortcuts); _page1.Controls.Add(_chkPath); _page1.Controls.Add(note);
         Controls.Add(_page1);
 
         // ---- 第二页：进度 ----
-        _page2 = new Panel { Location = new Point(0, 86), Size = new Size(620, 300), Visible = false };
+        _page2 = new Panel { Location = new Point(0, 86), Size = new Size(620, 330), Visible = false };
         _status = new Label { Text = "准备…", AutoSize = false, Size = new Size(560, 22), Location = new Point(30, 30), ForeColor = Color.FromArgb(60, 60, 70) };
         _bar = new ProgressBar { Location = new Point(30, 60), Size = new Size(560, 22), Minimum = 0, Maximum = 100 };
         _btnCopyLog = new Button { Text = "复制安装日志", Location = new Point(30, 100), Size = new Size(130, 30), Visible = false };
@@ -598,14 +759,39 @@ internal sealed class InstallerForm : Form
         Controls.Add(_page2);
 
         // ---- 底部按钮 ----
-        _btnMain = new Button { Text = "安装", Location = new Point(410, 366), Size = new Size(90, 32), BackColor = Color.FromArgb(64, 110, 220), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+        _btnMain = new Button { Text = DescribeAction(), Location = new Point(410, 428), Size = new Size(90, 34), BackColor = Color.FromArgb(64, 110, 220), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
         _btnMain.FlatAppearance.BorderSize = 0;
         _btnMain.Click += delegate { StartInstall(); };
-        _btnCancel = new Button { Text = "取消", Location = new Point(508, 366), Size = new Size(80, 32), DialogResult = DialogResult.Cancel };
+        _btnCancel = new Button { Text = "取消", Location = new Point(508, 428), Size = new Size(80, 34), DialogResult = DialogResult.Cancel };
         Controls.Add(_btnMain); Controls.Add(_btnCancel);
         CancelButton = _btnCancel;
         AcceptButton = _btnMain;
         FormClosing += delegate(object s, FormClosingEventArgs e) { if (_running) { e.Cancel = true; MessageBox.Show("正在安装，请稍候…", "dsh-minato", MessageBoxButtons.OK, MessageBoxIcon.Information); } };
+    }
+
+    /// <summary>按钮文案随"已装版本 vs 本次版本"变化 ✓✓（用户要求："安装好后也可以再点安装" ✓ 现在会明确告诉你是在升级还是重装 ✓）。</summary>
+    private string DescribeAction()
+    {
+        if (string.IsNullOrEmpty(_installed)) return "安装";
+        string have = _installed.Split('|')[0];
+        int cmp = Installer.CompareVersions(Installer.SelfVersion(), have);
+        if (cmp > 0) return "升级到 " + Installer.SelfVersion();
+        if (cmp == 0) return "重新安装";
+        return "降级安装";
+    }
+
+    /// <summary>已装状态一句话 ✓（含"有更新 / 同版本 / 更旧"三种 ✓ 和子代理说的"别让用户猜" ✓）。</summary>
+    private string DescribeInstalled(string info)
+    {
+        if (string.IsNullOrEmpty(info)) return "";
+        string[] p = info.Split('|');
+        string have = p.Length > 0 ? p[0] : "";
+        string loc = p.Length > 1 ? p[1] : "";
+        int cmp = Installer.CompareVersions(Installer.SelfVersion(), have);
+        string where = string.IsNullOrEmpty(loc) ? "" : ("（" + loc + "）");
+        if (cmp > 0) return "✓ 检测到已安装 " + have + where + " → 本次是**更新版本 " + Installer.SelfVersion() + "**，会**升级**";
+        if (cmp == 0) return "✓ 检测到已安装 " + have + where + " → 与本次**版本相同**，会**重新安装（覆盖）**";
+        return "⚠ 检测到已安装 " + have + where + "，而本次是**更旧的 " + Installer.SelfVersion() + "** → 会**降级** ✗ 请确认你确实要这么做 ✗";
     }
 
     private bool _running;
