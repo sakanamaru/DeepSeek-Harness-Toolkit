@@ -60,14 +60,24 @@ namespace Dsht.Gui.Avalonia.Shells
 
         // ================================================================ 基础构件
 
+        /// <summary>把 UI 文案里的 **Markdown 粗体标记**剥掉 ✓✓
+        ///   ✗ 我在文案里到处写 `**重点**` ✗ 而 **Avalonia 不解析 Markdown** ✗ → 屏幕上原样显示 `**` ✗✗
+        ///     （用户截图确认：「**本工具不再提供清除数据**」的星号显示出来了 ✓）
+        ///   ✓ 在 `T()` 里统一剥掉 ✓✓ —— **一处修全部** ✓（所有 UI 文案都走 T() ✓）</summary>
+        internal static string StripMd(string s)
+        {
+            if (string.IsNullOrEmpty(s) || s.IndexOf("**", StringComparison.Ordinal) < 0) return s;
+            return s.Replace("**", "");
+        }
+
         private static TextBlock T(string text, double size, IBrush fg)
         {
-            return new TextBlock { Text = text, FontSize = size, Foreground = fg };
+            return new TextBlock { Text = StripMd(text), FontSize = size, Foreground = fg };
         }
 
         private static TextBlock T(string text, double size, IBrush fg, FontWeight w)
         {
-            return new TextBlock { Text = text, FontSize = size, Foreground = fg, FontWeight = w };
+            return new TextBlock { Text = StripMd(text), FontSize = size, Foreground = fg, FontWeight = w };
         }
 
         private static TextBlock Mono(string text, double size, IBrush fg)

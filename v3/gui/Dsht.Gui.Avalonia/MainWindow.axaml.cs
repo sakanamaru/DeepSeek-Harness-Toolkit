@@ -552,6 +552,11 @@ namespace Dsht.Gui.Avalonia
             PaintSwitch("ShellSwitch");
             PaintSwitch("StyleSwitch");
             for (int i = 0; i < 4; i++) PaintSwitchButton("Shell" + i, i == _shell);   // ✓ 用户要求删除主从式 → 只剩 4 个 ✓✓
+            // ✓✓ **用户要求（2026-09-30）**：「窗口不要始终置顶，要始终置顶至少加个按钮」✓
+            //   ✗ 之前窗口被**外部**（我的截图脚本）设成 topmost ✗ → 一直压在最上面 ✓ 很烦 ✓
+            //   ✓ 现在：**由用户自己控制** ✓✓ 默认**不置顶** ✓ 点一下才置顶 ✓ 再点取消 ✓
+            //   ✓ 选择会存进配置（`always_on_top` ✓）→ 下次启动恢复 ✓✓
+            PaintPin();
             for (int i = 0; i < 4; i++) PaintSwitchButton("Style" + i, i == Palette.StyleKind);
         }
 
@@ -565,6 +570,46 @@ namespace Dsht.Gui.Avalonia
         {
             Border b = this.FindControl<Border>(name);
             if (b != null) { b.Background = Palette.InsetBg; b.BorderBrush = Palette.Border; b.BorderThickness = new Thickness(1); }
+        }
+
+        // ================================================================ 置顶开关
+
+        /// <summary>窗口是否置顶 ✓✓。**用户要求**：「窗口不要始终置顶，要始终置顶至少加个按钮」✓
+        /// 默认 **false**（不置顶 ✓ 这是正常窗口的行为 ✓）；点按钮切换 ✓ 并存进配置 ✓。</summary>
+        private bool _alwaysOnTop;
+        private bool _pinPainted;
+
+        private void PaintPin()
+        {
+            Button b = this.FindControl<Button>("PinBtn");
+            if (b == null) return;
+            // ✓ 用**文字**按钮 ✓✓（FluentIcons 的 `Symbol` 里没有 Pin ✗ 试过报错 ✓ 文字更稳 ✓）
+            b.Content = new TextBlock
+            {
+                Text = _alwaysOnTop ? "已置顶" : "置顶",
+                FontSize = 11.5,
+                Foreground = _alwaysOnTop ? Palette.Accent : Palette.TextDim,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            b.MinWidth = 56;
+            b.HorizontalContentAlignment = HorizontalAlignment.Center;
+            b.Padding = new Thickness(8, 5);
+            b.CornerRadius = new CornerRadius(7);
+            b.BorderThickness = new Thickness(0);
+            b.Background = _alwaysOnTop ? Palette.AccentSoft : Brushes.Transparent;
+            ToolTip.SetTip(b, _alwaysOnTop ? "窗口已置顶 ✓ 点一下取消 ✓" : "点一下让窗口始终置顶 ✓");
+            if (!_pinPainted)
+            {
+                _pinPainted = true;
+                b.Click += delegate
+                {
+                    _alwaysOnTop = !_alwaysOnTop;
+                    Topmost = _alwaysOnTop;
+                    PaintPin();
+                    // ✓ 存进配置 ✓ 下次启动恢复 ✓（写操作 → 走 CLI ✓ 失败也不影响本次切换 ✓）
+                    RunCliAction("config-set always_on_top " + (_alwaysOnTop ? "on" : "off"), "置顶设置");
+                };
+            }
         }
 
         private void PaintSwitchButton(string name, bool active)
