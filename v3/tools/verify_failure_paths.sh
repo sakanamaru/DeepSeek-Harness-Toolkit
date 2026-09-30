@@ -24,13 +24,14 @@ bad(){ fail=$((fail+1)); echo "  [FAIL] $1"; }
 
 WORK=$(mktemp -d /tmp/vfp-XXXXXX)
 BIN="$WORK/bin"; mkdir -p "$BIN"; cp "$CLI" "$BIN/dsh-minato"; chmod +x "$BIN/dsh-minato"; CLI="$BIN/dsh-minato"
+BKROOT="$BIN/backup"   # 第一次备份必须显式给目录（D4 契约）→ 隔离备份根 ✓
 cleanup(){ chmod -R u+rwX "$WORK" 2>/dev/null; rm -rf "$WORK" "$TG1" "$TG2" 2>/dev/null; }
 TG1="$HOME/vfp-tg1-$$"; TG2="$HOME/vfp-tg2-$$"
 trap cleanup EXIT
 
 S="$WORK/src"; mkdir -p "$S/storages"; printf 'P1\n' > "$S/storages/p1.txt"; printf 'P2\n' > "$S/storages/p2.txt"
-DSH_HOME="$S" $T $CLI backup >/dev/null 2>&1
-P=$(DSH_HOME="$S" $T $CLI backup 2>&1 | tr -d '\r' | awk '/BACKUP_OK/{print $2}')
+DSH_HOME="$S" $T $CLI backup --to "$BKROOT" >/dev/null 2>&1
+P=$(DSH_HOME="$S" $T $CLI backup --to "$BKROOT" 2>&1 | tr -d '\r' | awk '/BACKUP_OK/{print $2}')
 echo "== 失败路径验证 =="
 echo "  CLI: $($CLI version 2>/dev/null || echo '(version 失败)')"
 [ -n "$P" ] && ok "参照包已建（$(basename "$P") ✓）" || { bad "参照包未建 ✗"; echo "== 结果：PASS=$pass FAIL=$fail =="; exit 1; }
@@ -73,8 +74,8 @@ fi
 C1="$WORK/c1"; C2="$WORK/c2"; mkdir -p "$C1/storages" "$C2/storages"
 for i in $(seq 1 200); do printf 'c1-%d\n' "$i" > "$C1/storages/one-f$i.txt"; done
 for i in $(seq 1 200); do printf 'c2-%d\n' "$i" > "$C2/storages/two-f$i.txt"; done
-( DSH_HOME="$C1" $T $CLI backup > "$WORK/c-a.log" 2>&1 ) & PA=$!
-( DSH_HOME="$C2" $T $CLI backup > "$WORK/c-b.log" 2>&1 ) & PB2=$!
+( DSH_HOME="$C1" $T $CLI backup --to "$BKROOT" > "$WORK/c-a.log" 2>&1 ) & PA=$!
+( DSH_HOME="$C2" $T $CLI backup --to "$BKROOT" > "$WORK/c-b.log" 2>&1 ) & PB2=$!
 wait $PA; wait $PB2
 CA=$(tr -d '\r' < "$WORK/c-a.log" | awk '/BACKUP_OK/{print $2}')
 CB=$(tr -d '\r' < "$WORK/c-b.log" | awk '/BACKUP_OK/{print $2}')
@@ -93,11 +94,11 @@ echo "$VC" | grep -qE '^BACKUP_VERIFY .*mismatch' && bad "并发后出现 mismat
 # ---- 4 备份进行中发起恢复：两者都必须成功（含时序证明 ✓）----
 R1="$WORK/r1"; mkdir -p "$R1/storages"
 for i in $(seq 1 2000); do printf 'r%d\n' "$i" > "$R1/storages/g$i.txt"; done
-DSH_HOME="$R1" $T $CLI backup >/dev/null 2>&1
-RP=$(DSH_HOME="$R1" $T $CLI backup 2>&1 | tr -d '\r' | awk '/BACKUP_OK/{print $2}')
+DSH_HOME="$R1" $T $CLI backup --to "$BKROOT" >/dev/null 2>&1
+RP=$(DSH_HOME="$R1" $T $CLI backup --to "$BKROOT" 2>&1 | tr -d '\r' | awk '/BACKUP_OK/{print $2}')
 RT="$HOME/vfp-rt-$$"; rm -rf "$RT"; mkdir -p "$RT"
 S1=$(date +%s%N)
-( DSH_HOME="$R1" $T $CLI backup > "$WORK/r-b.log" 2>&1 ) & PR=$!
+( DSH_HOME="$R1" $T $CLI backup --to "$BKROOT" > "$WORK/r-b.log" 2>&1 ) & PR=$!
 sleep 0.15
 S2=$(date +%s%N)
 ( cd "$RT" && DSH_HOME="$WORK/r-data" $T $CLI restore --path "$RP" --apply --yes > "$WORK/r-r.log" 2>&1 )
