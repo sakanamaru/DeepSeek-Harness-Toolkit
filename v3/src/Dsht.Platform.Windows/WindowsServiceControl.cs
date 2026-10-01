@@ -63,10 +63,30 @@ namespace Dsht.Platform.Windows
                 psi.RedirectStandardError = true;
                 using (Process k = Process.Start(psi))
                 {
-                    string outp = k.StandardOutput.ReadToEnd();
-                    string err = k.StandardError.ReadToEnd();
-                    k.WaitForExit(15000);
-                    if (k.ExitCode != 0) { error = (err + outp).Trim(); return false; }
+                    if (k == null) { error = "taskkill could not be started"; return false; }
+                    // ★★★ 架构审计抓到（C13，真实死锁 ✗✗）：原来是
+                    //   ReadToEnd(stdout) → ReadToEnd(stderr) → WaitForExit()
+                    //   → 只要 taskkill 往 stderr 写满缓冲区，我们却在阻塞读 stdout ✗ → **两边互等** ✗✗
+                    //   → 而且 WaitForExit 的返回值被忽略 ✗ → 超时也当成功 ✓
+                    // ✓ 现在：**异步排空两条流** ✓✓（与 WindowsShell.Capture 同一模式 ✓）
+                    //   + **超时如实报告** ✓ + 复核进程是否真的没了 ✓
+                    System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                    k.OutputDataReceived += delegate(object s, DataReceivedEventArgs e) { if (e.Data != null) { lock (sb) { sb.AppendLine(e.Data); } } };
+                    k.ErrorDataReceived += delegate(object s, DataReceivedEventArgs e) { if (e.Data != null) { lock (sb) { sb.AppendLine(e.Data); } } };
+                    k.BeginOutputReadLine();
+                    k.BeginErrorReadLine();
+                    if (!k.WaitForExit(15000))
+                    {
+                        try { k.Kill(); } catch { }
+                        error = "taskkill timed out after 15s";
+                        return false;
+                    }
+                    try { k.WaitForExit(); } catch { }
+                    string all;
+                    lock (sb) { all = sb.ToString().Trim(); }
+                    if (k.ExitCode != 0) { error = all; return false; }
+                    // 复核：进程真的没了吗（只看 taskkill 退出码不算观测 ✓）
+                    try { using (Process still = Process.GetProcessById(pid)) { if (still != null && !still.HasExited) { error = "taskkill reported success but pid " + pid + " is still alive"; return false; } } } catch { }
                     return true;
                 }
             }
