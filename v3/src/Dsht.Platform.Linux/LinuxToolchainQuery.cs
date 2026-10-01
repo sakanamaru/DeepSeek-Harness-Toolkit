@@ -262,6 +262,20 @@ namespace Dsht.Platform.Linux
                 {
                     LastError = "下载的文件不完整（" + ver + "）";
                     continue;   // 换下一个候选版本 ✓
+                // ★★★ 架构审计抓到（安全 MAJOR）：下载的 Node tarball **没有任何校验** ✗✗
+                //   → 解压后**放进 PATH** ✓ 之后每次 node/npm/dsh 都在跑它 ✗ → 被换掉的包就是**任意代码执行** ✗
+                //   → 而项目自己的发布物是**用 SHA-256 校验**的 ✓（install.sh / verify-linux.sh ✓）唯独这里漏了 ✓
+                // ✓ 现在：**必须与官方 SHASUMS256.txt 一致** ✓✓ 否则**拒绝解压** ✓（fail-closed ✓）
+                string tarName = System.IO.Path.GetFileName(tar);
+                string tarDir = System.IO.Path.GetDirectoryName(tar);
+                string wantSha = FetchExpectedSha(ver, tarName, tarDir);
+                string gotSha = Sha256File(tar);
+                if (wantSha == null || gotSha == null || !string.Equals(wantSha, gotSha, StringComparison.OrdinalIgnoreCase))
+                {
+                    LastError = "Node " + ver + " 哈希校验未通过（拿不到官方 SHASUMS256.txt 或对不上）—— 已拒绝解压 ✓";
+                    try { System.IO.File.Delete(tar); } catch { }
+                    continue;   // 换下一个候选版本 ✓
+                }
                 }
                 try { if (System.IO.Directory.Exists(dir)) System.IO.Directory.Delete(dir, true); } catch (Exception dex) { LastError = "cannot clear " + dir + ": " + dex.Message; return -1; }
                 System.IO.Directory.CreateDirectory(dir);
@@ -274,6 +288,53 @@ namespace Dsht.Platform.Linux
                 return -1;
             }
             catch { return -1; }
+        }
+
+        /// <summary>下载并解析 SHASUMS256.txt 里某个文件的期望哈希 ✓；**拿不到就返回 null** ✓（调用方按"不能校验"处理 ✓ 不猜 ✓）。</summary>
+        private static string FetchExpectedSha(string ver, string fileName, string tmpDir)
+        {
+            string sumsUrl = "https://nodejs.org/dist/" + ver + "/SHASUMS256.txt";
+            string sums = System.IO.Path.Combine(string.IsNullOrEmpty(tmpDir) ? System.IO.Path.GetTempPath() : tmpDir, "SHASUMS256-" + ver + ".txt");
+            try { System.IO.File.Delete(sums); } catch { }
+            if (RunExit("curl", "-fsSL --max-time 120 " + sumsUrl + " -o " + sums) != 0
+                && RunExit("wget", "-q --timeout=60 -O " + sums + " " + sumsUrl) != 0
+                && RunExit("python3", "-c \"import urllib.request,sys; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])\" " + sumsUrl + " " + sums) != 0)
+                return null;
+            try
+            {
+                if (!System.IO.File.Exists(sums)) return null;
+                string[] ls = System.IO.File.ReadAllLines(sums);
+                for (int i = 0; i < ls.Length; i++)
+                {
+                    string t = ls[i] == null ? "" : ls[i].Trim();
+                    if (t.Length == 0) continue;
+                    int sp = t.IndexOf(' ');
+                    if (sp <= 0) continue;
+                    string h = t.Substring(0, sp).Trim();
+                    string nm = t.Substring(sp + 1).Trim().TrimStart('*');
+                    if (nm.EndsWith(fileName, StringComparison.Ordinal) && h.Length == 64) return h.ToLowerInvariant();
+                }
+            }
+            catch { }
+            finally { try { System.IO.File.Delete(sums); } catch { } }
+            return null;
+        }
+
+        /// <summary>算文件 SHA-256（小写 hex）✓；**失败返回 null** ✓（调用方按"不能校验"处理 ✓）。</summary>
+        private static string Sha256File(string path)
+        {
+            try
+            {
+                using (System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create())
+                using (System.IO.FileStream fs = System.IO.File.OpenRead(path))
+                {
+                    byte[] h = sha.ComputeHash(fs);
+                    System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                    for (int i = 0; i < h.Length; i++) sb.Append(h[i].ToString("x2"));
+                    return sb.ToString();
+                }
+            }
+            catch { return null; }
         }
 
         /// <summary>Node 运行时的 bin 目录候选（免 sudo 引导后 dsh 就在这里，非交互 PATH 里通常没有 ✗）。</summary>
