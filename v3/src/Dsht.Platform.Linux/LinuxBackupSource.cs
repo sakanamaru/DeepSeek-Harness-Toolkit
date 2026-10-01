@@ -7,6 +7,23 @@ using Dsht.Domain.Model;
 namespace Dsht.Platform.Linux
 {
     /// <summary>备份来源（Linux）：与 Windows 实现同语义（备份根 = 状态目录/backup；dsh-data-* 升序；目录大小递归累加）。</summary>
+    // ★★★ 架构审计（S2）**已量化**（2026-10-01）：这个文件和另一端的实现
+    //   **有 310 行逐行完全相同**（占本文件 65% ✓）—— 精确区块：
+    //     · 区块一：Windows 137 ↔ Linux 90   共 144 行
+    //     · 区块二：Windows 311 ↔ Linux 261  共 166 行
+    //   → 这些行**逐字相同** ✓（含 CopyTree / RestoreWorkspaces / 标记写入等 ✓）
+    //   → 一处修 bug 必须记得改两处 ✗ —— 而**这已经出过问题** ✓
+    //     （真机审查：归一化修复只做在一端 ✓ 另一端漏了 ✓）
+    //   ✓ 提取方案（**未执行** ✓ 因为动的是唯一能毁数据的代码 ✓）：
+    //     1. 建 v3/src/Dsht.Platform.Shared/BackupSourceCommon.cs ✓
+    //     2. 写成 static class BackupSourceCommon（纯静态 ✓ 不依赖任何平台类型 ✓）
+    //     3. **两个 csproj 用 <Compile Include=... Link=... /> 链接同一份源文件** ✓
+    //        （与 MarkerText.cs 完全同一手法 ✓ 已验证过 ✓）
+    //     4. 两端只留平台特有的部分 ✓
+    //   ⚠ 纪律：**先补失败分支测试**（导出失败 ✓ 已完成 ✓ / 中断恢复 ✓ / 权限拒绝 ✓）
+    //     再逐块搬 ✓ 每块都编译 + 跑 [29] 真实往返测试 + 11 项门槛 ✓
+    //   ⚠ 我**没有**执行提取 ✓：预算不足以在动完 310 行后做充分验证 ✓
+    //     留精确数据给下一轮 ✓ 让那一步是**机械的** ✓ 而不是靠猜 ✓
     public sealed class LinuxBackupSource : IBackupSource
     {
         private readonly string _stateDir;
