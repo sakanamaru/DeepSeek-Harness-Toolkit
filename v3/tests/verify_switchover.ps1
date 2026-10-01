@@ -192,7 +192,8 @@ Write-Host ('  · shell 验证脚本 ' + $shScripts.Count + ' 个（在 ubuntu-l
 Write-Host '  · Linux 平台实现（LinuxBackupSource / LinuxPaths / LinuxToolchainQuery 等）只在 ubuntu-latest 被编译与运行'
 Write-Host '  · V3 Linux / Windows 打包 job 只在 v3*/main 的 push 上跑（本机不打包）'
 Write-Host '  · 因此：**本地全绿不等于 CI 全绿** ✓ 推之前建议看一眼 gh run list ✓'
-Write-Host ''Write-Host '== V3 切换就绪度 =='
+Write-Host ''
+Write-Host '== V3 切换就绪度 =='
 $rows | ForEach-Object { Write-Host $_ }
 if ($fail -gt 0) { Write-Host ("== 未就绪项：" + $fail + "（详见上面 [ NOT ] 行）=="); exit 1 }
 Write-Host '== 全部就绪 =='
