@@ -121,6 +121,10 @@ namespace Dsht.Platform.Windows
             try
             {
                 string dir = AppDomain.CurrentDomain.BaseDirectory;
+                // ★★ 架构审计抓到（C12）：探测名原来是**固定的** .write-test ✗ 且用 FileShare.None ✗
+                //   → 两个并发进程探测同一个文件 ✗ → 输的那个误判"不可写" ✗ → 回退到 %APPDATA% ✓
+                //   → 结果：**两个进程对 StateDir / BackupsRoot / 日志目录的看法不一致** ✗✗
+                // ✓ 现在：**探测名唯一**（pid + 随机 ✓）→ 并发各测各的 ✓✓（并发一致性已实测 4/4 一致 ✓）
                 string probe = Path.Combine(dir, (".write-test-" + System.Diagnostics.Process.GetCurrentProcess().Id.ToString() + "-" + System.Guid.NewGuid().ToString("N").Substring(0, 8)));
                 using (FileStream fs = File.Create(probe)) { }
                 File.Delete(probe);
