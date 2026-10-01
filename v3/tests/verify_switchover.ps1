@@ -166,13 +166,33 @@ $glM = [regex]::Match($glOut, '==\s*(\d+)/(\d+) passed, (\d+) failed ==')
 $glDet = if ($glM.Success) { $glM.Groups[1].Value + '/' + $glM.Groups[2].Value + ' 通过（标记行解析）' } else { '未解析到结果行（.NET SDK 缺失或构建失败）' }
 Gate 'gate7 gui logic tests' ($glRc -eq 0) $glDet
 
+# ---- 不变量（G7 补上）：CI 独有的检查必须"存在 + 真的被 workflow 引用" ----
+# 起因：本地门槛**跑不到**只在 Linux CI 里执行的 shell 验证脚本 ✗
+#   → 已经造成**两次**"本地全绿、CI 红"（过期断言 / 平台覆盖）✗✗
+# ✓ 这里**不假装跑了它们** ✗ 而是做两件诚实的事：
+#   ① **门槛**：每个 shell 验证脚本都必须**真的被 workflow 引用**（否则它就是个摆设 ✗）
+#      —— 这条能在本地跑 ✓ 而且能抓到"脚本加了但 CI 没跑"与"CI 跑了但脚本不在" ✗
+#   ② **如实打印盲区清单**：本地覆盖不到的检查，明写出来 ✓（沉默才是问题 ✓）
+$shScripts = @(Get-ChildItem (Join-Path $Repo 'v3\tools') -Filter '*.sh' -ErrorAction SilentlyContinue)
+$wfTxt = ''
+try { if (Test-Path $wf) { $wfTxt = [System.IO.File]::ReadAllText($wf) } } catch { }
+$notWired = New-Object System.Collections.Generic.List[string]
+foreach ($s in $shScripts) { if ($wfTxt -notmatch [regex]::Escape($s.Name)) { $notWired.Add($s.Name) } }
+Gate 'invariant ci-only checks wired' ($shScripts.Count -gt 0 -and $notWired.Count -eq 0) $(if ($shScripts.Count -eq 0) { 'v3/tools 下没有 shell 验证脚本（可疑 ✗）' } elseif ($notWired.Count -gt 0) { '未被 workflow 引用（摆设 ✗）：' + ($notWired -join ', ') } else { $shScripts.Count.ToString() + ' 个 shell 验证脚本都已接入 CI ✓' })
+
 # ---- 领域层纯净度 ----
 $pure = (Invoke-External { & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_domain_pure.ps1') -Repo $Repo 2>&1 }) | Out-String   # 审计 M8：这一条原来**没包装** ✗ → 子进程一写 stderr 就杀掉整个门槛（输出层假绿 ✓）
 Gate 'invariant domain purity' ($LASTEXITCODE -eq 0) '零 IO / 零平台 / 零时钟耦合'
 
 Remove-Item $exe -Force -ErrorAction SilentlyContinue   # 别把契约测试 exe 留在 %TEMP%
 
-Write-Host '== V3 切换就绪度 =='
+# ---- 盲区清单（G7 ✓）：本地**覆盖不到**的检查，明写出来 ✓ 沉默才是问题 ✗ ----
+Write-Host '== 本地覆盖不到的检查（**只由 CI 跑** ✓ 如实列出 ✓）=='
+Write-Host ('  · shell 验证脚本 ' + $shScripts.Count + ' 个（在 ubuntu-latest 的 job 里执行）：' + (($shScripts | ForEach-Object { $_.Name }) -join ', '))
+Write-Host '  · Linux 平台实现（LinuxBackupSource / LinuxPaths / LinuxToolchainQuery 等）只在 ubuntu-latest 被编译与运行'
+Write-Host '  · V3 Linux / Windows 打包 job 只在 v3*/main 的 push 上跑（本机不打包）'
+Write-Host '  · 因此：**本地全绿不等于 CI 全绿** ✓ 推之前建议看一眼 gh run list ✓'
+Write-Host ''Write-Host '== V3 切换就绪度 =='
 $rows | ForEach-Object { Write-Host $_ }
 if ($fail -gt 0) { Write-Host ("== 未就绪项：" + $fail + "（详见上面 [ NOT ] 行）=="); exit 1 }
 Write-Host '== 全部就绪 =='
