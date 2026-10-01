@@ -2,11 +2,11 @@
   <img src="https://raw.githubusercontent.com/sakanamaru/dsh-minato/main/logo.png" alt="dsh-minato" width="180">
 </p>
 
-# dsh-minato 3.0.0-preview.2（首个 3.0 预览版 / first 3.0 preview）
+# dsh-minato 3.0.0-preview.3（首个 3.0 预览版 / first 3.0 preview）
 
 > ⚠️ 非官方工具，由社区独立开发，与 DeepSeek 官方无关。本工具不是 dsh 插件：它是独立进程，不注入 dsh，dsh 没装也能用。
 
-## v3.0.0-preview.2 — 2026-10-02
+## v3.0.0-preview.3 — 2026-10-02
 
 ### Fixed / 修复（preview.2）
 
