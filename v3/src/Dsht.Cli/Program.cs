@@ -2245,7 +2245,12 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     string act2 = PackageContentHash(pkgDir);
                     if (act2 != mh2) return T("该备份内容与完成标记不符（哈希不一致）—— 内容已被改动或损坏", "this backup does not match its completion marker (hash mismatch) - the content has been altered or corrupted");
                 }
-                if (have >= want) return null;
+                // ★★ 架构审计抓到：这里是 have >= want ✗ 而 BackupVerify 用 want != have ✗
+                //   → 同一个包两套结论 ✗（多出文件时 restore 说"完整" ✓ 而 --verify 说 mismatch ✓）
+                // ✓ 现在：与 --verify 对齐 ✓✓（数量必须完全相等 ✓）
+                // ★ 修：want 取不到时是 -1 ✗ → 不能直接比 ✗（否则每一个包都会被判不符 ✗✗）
+                if (want >= 0 && have != want) return T("备份内容与标记不符（标记 ", "backup does not match its marker (marker ") + want + T(" 项，实际 ", " items, actual ") + have + T(" 项）：", "): ") + System.IO.Path.GetFileName(pkgDir);
+                return null;
                 return T("该备份不完整（完成标记 ", "this backup is incomplete (marker says ") + want + T(" 个文件，实际 ", " files, actual ") + have + T(" 个）—— 恢复出来的数据会缺内容", " files) - a restore would come back with content missing");
             }
             catch { return null; }
@@ -3241,12 +3246,14 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 Console.WriteLine("RESTORE_APPLY_ROOT " + paths.DataRoot);
             }
 
+            string preRollbackPath = null;   // ★ C1：回滚锚点要在失败分支里也能用 ✓✓
             string dstRoot = paths.DataRoot;
             if (fs.DirectoryExists(dstRoot))
             {
                 BackupResult pre = bk.Create(dstRoot, BackupKind.PreRestore, _cfg == null ? 3 : _cfg.KeepBackups, WorkspaceRoot(reg));
                 if (pre == null) { Console.WriteLine("RESTORE_FAIL " + T("恢复前自动备份失败", "pre-restore backup failed")); return 0; }
                 AddContentHashToMarker(pre.Path);   // 回滚锚点也要能自证完整 ✓✓（恢复前自动备份 ✓）
+            preRollbackPath = pre.Path;   // ★ C1：记下来 ✓ 恢复失败时要自动回滚 ✓
             Console.WriteLine("RESTORE_PRE_BACKUP " + pre.Path);   // 回滚锚点必须**总是**告诉用户 ✗（我曾在一次编辑中误删此行 ✗）
             }
 
@@ -3256,7 +3263,21 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             if (!o.Ok)
             {
                 Console.WriteLine("RESTORE_FAIL " + T("恢复失败：" + (o.Error ?? ""), "restore failed: " + (o.Error ?? "")));
-                return 0;
+                // ★★★ 架构审计抓到（CRITICAL）：恢复没有回滚 ✗✗
+                //   → 顶层目录是逐个拷贝的 ✓ 中途失败会留下半合并的数据根 ✗
+                //   → 回滚锚点只打印了位置 ✓ 从不自动使用 ✗ · 而且这里还返回 0（假成功 ✗）
+                // ✓ 现在：失败就自动把恢复前那份打回去 ✓✓ 并如实报告 ✓ 退出码非 0 ✓
+                if (!string.IsNullOrEmpty(preRollbackPath))
+                {
+                    RestoreOutcome rb = bk.Restore(preRollbackPath, dstRoot, WorkspaceRoot(reg));
+                    if (rb != null && rb.Ok)
+                        Console.WriteLine("RESTORE_ROLLED_BACK " + preRollbackPath + " " + T("已自动回滚到恢复前的状态 ✓", "rolled back to the pre-restore state"));
+                    else
+                        Console.WriteLine("RESTORE_ROLLBACK_FAILED " + preRollbackPath + " " + T("自动回滚也失败了 ✗ 数据根可能是半合并状态 ✓ 请手动用上面那个包恢复 ✓", "automatic rollback ALSO failed; the data root may be half-merged - restore it by hand from the package above"));
+                }
+                else
+                    Console.WriteLine("RESTORE_NO_ROLLBACK " + T("没有可用的回滚锚点（数据根原先不存在 ✓ 所以没建）✓", "no rollback anchor was available (the data root did not exist before)"));
+                return 1;   // ★ 恢复失败不能返回 0 ✓✓（自动化会以为成功了 ✗）
             }
             Console.WriteLine("RESTORE_OK " + bkDir);
             OpLog(reg, "INFO", "restore OK " + bkDir);
