@@ -110,7 +110,7 @@ jobs:
       - name: Publish V3 CLI (small, framework-dependent)
         run: dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r linux-x64 --self-contained false -o out/fd --nologo
       - name: Publish V3 CLI (self-contained single file)
-        run: dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o out/sc --nologo
+        run: dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o out/sc --nologo
       - name: Publish Avalonia GUI (self-contained)
         run: dotnet publish v3/gui/Dsht.Gui.Avalonia/Dsht.Gui.Avalonia.csproj -c Release -r linux-x64 --self-contained true -o out/gui --nologo
       - name: Smoke test the published CLI (read-only, isolated root, never the default port)
@@ -180,7 +180,7 @@ jobs:
 
   build:
     needs: [test, v3-linux]   # Linux 打包/冒烟失败即拦住发布（此前 Linux 坏掉也能发）
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'   # M-8：发布/手动才构建产物；普通 push/PR 仅跑测试
+    if: startsWith(github.ref, 'refs/tags/v2') || github.event_name == 'workflow_dispatch'   # audit: v2 build must not run on v3 tags
     runs-on: windows-latest
     permissions:
       contents: write        # 回推 hashes.txt + 上传 draft release 资产
@@ -416,7 +416,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2 fixed SHA
       - name: Publish V3 CLI (self-contained single file)
-        run: dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out/sc --nologo
+        run: dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o out/sc --nologo
       - name: Publish V3 CLI (small, framework-dependent)
         run: dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r win-x64 --self-contained false -o out/fd --nologo
       - name: Publish Avalonia GUI (self-contained)
