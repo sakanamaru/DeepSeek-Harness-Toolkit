@@ -23,6 +23,16 @@
     <AvaloniaResource Include="Assets/**" />
   </ItemGroup>
 
+  <!--
+    ★★ 架构审计抓到（S4）：GUI 里把领域层的 MarkerText **逐字复制**了一份 ✗
+      → 两边靠"人记得同步" ✗ → 改一边就悄悄不一致（标题里带空格/百分号就会解析错 ✗）
+    ✓ 现在：**把同一份源码链进来编译** ✓✓（仍然**没有 ProjectReference** ✓
+      架构约定不破 ✓ 只是共享一个纯函数文件 ✓）
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Dsht.Domain\Services\MarkerText.cs" Link="MarkerText.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.2.1" />
     <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />

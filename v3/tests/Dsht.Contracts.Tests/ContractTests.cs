@@ -710,6 +710,29 @@ static class ContractTests
                 try { System.IO.Directory.Delete(bkRootTmp, true); } catch { }
             }
         }
+        // ---- [30] 标记行自由文本往返（架构审计 G1：这条 CLI↔GUI 契约原本**没有任何测试** ✗）----
+        Console.WriteLine("[30] MarkerText 往返：CLI 打印与 GUI 解析必须逐字一致");
+        {
+            string[] samples = new string[] {
+                "会话 A%B", "a b c", "带\t制表符", "带\n换行", "带\r回车", "100% 完成", "%-not-a-code", "中文·标点，。！", "", "plain"
+            };
+            int roundTripOk = 0;
+            for (int si = 0; si < samples.Length; si++)
+            {
+                string enc = Dsht.Domain.Services.MarkerText.Encode(samples[si]);
+                string dec = Dsht.Domain.Services.MarkerText.Decode(enc);
+                if (dec == samples[si]) roundTripOk++;
+            }
+            Check("往返：全部样例 encode→decode 回到原值（" + roundTripOk + "/" + samples.Length + "）", roundTripOk == samples.Length);
+            Check("转义：空格 → %20 且百分号 → %25", Dsht.Domain.Services.MarkerText.Encode("a b") == "a%20b" && Dsht.Domain.Services.MarkerText.Encode("100%") == "100%25");
+            Check("转义：空值 → -（标记行不用空串）", Dsht.Domain.Services.MarkerText.Encode("") == "-" && Dsht.Domain.Services.MarkerText.Encode(null) == "-");
+            Check("解码：- 与空 → 空串；非法 % 原样保留",
+                Dsht.Domain.Services.MarkerText.Decode("-") == "" && Dsht.Domain.Services.MarkerText.Decode("") == ""
+                && Dsht.Domain.Services.MarkerText.Decode("100%") == "100%");
+            // ★ 关键：**钉住 GUI 夹具里那个串** ✓ —— 若哪天只改了一边的规则 ✓ 这条会立刻红 ✓
+            Check("契约：GUI 夹具串 %20/%25 解出来就是它期望的标题",
+                Dsht.Domain.Services.MarkerText.Decode("会话%20A%25B") == "会话 A%B");
+        }
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
     }

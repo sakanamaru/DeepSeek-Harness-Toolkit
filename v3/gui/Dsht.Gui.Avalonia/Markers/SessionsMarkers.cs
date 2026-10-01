@@ -336,21 +336,14 @@ namespace Dsht.Gui.Avalonia.Markers
             return line.Length > marker.Length ? line.Substring(marker.Length) : "";
         }
 
-        /// <summary>标记行自由文本解码（与 CLI 侧 MarkerText.Encode 对称；`-`/空 → 空串）。</summary>
+        /// <summary>标记行自由文本解码 ✓（与 CLI 侧对称 ✓）。
+        /// ★★ 架构审计抓到（S4）：这里原来是**逐字复制**领域层 MarkerText.Decode ✗
+        ///   → 两边靠"人记得同步" ✗ → 改一边就悄悄不一致 ✗
+        /// ✓ 现在：**直接调用同一份源码** ✓✓（csproj 用 Compile Include 链接进来 ✓
+        ///   仍然没有 ProjectReference ✓ 架构约定不破 ✓）</summary>
         public static string Decode(string text)
         {
-            if (string.IsNullOrEmpty(text) || text == "-") return "";
-            StringBuilder sb = new StringBuilder(text.Length);
-            for (int i = 0; i < text.Length; i++)
-            {
-                char c = text[i];
-                if (c != '%' || i + 2 >= text.Length) { sb.Append(c); continue; }
-                int code;
-                if (!int.TryParse(text.Substring(i + 1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out code)) { sb.Append(c); continue; }
-                sb.Append((char)code);
-                i += 2;
-            }
-            return sb.ToString();
+            return Dsht.Domain.Services.MarkerText.Decode(text);
         }
 
         /// <summary>"unknown" → 空串（界面显示 unknown 由文本属性负责）。</summary>
