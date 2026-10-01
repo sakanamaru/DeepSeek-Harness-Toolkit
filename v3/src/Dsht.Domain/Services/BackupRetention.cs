@@ -35,7 +35,10 @@ namespace Dsht.Domain.Services
         public static bool IsBackupDirName(string name)
         {
             if (string.IsNullOrEmpty(name)) return false;
-            return name.StartsWith(BackupPrefix, StringComparison.Ordinal);
+            // ★ 架构审计抓到：这里用 Ordinal ✗ 而 BackupPackage.IsValidBackupName 用 OrdinalIgnoreCase ✗
+            //   → `DSH-DATA-...-auto` 是**合法包** ✓ 却对保留策略**不可见** ✗（永远不被清理 ✓）
+            // ✓ 现在：**与 BackupPackage 对齐** ✓✓
+            return name.StartsWith(BackupPrefix, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>实际保留份数：cfgKeep 与保底值取大。</summary>

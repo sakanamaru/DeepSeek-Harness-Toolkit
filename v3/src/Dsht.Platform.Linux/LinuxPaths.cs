@@ -14,9 +14,13 @@ namespace Dsht.Platform.Linux
         private const string AppDirName = "DeepSeekHarnessLauncher";
         private readonly string _stateDir;
 
-        /// <summary>Read an env var and NORMALISE it to an absolute path. The --apply gate that
-        /// refuses to write the default data root is a plain string comparison, so a relative
-        /// DSH_HOME (e.g. .dsh) or a symlink to ~/.dsh used to slip through.</summary>
+        /// <summary>Read an env var and NORMALISE it to an absolute path.
+        /// ⚠ **诚实边界（架构审计核对过 ✓）**：这里只做**词法**归一化（`Path.GetFullPath` ✓）。
+        ///   · 相对路径（如 `.dsh`）**确实**会被挡在 --apply 闸门外 ✓（它会被补成绝对路径 ✓）
+        ///   · 但**符号链接 / junction 不会被解析** ✗ —— 把一个指向 ~/.dsh 的链接设成 DSH_HOME，
+        ///     闸门看到的字符串与默认候选不同 → **仍会放行** ✗
+        ///   （要真解决得解析真实路径 ✓ 而 .NET Framework 4.x 上没有 `ResolveLinkTarget` ✗
+        ///    → 需要平台侧 P/Invoke / readlink ✓ 目前**未做** ✓ 这里如实写明而不是含糊带过 ✓）</summary>
         internal static string NormEnv(string name)
         {
             try
