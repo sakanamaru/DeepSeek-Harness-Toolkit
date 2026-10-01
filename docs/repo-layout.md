@@ -23,7 +23,7 @@
 - `plugin/` —— 可选的只读桥接插件
 - `docs/` —— 截图与发布说明
 - `.github/` —— CI
-- 根目录的 `README*.md` / `LICENSE` / `ASSETS.md` / `PRIVACY.md` / `SECURITY.md` / `package.json` —— 门面
+- 根目录的 `README*.md` / `LICENSE` / `docs/ASSETS.md` / `docs/PRIVACY.md` / `.github/SECURITY.md` / `package.json` —— 门面
 
 ## 已经不在库里的
 

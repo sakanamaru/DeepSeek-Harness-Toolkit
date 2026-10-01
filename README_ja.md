@@ -153,7 +153,7 @@ dsh-minato version | about | selftest
   ハッシュがあり、中断されたものや内容が変わったものは拒否されます。
 - **CLI・インストーラ・ランチャー・dsh プラグインは、実行時の第三者依存がゼロです。**
   **GUI だけは Avalonia**（UI フレームワーク）を使います。これが唯一の例外です —
-  [PRIVACY.md](PRIVACY.md) と [ASSETS.md](ASSETS.md) を参照。
+  [docs/PRIVACY.md](docs/PRIVACY.md) と [docs/ASSETS.md](docs/ASSETS.md) を参照。
 - **テレメトリなし、アカウントなし、アップロードなし。**
 
 ---
@@ -234,8 +234,8 @@ dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r linux-x64 --self-co
 
 ## ライセンスとクレジット
 
-MIT — [LICENSE](LICENSE) を参照。プライバシーは [PRIVACY.md](PRIVACY.md)、素材のライセンスとアイコンの出所は
-[ASSETS.md](ASSETS.md) にあります。
+MIT — [LICENSE](LICENSE) を参照。プライバシーは [docs/PRIVACY.md](docs/PRIVACY.md)、素材のライセンスとアイコンの出所は
+[docs/ASSETS.md](docs/ASSETS.md) にあります。
 
 `dsh-minato`（みなと、「港」）は以前 `DeepSeek-Harness-Toolkit` という名前でした。改名は git の履歴に残っています。
 本プロジェクトは独立したもので、DeepSeek 公式とは関係ありません。

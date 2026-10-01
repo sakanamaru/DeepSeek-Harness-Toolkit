@@ -228,7 +228,7 @@ jobs:
       - name: Regenerate hashes.txt from CI build
         shell: pwsh
         run: |
-          $files = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.dsh_launcher_root')
+          $files = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','.github/SECURITY.md','verify.ps1','.dsh_launcher_root')
           $files += (Get-ChildItem src -Recurse -Filter *.cs | ForEach-Object { $_.FullName.Replace((Get-Location).Path + '\','') })
           # L-2：版本号从 AssemblyVersion 动态派生（取 major.minor.build 三段），避免每次 bump 手改 hashes 头（旧版本号残留）
           $verMatch = (Select-String -Path dsh_v2.cs -Pattern 'AssemblyVersion\("(\d+)\.(\d+)\.(\d+)\.\d+"' | Select-Object -First 1).Matches[0]
@@ -335,7 +335,7 @@ jobs:
           if ($tag -in @('main','master','')) { $tag = "${{ inputs.release_tag }}" }
           if ($tag -eq '') { $tag = 'dev' }
           $zipName = "DeepSeek-Harness-Toolkit_${tag}_upload-package.zip"
-          $items = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','START-GUI.cmd','START-CLI.cmd','READ-ME-FIRST.txt','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','SECURITY.md','verify.ps1','.gitignore','hashes.txt','hashes.txt.asc','.dsh_launcher_root','src')
+          $items = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','START-GUI.cmd','START-CLI.cmd','READ-ME-FIRST.txt','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','.github/SECURITY.md','verify.ps1','.gitignore','hashes.txt','hashes.txt.asc','.dsh_launcher_root','src')
           Compress-Archive -Path $items -DestinationPath $zipName -CompressionLevel Optimal
           Write-Output ("zip: " + [math]::Round((Get-Item $zipName).Length/1KB,1) + " KB")
 

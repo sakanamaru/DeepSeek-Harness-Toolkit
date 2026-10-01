@@ -152,8 +152,8 @@ This section states only what the code does. If a claim here is not backed by th
 - **Backup integrity is checked, not assumed.** A package carries a completion marker written last and a per-file
   hash; a package that was interrupted, or whose contents changed, is refused.
 - **Zero third-party runtime dependencies** for the CLI, the installer, the launcher and the dsh plugin. The
-  **GUI is built on Avalonia** (a UI framework), which is the one exception — see [PRIVACY.md](PRIVACY.md) and
-  [ASSETS.md](ASSETS.md).
+  **GUI is built on Avalonia** (a UI framework), which is the one exception — see [docs/PRIVACY.md](docs/PRIVACY.md) and
+  [docs/ASSETS.md](docs/ASSETS.md).
 - **No telemetry, no accounts, no uploads.**
 
 ---
@@ -234,8 +234,8 @@ Known limitations, stated plainly:
 
 ## License and credits
 
-MIT — see [LICENSE](LICENSE). Privacy details in [PRIVACY.md](PRIVACY.md); asset licensing and the icon's provenance
-in [ASSETS.md](ASSETS.md).
+MIT — see [LICENSE](LICENSE). Privacy details in [docs/PRIVACY.md](docs/PRIVACY.md); asset licensing and the icon's provenance
+in [docs/ASSETS.md](docs/ASSETS.md).
 
 `dsh-minato` (みなと, "harbour") was previously published as `DeepSeek-Harness-Toolkit`; the rename is recorded in the
 git history. This is an independent project and is not affiliated with DeepSeek.

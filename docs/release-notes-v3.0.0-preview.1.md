@@ -76,7 +76,7 @@ dsh plugin --profile web add "<本仓库路径>/plugin/dsh-minato-bridge"
 
 ## 许可与致谢
 
-- [MIT License](LICENSE)。**代码是 MIT 的，图标不是** —— 图标来源与许可见仓库 `ASSETS.md`。
+- [MIT License](LICENSE)。**代码是 MIT 的，图标不是** —— 图标来源与许可见仓库 `docs/ASSETS.md`。
 - [DeepSeek Harness (dsh)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 - 图标：**新 logo 为生成式 AI 产出（工具：Kimi）**，**旧 logo 为 ChatGPT（OpenAI）协助产出**；提示词均由本项目维护者编写
 - **v1 脚本协助：SOGR-Momono Dango（QwenPaw / DeepseekAPI-V4-Flash-0731）**

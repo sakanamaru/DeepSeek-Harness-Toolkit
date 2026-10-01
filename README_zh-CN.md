@@ -146,7 +146,7 @@ dsh-minato version | about | selftest
 - **备份的完整性是**校验**出来的，不是假设的。** 包里有**最后写入**的完成标记与逐文件哈希；
   被中断过的、或内容变过的包会被拒绝。
 - **命令行 / 安装器 / 启动器 / dsh 插件：运行时零第三方依赖。**
-  **图形界面基于 Avalonia**（一个 UI 框架），这是唯一的例外 —— 见 [PRIVACY.md](PRIVACY.md) 与 [ASSETS.md](ASSETS.md)。
+  **图形界面基于 Avalonia**（一个 UI 框架），这是唯一的例外 —— 见 [docs/PRIVACY.md](docs/PRIVACY.md) 与 [docs/ASSETS.md](docs/ASSETS.md)。
 - **没有遥测、没有账号、没有上传。**
 
 ---
@@ -225,7 +225,7 @@ dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r linux-x64 --self-co
 
 ## 许可与致谢
 
-MIT —— 见 [LICENSE](LICENSE)。隐私说明见 [PRIVACY.md](PRIVACY.md)；素材许可与图标来源见 [ASSETS.md](ASSETS.md)。
+MIT —— 见 [LICENSE](LICENSE)。隐私说明见 [docs/PRIVACY.md](docs/PRIVACY.md)；素材许可与图标来源见 [docs/ASSETS.md](docs/ASSETS.md)。
 
 `dsh-minato`（みなと，「港」）曾用名 `DeepSeek-Harness-Toolkit`，改名记录在 git 历史里。
 本项目是独立项目，与 DeepSeek 官方无关。
