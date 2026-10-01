@@ -1593,16 +1593,32 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             // ★★ 架构审计抓到（v2 对等 + 诚实性）：**Windows 上这里被整个跳过** ✗
             //   → 而 WindowsToolchainQuery 的注释写着"安装器负责" ✗ —— **安装器里根本没有 Node 安装代码** ✗✗
             //   → 结果：Windows 缺 Node 时只报 INSTALL_FAIL「拿不到可信的最新版本（离线…）」✗ → **误导** ✓
-            // ✓ 现在：**Windows 也如实诊断并给出正确指引** ✓✓（不假装能自动装 ✓ 也不甩锅给安装器 ✓）
+            // ✓ 现在：**Windows 也能一键装** ✓✓（winget 是系统自带的 ✓ 零第三方依赖 ✓）
+            //   并且**不假装成功** ✓ —— 装完**复核 `NodeVersion()`** ✓ 观察而不是信任退出码 ✓✓
             if (PlatformIsWindows() && (nodeMissing || nodeOld))
             {
                 Console.WriteLine(verb + "_NEED_NODE " + (nodeMissing
                     ? T("未检测到 Node.js（dsh 通过 npm 安装，需要它）", "Node.js not found (dsh installs through npm and needs it)")
                     : T("Node.js 版本过旧（", "Node.js is too old (") + nodeNow + T("）—— dsh 要求 >= 22.19.0", ") - dsh requires >= 22.19.0")));
-                Console.WriteLine(verb + "_NODE_HINT " + T("Windows 上请先安装 Node.js（官网安装包，或 winget install OpenJS.NodeJS.LTS），装完**重开一个终端**再试。本工具与安装器都**不会**替你装 Node ✓",
-                                                                    "install Node.js on Windows first (official installer, or: winget install OpenJS.NodeJS.LTS), then reopen the terminal; neither this tool nor the installer installs Node for you"));
-                Console.WriteLine(verb + "_OBSERVED not-installed");
-                return 0;
+                Console.WriteLine(verb + "_NODE_HINT " + T("Windows 上可用 winget 自动装：加 --install-node --yes；或手动装（官网安装包 / winget install OpenJS.NodeJS.LTS）后**重开一个终端**再试 ✓",
+                                                                    "on Windows: add --install-node --yes to install with winget, or install it yourself (official installer / winget install OpenJS.NodeJS.LTS) and reopen the terminal"));
+                if (!Has(args, "--install-node") || !Has(args, "--yes"))
+                {
+                    Console.WriteLine(verb + "_DRYRUN " + T("（确认请加 --install-node --yes）", "(add --install-node --yes to confirm)"));
+                    Console.WriteLine(verb + "_OBSERVED not-installed");
+                    return 0;
+                }
+                Console.WriteLine(verb + "_NODE_INSTALLING " + T("正在用 winget 安装 Node.js LTS …", "installing Node.js LTS with winget ..."));
+                int ncW = tc.InstallNodeRuntime();
+                string nvW = tc.NodeVersion();
+                if (string.IsNullOrEmpty(nvW))
+                {
+                    Console.WriteLine(verb + "_FAIL " + T("Node 引导失败（退出码 ", "Node bootstrap failed (exit code ") + ncW + T("）：", "): ") + Dsht.Platform.Windows.WindowsToolchainQuery.LastError);
+                    Console.WriteLine(verb + "_NODE_HINT " + T("可手动安装：winget install OpenJS.NodeJS.LTS（或官网安装包），装完重开一个终端 ✓", "install by hand: winget install OpenJS.NodeJS.LTS (or the official installer), then reopen the terminal"));
+                    Console.WriteLine(verb + "_OBSERVED not-installed");
+                    return 0;
+                }
+                Console.WriteLine(verb + "_NODE_OK " + nvW + T("（由 winget 安装 ✓ 可能需要重开终端才能用）", " (installed by winget; a new terminal may be needed)"));
             }
 
             if (!PlatformIsWindows() && (nodeMissing || nodeOld))

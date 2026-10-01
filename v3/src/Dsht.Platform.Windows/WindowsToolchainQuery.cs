@@ -100,10 +100,28 @@ namespace Dsht.Platform.Windows
             }
             catch { return -1; }
         }
-        /// <summary>Windows 上**不代装** Node；返回 -1，由调用方如实说明。
+        /// <summary>失败原因（给 CLI 如实显示 ✓ 不猜 ✓）。</summary>
+        public static string LastError = "";
+
+        /// <summary>用 winget 安装 Node LTS ✓（用户要求："Windows 上也要能一键装 Node" ✓）。
         /// ★ 架构审计抓到：这里原来写着「安装器负责」✗ —— 而 **v3/tools/installer.cs 里没有任何 Node 安装代码** ✗✗
-        ///   → 那句话是**不实的** ✓ 已改掉 ✓（缺 Node 时由 CLI 如实诊断 + 给出 winget/官网指引 ✓）</summary>
-        public int InstallNodeRuntime() { return -1; }
+        ///   → 那句话是**不实的** ✓ 现在**真的装** ✓✓（winget 是 Windows 10/11 自带的 ✓ 零第三方依赖 ✓）。
+        /// ⚠ **不假装成功** ✓：winget 的输出**只当参考** ✓ 真正的判据是**调用方随后复核 `NodeVersion()`** ✓
+        ///   （观察而不是信任退出码 ✓ —— 与项目其它地方同一条纪律 ✓）。</summary>
+        public int InstallNodeRuntime()
+        {
+            LastError = "";
+            try
+            {
+                string outp = WindowsShell.Capture("cmd.exe",
+                    "/c winget install --id OpenJS.NodeJS.LTS --silent --accept-package-agreements --accept-source-agreements 2>&1",
+                    600000);
+                LastError = outp == null ? "" : outp.Trim();
+                if (LastError.Length == 0) LastError = "winget 没有输出（可能未安装 winget）";
+                return 0;   // ★ 返回值**不代表成功** ✓ —— 成功与否由调用方 `NodeVersion()` 复核决定 ✓✓
+            }
+            catch (Exception ex) { LastError = ex.Message; return -1; }
+        }
 
         /// <summary>列出可用版本（原样返回 npm 输出 ✓）。</summary>
         public string NpmViewVersions() { return WindowsShell.Capture("cmd.exe", "/c npm view @deepseek-ai/dsh versions 2>nul"); }
