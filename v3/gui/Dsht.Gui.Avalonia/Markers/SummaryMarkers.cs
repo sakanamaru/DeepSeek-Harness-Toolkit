@@ -170,7 +170,11 @@ namespace Dsht.Gui.Avalonia.Markers
                 string[] p = line.Substring("BACKUP_ITEM ".Length).Split(new char[] { ' ' }, 4);
                 if (p.Length < 1) continue;
                 BackupItem b = new BackupItem();
-                b.Name = p[0];
+                // ★★ 架构审计抓到（MAJOR）：CLI 那边**没有转义** ✗ 而这里按空格切 ✗
+                //   → 备份目录名含空格（两个平台都合法 ✓）时会被切碎 ✗
+                //     → 恢复/预览/删除会作用在**截断后的名字**上 ✗✗
+                // ✓ 现在：CLI 侧已转义 ✓ 这里**解码** ✓✓（与 SESSION 的处理一致 ✓）
+                b.Name = SessionsMarkers.Decode(p[0]);
                 if (p.Length > 1) b.Kind = p[1];
                 long n; if (p.Length > 2 && long.TryParse(p[2], out n)) b.Bytes = n;
                 if (p.Length > 3) b.Time = p[3].Trim();

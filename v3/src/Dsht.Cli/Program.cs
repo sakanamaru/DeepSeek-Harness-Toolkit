@@ -2444,7 +2444,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     long bytes = src.DirSize(e.Path);
                     DateTime? mt = src.LastWrite(e.Path);
                     string mts = mt.HasValue ? mt.Value.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) : "(unknown)";
-                    Console.WriteLine("BACKUP_ITEM " + e.Name + " " + BackupPackage.KindLabel(BackupPackage.Classify(e.Name)) + " " + bytes + " " + mts);
+                    Console.WriteLine("BACKUP_ITEM " + MarkerText.Encode(e.Name) + " " + BackupPackage.KindLabel(BackupPackage.Classify(e.Name)) + " " + bytes + " " + mts);
                 }
             }
             return 0;

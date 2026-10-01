@@ -238,7 +238,7 @@ namespace Dsht.Gui.Avalonia
             catch { return ""; }
         }
 
-        public void ExportBackup(string name) { RunCliAction("backup-export --path " + name + " --yes --to " + Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "export"), "导出备份"); }
+        public void ExportBackup(string name) { RunCliAction("backup-export --path \"" + name + "\" --yes --to " + Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "export"), "导出备份"); }
 
         /// <summary>删除一份备份 ✓。**用户反馈（2026-09-30）**：「gui 删除备份好像也有问题」✓✓
         ///   ✗ 原来 `backup-delete --path <名>` **没有 --yes** ✗
@@ -296,13 +296,13 @@ namespace Dsht.Gui.Avalonia
                 "打开时已全选 ✓ 可直接 Ctrl+C 复制上面提示的时间再粘贴 ✓ 格式 yyyy-MM-dd HH:mm:ss ✓",
                 now);
             if (typed == null) { _actionLog = "已取消删除 ✓"; BuildShell(); ShowToast(_actionLog); return; }
-            RunCliAction("backup-delete --path " + name + " --yes --confirm-time \"" + typed.Trim() + "\"", "删除备份");
+            RunCliAction("backup-delete --path \"" + name + "\" --yes --confirm-time \"" + typed.Trim() + "\"", "删除备份");
         }
 
-        public void DryRunRestore(string name) { RunCliAction("restore --dry-run --path " + name, "恢复预览"); }
+        public void DryRunRestore(string name) { RunCliAction("restore --dry-run --path \"" + name + "\"", "恢复预览"); }
 
         /// <summary>应用恢复。**只在隔离数据根里允许**（CLI 自己的准入闸门会拒绝其它情况，界面把它的话原样显示）。</summary>
-        public void ApplyRestore(string name) { RunCliAction("restore --path " + name + " --apply", "应用恢复"); }
+        public void ApplyRestore(string name) { RunCliAction("restore --path \"" + name + "\" --apply", "应用恢复"); }
 
         public void SetConfig(string key, string value) { InvalidateCfgCache(); RunCliAction("config-set " + key + " \"" + (value == null ? "" : value.Replace("\"", "")) + "\"", "保存设置 " + key); }
 

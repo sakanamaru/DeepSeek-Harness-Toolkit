@@ -35,12 +35,17 @@ namespace Dsht.Platform.Linux
                             if (File.Exists(sel))
                             {
                                 string chosen = File.ReadAllText(sel).Trim();
-                                if (chosen.Length > 0) return chosen;
+                                // ★★ 架构审计抓到（MAJOR）：**真正在用的这个 BackupsRoot 原来是原样返回** ✗✗
+                                //   → 归一化只做在没人调的 `IPaths.BackupsRoot` 里 ✗ → **修复修在了死代码里** ✓
+                                //   → 相对路径会跟随 CWD ✗ → IsSubPath 接受什么、Delete 删哪里**取决于从哪启动** ✗
+                                // ✓ 现在：**与 WindowsPaths 同一条归一化** ✓✓（失败退回原样 ✓ 不猜 ✓）
+                                if (chosen.Length > 0) { try { return System.IO.Path.GetFullPath(chosen); } catch { return chosen; } }
                             }
                         }
                         catch { }
                         string env = Environment.GetEnvironmentVariable("DSH_MINATO_BACKUP_DIR");
-                        if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
+                        // ★ 同上：环境变量也要归一化 ✓✓（否则相对值同样跟随 CWD ✗）
+                        if (!string.IsNullOrWhiteSpace(env)) { try { return System.IO.Path.GetFullPath(env.Trim()); } catch { return env.Trim(); } }
                         return Path.Combine(_stateDir, "backup");
                     }
                 }
@@ -140,7 +145,14 @@ namespace Dsht.Platform.Linux
                         if (!wsInsideData && !dataInsideWs)
                             skipped += CopyTree(wsFull, Path.Combine(dest, "_workspace"), true);
                     }
-                    catch { }
+                    catch (Exception wex)
+                    {
+                        // ★★ 架构审计抓到（MAJOR）：这里原来是**空 catch** ✗
+                        //   → 一个工作区打包失败**不会进入 FailedCopies** ✗
+                        //   → 而 CLI 的 BACKUP_OK 在打包**之前**就打印了 ✗ → 备份报成功但少了工作区 ✓
+                        // ✓ 现在：**失败计数** ✓✓（会让 FailedCopies > 0 → 上层如实报"不完整" ✓）
+                        _copyFailures++;
+                    }
                 }
                 // 保留策略：只清自动类（手动永久保留）
                 try
@@ -186,7 +198,16 @@ namespace Dsht.Platform.Linux
                 if (string.IsNullOrEmpty(src) || string.IsNullOrEmpty(dstDir)) return null;
                 Directory.CreateDirectory(dstDir);
                 string target = Path.Combine(dstDir, Path.GetFileName(src.TrimEnd('\\', '/')));
-                CopyTree(src, target, true);
+                // ★★ 架构审计抓到（MAJOR）：**这里忽略了 CopyTree 的返回值** ✗✗
+                //   → 而 skipLocked=true 模式下 CopyTree 会吞掉每一个文件的错误 ✗
+                //   → **一个文件都没复制成功也照样返回 target** ✗ → 上层打印 BKEXPORT_OK ✗（导出空包还报成功 ✓）
+                // ✓ 现在：**源里有文件却一个都没复制出来 → 返回 null** ✓✓（上层就会如实报失败 ✓）
+                int copiedN = CopyTree(src, target, true);
+                try
+                {
+                    if (copiedN == 0 && Directory.Exists(src) && Directory.GetFileSystemEntries(src).Length > 0) return null;
+                }
+                catch { }
                 // 同级旁挂文件一起带走 ✓✓ —— 否则导出后**完成标记丢失** ✗，包到了别处无法核对完整性 ✓（迁移时最需要可信的一刻 ✓）
                 CopySibling(src, target, ".manifest");
                 CopySibling(src, target, ".version");
