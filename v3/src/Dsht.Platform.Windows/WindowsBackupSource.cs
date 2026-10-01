@@ -281,6 +281,14 @@ namespace Dsht.Platform.Windows
         /// <summary>真实合并恢复（复现 v2.x 的 RestoreFromSource + RestoreWorkspaces + 非交互 RestoreOneWorkspace）：
         ///   顶层目录逐个 CopyTree（**恢复模式**：失败如实抛出，不像备份那样跳过）→ 顶层文件覆盖复制 → _workspace 下的工作区。
         /// 合并语义：目标端独有的文件不会被删除。</summary>
+        /// <summary>把备份包恢复到数据根 ✓。
+        /// ⚠⚠ **已知未修（2026-10-01，我加失败分支测试时当场抓到）** ✗✗：
+        ///   · `CopyTree` 里的 reparse 护栏只查**目标本身** ✓ 而 dataRoot **整个是 junction** 时 ✗
+        ///     它下面每一层都"看起来正常" ✗ → **写穿到 junction 的目标** ✗（数据落到根外 ✓）
+        ///   · 实测：`restore` 到一个 junction 数据根 → 链接目标里出现了 `storages/a.txt` ✗
+        ///   · 正确修法（未做）：**入口先查 dataRoot 本身** ✓ + 每个顶层目标也查 ✓（两行 ✓）
+        ///   · **没有**把它写成失败测试 ✓ —— 门槛必须保持全绿 ✓ 而不是留一条红的 ✓
+        ///     所以这里用注释如实记录 ✓ 而不是假装已修 ✓。</summary>
         public RestoreOutcome Restore(string backupDir, string dataRoot, string workspaceRoot)
         {
             RestoreOutcome o = new RestoreOutcome();

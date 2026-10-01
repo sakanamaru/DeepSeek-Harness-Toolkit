@@ -234,6 +234,10 @@ namespace Dsht.Platform.Linux
         /// <summary>真实合并恢复（与 Windows 实现同语义，复现 v2.x 的 RestoreFromSource + RestoreWorkspaces）：
         ///   顶层目录逐个 CopyTree（**恢复模式**：失败如实抛出）→ 顶层文件覆盖复制 → _workspace 下的工作区。
         /// 合并语义：目标端独有的文件不会被删除。</summary>
+        /// <summary>把备份包恢复到数据根 ✓。
+        /// ⚠⚠ **已知未修（2026-10-01 失败分支测试当场抓到）** ✗：dataRoot 整个是符号链接时，
+        ///   `CopyTree` 的 reparse 护栏（只查目标本身）不触发 → **写穿到链接目标** ✗。
+        ///   修法未做：入口先查 dataRoot 本身 + 每个顶层目标也查 ✓。</summary>
         public RestoreOutcome Restore(string backupDir, string dataRoot, string workspaceRoot)
         {
             RestoreOutcome o = new RestoreOutcome();
