@@ -152,8 +152,8 @@ find "$PKG" -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
 # verified nothing (reported on the first real install on Linux). The Windows payload
 # always carries one and refuses to install without it - this was an asymmetry.
 ( cd "$PKG" && find . -type f ! -name 'hashes.txt' -printf '%P\n' 2>/dev/null | sort | while IFS= read -r f; do
-    printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$f"
-  done ) > "$PKG/hashes.txt"
+printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$f"
+done ) > "$PKG/hashes.txt"
 echo "package hashes.txt entries: $(wc -l < "$PKG/hashes.txt")"
 tar -czf "$PKG.tar.gz" "$PKG"
           sha256sum "$PKG.tar.gz" > "$PKG.tar.gz.sha256"
