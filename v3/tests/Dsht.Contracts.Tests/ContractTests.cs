@@ -298,6 +298,21 @@ static class ContractTests
             string ldr2 = new Dsht.Platform.Linux.LinuxPaths().DataRoot;
             Check("Linux DataRoot 回退到 <home>/.dsh", ldr2 != null && ldr2.EndsWith(".dsh"));
             Check("Linux BackupsRoot = StateDir/backup", new Dsht.Platform.Linux.LinuxPaths().BackupsRoot.EndsWith("backup"));
+            // ★★ 架构审计抓到（G3）：上面那条测的是 **IPaths.BackupsRoot** ✗ —— 而它**没有任何生产调用点** ✗
+            //   → 真正在用的是 `IBackupSource.BackupsRoot` ✓ 而它**从来没被测过** ✗✗
+            //   → 这正是"我那次归一化修复修在了死代码里"**没有任何门槛能发现**的原因 ✓
+            // ✓ 现在：**测真正在用的那个** ✓✓（相对环境变量必须被归一化成绝对路径 ✓）
+            {
+                string oldBkProbe = Environment.GetEnvironmentVariable("DSH_MINATO_BACKUP_DIR");
+                try
+                {
+                    Environment.SetEnvironmentVariable("DSH_MINATO_BACKUP_DIR", "rel-bk-probe");
+                    string liveBk = new Dsht.Platform.Linux.LinuxBackupSource(new Dsht.Platform.Linux.LinuxPaths()).BackupsRoot;
+                    Check("Linux IBackupSource.BackupsRoot：相对环境变量被归一化成绝对路径（**真正在用的那个** ✓）",
+                        !string.IsNullOrEmpty(liveBk) && System.IO.Path.IsPathRooted(liveBk));
+                }
+                finally { Environment.SetEnvironmentVariable("DSH_MINATO_BACKUP_DIR", oldBkProbe); }
+            }
         }
         finally { Environment.SetEnvironmentVariable("DSH_HOME", oldDshHome); }
         Console.WriteLine("[13] 组合服务目标与预留形态（桌面端驱动的核心语义）");
