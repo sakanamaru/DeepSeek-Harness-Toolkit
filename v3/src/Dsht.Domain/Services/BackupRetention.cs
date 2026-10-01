@@ -49,7 +49,7 @@ namespace Dsht.Domain.Services
 
         /// <summary>选出应删除的备份目录名（**最旧在前**，与 v2.x 的删除顺序一致）。
         /// 输入为目录名集合（不含路径）；不修改输入。</summary>
-        public static List<string> SelectForDeletion(IEnumerable<string> dirNames, int cfgKeep)
+        public static List<string> SelectForDeletion(IEnumerable<string> dirNames, int cfgKeep, string excludeName = null)
         {
             List<string> result = new List<string>();
             if (dirNames == null) return result;
@@ -57,6 +57,10 @@ namespace Dsht.Domain.Services
             List<string> autos = new List<string>();
             foreach (string n in dirNames)
             {
+                // ★ 架构审计抓到（C11）：时钟回拨时**刚建好的包**名字排最旧 ✗ → 会被自己删掉 ✗✗
+                //   → 而调用方还把这个路径当成功返回 ✓（备份"成功"但文件已经没了 ✓）
+                // ✓ 现在：**刚建好的那个包永不参与删除** ✓✓（无论它的时间戳排在哪 ✓）
+                if (excludeName != null && string.Equals(n, excludeName, StringComparison.OrdinalIgnoreCase)) continue;
                 if (IsBackupDirName(n) && IsAutoBackupName(n)) autos.Add(n);
             }
             autos.Sort(StringComparer.Ordinal);   // 升序 = 时间序（旧 → 新）

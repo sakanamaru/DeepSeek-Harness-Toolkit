@@ -207,7 +207,7 @@ namespace Dsht.Platform.Windows
                         string n = Path.GetFileName(d.TrimEnd('\\', '/'));
                         names.Add(n); paths[n] = d;
                     }
-                    foreach (string victim in Dsht.Domain.Services.BackupRetention.SelectForDeletion(names, keep <= 0 ? 3 : keep))
+                    foreach (string victim in Dsht.Domain.Services.BackupRetention.SelectForDeletion(names, keep <= 0 ? 3 : keep, System.IO.Path.GetFileName(dest.TrimEnd('\\', '/'))))
                     {
                         try { Directory.Delete(paths[victim], true); } catch { }
                         try { System.IO.File.Delete(paths[victim] + ".manifest"); } catch { }   // 旁挂文件一起清 ✓
