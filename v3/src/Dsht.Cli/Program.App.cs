@@ -161,9 +161,11 @@ namespace Dsht.Cli
             {
                 Console.WriteLine("BRIDGE_MANAGED " + T(
                     "profile「" + profile + "」由 dsh 的**桌面端（Electron 应用）独占管理** ✗ → 命令行装不进去 ✓"
-                    + "请到桌面端里自行安装/管理插件 ✓ 或者改装到 web：`bridge-install --profile web --yes` ✓",
-                    "profile '" + profile + "' is managed by dsh's desktop application; install or manage it there, or use --profile web"));
+                    + "请到桌面端的「添加插件」对话框里，把下面那行**本地目录路径**粘进去 ✓"
+                    + "（它接受 npm 包名 / GitHub 地址 / 本地目录路径 ✓）或者改装到 web：`bridge-install --profile web --yes` ✓",
+                    "profile '" + profile + "' is managed by dsh's desktop application; paste the local folder path below into its add-plugin dialog, or use --profile web"));
                 Console.WriteLine("BRIDGE_MANAGED_PATH " + (string.IsNullOrEmpty(profileDir) ? "(拿不到路径 ✓)" : profileDir));
+                Console.WriteLine("BRIDGE_MANAGED_PLUGIN " + plugin + T("   ← **把这一行粘进桌面端的「添加插件」对话框** ✓", "   <- paste this into the desktop add-plugin dialog"));
                 return 0;
             }
 
