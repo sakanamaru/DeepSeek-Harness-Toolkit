@@ -180,7 +180,43 @@ $notWired = New-Object System.Collections.Generic.List[string]
 foreach ($s in $shScripts) { if ($wfTxt -notmatch [regex]::Escape($s.Name)) { $notWired.Add($s.Name) } }
 Gate 'invariant ci-only checks wired' ($shScripts.Count -gt 0 -and $notWired.Count -eq 0) $(if ($shScripts.Count -eq 0) { 'v3/tools 下没有 shell 验证脚本（可疑 ✗）' } elseif ($notWired.Count -gt 0) { '未被 workflow 引用（摆设 ✗）：' + ($notWired -join ', ') } else { $shScripts.Count.ToString() + ' 个 shell 验证脚本都已接入 CI ✓' })
 
-# ---- 领域层纯净度 ----
+# ---- 门槛⑧（G4 补上）：对外承诺必须**行为验证**，不能只做文本匹配 ----
+# 起因：`about` 里写着「wipe 现在只打印手动删除路径、**不删也不备份**」✓
+#   → 而门槛只用**文本匹配**确认那句话在源码里 ✗（句子在 ≠ 行为对 ✗✗）
+# ✓ 现在：**真的跑一次 wipe** ✓ 然后断言**目标目录还在** ✓✓（这才是行为断言 ✓）
+#   · 只碰**隔离目录** ✓ 绝不碰真实数据根 ✓
+#   · 同时断言它**打印了路径**（不然用户没法手动删 ✓）
+$cliExe = Join-Path $env:TEMP ('dsht_switchover_cli_' + $PID + '.exe')
+Remove-Item $cliExe -Force -ErrorAction SilentlyContinue
+$cliSrc = @()
+foreach ($d in @('Dsht.Domain','Dsht.Platform.Shared','Dsht.Platform.Windows','Dsht.Platform.Linux','Dsht.Cli')) {
+    $cliSrc += @(Get-ChildItem (Join-Path $Repo ('v3\src\' + $d)) -Recurse -Filter *.cs -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
+}
+Invoke-External { & $csc /nologo /target:exe ("/out:" + $cliExe) $cliSrc 2>&1 } | Out-Null
+$cliOk = (Test-Path $cliExe)
+$wipeOk = $false
+$wipeDet = 'CLI 未构建成功'
+if ($cliOk) {
+    $wRoot = Join-Path $env:TEMP ('dsht_wipe_probe_' + $PID)
+    Remove-Item $wRoot -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Path (Join-Path $wRoot 'storages') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $wRoot 'storages\keep.txt') -Value 'KEEP' -Encoding UTF8
+    $wOldHome = $env:DSH_HOME
+    $env:DSH_HOME = $wRoot   # ★ 必须隔离 ✓ 否则 wipe 打印的是**默认数据根**的路径 ✗（第一次就踩了 ✓）
+    $wOut = ''
+    try { $wOut = (Invoke-External { & $cliExe wipe 2>&1 } | Out-String) } catch { $wOut = '' }
+    $stillThere = Test-Path (Join-Path $wRoot 'storages\keep.txt')
+    $printedPath = ($wOut -match [regex]::Escape($wRoot)) -or ($wOut -match 'storages')
+    $wipeOk = $stillThere -and $printedPath
+    if ($wipeOk) { $wipeDet = 'wipe 只打印路径、**目标原样还在** ✓✓（行为验证 ✓）' }
+    elseif (-not $stillThere) { $wipeDet = '**wipe 真的删了东西** ✗✗ 与 about 的承诺不符 ✗' }
+    else { $wipeDet = 'wipe 没打印出路径（用户无法手动删 ✗）' }
+    Remove-Item $wRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+Gate 'gate8 wipe honesty' $wipeOk $wipeDet
+Remove-Item $cliExe -Force -ErrorAction SilentlyContinue
+
+# ---- 领域层纯净度 ----# ---- 领域层纯净度 ----
 $pure = (Invoke-External { & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_domain_pure.ps1') -Repo $Repo 2>&1 }) | Out-String   # 审计 M8：这一条原来**没包装** ✗ → 子进程一写 stderr 就杀掉整个门槛（输出层假绿 ✓）
 Gate 'invariant domain purity' ($LASTEXITCODE -eq 0) '零 IO / 零平台 / 零时钟耦合'
 
