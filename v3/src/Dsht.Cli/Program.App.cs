@@ -154,6 +154,19 @@ namespace Dsht.Cli
             }
             catch { }
 
+            // ★★ 改进（用户实测后提出）：`desktop` profile **由 dsh 的桌面端独占管理** ✗
+            //   → 命令行装不进去 ✓ 而原来只把 dsh 的英文报错原样丢出去 ✗ → 用户不知道该怎么办 ✓
+            //   ✓ 现在：**打印该 profile 的实际路径 + 明确指引** ✓✓
+            if (outp != null && outp.IndexOf("managed exclusively by the Electron application", StringComparison.Ordinal) >= 0)
+            {
+                Console.WriteLine("BRIDGE_MANAGED " + T(
+                    "profile「" + profile + "」由 dsh 的**桌面端（Electron 应用）独占管理** ✗ → 命令行装不进去 ✓"
+                    + "请到桌面端里自行安装/管理插件 ✓ 或者改装到 web：`bridge-install --profile web --yes` ✓",
+                    "profile '" + profile + "' is managed by dsh's desktop application; install or manage it there, or use --profile web"));
+                Console.WriteLine("BRIDGE_MANAGED_PATH " + (string.IsNullOrEmpty(profileDir) ? "(拿不到路径 ✓)" : profileDir));
+                return 0;
+            }
+
             bool linked = false, patched = false;
             if (!string.IsNullOrEmpty(profileDir))
             {
@@ -170,7 +183,12 @@ namespace Dsht.Cli
                     if (System.IO.File.Exists(patch))
                     {
                         string txt = System.IO.File.ReadAllText(patch);
-                        patched = txt != null && txt.IndexOf("shio-bridge", StringComparison.Ordinal) >= 0;
+                        // ★★ 改进（用户实测后提出，G4 类）：原来**只 grep `shio-bridge`** ✗
+                        //   → **分不出"格式正确"和"格式坏掉"** ✗✗
+                        //   （实测：把整个条目压平成同一缩进 ✗ → YAML 结构坏了 ✗ 而 grep 仍报 patched=1 ✗）
+                        //   ✓ 现在：**结构校验** ✓ —— 条目后面每一行的缩进必须**严格大于**条目本身 ✓
+                        //     缩进不对 → **不算挂上** ✗（宁可报失败，也不假报成功 ✓✓）
+                        patched = PatchEntryWellFormed(txt);
                     }
                 }
                 catch { }
@@ -199,6 +217,40 @@ namespace Dsht.Cli
             }
             return 0;
         }
+        /// <summary>`cordis.patch.yml` 里的 `- id: shio-bridge` 条目是否**结构正确** ✓。
+        /// ★ 动机（用户实测后提出，G4 类）：原来只 `IndexOf("shio-bridge")` ✗ ——
+        ///   **字符串在 ≠ 条目可用** ✗：把整个条目压平成同一缩进后，YAML 结构是坏的 ✗
+        ///   而 grep **照样报 patched=1** ✗✗（我自己就这么误报过一次 ✓）。
+        /// ✓ 现在：找到条目行后，检查它**之后**每一行（直到下一个 `- ` 条目）的缩进
+        ///   **严格大于**条目行 ✓ 且至少有一行子项 ✓ —— 否则返回 false ✓（fail-closed ✓）。</summary>
+        private static bool PatchEntryWellFormed(string yaml)
+        {
+            if (string.IsNullOrEmpty(yaml)) return false;
+            string[] lines = yaml.Replace("\r\n", "\n").Split('\n');
+            int start = -1;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string t = lines[i].TrimStart();
+                if (!t.StartsWith("-")) continue;
+                string after = t.Substring(1).TrimStart();
+                if (after.StartsWith("id:", StringComparison.Ordinal) && t.IndexOf("shio-bridge", StringComparison.Ordinal) >= 0) { start = i; break; }
+            }
+            if (start < 0) return false;
+            int idIndent = lines[start].Length - lines[start].TrimStart().Length;
+            bool sawChild = false;
+            for (int i = start + 1; i < lines.Length; i++)
+            {
+                string l = lines[i];
+                if (l.Trim().Length == 0) continue;
+                string t = l.TrimStart();
+                if (t.StartsWith("-")) break;                  // 下一个条目 → 本条目结束 ✓
+                int cur = l.Length - t.Length;
+                if (cur <= idIndent) return false;              // 同级或更浅 → 结构坏了 ✗
+                sawChild = true;
+            }
+            return sawChild;                                    // 一个子项都没有 → 不算条目 ✓
+        }
+
         /// <summary>verify-install（V3 独有）：核对本机文件与发布清单的 SHA-256 ✓ —— 经典版「验证此安装」的 CLI 对应物 ✓。
         /// 默认核对**正在运行的自身** ✓；清单默认取自身旁边的 hashes.txt ✓，或用 --manifest 指定，或用 --url 从发布页取 ✓。
         /// **清单拿不到时绝不说 OK** ✗✓：只报 VERIFY_MANIFEST_MISSING 并说明如何取得 ✓。
