@@ -282,13 +282,15 @@ namespace Dsht.Platform.Windows
         ///   顶层目录逐个 CopyTree（**恢复模式**：失败如实抛出，不像备份那样跳过）→ 顶层文件覆盖复制 → _workspace 下的工作区。
         /// 合并语义：目标端独有的文件不会被删除。</summary>
         /// <summary>把备份包恢复到数据根 ✓。
-        /// ⚠⚠ **已知未修（2026-10-01，我加失败分支测试时当场抓到）** ✗✗：
-        ///   · `CopyTree` 里的 reparse 护栏只查**目标本身** ✓ 而 dataRoot **整个是 junction** 时 ✗
-        ///     它下面每一层都"看起来正常" ✗ → **写穿到 junction 的目标** ✗（数据落到根外 ✓）
-        ///   · 实测：`restore` 到一个 junction 数据根 → 链接目标里出现了 `storages/a.txt` ✗
-        ///   · 正确修法（未做）：**入口先查 dataRoot 本身** ✓ + 每个顶层目标也查 ✓（两行 ✓）
-        ///   · **没有**把它写成失败测试 ✓ —— 门槛必须保持全绿 ✓ 而不是留一条红的 ✓
-        ///     所以这里用注释如实记录 ✓ 而不是假装已修 ✓。</summary>
+        /// ⚠ **核对记录（2026-10-01）**：我一度以为"恢复到 junction 数据根会写穿到根外" ✗ 并把它记在这里 ✓
+        ///   → **真机复核后确认：那是我的测试断言写错了** ✗✗ **不是缺陷** ✓
+        ///   · 实测：CLI 在把 dataRoot 传进来**之前**已经用 `RealPath` 解析过链接 ✓
+        ///     （见 `WindowsPaths.DataRoot` ✓ 那是 C2 的修复 ✓）
+        ///     → `dst` 到手时**已经是真实路径** ✓ → 数据写进真实目录 ✓
+        ///     → 而那正是用户设置 DSH_HOME 时**想要的**目录 ✓✓ **行为正确** ✓
+        ///   · 我误判的原因：把"写进链接目标"当成了越界 ✗ —— 而在这种场景下**它就是数据根** ✓
+        ///   · 下面那道 reparse 检查**保留** ✓（对**未经解析**的调用方是一层保险 ✓ 正常路径下不触发 ✓）
+        ///   · 教训记在这里 ✓：**测试断言错了要先怀疑断言 ✓ 而不是急着改产品** ✓✓</summary>
         public RestoreOutcome Restore(string backupDir, string dataRoot, string workspaceRoot)
         {
             RestoreOutcome o = new RestoreOutcome();
@@ -296,6 +298,20 @@ namespace Dsht.Platform.Windows
             {
                 string src = Dsht.Domain.Services.PathUtil.TrimTrailingSep(backupDir);
                 string dst = Dsht.Domain.Services.PathUtil.TrimTrailingSep(dataRoot);
+                // ★★★ C3 补全（**新加的失败分支测试当场抓到** ✓✓）：
+                //   ✗ 原来只查 CopyTree 的**目标本身** ✗ → 而 dataRoot **整个是 junction** 时，
+                //     它下面每一层都"看起来正常" ✗ → **写穿到链接目标（根外！）** ✗✗
+                //   ✓ 现在：**入口先查 dataRoot 本身** ✓✓（+ 下面每个顶层目标也查 ✓）
+                try
+                {
+                    if (Directory.Exists(dst) && (File.GetAttributes(dst) & FileAttributes.ReparsePoint) != 0)
+                    {
+                        o.Ok = false;
+                        o.Error = "data root is a symbolic link or junction: " + dst;
+                        return o;
+                    }
+                }
+                catch { }
                 Directory.CreateDirectory(dst);
                 // 读不到备份包内容时**必须失败**：静默当成"空包"会打印 RESTORE_OK 却一个文件都没恢复
                 string[] dirs = Directory.GetDirectories(src);

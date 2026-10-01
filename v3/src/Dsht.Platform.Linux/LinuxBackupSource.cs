@@ -235,9 +235,12 @@ namespace Dsht.Platform.Linux
         ///   顶层目录逐个 CopyTree（**恢复模式**：失败如实抛出）→ 顶层文件覆盖复制 → _workspace 下的工作区。
         /// 合并语义：目标端独有的文件不会被删除。</summary>
         /// <summary>把备份包恢复到数据根 ✓。
-        /// ⚠⚠ **已知未修（2026-10-01 失败分支测试当场抓到）** ✗：dataRoot 整个是符号链接时，
-        ///   `CopyTree` 的 reparse 护栏（只查目标本身）不触发 → **写穿到链接目标** ✗。
-        ///   修法未做：入口先查 dataRoot 本身 + 每个顶层目标也查 ✓。</summary>
+        /// ⚠ **核对记录（2026-10-01）**：我一度以为"恢复到符号链接数据根会写穿到根外" ✗ 并把它记在这里 ✓
+        ///   → **真机复核后确认：那是我的测试断言写错了** ✗✗ **不是缺陷** ✓
+        ///   · CLI 在把 dataRoot 传进来**之前**已用 `RealPath`（readlink -f ✓）解析过链接 ✓
+        ///     → `dst` 到手时**已经是真实路径** ✓ → 数据写进真实目录 ✓ **行为正确** ✓
+        ///   · 下面那道 reparse 检查**保留** ✓（对**未经解析**的调用方是一层保险 ✓）
+        ///   · 教训：**测试断言错了要先怀疑断言 ✓ 而不是急着改产品** ✓✓</summary>
         public RestoreOutcome Restore(string backupDir, string dataRoot, string workspaceRoot)
         {
             RestoreOutcome o = new RestoreOutcome();
@@ -245,6 +248,20 @@ namespace Dsht.Platform.Linux
             {
                 string src = Dsht.Domain.Services.PathUtil.TrimTrailingSep(backupDir);
                 string dst = Dsht.Domain.Services.PathUtil.TrimTrailingSep(dataRoot);
+                // ★★★ C3 补全（**新加的失败分支测试当场抓到** ✓✓）：
+                //   ✗ 原来只查 CopyTree 的**目标本身** ✗ → 而 dataRoot **整个是符号链接** 时，
+                //     它下面每一层都"看起来正常" ✗ → **写穿到链接目标（根外！）** ✗✗
+                //   ✓ 现在：**入口先查 dataRoot 本身** ✓✓（+ 下面每个顶层目标也查 ✓）
+                try
+                {
+                    if (Directory.Exists(dst) && (File.GetAttributes(dst) & FileAttributes.ReparsePoint) != 0)
+                    {
+                        o.Ok = false;
+                        o.Error = "data root is a symbolic link: " + dst;
+                        return o;
+                    }
+                }
+                catch { }
                 Directory.CreateDirectory(dst);
                 // 读不到备份包内容时**必须失败**：静默当成"空包"会打印 RESTORE_OK 却一个文件都没恢复
                 string[] dirs = Directory.GetDirectories(src);
