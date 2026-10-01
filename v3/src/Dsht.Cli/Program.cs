@@ -3062,7 +3062,9 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             AddContentHashToMarker(r.Path);   // 标记补内容哈希 ✓（能发现"计数对但内容残" ✗✓）
             // 不完整就说出来 ✓：读不到/复制失败的文件被计数（此前静默吞掉 ✗），备份最不能有静默缺口 ✗
             if (r.FailedCopies > 0)
-                Console.WriteLine("BACKUP_INCOMPLETE " + r.FailedCopies + T(" 个文件/目录未能备份（权限或读取失败）—— 该备份不完整，请先解决权限再重做", " files/directories could not be backed up (permission or read failure) - this backup is INCOMPLETE; fix permissions and run it again"));
+            // ★ 架构审计抓到（S9）：**这里原来还会再打一条 `BACKUP_INCOMPLETE`** ✗
+            //   → 同一情况**两个标记、两种格式** ✗ 而这一条**连路径都没有** ✗✗（解析方无法区分 ✓）
+            // ✓ 现在：**只保留上面那条带路径的** ✓✓（信息更全 ✓ 且只有一种格式 ✓）
             OpLog(reg, "INFO", "backup OK " + r.Path);
             return 0;
         }
