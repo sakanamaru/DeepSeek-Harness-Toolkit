@@ -2213,19 +2213,26 @@ namespace Dsht.Gui.Avalonia.Shells
                 StackPanel tut = new StackPanel { Spacing = 6, Margin = new Thickness(0, 4, 0, 0) };
                 tut.Children.Add(T("怎么装进 desktop（由桌面端自己管理，本工具只能给你路径）", 12, Palette.Text, FontWeight.SemiBold));
                 tut.Children.Add(T("在桌面端的「添加插件」对话框里，下面两条**任选一条**粘进去（它接受 npm 包名 / GitHub 地址 / 本地目录路径）：", 11.5, Palette.TextDim));
-                tut.Children.Add(T("A · 仓库地址（要带子目录，只填仓库根不行）", 11, Palette.TextFaint));
-                // ★ 实测过的反面例子（用户真机踩到 ✓）：只填仓库根地址**必然**被 dsh 拒绝 ✓
-                //   报错原文：「这个包没有声明组合包，不能作为插件管理」✓
-                //   原因：仓库根目录**没有 package.json** ✗ → dsh 找不到 dsh.bundle 声明 ✓
-                tut.Children.Add(T("❌ 只填 https://github.com/sakanamaru/dsh-minato 会被拒绝（报「这个包没有声明组合包」）—— 因为仓库根没有 package.json，插件在子目录里。", 10.5, Palette.TextFaint));
+                tut.Children.Add(T("A · 仓库地址（**直接填这个就行** ✓ 仓库根已有 package.json 并声明了 dsh.bundle）", 11, Palette.TextFaint));
+                // ★ 更新（2026-10-02）：原来这里写"只填仓库根不行" ✗ —— 那在当时是事实 ✓
+                //   但用户要"直接填仓库地址" ✓ → 我在仓库根加了 package.json（声明 dsh.bundle ✓ 指向子目录 ✓）
+                //   → **现在仓库地址可以直接装** ✓✓（实测 pnpm add 退出码 0 ✓ 包内 dsh.bundle ✓ patch 文件在 ✓）
+                tut.Children.Add(T("❌ 若在旧版本（根目录还没有 package.json 的提交）上填仓库地址，会被拒绝并报「这个包没有声明组合包」—— 更新到最新提交后即可。", 10.5, Palette.TextFaint));
                 try
                 {
                     SelectableTextBlock ga = new SelectableTextBlock
                     {
-                        Text = "github:sakanamaru/dsh-minato#path:plugin/dsh-minato-bridge",
+                        Text = "https://github.com/sakanamaru/dsh-minato",
                         FontSize = 11.5, TextWrapping = TextWrapping.Wrap, Foreground = Palette.Accent
                     };
                     tut.Children.Add(ga);
+                    SelectableTextBlock ga2 = new SelectableTextBlock
+                    {
+                        Text = "github:sakanamaru/dsh-minato#path:plugin/dsh-minato-bridge",
+                        FontSize = 11, TextWrapping = TextWrapping.Wrap, Foreground = Palette.TextDim
+                    };
+                    tut.Children.Add(T("（等价的显式子目录形式，旧提交上也能用）", 10.5, Palette.TextFaint));
+                    tut.Children.Add(ga2);
                 }
                 catch { tut.Children.Add(T("github:sakanamaru/dsh-minato#path:plugin/dsh-minato-bridge", 11.5, Palette.Accent)); }
                 tut.Children.Add(T("B · 本地目录（不依赖网络，更稳）", 11, Palette.TextFaint));

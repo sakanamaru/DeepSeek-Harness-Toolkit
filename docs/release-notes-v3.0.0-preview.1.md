@@ -46,11 +46,11 @@
 **桥接插件**（可选，装完**重启 dsh** 生效）：
 
 ```bash
-# 从本地目录（最稳，不依赖网络）
-dsh plugin --profile web add "<本仓库路径>/plugin/dsh-minato-bridge"
+# 直接填仓库地址（仓库根已声明 dsh.bundle，可安装）
+dsh plugin --profile web add "https://github.com/sakanamaru/dsh-minato"
 
-# 或从仓库（注意要带子目录，只填仓库根不行 —— 根目录没有 package.json）
-dsh plugin --profile web add "github:sakanamaru/dsh-minato#path:plugin/dsh-minato-bridge"
+# 或本地目录（最稳，不依赖网络）
+dsh plugin --profile web add "<本仓库路径>/plugin/dsh-minato-bridge"
 ```
 
 > ⚠️ `desktop` profile **由 dsh 桌面端独占管理**，命令行装不进去 —— 请在桌面端的
