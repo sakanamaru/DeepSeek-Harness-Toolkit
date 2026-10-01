@@ -29,7 +29,9 @@ namespace Dsht.Platform.Linux
                 if (string.IsNullOrEmpty(v)) return v;
                 v = v.Trim();
                 if (v.Length == 0) return v;
-                try { return System.IO.Path.GetFullPath(v); } catch { return v; }
+                string abs = System.IO.Path.GetFullPath(v);
+                // C2: resolve the real target too - a link to the real data root must not bypass the gate
+                return RealPath(abs);
             }
             catch { return null; }
         }
@@ -181,6 +183,32 @@ namespace Dsht.Platform.Linux
                 }
             }
             catch { }
+        }
+
+        /// <summary>解析路径的真实目标（解开符号链接）；拿不到就返回原值。
+        /// 架构审计 C2：隔离闸门只做词法归一化，指向真实数据根的链接会绕过它。</summary>
+        internal static string RealPath(string p)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(p)) return p;
+                if (!System.IO.Directory.Exists(p)) return p;
+                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo("readlink", "-f " + p);
+                psi.UseShellExecute = false;
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
+                psi.CreateNoWindow = true;
+                using (System.Diagnostics.Process pr = System.Diagnostics.Process.Start(psi))
+                {
+                    if (pr == null) return p;
+                    string outp = pr.StandardOutput.ReadToEnd();
+                    pr.WaitForExit(3000);
+                    outp = outp == null ? "" : outp.Trim();
+                    if (outp.Length == 0 || !System.IO.Path.IsPathRooted(outp)) return p;
+                    return outp;
+                }
+            }
+            catch { return p; }
         }
     }
 }
