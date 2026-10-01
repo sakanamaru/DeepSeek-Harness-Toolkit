@@ -23,3 +23,16 @@ obj/
 /dsht_v3_contract.exe
 /unittests.exe
 /guilogictests.exe
+
+# 运行时标记（v2 启动器写的，不进仓库）
+.dsh_launcher_root
+
+# 发布/打包产物（只在 GitHub Release 里）
+*.tar.gz
+*.zip
+publish/
+
+# IDE / 编辑器
+.vs/
+.idea/
+*.user

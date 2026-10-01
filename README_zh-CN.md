@@ -292,3 +292,11 @@ dsh plugin --profile web add "<本仓库路径>/plugin/dsh-minato-bridge"
 **这不代表"AI 写的所以不可信"，也不代表"AI 写的所以没问题"。**
 判断依据应该是**能不能自己复核**：所有产物都附 SHA-256（`hashes.txt`），
 所有结论都能用 `v3/tests/` 与 `verify.ps1` 自己重跑一遍。
+
+## 根目录为什么长这样
+
+根目录里有些文件看起来该放进子目录，但**不能搬**：v2 的发布与校验链**按路径**引用它们 ——
+信任锚、编译器图标、内嵌 logo、构建脚本、清单与签名公钥 —— 搬动会让发布构建或就绪度门槛直接失败。
+**哪个文件被谁引用、搬了会坏什么**，逐条写在 [`docs/repo-layout.md`](docs/repo-layout.md) 里。
+把 v2 整棵树搬进单独目录的方案（含第一次尝试卡住的两条不变量）在
+[`docs/v2-migration-plan.md`](docs/v2-migration-plan.md)。

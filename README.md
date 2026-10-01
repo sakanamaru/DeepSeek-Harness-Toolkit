@@ -310,3 +310,12 @@ matters more than one more feature.
 **This does not mean "AI wrote it, so it is untrustworthy", nor "AI wrote it, so it is fine".**
 The basis for judgement should be **whether you can check it yourself**: every artifact ships with SHA-256
 (`hashes.txt`), and every claim can be re-run with `v3/tests/` and `verify.ps1`.
+
+## Why the repository root looks like this
+
+The root carries a few files that look like they belong in subfolders. They do not: the v2 release and verification
+chain references them **by path** - the trust anchor, the compiler icon, the embedded logo, the build script, the
+manifest and the signing key - and moving them breaks the release build or the readiness gate. Which file is
+referenced by what, and what moving it would break, is written down in
+[`docs/repo-layout.md`](docs/repo-layout.md). A plan to move the v2 tree into its own folder, including the two
+invariants that stopped the first attempt, is in [`docs/v2-migration-plan.md`](docs/v2-migration-plan.md).
