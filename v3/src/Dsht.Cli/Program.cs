@@ -472,7 +472,25 @@ namespace Dsht.Cli
                     //     · 那条快照的其余数据**照常保留** ✓ 只把会撒谎的 `live` 置 false ✓
                     //   ✓ 放在 CLI 层而不是 Domain ✓ —— 领域层纯净度门槛禁止时钟耦合 ✓✓
                     long snapAgeSec = SnapshotAgeSeconds(snap);
-                    bool stale = snapAgeSec > 30;
+            // ★ 第 2 轮审查抓到：**写死 30 秒** ✗ → intervalMs 配到 30 秒以上时，活着的 dsh 会被判成已结束 ✗✗
+            // ✓ 现在：**按快照自己声明的间隔推** ✓✓（阈值 = max(30 秒, 3 × interval) ✓ 拿不到就退回 30 秒 ✓）
+            long snapThreshold = 30;
+            try
+            {
+                System.Text.RegularExpressions.Match ivm = System.Text.RegularExpressions.Regex.Match(
+                    snap, "\"intervalMs\"\\s*:\\s*(\\d+)");
+                if (ivm.Success)
+                {
+                    long iv;
+                    if (long.TryParse(ivm.Groups[1].Value, out iv) && iv > 0)
+                    {
+                        long t3 = (iv / 1000L) * 3L;
+                        if (t3 > snapThreshold) snapThreshold = t3;
+                    }
+                }
+            }
+            catch { }
+            bool stale = snapAgeSec > snapThreshold;
                     if (stale)
                     {
                         int cleared = 0;
@@ -489,12 +507,18 @@ namespace Dsht.Cli
             // 磁盘投影：**总是扫** ✓ 只补快照里没有的 id ✓（有快照的那条用快照的数字 ✓ 更实时 ✓）
             int fromDisk = 0;
             string[] files = src.ListSessionFiles();
+            // ★★ 第 2 轮审查抓到：下面那段 childId 扫描**又把每个文件读了一遍** ✗✗
+            //   → N 个会话文件 = 2N 次全文件读 ✓（197 个会话时第二遍约 200 ms ✓ 线性增长 ✓）
+            // ✓ 现在：**第一遍读到的文本缓存下来，第二遍直接复用** ✓✓（只读一遍 ✓）
+            var textCache = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < files.Length; i++)
             {
                 string id = System.IO.Path.GetFileNameWithoutExtension(files[i]);
                 if (id != null && id.StartsWith("session-", StringComparison.Ordinal)) id = id.Substring("session-".Length);
                 if (id != null && have.Contains(id)) continue;
-                SessionStat s = SessionStats.ParseSessionProjection(src.ReadText(files[i]), id);
+                string txt1 = src.ReadText(files[i]);
+                if (!string.IsNullOrEmpty(txt1)) textCache[files[i]] = txt1;
+                SessionStat s = SessionStats.ParseSessionProjection(txt1, id);
                 if (s != null) { list.Add(s); if (id != null) have.Add(id); fromDisk++; }
             }
             if (fromDisk > 0) source = (source == "snapshot") ? "snapshot+disk" : "disk";
@@ -524,7 +548,8 @@ namespace Dsht.Cli
                 {
                     string pid2 = System.IO.Path.GetFileNameWithoutExtension(cfiles[ci]);
                     if (pid2 != null && pid2.StartsWith("session-", StringComparison.Ordinal)) pid2 = pid2.Substring("session-".Length);
-                    string t2 = src.ReadText(cfiles[ci]);
+                    string t2;
+                    if (!textCache.TryGetValue(cfiles[ci], out t2)) t2 = src.ReadText(cfiles[ci]);   // ★ 第二遍复用第一遍读到的 ✓✓
                     if (string.IsNullOrEmpty(t2)) continue;
                     int at = 0;
                     while (true)
@@ -1249,7 +1274,13 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 // 用**真实的领域 API** ✓（ManifestParser.ParseHash + IIntegritySource 三成员 ✓）
                 IIntegritySource integ = reg.Get<IIntegritySource>();
                 string expected = Dsht.Domain.Services.ManifestParser.ParseHash(integ.ReadManifest(), integ.SelfFileName());
-                IntegrityVerdict v = IntegrityJudge.Judge(expected, integ.SelfHash());
+                // ★★★ **第 2 轮审查抓到（性能最大头 ✗✗）**：这里**先无条件算了整个 66 MB exe 的 SHA-256** ✗
+                //   而 expected == null 时（源码编译 / 单独复制 exe / 没有清单 ✓）结果**必然是 Unknown** ✓ → 算了再丢 ✗
+                //   → GUI 一次按钮要起 5–11 个 CLI 进程 ✓ → **每次白算 66 MB** ✗✗（正是"按钮还是有延迟"的根因 ✓）
+                // ✓ 现在：**没有清单条目就根本不算** ✓✓（Unknown 放行语义完全不变 ✓）
+                IntegrityVerdict v = (expected == null)
+                    ? IntegrityVerdict.Unknown
+                    : IntegrityJudge.Judge(expected, integ.SelfHash());
                 if (v == IntegrityVerdict.Match) return 0;   // 一致 → 静默放行 ✓（不刷屏 ✓）
                 if (v == IntegrityVerdict.Unknown)
                 {

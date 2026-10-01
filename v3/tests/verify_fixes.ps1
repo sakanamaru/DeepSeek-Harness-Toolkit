@@ -43,7 +43,9 @@ $checks = @(
   @('import 命令',               'IMPORT_OK', 1),
   @('keep 参数',                 'int keep = 3', 1),
   @('恢复锚点打印',              'RESTORE_PRE_BACKUP ', 1),
-  @('wipe 锚点打印',             'WIPE_PRE_BACKUP ', 1),
+  # ★★ 第 2 轮审查抓到：`WIPE_PRE_BACKUP` **只出现在不可达代码里** ✗（WipeCmd 在它之前就 return 了 ✓）
+#   → 把它当"修复仍在"是**假保证** ✗（这个文件自己已经为 WIPE_REFUSED 删过同样的一条 ✓）
+#   → 已删除该检查 ✓✓（wipe 现在只打印 WIPE_PLAN / WIPE_PLAN_NOTE / WIPE_MANUAL ✓）
   @('stop 守卫条件',             'IsDshCommandLine(r.Pid) && !Has(args, "--force")', 1),
   @('标记哈希辅助',              'private static void AddContentHashToMarker', 1),
   @('多工作区打包',              'private static int PackageAllWorkspaces', 1),

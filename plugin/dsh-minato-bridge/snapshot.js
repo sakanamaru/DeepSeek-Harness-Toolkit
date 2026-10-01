@@ -87,7 +87,7 @@ function put(out, key, value) {
  * @param {Array<{id:string, live:boolean, values:object, header?:object}>} sessions
  * @param {string} generatedAt ISO 时间戳（由调用方传入）
  */
-export function buildSnapshot(sessions, generatedAt) {
+export function buildSnapshot(sessions, generatedAt, intervalMs) {
 	const out = [];
 	for (const s of sessions || []) {
 		if (!s) continue;
@@ -124,7 +124,13 @@ export function buildSnapshot(sessions, generatedAt) {
 		put(row, "surfaceTokens", numOrUndef(pressure.surfaceTokens));
 		out.push(row);
 	}
-	return { formatVersion: SNAPSHOT_FORMAT_VERSION, generatedAt: strOrUndef(generatedAt) || "", sessions: out };
+	const outObj = { formatVersion: SNAPSHOT_FORMAT_VERSION, generatedAt: strOrUndef(generatedAt) || "", sessions: out };
+	// ★ 第 2 轮审查抓到：CLI 用**写死的 30 秒**判新鲜度 ✗ 而 intervalMs 是用户可配的 ✓
+	//   → intervalMs 调到 30 秒以上时，**活着的 dsh 会被判成已结束** ✗✗（这是我上一版引入的回归 ✓）
+	// ✓ 现在：**把生效的间隔写进快照** ✓✓ 让 CLI 按它推算阈值 ✓（拿不到就不写 ✓ 不猜 ✓）
+	const iv = Number(intervalMs);
+	if (Number.isFinite(iv) && iv > 0) outObj.intervalMs = iv;
+	return outObj;
 }
 
 /** 原子写（先写临时文件再 rename）——工具箱可能正好在读到一半，不能让它看到半截 JSON。
@@ -269,7 +275,7 @@ export function apply(ctx, config) {
 			if (disposed) return;   // P3 FIX: re-check after the await
 			// ✓ 零会话**不写** ✓（避免用空数据覆盖上一份好的 ✓）
 			if (sessions.length === 0) return;
-			writeSnapshot(outFile, buildSnapshot(sessions, new Date().toISOString()));
+			writeSnapshot(outFile, buildSnapshot(sessions, new Date().toISOString(), interval));
 		} catch {
 			/* 只读桥：静默降级 ✓ */
 		}

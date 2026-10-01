@@ -31,7 +31,7 @@ v3/
     Dsht.Platform.Linux/    Linux 实现（ss / /proc/<pid>/cmdline / ps / PATH 扫描 / $XDG_* / $DSH_HOME）
     Dsht.Cli/               组合根（自写 ServiceRegistry，零第三方 DI）+ 命令面 + 平台装配
   tests/
-    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，252 项）
+    Dsht.Contracts.Tests/   契约测试宿主（零第三方断言，334 项）
     verify_domain_pure.ps1  领域层纯净度守卫（扫描前剥离注释）
     compare_markers.ps1     与 v2.x 的标记行契约比对（可 -Fixtures 造受控备份）
     verify_restore_apply.ps1 真实 restore 的端到端验证（隔离数据根 + --apply，含"零越界"证明）
@@ -162,7 +162,7 @@ interface IServiceTarget { AppKind Kind; bool IsAvailable(); ServiceReport Probe
 
 CI run **36385480118**（分支 `v3-linux`）：`V3 contracts (windows-latest)` 与 `V3 contracts (ubuntu-latest)` 各 **220/220**，
 外加 `unit + integration tests` 绿。也就是说 V3 契约测试现在**在真实 Linux 上跑过**，不再只是"编译过"。
-（此后又加了 16 项 `doctor --report` 契约测试（236/236）与 16 项工作区判定/解析契约测试（252/252）；每次推送 v3-linux 都会再跑一次 CI。）
+（此后又加了 16 项 `doctor --report` 契约测试（236/236）与 16 项工作区判定/解析契约测试（334/334）；每次推送 v3-linux 都会再跑一次 CI。）
 
 第一次真跑（run 36385248055）在**两个平台同时失败**，暴露了两个本地永远看不到的问题（本地只用 `csc` 全量编译，完全绕过 csproj）：
 
@@ -237,4 +237,4 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_restore_apply.ps1 -Repo
 `--apply` 是**人类可问责的断言**（"我确认没有 dsh 正在使用这个数据根"），而不是绕过闸门的后门：
 它无法指向默认数据根，因此**不可能**写坏你的 `~/.dsh`；同时它把"跳过闸门"这件事与观测到的事实一起打出来，不静默。
 `apply-not-isolated` 这条分支**故意不做端到端测试**——把"应当拒绝"的用例指向真实数据根，一旦判定有 bug 就会真写用户数据；
-它由纯领域契约测试覆盖（`RestoreApplyPolicy`，见 §2 的契约测试 252 项）。
+它由纯领域契约测试覆盖（`RestoreApplyPolicy`，见 §2 的契约测试 334 项）。
