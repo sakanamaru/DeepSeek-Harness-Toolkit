@@ -1,6 +1,12 @@
 ﻿# verify_domain_pure.ps1 —— V3 领域层「纯净度」守卫
 # 断言 Dsht.Domain 里不出现：IO / 网络 / 进程 / 控制台 / 平台分支 / 时钟耦合 / 平台专有 API。
 # 实现要点：**扫描前先剥离注释**（上一版直接子串匹配，连注释里提到 File.Exists 都会误报）。
+# ★★ G8 补强（2026-10-01）：原来有两处**可绕过** ✗ ——
+#   ① `System . IO`（C# 允许点号旁有空格 ✓）→ 现在**先做点号两侧空白归一化** ✓
+#   ② `using IO = System.IO;`（别名 ✓）→ 现在**加裸命名空间模式** ✓（别名行里没有尾点 ✗）
+# ⚠ **诚实的边界**：这仍是**文本门槛** ✓ —— 用**字符串拼接 + 反射**（Type.GetType("System" + ".IO...")）
+#   理论上仍能绕过 ✓ 而那种写法在领域层里**一眼就可疑** ✓。
+#   真正强的做法是**编译期/IL 级证明** ✗ —— 成本高 ✓ 暂不做 ✓ 但**不假装这门槛是强验证** ✓。
 # 退出码：0=通过；1=有违规；2=领域层尚未建立
 param([string]$Repo = ".")
 $ErrorActionPreference = "Stop"
@@ -29,7 +35,10 @@ function Strip-Comments([string]$src) {
 }
 
 $forbidden = @(
-    'using System.IO', 'System.IO.', 'File.', 'Directory.', 'Path.Combine',
+    # ★★ G8 补强：加**裸命名空间**模式 ✓ —— 别名 using IO = System.IO; 里没有尾点 ✗
+    #    只有裸 System.IO 能抓到它 ✓（点号归一化后仍无尾点 ✓）
+    'using System.IO', 'System.IO', 'File.', 'Directory.', 'Path.Combine',
+    'System.Net', 'System.Diagnostics',
     'using System.Net', 'System.Net.', 'Socket', 'HttpWebRequest',
     'using System.Diagnostics', 'Process.', 'ProcessStartInfo',
     'Console.',
@@ -42,6 +51,8 @@ $files = @(Get-ChildItem $dir -Recurse -Filter *.cs -ErrorAction SilentlyContinu
 $viol = New-Object System.Collections.Generic.List[string]
 foreach ($f in $files) {
     $txt = Strip-Comments ([System.IO.File]::ReadAllText($f))
+    # ★★ G8 补强：**点号两侧空白归一化** ✓ —— C# 允许 `System . IO` ✗ 而旧模式匹配不到 ✗
+    $txt = $txt -replace '\s*\.\s*', '.'
     foreach ($pat in $forbidden) {
         $c = ([regex]::Matches($txt, [regex]::Escape($pat))).Count
         if ($c -gt 0) { $viol.Add(($f.Substring($Repo.Length).TrimStart('\') + " : " + $pat + " x" + $c)) }
