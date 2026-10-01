@@ -30,16 +30,29 @@ namespace Dsht.Domain.Targets
         public ServiceReport Probe()
         {
             bool portOpen = Safe(_port);
+            _cachedPid = -1;   // ★ 每次 Probe 重置 ✓✓（绝不用上一次的陈旧 pid ✗）
             ServiceState st = ServiceJudge.Judge(portOpen, portOpen && SafeHttp(), ListenerIsDsh);
             int pid = (st == ServiceState.Down) ? 0 : FindPid();
             return new ServiceReport(AppKind.Web, st, pid, Basis(portOpen, st));
         }
 
+        // ★★ 审查抓到：`ListenerIsDsh()` 起一次 netstat ✓ 而 `FindPid()` 又起一次 ✗
+        //   → 每次 status 探测**两次 netstat** ✓（外加 PowerShell + 两次 tasklist ✓ 共 5 个外部进程 ✗）
+        // ✓ 现在：**同一个探测周期内只问一次** ✓✓（Probe 会重置它 ✓ 不会用陈旧值 ✓）
+        private int _cachedPid = -1;
+
+        /// <summary>本探测周期内监听该端口的 pid（**只问一次** ✓✓）。</summary>
+        private int ListenerPid()
+        {
+            if (_cachedPid >= 0) return _cachedPid;
+            try { _cachedPid = (_proc == null) ? 0 : _proc.PidListeningOn(_opt.Port); }
+            catch { _cachedPid = 0; }
+            return _cachedPid;
+        }
+
         public int FindPid()
         {
-            if (_proc == null) return 0;
-            try { return _proc.PidListeningOn(_opt.Port); }
-            catch { return 0; }
+            return ListenerPid();
         }
 
         public string Describe()
@@ -66,7 +79,7 @@ namespace Dsht.Domain.Targets
             if (_proc == null) return false;
             try
             {
-                int pid = _proc.PidListeningOn(_opt.Port);
+                int pid = ListenerPid();   // ★ 复用同一个探测周期的结果 ✓✓（不再起第二次 netstat ✗）
                 return pid > 0 && _proc.IsDshCommandLine(pid);
             }
             catch { return false; }

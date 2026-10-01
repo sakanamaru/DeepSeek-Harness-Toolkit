@@ -278,6 +278,16 @@ namespace Dsht.Gui.Avalonia.Markers
             bool liveKnown = s.Source == "snapshot";
             for (int i = 0; i < s.Rows.Count; i++) s.Rows[i].LiveKnown = liveKnown;
             // 归类：子代理挂到父会话下 ✓（98/98 子 id 都有 SESSION 行 ✓ 所以都能归类 ✓）
+            // ★★ 审查抓到：这里对**每个子代理**都线性扫一遍全部行去找父 ✗ → O(子 × 行) ✗
+            //   而且 Parse 是在 **UI 线程**上跑的 ✓（await 之后回到 UI 上下文 ✓）→ 会话多就卡界面 ✓
+            // ✓ 现在：**先建 id → 行 的字典** ✓✓ 父查找 O(1) ✓
+            System.Collections.Generic.Dictionary<string, SessionRow> byId2 =
+                new System.Collections.Generic.Dictionary<string, SessionRow>(StringComparer.Ordinal);
+            for (int rk = 0; rk < s.Rows.Count; rk++)
+            {
+                SessionRow rr = s.Rows[rk];
+                if (rr != null && rr.Id != null && !byId2.ContainsKey(rr.Id)) byId2[rr.Id] = rr;
+            }
             for (int ri = 0; ri < s.Rows.Count; ri++)
             {
                 string cid2 = s.Rows[ri].Id;
@@ -285,8 +295,8 @@ namespace Dsht.Gui.Avalonia.Markers
                 if (cid2 != null && links.TryGetValue(cid2, out pid3))
                 {
                     s.Rows[ri].ParentId = pid3;
-                    for (int rj = 0; rj < s.Rows.Count; rj++)
-                        if (s.Rows[rj].Id == pid3) s.Rows[rj].ChildIds.Add(cid2);
+                    SessionRow parentRow;
+                    if (byId2.TryGetValue(pid3, out parentRow) && parentRow != null) parentRow.ChildIds.Add(cid2);
                 }
             }
             int subCount = 0;

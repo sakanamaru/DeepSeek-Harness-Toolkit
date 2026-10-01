@@ -1916,8 +1916,17 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     Console.WriteLine("START_FAIL " + T("profile 名不合法（只允许字母数字 . _ -）：" + profile, "invalid profile name: " + profile));
                     return 0;
                 }
+                // ★★ 架构审查抓到（v2 对等）：这里用**裸 `dsh`** ✗ 而 v2 用的是**解析后的完整路径** ✓
+                //   → winget/npm 刚装完、当前会话 PATH 未刷新时 ✗ → **start 会失败** ✗（v2 不会 ✓）
+                //   → Linux 分支本来就用了 ResolveDsh ✓（两边不一致 ✗）
+                // ✓ 现在：**Windows 也用解析后的路径** ✓✓（拿不到就退回裸 `dsh` ✓ 不猜 ✓）
+                string dshExe = null;
+                try { dshExe = ResolveDsh(reg); } catch { }
                 file = "cmd.exe";                                   // npm 的 dsh 是 .cmd 垫片，必须经 cmd 包装
-                cmdArgs = "/c dsh --profile " + profile + " --port " + port;
+                if (!string.IsNullOrEmpty(dshExe))
+                    cmdArgs = "/c \"" + dshExe + "\" --profile " + profile + " --port " + port;
+                else
+                    cmdArgs = "/c dsh --profile " + profile + " --port " + port;
             }
             else
             {

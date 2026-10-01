@@ -956,6 +956,16 @@ namespace Dsht.Gui.Avalonia.Shells
         {
             StackPanel s = new StackPanel { Spacing = 8 };
             List<SessionRowVm> src = host.ListSource;
+            // ★★ 架构/性能审查抓到：下面每个子代理都要**线性扫一遍全部行** ✗ → O(父 × 子 × 行) ✗
+            //   → 会话一多，默认视图和每次筛选都会卡 ✓（这是用户抱怨"按钮延迟"的一部分 ✓）
+            // ✓ 现在：**先建一次 id → 行 的字典** ✓✓ 查找 O(1) ✓
+            System.Collections.Generic.Dictionary<string, SessionRowVm> byId =
+                new System.Collections.Generic.Dictionary<string, SessionRowVm>(StringComparer.Ordinal);
+            for (int bi = 0; bi < src.Count; bi++)
+            {
+                if (src[bi] != null && src[bi].Row != null && src[bi].Row.Id != null && !byId.ContainsKey(src[bi].Row.Id))
+                    byId[src[bi].Row.Id] = src[bi];
+            }
             for (int i = 0; i < src.Count; i++)
             {
                 SessionRowVm vm = src[i];
@@ -968,7 +978,7 @@ namespace Dsht.Gui.Avalonia.Shells
                     for (int k = 0; k < vm.Row.ChildIds.Count; k++)
                     {
                         SessionRowVm kv = null;
-                        for (int m = 0; m < src.Count; m++) { if (src[m].Row != null && src[m].Row.Id == vm.Row.ChildIds[k]) { kv = src[m]; break; } }
+                        byId.TryGetValue(vm.Row.ChildIds[k], out kv);   // ★ O(1) ✓✓（原来每个子都线性扫全部行 ✗）
                         if (kv != null) kids.Children.Add(SessionCard(kv));
                     }
                     // ✗ 原来用 Expander 默认外观 → 自带边框/底色，和卡片放一起**很突兀** ✓（用户指出 ✓）
