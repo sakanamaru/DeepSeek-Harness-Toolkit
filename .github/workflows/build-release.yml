@@ -143,19 +143,19 @@ jobs:
           cp v3/tools/install.sh "$PKG/"
           printf "%s\n" "[Desktop Entry]" "Type=Application" "Name=dsh-minato" "Comment=Deploy and ops kit for DeepSeek Harness (dsh)" "Exec=dsh-minato" "Icon=dsh-minato" "Terminal=true" "Categories=Utility;" > "$PKG/dsh-minato.desktop"
           printf "%s\n" "install: ./install.sh            (adds a command link; --prefix <dir> to choose where)" "uninstall: ./install.sh --uninstall" "gui: ./gui/dsht-gui (self-contained, no .NET needed)" "menu entry: install.sh writes one unless you pass --no-desktop" "runtime deps: iproute2 (ss), ps, and one of curl/wget/python3 plus tar when bootstrapping Node" "known gaps: see docs/LINUX-TEST.md and v3/gui/Dsht.Gui.Avalonia/README.md" > "$PKG/README-Linux.txt"
-          # audit fix: the execute bit is a property of the file in git; if it is ever lost
-# again the tarball would ship a script the user cannot run (this happened once,
-# found by the first real install on Linux). Set it explicitly at packaging time.
-chmod +x "$PKG/install.sh" 2>/dev/null || true
-find "$PKG" -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
-# LINUX-PKG-MANIFEST-FIX: the tarball shipped without hashes.txt, so the installer
-# verified nothing (reported on the first real install on Linux). The Windows payload
-# always carries one and refuses to install without it - this was an asymmetry.
-( cd "$PKG" && find . -type f ! -name 'hashes.txt' -printf '%P\n' 2>/dev/null | sort | while IFS= read -r f; do
-printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$f"
-done ) > "$PKG/hashes.txt"
-echo "package hashes.txt entries: $(wc -l < "$PKG/hashes.txt")"
-tar -czf "$PKG.tar.gz" "$PKG"
+                    # audit fix: the execute bit is a property of the file in git; if it is ever lost
+          # again the tarball would ship a script the user cannot run (this happened once,
+          # found by the first real install on Linux). Set it explicitly at packaging time.
+          chmod +x "$PKG/install.sh" 2>/dev/null || true
+          find "$PKG" -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
+          # LINUX-PKG-MANIFEST-FIX: the tarball shipped without hashes.txt, so the installer
+          # verified nothing (reported on the first real install on Linux). The Windows payload
+          # always carries one and refuses to install without it - this was an asymmetry.
+          ( cd "$PKG" && find . -type f ! -name 'hashes.txt' -printf '%P\n' 2>/dev/null | sort | while IFS= read -r f; do
+          printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$f"
+          done ) > "$PKG/hashes.txt"
+          echo "package hashes.txt entries: $(wc -l < "$PKG/hashes.txt")"
+          tar -czf "$PKG.tar.gz" "$PKG"
           sha256sum "$PKG.tar.gz" > "$PKG.tar.gz.sha256"
           cat "$PKG.tar.gz.sha256"
       - name: Verify the assembled package with the shell verifier
