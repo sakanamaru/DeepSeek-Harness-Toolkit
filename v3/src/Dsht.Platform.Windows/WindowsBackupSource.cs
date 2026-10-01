@@ -28,7 +28,7 @@ namespace Dsht.Platform.Windows
     //     再逐块搬 ✓ 每块都编译 + 跑 [29] 真实往返测试 + 11 项门槛 ✓
     //   ⚠ 我**没有**执行提取 ✓：预算不足以在动完 310 行后做充分验证 ✓
     //     留精确数据给下一轮 ✓ 让那一步是**机械的** ✓ 而不是靠猜 ✓
-    public sealed class WindowsBackupSource : IBackupSource
+    public sealed class WindowsBackupSource : Dsht.Platform.Shared.BackupSourceCommon, IBackupSource
     {
         private readonly string _stateDir;
 
@@ -428,18 +428,7 @@ namespace Dsht.Platform.Windows
             for (int i = 0; i < ds.Length; i++) total += DirSizeForManifest(ds[i]);
             return total;
         }
-        /// <summary>复制备份包的**同级旁挂文件**（.manifest / .version ✓）：存在才复制 ✓ 尽力而为 ✓。
-        /// 不这么做的话，export 之后标记就丢了 ✗ → 包到了别处无法核对完整性 ✓。</summary>
-        private static void CopySibling(string srcPkg, string dstPkg, string suffix)
-        {
-            try
-            {
-                string from = srcPkg.TrimEnd('\\', '/') + suffix;
-                if (!System.IO.File.Exists(from)) return;
-                System.IO.File.Copy(from, dstPkg.TrimEnd('\\', '/') + suffix, true);
-            }
-            catch { }
-        }
+        // ★ S2：`CopySibling` 已提到共享基类 `Dsht.Platform.Shared.BackupSourceCommon` ✓
         private static int CopyTree(string src, string dst, bool skipLocked)
         {
             int skippedNested = 0;

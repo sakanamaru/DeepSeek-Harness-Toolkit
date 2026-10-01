@@ -7,5 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Dsht.Domain\Dsht.Domain.csproj" />
+    <!-- S2: link the shared source file so both platforms compile the same copy -->
+    <Compile Include="..\Dsht.Platform.Shared\BackupSourceCommon.cs" Link="BackupSourceCommon.cs" />
   </ItemGroup>
 </Project>

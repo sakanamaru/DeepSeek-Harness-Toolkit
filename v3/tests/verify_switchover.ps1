@@ -31,10 +31,13 @@ Write-Host "正在检查切换就绪度（约 1-3 分钟，跑完前不会输出
 $dom = @(Get-ChildItem (Join-Path $Repo 'v3\src\Dsht.Domain') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
 $win = @(Get-ChildItem (Join-Path $Repo 'v3\src\Dsht.Platform.Windows') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
 $lin = @(Get-ChildItem (Join-Path $Repo 'v3\src\Dsht.Platform.Linux') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
+# ★ S2：**共享源文件目录**（两端用 Compile Include 链接同一份）✓ 必须一起编译 ✓
+#   起因：第一次执行 S2 时漏了这个目录 ✗ → gate5/gate2 编译缺文件 → 门槛红 ✓（已还原 ✓）
+$sh = @(Get-ChildItem (Join-Path $Repo 'v3\src\Dsht.Platform.Shared') -Recurse -Filter *.cs -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
 $tst = @(Get-ChildItem (Join-Path $Repo 'v3\tests\Dsht.Contracts.Tests') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
 $exe = Join-Path $env:TEMP 'dsht_switchover_contracts.exe'
 Remove-Item $exe -Force -ErrorAction SilentlyContinue
-Invoke-External { & $csc /nologo /target:exe /warn:4 ("/out:" + $exe) ($dom + $win + $lin + $tst) 2>&1 } | Out-Null
+Invoke-External { & $csc /nologo /target:exe /warn:4 ("/out:" + $exe) ($dom + $sh + $win + $lin + $tst) 2>&1 } | Out-Null
 if ($LASTEXITCODE -ne 0) { Gate 'gate2 domain tests' $false 'csc 构建失败' }
 else {
     $out = (& $exe 2>&1 | Out-String)
