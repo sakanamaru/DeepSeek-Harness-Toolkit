@@ -17,7 +17,7 @@ using System.Reflection;
 namespace Dsht.Cli
 {
     /// <summary>V3 CLI 组合根 + 命令面。每个命令的标记行都要与 v2.x 逐字一致（见 v3/tests/compare_markers.ps1）。</summary>
-    public static class Program
+    public static partial class Program
     {
         private const int WebPort = 3080;
         private const string WebUrl = "http://127.0.0.1:3080";
@@ -416,31 +416,6 @@ namespace Dsht.Cli
                 }
             }
             return found.ToArray();
-        }
-        /// <summary>sessions（V3 独有）：会话 / token / 缓存 面板的数据源。**只读** dsh 的会话投影（明文 JSON）。
-        /// 来源优先级：插件快照（存在时）→ 每会话投影文件 → 投影总表。
-        /// 标记行：
-        ///   `SESSIONS_OK <n>` / `SESSIONS_NONBLANK <n>` / `SESSIONS_SOURCE <snapshot|disk|aggregate>` / `SESSIONS_ROOT <dir>`
-        ///   / 每会话 `SESSION <id> last=<t|unknown> turns= steps= in= out= cacheRead= hit=<%|unknown> decode=<tok/s|unknown> ttft=<ms|unknown> ctx=<%|unknown> blank=0|1`
-        ///   / `SESSIONS_TOTAL in= out= cacheRead= hit=<%|unknown> decode=<tok/s|unknown>` / `SESSIONS_FAIL <原因>`
-        /// **诚实边界**：只读计数/时间/元数据，**不读对话正文**；字段缺失打印 `unknown`（不假装 0）；
-        /// "有几个会话在运行"这里只能给**最后活动时间**——运行态是进程内事实，需要插件。</summary>
-        /// <summary>快照的年龄（秒）✓。**解析不出来 → 返回 0** ✓（当作新鲜 ✓ —— 绝不能因为解析失败就把 live 清掉 ✗）。</summary>
-        private static long SnapshotAgeSeconds(string snap)
-        {
-            try
-            {
-                System.Text.RegularExpressions.Match m = System.Text.RegularExpressions.Regex.Match(
-                    snap, "\"generatedAt\"\\s*:\\s*\"([^\"]+)\"");
-                if (!m.Success) return 0;
-                System.DateTime t;
-                if (!System.DateTime.TryParse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out t))
-                    return 0;
-                double age = (System.DateTime.UtcNow - t).TotalSeconds;
-                return age < 0 ? 0 : (long)age;
-            }
-            catch { return 0; }
         }
 
         private static int Sessions(ServiceRegistry reg)
