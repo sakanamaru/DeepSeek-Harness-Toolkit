@@ -2212,7 +2212,7 @@ namespace Dsht.Gui.Avalonia.Shells
                     T("这一页怎么读？", 13.5, Palette.Text, FontWeight.SemiBold),
                     Line("• 形态来自每个 profile 的 package.json 里 dsh.profile.bundles：启用 dsh-web-app = Web，dsh-headless = Headless（没有端口），dsh-acp-app = ACP。"),
                     Line("• 这是**配置形态**，不是运行形态 —— 「dsh 在跑」仍然由端口/进程等运行时事实判断（状态页看）。"),
-                    Line("• 官方 = @deepseek-ai/* 的组合包；第三方 = 你自己加的插件（例如 dsh-web-search-tavily）。")
+                    Line("• 官方 = @deepseek-ai/* 的组合包；第三方 = 你自己加的插件（例如 example-search-plugin）。")
                 }
             }, new Thickness(0), new Thickness(18, 16)));
             // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）

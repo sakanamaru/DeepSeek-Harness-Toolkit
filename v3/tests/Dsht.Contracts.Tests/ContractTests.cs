@@ -357,14 +357,14 @@ static class ContractTests
         Check("Linux 路径**不**被转成反斜杠（共享代码审计抓到的高严重度 bug ✗）", Dsht.Domain.Services.FileUrlConverter.ToPath("file:///home/u/a.yml#x", out frag2) == "/home/u/a.yml" && frag2 == "x");
         Check("Linux 路径的 %20 解码后仍是正斜杠", Dsht.Domain.Services.FileUrlConverter.ToPath("file:///home/u/a%20b/c.yml", out frag2) == "/home/u/a b/c.yml");
 
-        string yml = "insert:\n  - id: subagent-acp-kimi\n    name: '@deepseek-ai/dsh-subagent-acp'\n";
-        Check("EntryLocator 命中行号", Dsht.Domain.Services.EntryLocator.FindLine(yml, "subagent-acp-kimi") == 2);
+        string yml = "insert:\n  - id: subagent-acp-生成式 AI 工具\n    name: '@deepseek-ai/dsh-subagent-acp'\n";
+        Check("EntryLocator 命中行号", Dsht.Domain.Services.EntryLocator.FindLine(yml, "subagent-acp-生成式 AI 工具") == 2);
         Check("EntryLocator 未命中 → 0", Dsht.Domain.Services.EntryLocator.FindLine(yml, "nope") == 0);
 
-        string fail = "Error: plugin tree failed to load\n  failed to apply loader entry include (cordis:include)\n  failed to apply loader entry subagent-acp-kimi (@deepseek-ai/dsh-subagent-acp)\n  provider \"kimi\" cannot enforce maxDepth\n  at file:///C:/x/y.yml#subagent-acp-kimi\n  set maxDepth: 'provider-managed'\n";
+        string fail = "Error: plugin tree failed to load\n  failed to apply loader entry include (cordis:include)\n  failed to apply loader entry subagent-acp-生成式 AI 工具 (@deepseek-ai/dsh-subagent-acp)\n  provider \"生成式 AI 工具\" cannot enforce maxDepth\n  at file:///C:/x/y.yml#subagent-acp-生成式 AI 工具\n  set maxDepth: 'provider-managed'\n";
         BootDiagResult br = Dsht.Domain.Services.BootDiagParser.Parse(fail, Loc7, ExistsTrue);
         Check("识别 + Kind=maxDepth-missing", br.Recognized && br.Kind == "maxDepth-missing");
-        Check("取带 @ 的包名（最内层）", br.Plugin == "@deepseek-ai/dsh-subagent-acp" && br.Entry == "subagent-acp-kimi");
+        Check("取带 @ 的包名（最内层）", br.Plugin == "@deepseek-ai/dsh-subagent-acp" && br.Entry == "subagent-acp-生成式 AI 工具");
         Check("Hint 取自输出", br.Hint == "set maxDepth: 'provider-managed'");
         Check("FILE/LINE 来自定位结果", br.File == "C:\\x\\y.yml" && br.Line == 7);
 
@@ -537,11 +537,11 @@ static class ContractTests
         Check("JSON：尾部垃圾 → null", Dsht.Domain.Services.JsonLite.Parse("{\"a\":1} x") == null);
         Check("JSON：空/空白 → null", Dsht.Domain.Services.JsonLite.Parse("") == null && Dsht.Domain.Services.JsonLite.Parse("   ") == null);
         Check("JSON：取不存在的成员/路径 → null", jn.Get("zzz") == null && jn.Path("c", "zzz") == null);
-        string realManifest = "{\"name\":\"web\",\"private\":true,\"dependencies\":{},\"dsh\":{\"profile\":{\"bundles\":[\"@deepseek-ai/dsh-base\",\"@deepseek-ai/dsh-web-app\",\"dsh-web-search-tavily\"]}}}";
+        string realManifest = "{\"name\":\"web\",\"private\":true,\"dependencies\":{},\"dsh\":{\"profile\":{\"bundles\":[\"@deepseek-ai/dsh-base\",\"@deepseek-ai/dsh-web-app\",\"example-search-plugin\"]}}}";
         Dsht.Domain.Services.ProfileManifestInfo pm = Dsht.Domain.Services.ProfileManifest.Parse(realManifest);
         Check("manifest：解析成功且取到 bundles", pm.Parsed && pm.Bundles.Length == 3 && pm.Name == "web");
         Check("manifest：形态推断 = web", pm.ConfiguredForm == AppKind.Web && Dsht.Domain.Services.ProfileManifest.FormName(pm.ConfiguredForm) == "web");
-        Check("manifest：官方包与第三方插件分开", pm.OfficialBundles.Length == 2 && pm.ThirdPartyPlugins.Length == 1 && pm.ThirdPartyPlugins[0] == "dsh-web-search-tavily");
+        Check("manifest：官方包与第三方插件分开", pm.OfficialBundles.Length == 2 && pm.ThirdPartyPlugins.Length == 1 && pm.ThirdPartyPlugins[0] == "example-search-plugin");
         Check("manifest：headless bundle → Headless", Dsht.Domain.Services.ProfileManifest.FromBundles(new string[] { "@deepseek-ai/dsh-base", "@deepseek-ai/dsh-headless" }) == AppKind.Headless);
         Check("manifest：acp bundle → Acp", Dsht.Domain.Services.ProfileManifest.FromBundles(new string[] { "@deepseek-ai/dsh-acp-app" }) == AppKind.Acp);
         Check("manifest：sdk bundle 不是可管理形态 → Unknown", Dsht.Domain.Services.ProfileManifest.FromBundles(new string[] { "@deepseek-ai/dsh-base", "@deepseek-ai/dsh-sdk-app" }) == AppKind.Unknown);

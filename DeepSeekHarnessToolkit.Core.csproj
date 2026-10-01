@@ -3,7 +3,7 @@
   <!--
     v2.8 阶段 2（dotnet 化）：SDK 风格工程，把核心（CLI）从「csc 单文件」迁到 `dotnet build`。
     当前是**加法式**落地：csc 路径与发布流程保持不变，本工程先在 CI 里验证「同一套源码能在 net8.0 下编译」。
-    设计约束（见 04-规划文档\V3.0跨平台方案设计稿.md §10）：
+    设计约束（见 设计说明 §10）：
       · 零第三方依赖：只用 BCL，不加任何 PackageReference
       · 目标框架 net8.0（非 -windows）：核心侧不得出现 WinForms / System.Drawing / Microsoft.Win32.Registry 等
         Windows-only 编译期 API（实测核心侧这些引用均为 0，Windows 耦合只在运行期行为：cmd/netstat/taskkill）

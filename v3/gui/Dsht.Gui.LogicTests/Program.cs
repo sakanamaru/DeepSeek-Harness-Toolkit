@@ -76,7 +76,7 @@ namespace Dsht.Gui.LogicTests
             Check("仅 SESSIONS_OK 时 Ok=true 且无行", SessionsMarkers.Parse("SESSIONS_OK 0").Ok && SessionsMarkers.Parse("SESSIONS_OK 0").Rows.Count == 0);
 
             Console.WriteLine();
-            string prof = "PROFILES_OK 2\nPROFILE web form=web bundles=3 thirdparty=1\nBUNDLE web @deepseek-ai/dsh-base official\nBUNDLE web @deepseek-ai/dsh-web-app official\nBUNDLE web dsh-web-search-tavily thirdparty version=0.1.0\nDISABLED web dsh-web-search-tavily\nPROFILE bare form=unknown bundles=0 thirdparty=0";
+            string prof = "PROFILES_OK 2\nPROFILE web form=web bundles=3 thirdparty=1\nBUNDLE web @deepseek-ai/dsh-base official\nBUNDLE web @deepseek-ai/dsh-web-app official\nBUNDLE web example-search-plugin thirdparty version=0.1.0\nDISABLED web example-search-plugin\nPROFILE bare form=unknown bundles=0 thirdparty=0";
             ProfilesSnapshot ps = ProfilesMarkers.Parse(prof);
             Check("profiles：解析成功与计数", ps.Ok && ps.Count == 2 && ps.Profiles.Count == 2);
             Check("profiles：形态文案与色号", ps.Profiles[0].FormText.Contains("Web") && ps.Profiles[0].FormKind == 0 && ps.Profiles[1].FormKind == 3);
@@ -91,7 +91,7 @@ namespace Dsht.Gui.LogicTests
             Check("status：空输入不抛且 !Ok", !StatusMarkers.Parse("").Ok && !StatusMarkers.Parse(null).Ok);
             Check("status：含空格的值整行保留（启动时间）", StatusMarkers.Parse("STATUS_START 2026-09-28 11:53:14").Start.Split(' ').Length == 2);
             Check("profiles：BUNDLE 带版本号（version= → v0.1.0）", ps.Profiles[0].Items[2].Version == "0.1.0" && ps.Profiles[0].Items[2].VersionText == "v0.1.0");
-            Check("profiles：DISABLED 行归到对应 profile 且文案可读", ps.Profiles[0].Disabled.Count == 1 && ps.Profiles[0].Disabled[0] == "dsh-web-search-tavily" && ps.Profiles[0].DisabledText.Contains("已隔离 1 项"));
+            Check("profiles：DISABLED 行归到对应 profile 且文案可读", ps.Profiles[0].Disabled.Count == 1 && ps.Profiles[0].Disabled[0] == "example-search-plugin" && ps.Profiles[0].DisabledText.Contains("已隔离 1 项"));
             Check("profiles：无版本号的条目 → 空串（不假装有版本）", ps.Profiles[0].Items[0].Version == "" && ps.Profiles[0].Items[0].VersionText == "");
             Check("profiles：DISABLED 指向不存在的 profile 时忽略（不抛）", ProfilesMarkers.Parse("PROFILES_OK 0\nDISABLED nobody x").Profiles.Count == 0);
             List<ConfigItem> cfg = ConfigMarkers.Parse("CONFIGGET_OK\nCONFIG lang auto\nCONFIG keep_backups 10\nCONFIG ws \nCONFIG dsh_versions 1.11.0,1.10.0");

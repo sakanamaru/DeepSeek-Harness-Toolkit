@@ -29,7 +29,7 @@ namespace Dsht.Domain.Services
     /// <summary>profile manifest 解析与形态推断（纯函数）。
     /// 依据（本机实测，dsh 0.1.5-rc.2）：`$DSH_HOME/profiles/&lt;name&gt;/package.json` 里有
     /// `dsh.profile.bundles`，直接列出该 profile 的组合包，例如
-    /// `["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-web-search-tavily"]`。
+    /// `["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "example-search-plugin"]`。
     /// 形态由**哪个 app bundle 被启用**决定：web / headless / acp / sdk 各对应一个 bundle
     /// （dsh 官方文档：`--profile web|headless|acp|sdk`，SDK 与 ACP 都是 profile 而不是独立 bin）。
     /// **这是"配置形态"，不是"运行形态"**：必须与运行时事实（端口/进程）分开陈述。</summary>

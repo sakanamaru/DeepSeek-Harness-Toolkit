@@ -1,7 +1,7 @@
 # 给 GUI 重构者的交接说明（V3 跨平台 GUI · Avalonia）
 
-> 这份文档是给**接手改界面的人/模型**看的。目标：**只改外观与交互，不要弄坏数据契约、测试与安全边界**。
-> 当前代码是**本地提交、尚未推送**（本地 `main` 领先 `origin/main` 一百多个提交；远端仓库已改名 `sakanamaru/dsh-minato`）——请在这份代码上直接改，别丢历史。
+> 这份文档是给**接手改界面的人**看的。目标：**只改外观与交互，不要弄坏数据契约、测试与安全边界**。
+> 当前代码是**本地提交、尚未推送**（工作副本；远端仓库已改名 `sakanamaru/dsh-minato`）——请在这份代码上直接改，别丢历史。
 > 品牌现状：V3 品牌和 CLI 可执行文件都叫 **dsh-minato**；经典 v2.x exe 保持原名（`DeepSeek Harness Toolkit.exe`）。标记行里的比较串不随品牌改。
 
 ## 1. 位置与命令
@@ -11,7 +11,7 @@
 测试：<repo>\v3\gui\Dsht.Gui.LogicTests\        ← 呈现层逻辑测试（58 项，**不依赖 Avalonia**，无图形环境也能跑）
 CLI ：<repo>\v3\src\Dsht.Cli\                   ← GUI 的数据来源（只通过命令行标记行交互；产出 dsh-minato.exe）
 ```
-（`<repo>` = `D:\dsh-workspace\技术\DSHToolkit\09-源码仓库\repo`）
+（`<repo>` = `<repo>`）
 
 ```powershell
 # 编译 / 运行（本机 dotnet 在 %USERPROFILE%\.dotnet，PATH 里那个只有运行时）
@@ -63,7 +63,7 @@ $dn = "$env:USERPROFILE\.dotnet\dotnet.exe"
 
 ## 6. 参考项目与许可边界（重要）
 
-本地已克隆两个参考（在 `06-数据与杂项\参考-GUI仓库\`）：
+本地已克隆两个参考（在 `a local reference folder`）：
 - **March7thAssistant**（PySide6 + qfluentwidgets，**GPL-3.0**）→ **只可借鉴设计方向，代码/图标/字体/截图一律不能抄**（会污染我们 MIT）。
 - **Hollow**（**Avalonia 11.2.1，MIT**，与我们同栈）→ 它的做法（Palette 资源字典 + 每控件 Styles + FluentIcons + Antelcat.I18N + DataGrid）值得照做，但**仍建议自己写**，不要复制文件。
 
@@ -73,4 +73,4 @@ $dn = "$env:USERPROFILE\.dotnet\dotnet.exe"
 
 1. `dotnet build` 0 警告 0 错误；`Dsht.Gui.LogicTests` **58/58 通过**（不许为了好看而删测试）
 2. 发布自包含包，肉眼过一遍：五种布局 × 四个风格都能切、八个页面都有数据（概览能一键启停、看板有图表）
-3. 交付时给**截图**（我看不到界面，只能靠截图验收）
+3. 交付时给**截图**
