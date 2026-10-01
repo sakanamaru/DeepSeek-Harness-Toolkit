@@ -145,7 +145,7 @@ namespace Dsht.Platform.Windows
             try
             {
                 string dir = AppDomain.CurrentDomain.BaseDirectory;
-                string probe = Path.Combine(dir, ".write-test");
+                string probe = Path.Combine(dir, (".write-test-" + System.Diagnostics.Process.GetCurrentProcess().Id.ToString() + "-" + System.Guid.NewGuid().ToString("N").Substring(0, 8)));
                 using (FileStream fs = File.Create(probe)) { }
                 File.Delete(probe);
                 return dir;
