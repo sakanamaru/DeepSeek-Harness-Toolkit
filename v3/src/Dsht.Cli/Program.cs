@@ -684,7 +684,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             Console.WriteLine("  import --path <外部备份包> [--yes] | wipe [--yes] | verify-install [--manifest <f>] [--file <f>] [--url <u>]");
             Console.WriteLine("  shortcut [--yes] | ui | 无参数 = 数字菜单");
             Console.WriteLine(T("写操作一律先打印计划，加 --yes 才执行；涉及数据根的真实恢复还要求先设置 DSH_HOME。",
-                                "Every write prints its plan first; add --yes to execute. A real restore also requires DSH_HOME."));
+                                "Every write prints its plan first; add --yes to execute. A real restore writes into the effective data root, which is DSH_HOME when set and the default data root when not; only the --apply path is refused when that root is a default location."));
         }
 
         private static int Menu(ServiceRegistry reg)
@@ -1003,13 +1003,29 @@ Console.WriteLine("  config-get | config-set <key> <value>");
         }
         private static int CopyDirDeep(string from, string to, int depth)
         {
+            // ★★★ **第 3 轮审查抓到（MAJOR）**：这里**会跟随符号链接/junction** ✗✗
+            //   而项目里其它所有拷贝路径都**显式跳过** reparse point ✓
+            //   （WindowsBackupSource.CopyTree / LinuxBackupSource.CopyTree / WindowsFileSystemQuery.Walk / SkipRules ✓）
+            //   → 导入一个包、或打包一个含符号链接的工作区时 ✗
+            //     → **被链接到的整棵树会被复制进来** ✗（~/.ssh、/etc、%APPDATA% … ✓）
+            //     → 信息泄露 + 磁盘被塞满 ✓ 而且 pnpm 工作区**本来就有符号链接** ✓
+            // ✓ 现在：**与其它拷贝路径同一策略：跳过 reparse point** ✓✓
             if (depth > 32) return 0;
             System.IO.Directory.CreateDirectory(to);
             int n = 0;
             string[] files = System.IO.Directory.GetFiles(from);
-            for (int i = 0; i < files.Length; i++) { System.IO.File.Copy(files[i], System.IO.Path.Combine(to, System.IO.Path.GetFileName(files[i])), true); n++; }
+            for (int i = 0; i < files.Length; i++)
+            {
+                try { if ((System.IO.File.GetAttributes(files[i]) & System.IO.FileAttributes.ReparsePoint) != 0) continue; } catch { }
+                System.IO.File.Copy(files[i], System.IO.Path.Combine(to, System.IO.Path.GetFileName(files[i])), true);
+                n++;
+            }
             string[] dirs = System.IO.Directory.GetDirectories(from);
-            for (int i = 0; i < dirs.Length; i++) n += CopyDirDeep(dirs[i], System.IO.Path.Combine(to, System.IO.Path.GetFileName(dirs[i])), depth + 1);
+            for (int i = 0; i < dirs.Length; i++)
+            {
+                try { if ((System.IO.File.GetAttributes(dirs[i]) & System.IO.FileAttributes.ReparsePoint) != 0) continue; } catch { }
+                n += CopyDirDeep(dirs[i], System.IO.Path.Combine(to, System.IO.Path.GetFileName(dirs[i])), depth + 1);
+            }
             return n;
         }
         /// <summary>update-info（V3 独有，只读）：经典版「更新中心」的 CLI 对应物 ✓。
@@ -1985,6 +2001,21 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 string derr;
                 // Electron 是**多进程** ✗ → 必须杀**整棵** ✓（StopTree ✓ 与 Windows 侧实现一致 ✓）
                 bool dok = dctl.StopTree(dpid, out derr);
+            // ★★ 第 3 轮审查抓到：Windows 的 StopTree **只看 taskkill 的退出码** ✗ 从未复检进程是否真的没了 ✗
+            //   → 却照样打印 STOP_OBSERVED down ✓（**断言了一个没做过的观测** ✗）
+            //   → 而 Linux 侧本来就复检 /proc ✓（两边不一致 ✓）
+            // ✓ 现在：**这里真的复核一次** ✓✓（进程还在 → 不算 down ✓ 只报 unknown ✓ 不撒谎 ✓）
+            if (dok)
+            {
+                try
+                {
+                    using (System.Diagnostics.Process stillThere = System.Diagnostics.Process.GetProcessById(dpid))
+                    {
+                        if (stillThere != null && !stillThere.HasExited) dok = false;
+                    }
+                }
+                catch { }
+            }
                 Console.WriteLine(dok ? "STOP_OK " + dpid : "STOP_FAIL " + (string.IsNullOrEmpty(derr) ? T("停止失败", "stop failed") : derr));
                 Console.WriteLine("STOP_OBSERVED " + (dok ? "down" : "unknown"));
                 if (dok) OpLog(reg, "INFO", "stop desktop pid=" + dpid);

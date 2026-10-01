@@ -1273,7 +1273,11 @@ internal static class Installer
                 Log("**目录没删干净 → 注册表 / 快捷方式 / PATH 一律保留** ✓（否则你就没法重试了 ✗）");
                 Log("**怎么重试**：关掉占用文件的程序后再跑一次 uninstall.exe ✓ 或用 `--force` 跳过身份校验 ✓ 也可以手动删掉上面那个目录 ✓");
             }
-            return 0;
+            // ★★ 第 3 轮审查抓到（MAJOR）：**目录还在也返回 0** ✗✗
+            //   → 用户数据被有意保留（backup/ logs/ ✓）时目录必然还在 ✓ 而这里照样 0 ✓
+            //   → winget / Scoop / ARP 的 UninstallString 消费者会**以为卸干净了** ✗
+            // ✓ 现在：**真的删干净才 0** ✓✓ 否则返回 5（"部分完成" ✓ 与"拒绝卸载"的 2 区分开 ✓）
+            return gone ? 0 : 5;
         }
         catch (Exception ex)
         {
