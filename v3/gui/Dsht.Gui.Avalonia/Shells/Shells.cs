@@ -2191,6 +2191,57 @@ namespace Dsht.Gui.Avalonia.Shells
                 if (armed) ib.Background = Palette.Accent;
                 bc.Children.Add(ib);
                 bc.Children.Add(T("需要 dsh 与 pnpm（dsh 不会替你装 pnpm，先 npm i -g pnpm）。装完重启 dsh 生效。结果如实显示，包括「包已 link 但 patch 缺行 → 不会加载」这种情形。", 11, Palette.TextFaint));
+
+                // ★★★ 用户要求（2026-10-01）：「在 GUI 内写出安装教程」+「A+B 自选」✓✓
+                //   背景（真机实测）：`desktop` profile **由 dsh 桌面端独占管理** ✗ → 命令行装不进去 ✓
+                //     用户看到的是 dsh 的英文报错 ✗ 而桌面端有自己的「添加插件」对话框 ✓
+                //   实测结论（我逐个跑过 pnpm add ✓）：
+                //     ✓ 本地目录路径 → 可以 ✓
+                //     ✓ git 仓库 + 子目录（#path:）→ 可以 ✓
+                //     ✗ 只填仓库地址 → **不行** ✗（仓库根没有 package.json ✓）
+                //     ✗ npm 包名 → 不行 ✗（未发布到 npm ✓ 404 ✓）
+                //   诚实边界：桌面端**由它自己管理** ✓ 本工具只能**给路径** ✓ 不能代装 ✓
+                //     装完后 **patch 行它不会替你加** ✗ → 用下面「检查」按钮核对 ✓
+                string selfPlugin = "";
+                try
+                {
+                    string baseDir = System.AppContext.BaseDirectory;
+                    if (string.IsNullOrEmpty(baseDir)) baseDir = System.IO.Directory.GetCurrentDirectory();
+                    selfPlugin = System.IO.Path.Combine(System.IO.Path.Combine(baseDir, "plugin"), "dsh-minato-bridge");
+                }
+                catch { }
+                StackPanel tut = new StackPanel { Spacing = 6, Margin = new Thickness(0, 4, 0, 0) };
+                tut.Children.Add(T("怎么装进 desktop（由桌面端自己管理，本工具只能给你路径）", 12, Palette.Text, FontWeight.SemiBold));
+                tut.Children.Add(T("在桌面端的「添加插件」对话框里，下面两条**任选一条**粘进去（它接受 npm 包名 / GitHub 地址 / 本地目录路径）：", 11.5, Palette.TextDim));
+                tut.Children.Add(T("A · 仓库地址（要带子目录，只填仓库根不行）", 11, Palette.TextFaint));
+                try
+                {
+                    SelectableTextBlock ga = new SelectableTextBlock
+                    {
+                        Text = "github:sakanamaru/dsh-minato#path:plugin/dsh-minato-bridge",
+                        FontSize = 11.5, TextWrapping = TextWrapping.Wrap, Foreground = Palette.Accent
+                    };
+                    tut.Children.Add(ga);
+                }
+                catch { tut.Children.Add(T("github:sakanamaru/dsh-minato#path:plugin/dsh-minato-bridge", 11.5, Palette.Accent)); }
+                tut.Children.Add(T("B · 本地目录（不依赖网络，更稳）", 11, Palette.TextFaint));
+                try
+                {
+                    SelectableTextBlock gb = new SelectableTextBlock
+                    {
+                        Text = selfPlugin.Length > 0 ? selfPlugin : "(随包分发的 plugin/dsh-minato-bridge 目录)",
+                        FontSize = 11.5, TextWrapping = TextWrapping.Wrap, Foreground = Palette.Accent
+                    };
+                    tut.Children.Add(gb);
+                    // ★ 诚实说明（开发构建 vs 发布包 ✓）：发布包里 plugin/ 就在 exe 旁边 ✓
+                    //   而**开发构建**（bin/Release/net8.0）里没有它 ✗ → 路径会指向一个不存在的地方 ✓
+                    bool exists = false;
+                    try { exists = selfPlugin.Length > 0 && System.IO.Directory.Exists(selfPlugin); } catch { }
+                    if (!exists) tut.Children.Add(T("（上面这条路径在**开发构建**里不存在 —— 发布包里 plugin/ 就在 exe 旁边 ✓ 以发布包为准；源码运行时请用仓库里的 plugin/dsh-minato-bridge ✓）", 10.5, Palette.TextFaint));
+                }
+                catch { tut.Children.Add(T(selfPlugin, 11.5, Palette.Accent)); }
+                tut.Children.Add(T("⚠ 装完还要看一步：桌面端**不会**替你往 desktop profile 的 cordis.patch.yml 里加 shio-bridge 行，缺了插件**不会加载**而 dsh **不报错**。装完告诉我（或看工具箱的输出），我帮你核对并补上。", 11, Palette.TextFaint));
+                s.Children.Add(Card(tut, new Thickness(0), new Thickness(16, 12)));
                 s.Children.Add(Card(bc, new Thickness(0), new Thickness(16, 14)));
             }
 
