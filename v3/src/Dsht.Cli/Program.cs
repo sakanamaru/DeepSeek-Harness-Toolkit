@@ -1590,6 +1590,21 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             string nodeNow = tc.NodeVersion();
             bool nodeMissing = string.IsNullOrEmpty(nodeNow);
             bool nodeOld = !nodeMissing && NodeTooOld(nodeNow, 22, 19);   // dsh 要求 >= 22.19.0（真机抓到的 ✗）
+            // ★★ 架构审计抓到（v2 对等 + 诚实性）：**Windows 上这里被整个跳过** ✗
+            //   → 而 WindowsToolchainQuery 的注释写着"安装器负责" ✗ —— **安装器里根本没有 Node 安装代码** ✗✗
+            //   → 结果：Windows 缺 Node 时只报 INSTALL_FAIL「拿不到可信的最新版本（离线…）」✗ → **误导** ✓
+            // ✓ 现在：**Windows 也如实诊断并给出正确指引** ✓✓（不假装能自动装 ✓ 也不甩锅给安装器 ✓）
+            if (PlatformIsWindows() && (nodeMissing || nodeOld))
+            {
+                Console.WriteLine(verb + "_NEED_NODE " + (nodeMissing
+                    ? T("未检测到 Node.js（dsh 通过 npm 安装，需要它）", "Node.js not found (dsh installs through npm and needs it)")
+                    : T("Node.js 版本过旧（", "Node.js is too old (") + nodeNow + T("）—— dsh 要求 >= 22.19.0", ") - dsh requires >= 22.19.0")));
+                Console.WriteLine(verb + "_NODE_HINT " + T("Windows 上请先安装 Node.js（官网安装包，或 winget install OpenJS.NodeJS.LTS），装完**重开一个终端**再试。本工具与安装器都**不会**替你装 Node ✓",
+                                                                    "install Node.js on Windows first (official installer, or: winget install OpenJS.NodeJS.LTS), then reopen the terminal; neither this tool nor the installer installs Node for you"));
+                Console.WriteLine(verb + "_OBSERVED not-installed");
+                return 0;
+            }
+
             if (!PlatformIsWindows() && (nodeMissing || nodeOld))
             {
                 Console.WriteLine(verb + "_NEED_NODE " + (nodeMissing

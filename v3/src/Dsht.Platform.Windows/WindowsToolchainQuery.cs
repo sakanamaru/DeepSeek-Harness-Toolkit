@@ -100,7 +100,9 @@ namespace Dsht.Platform.Windows
             }
             catch { return -1; }
         }
-        /// <summary>Windows 上不代装 Node（安装器负责）；返回 -1，由调用方如实说明。</summary>
+        /// <summary>Windows 上**不代装** Node；返回 -1，由调用方如实说明。
+        /// ★ 架构审计抓到：这里原来写着「安装器负责」✗ —— 而 **v3/tools/installer.cs 里没有任何 Node 安装代码** ✗✗
+        ///   → 那句话是**不实的** ✓ 已改掉 ✓（缺 Node 时由 CLI 如实诊断 + 给出 winget/官网指引 ✓）</summary>
         public int InstallNodeRuntime() { return -1; }
 
         /// <summary>列出可用版本（原样返回 npm 输出 ✓）。</summary>
