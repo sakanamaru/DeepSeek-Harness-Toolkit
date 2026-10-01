@@ -954,7 +954,14 @@ namespace Dsht.Gui.Avalonia.Shells
         /// 98/98 的子 id 都有 SESSION 行 ✓ → 不会出现"找不到父"的孤儿 ✓</summary>
         private static Control SessionListGrouped(MainWindow host)
         {
-            StackPanel s = new StackPanel { Spacing = 8 };
+            // ★★ 架构审计（性能）：这里原来是**裸 StackPanel + Children.Add** ✗
+            //   → **完全不虚拟化** ✗ → 每个会话卡片都被 eager 创建 ✓（会话一多就卡 ✓ 这正是"按钮延迟"的一部分 ✓）
+            // ✓ 现在：**收集成控件列表 → 交给 ItemsControl + VirtualizingStackPanel** ✓✓
+            //   · 卡片构建代码**一行没动** ✓ 只换容器 ✓（风险最小的改法 ✓）
+            //   ⚠ 诚实边界：虚拟化要生效，**宿主必须给出有界高度** ✓ ——
+            //     页面外层的 ScrollViewer 给的是无限高 ✗ → 在那种情况下这层只是"无害的容器" ✓
+            //     一旦这个列表被放进有界高度的区域（或将来由它自己滚动 ✓）**立刻开始虚拟化** ✓✓
+            System.Collections.Generic.List<Control> items = new System.Collections.Generic.List<Control>();
             List<SessionRowVm> src = host.ListSource;
             // ★★ 架构/性能审查抓到：下面每个子代理都要**线性扫一遍全部行** ✗ → O(父 × 子 × 行) ✗
             //   → 会话一多，默认视图和每次筛选都会卡 ✓（这是用户抱怨"按钮延迟"的一部分 ✓）
@@ -971,7 +978,7 @@ namespace Dsht.Gui.Avalonia.Shells
                 SessionRowVm vm = src[i];
                 if (vm.Row == null) continue;
                 if (vm.Row.IsSubAgent) continue;   // 子代理不在顶层重复显示 ✓（下面折叠 ✓）
-                s.Children.Add(SessionCard(vm));
+                items.Add(SessionCard(vm));
                 if (vm.Row.ChildIds.Count > 0)
                 {
                     StackPanel kids = new StackPanel { Spacing = 6, Margin = new Thickness(18, 4, 0, 0) };
@@ -999,10 +1006,14 @@ namespace Dsht.Gui.Avalonia.Shells
                     StackPanel exWrap = new StackPanel { Spacing = 0 };
                     exWrap.Children.Add(exHead);
                     exWrap.Children.Add(exBox);
-                    s.Children.Add(exWrap);
+                    items.Add(exWrap);
                 }
             }
-            return s;
+            ItemsControl list = new ItemsControl();
+            list.ItemsSource = items;   // 已经构建好的卡片控件 ✓（面板负责虚拟化 ✓）
+            list.ItemsPanel = new global::Avalonia.Controls.Templates.FuncTemplate<Panel>(
+                delegate { return new VirtualizingStackPanel(); });
+            return list;
         }
         private static Control SessionList(MainWindow host, int mode)
         {
