@@ -239,3 +239,74 @@ in [ASSETS.md](ASSETS.md).
 
 `dsh-minato` (みなと, "harbour") was previously published as `DeepSeek-Harness-Toolkit`; the rename is recorded in the
 git history. This is an independent project and is not affiliated with DeepSeek.
+
+
+---
+
+## The bridge plugin (optional) — what it is for, and whether you want it
+
+The toolkit itself is an **independent process**: it does not inject into dsh, and it works **without dsh installed**.
+But one fact **only the dsh process itself knows**:
+
+> **how many sessions are running right now** (plus each session's live token and context pressure).
+
+That is **in-process runtime state**, and dsh **never writes it to disk** — so the on-disk projection does not have it,
+and the toolkit can only show `unknown`.
+
+| | without the plugin | with the plugin |
+|---|---|---|
+| session list / tokens / cache hit rate / decode speed | ✅ (from the disk projection) | ✅ (from the disk projection) |
+| **the "running" flag** | ❌ `unknown` | ✅ **live** |
+
+**What it does not do** (hard constraints): ❌ no model requests (no token spend) · ❌ does not write dsh state ·
+❌ does not read conversation content · ❌ no network · ❌ never blocks (all try/catch — **a broken plugin must not
+affect dsh**).
+
+**Should you install it?**
+
+- **Command line only** → **no need**. `unknown` affects one field; nothing else is missing.
+- **You use the GUI's session page and want to know whether anything is running** → **worth it** (one command).
+
+```bash
+# the repository address works (the root manifest declares dsh.bundle)
+dsh plugin --profile web add "https://github.com/sakanamaru/dsh-minato"
+
+# or the local folder (most reliable, no network)
+dsh plugin --profile web add "<repo>/plugin/dsh-minato-bridge"
+```
+
+> ⚠️ The `desktop` profile is **managed exclusively by dsh's desktop application** and cannot be installed from the
+> command line — paste either line into its "add plugin" dialog. Afterwards confirm the profile's
+> `cordis.patch.yml` contains a `shio-bridge` entry: without it the plugin **does not load**, and dsh **does not
+> report an error** (a pitfall we hit ourselves).
+
+**The choice is yours** — this tool will not decide for you, and will not pretend the plugin is required.
+
+## Why it is still maintained although few people use it
+
+Honestly: this project has **few users**. The reasons it keeps moving, in order of actual weight:
+
+1. **I use it myself** — it solves real problems for me; whether others use it does not change that.
+2. **Practice** — doing the whole stack properly (cross-platform CLI + GUI + backup/restore + release chain + CI)
+   is the point in itself.
+3. **Something built should be finished** — leaving a half-done project to rot is worse than never starting.
+4. **Leave something usable for whoever comes next** — if someone hits the same pitfalls, at least there is a
+   readable, checkable implementation that does not lie to them.
+
+That is also why the documentation is **wordier than the code**: stating where things are uncertain
+(`unknown` is never faked as 0, checks the local gate cannot run are listed as such, unverified fixes are marked)
+matters more than one more feature.
+
+## About the AI assistance
+
+**AI assistance was used heavily** in this project. It is written down so you can judge for yourself:
+
+- **v1 script assistance**: SOGR-Momono Dango (QwenPaw / DeepseekAPI-V4-Flash-0731)
+- **v2 rewrite and packaging**: DeepSeek DSH (DSH / DeepseekAPI-V4-Flash-0731)
+- **v3 and this document**: mostly AI coding agents, reviewed, decided and accepted by the maintainer
+- **Icons**: the **new logo is generative-AI output (tool: Kimi)**; the **old logo was produced with ChatGPT
+  (OpenAI)**; prompts written by the maintainer
+
+**This does not mean "AI wrote it, so it is untrustworthy", nor "AI wrote it, so it is fine".**
+The basis for judgement should be **whether you can check it yourself**: every artifact ships with SHA-256
+(`hashes.txt`), and every claim can be re-run with `v3/tests/` and `verify.ps1`.
