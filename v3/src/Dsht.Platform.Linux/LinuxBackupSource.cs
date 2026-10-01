@@ -187,7 +187,8 @@ namespace Dsht.Platform.Linux
                 catch { }
                 return new BackupResult(dest, skipped, _copyFailures);
             }
-            catch { return null; }
+            // ★ S7：**失败原因要说出来** ✓✓（原来是 catch { return null; } ✗ → 用户只看到"见 launcher.log" ✗）
+            catch (Exception cex) { LastError = cex.Message; return null; }
         }
 
         /// <summary>导出备份副本：复制到 dstDir/&lt;源目录名&gt;（只读源；best-effort 复制）。返回目标路径；失败返回 null。</summary>
@@ -395,5 +396,10 @@ namespace Dsht.Platform.Linux
             }
             return skippedNested;
         }
+
+        /// <summary>最近一次失败的**原因**（给 CLI 如实显示 ✓ 不猜 ✓）。
+        /// ★ 架构审计抓到（S7）：`Create` 原来是 `catch { return null; }` ✗
+        ///   → **失败原因被整个吞掉** ✗ → CLI 只能说"备份失败（见 launcher.log）" ✗（用户看不到到底为什么 ✓）。</summary>
+        public static string LastError = "";
     }
 }

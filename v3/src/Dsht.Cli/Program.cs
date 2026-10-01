@@ -3046,7 +3046,15 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 return 0;
             }
             BackupResult r = bk.Create(src, BackupKind.Manual, _cfg == null ? 3 : _cfg.KeepBackups, WorkspaceRoot(reg));
-            if (r == null) { Console.WriteLine("BACKUP_FAIL " + T("备份失败（见 launcher.log）", "backup failed (see launcher.log)")); return 0; }
+            if (r == null)
+            {
+                // ★ 架构审计抓到（S7）：原来是"见 launcher.log" ✗ —— 而原因**就在手边** ✓
+                //   → 现在：**把平台层记下的真实原因打印出来** ✓✓（仍同时指路日志 ✓）
+                string why = PlatformIsWindows() ? Dsht.Platform.Windows.WindowsBackupSource.LastError : Dsht.Platform.Linux.LinuxBackupSource.LastError;
+                Console.WriteLine("BACKUP_FAIL " + T("备份失败：" + (string.IsNullOrEmpty(why) ? "（平台层没有给出原因 ✓ 见 launcher.log）" : why),
+                                                          "backup failed: " + (string.IsNullOrEmpty(why) ? "(the platform layer gave no reason; see launcher.log)" : why)));
+                return 0;
+            }
             if (r.SkippedNested > 0)
                 Console.WriteLine(T("已跳过 " + r.SkippedNested + " 个嵌套备份目录（dsh-data-*），不复制进本次备份。",
                                     "Skipped " + r.SkippedNested + " nested backup folder(s) (dsh-data-*), not copied into this backup."));
