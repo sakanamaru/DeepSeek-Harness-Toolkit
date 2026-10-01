@@ -10,6 +10,10 @@ Windows and Linux. Runs locally, writes nothing anywhere else.
 
 ---
 
+<p align="center">
+  <img src="logo.png" alt="dsh-minato" width="180">
+</p>
+
 ## Screenshots
 
 Everything below is the real interface, captured against a **fixture data directory** — no real session, path or

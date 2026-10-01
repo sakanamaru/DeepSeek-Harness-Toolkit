@@ -10,6 +10,10 @@ Windows と Linux に対応。すべて手元のマシン内で完結し、ど�
 
 ---
 
+<p align="center">
+  <img src="logo.png" alt="dsh-minato" width="180">
+</p>
+
 ## スクリーンショット
 
 以下はすべて実際の画面です。ただしデータは**隔離したフィクスチャ用ディレクトリ**のもので、

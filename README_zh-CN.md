@@ -9,6 +9,10 @@
 
 ---
 
+<p align="center">
+  <img src="logo.png" alt="dsh-minato" width="180">
+</p>
+
 ## 界面截图
 
 下面全是真实界面，但数据来自一个**隔离的夹具目录** —— 图中不含任何真实会话、路径或数字。
