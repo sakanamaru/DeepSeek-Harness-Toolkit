@@ -70,8 +70,20 @@ if (Test-Path $wf) {
 Gate 'gate3 win/linux dual-run' ($hasJob -and $hasUbuntu) $(if ($hasJob -and $hasUbuntu) { 'CI job 就绪，且已在 CI 真跑通过：run 36385480118（windows-latest 与 ubuntu-latest 各 220/220）' } else { 'CI job 缺失' })
 
 # ---- 门槛④ 发布物校验（含校验器自证）----
-$rel = (Invoke-External { & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_release.ps1') -Repo $Repo -Build -SelfTest 2>&1 }) | Out-String
-Gate 'gate4 release verifier' ($LASTEXITCODE -eq 0) $(if ($LASTEXITCODE -eq 0) { '含篡改自证通过' } else { '校验失败' })
+# ★★★ **发版修复（2026-10-01）—— 版本不要写死** ✓✓
+#   ✗ 原来不传 `-Version` ✗ → `verify_release.ps1` 用它的默认值 `3.0.0-dev` ✗
+#     → 而 CLI 的版本常量一旦改成发布版本（`3.0.0-preview.1` ✓ 发版必须改 ✓）
+#       → **校验器拿 dev 去比 CLI 自报的 preview.1 → 必然不匹配** ✗✗ → gate4 变红 ✓
+#   ✓ 现在：**从源码里的版本常量取** ✓✓（与 CLI 自报的完全同源 ✓ 发版自动跟上 ✓）
+#     · 取不到就退回 dev ✓（绝不因为读不到就误判通过 ✗）
+$ver = '3.0.0-dev'
+try {
+    $pc = [System.IO.File]::ReadAllText((Join-Path $Repo 'v3\src\Dsht.Cli\Program.cs'))
+    $vm = [regex]::Match($pc, 'ToolkitVersion\s*=\s*"([^"]+)"')
+    if ($vm.Success) { $ver = $vm.Groups[1].Value }
+} catch { }
+$rel = (Invoke-External { & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_release.ps1') -Repo $Repo -Build -SelfTest -Version $ver 2>&1 }) | Out-String
+Gate 'gate4 release verifier' ($LASTEXITCODE -eq 0) $(if ($LASTEXITCODE -eq 0) { "含篡改自证通过（版本 $ver）" } else { "校验失败（版本 $ver）" })
 
 # ---- 门槛⑤（V3 追加）真实写操作可验证：隔离数据根 + restore --apply 端到端 ----
 $ra = (Invoke-External { & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_restore_apply.ps1') -Repo $Repo 2>&1 }) | Out-String
