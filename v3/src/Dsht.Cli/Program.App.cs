@@ -206,10 +206,28 @@ namespace Dsht.Cli
             }
             else if (linked && !patched)
             {
-                Console.WriteLine("BRIDGE_FAIL " + T(
-                    "包已经 link 进 profile ✓ 但 `cordis.patch.yml` 里**没有 `shio-bridge` 行** ✗✗ → 插件**不会加载** ✓ 而且 dsh **不会报错** ✗"
-                    + "（实测过的坑 ✓）。请手动把插件自带的 cordis.patch.yml 追加到该 profile 的 cordis.patch.yml ✓ 然后重启 dsh ✓",
-                    "package linked but the patch entry is missing, so the plugin will not load and dsh will not report an error; append the plugin's cordis.patch.yml to the profile's"));
+                // ★★ 用户实测反馈（外部审计也点了这条）：装完还要**手动**把 patch 行补上 ✗
+                //   → 门槛太高 ✓ 而且**漏了 dsh 不会报错** ✗✗（插件静默不加载 ✓）
+                // ✓ 现在：**自动合并** ✓✓ —— 备份 → 插入已有 insert 列表 → 结构校验 → 失败则逐字节还原 ✓
+                Console.WriteLine("BRIDGE_PATCHING " + T(
+                    "包里已 link ✓ 但 profile 的 cordis.patch.yml 缺 shio-bridge 行 → **正在自动补上** ✓（会先备份 ✓）",
+                    "linked, but the profile patch file lacks the entry; adding it now (a backup is kept)"));
+                string pdetail;
+                bool merged = MergePatchEntry(profileDir, plugin, out pdetail);
+                if (merged)
+                {
+                    Console.WriteLine("BRIDGE_PATCHED " + pdetail);
+                    Console.WriteLine("BRIDGE_OK " + T(
+                        "插件已装好并**已注册进加载树** ✓✓ 重启 dsh 后生效 ✓ 届时工具箱的「运行中」会变成真实值 ✓",
+                        "plugin installed and registered in the load tree; restart dsh to take effect"));
+                }
+                else
+                {
+                    Console.WriteLine("BRIDGE_FAIL " + T(
+                        "自动补 patch 行**没成功**：" + pdetail + " ✓ 原文件**未被改动** ✓（备份也在 ✓）"
+                        + "请手动把插件自带的 cordis.patch.yml 追加到该 profile 的 cordis.patch.yml ✓ 然后重启 dsh ✓",
+                        "could not add the patch entry automatically: " + pdetail + "; the file was left unchanged"));
+                }
             }
             else
             {
@@ -219,6 +237,94 @@ namespace Dsht.Cli
             }
             return 0;
         }
+        /// <summary>把插件自带的 `cordis.patch.yml` 里的 `- id: shio-bridge` 条目**合并进** profile 的 patch 文件 ✓。
+        /// ★ 动机：装完还要用户**手动**补这一行 ✗ → 门槛太高 ✓ 而且**漏了 dsh 不报错**（插件静默不加载 ✗）。
+        /// 做法（**我手工做过两遍并逐项验证过** ✓ 现在固化进代码 ✓）：
+        ///   ① 先**备份** profile 的 patch 文件 ✓
+        ///   ② 从插件 patch 里取出 `- id: shio-bridge` 那一段 ✓ —— **保留相对缩进** ✓ 基准归到 4 空格 ✓
+        ///   ③ 找**已有的顶层 `- insert:` 列表** ✓ 把条目追加到该列表**末尾** ✓
+        ///      ✗✗ **绝不新建第二个 `insert:`** —— 重复键会让 YAML 解析器只取一个 ✓ **会丢掉用户原有条目** ✓
+        ///   ④ **结构校验** ✓（复用 PatchEntryWellFormed ✓）失败 → **逐字节还原备份** ✓ 并如实报告 ✓
+        /// 返回 false 时**保证文件与调用前逐字节相同** ✓。</summary>
+        private static bool MergePatchEntry(string profileDir, string pluginDir, out string detail)
+        {
+            detail = "";
+            string profPatch = System.IO.Path.Combine(profileDir, "cordis.patch.yml");
+            string plugPatch = System.IO.Path.Combine(pluginDir, "cordis.patch.yml");
+            string backup = profPatch + ".bak-before-bridge-" + System.DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            try
+            {
+                if (!System.IO.File.Exists(profPatch)) { detail = "profile 的 cordis.patch.yml 不存在"; return false; }
+                if (!System.IO.File.Exists(plugPatch)) { detail = "插件自带的 cordis.patch.yml 不存在"; return false; }
+                string profText = System.IO.File.ReadAllText(profPatch);
+                string plugText = System.IO.File.ReadAllText(plugPatch);
+                System.IO.File.Copy(profPatch, backup, true);
+
+                string[] pl = plugText.Replace("\r\n", "\n").Split('\n');
+                int start = -1;
+                for (int i = 0; i < pl.Length; i++)
+                {
+                    string t = pl[i].TrimStart();
+                    if (t.StartsWith("-") && t.TrimStart('-').TrimStart().StartsWith("id:", StringComparison.Ordinal)
+                        && t.IndexOf("shio-bridge", StringComparison.Ordinal) >= 0) { start = i; break; }
+                }
+                if (start < 0) { detail = "插件 patch 里找不到 shio-bridge 条目"; return false; }
+                int baseIndent = pl[start].Length - pl[start].TrimStart().Length;
+                System.Collections.Generic.List<string> entry = new System.Collections.Generic.List<string>();
+                for (int i = start; i < pl.Length; i++)
+                {
+                    if (pl[i].Trim().Length == 0) continue;
+                    int cur = pl[i].Length - pl[i].TrimStart().Length;
+                    int rel = cur - baseIndent;
+                    if (rel < 0) rel = 0;
+                    entry.Add(new string(' ', 4 + rel) + pl[i].Trim());
+                }
+
+                string[] pf = profText.Replace("\r\n", "\n").Split('\n');
+                System.Collections.Generic.List<string> outLines = new System.Collections.Generic.List<string>();
+                for (int i = 0; i < pf.Length; i++) outLines.Add(pf[i]);
+                int insIdx = -1;
+                for (int i = 0; i < pf.Length; i++) { if (pf[i].TrimEnd() == "- insert:") { insIdx = i; break; } }
+                if (insIdx < 0)
+                {
+                    outLines.Add("");
+                    outLines.Add("- insert:");
+                    outLines.AddRange(entry);
+                }
+                else
+                {
+                    int last = insIdx;
+                    for (int i = insIdx + 1; i < pf.Length; i++)
+                    {
+                        if (pf[i].Trim().Length == 0) continue;
+                        if (!pf[i].StartsWith(" ")) break;
+                        last = i;
+                    }
+                    System.Collections.Generic.List<string> ins = new System.Collections.Generic.List<string>();
+                    ins.Add("");
+                    ins.Add("    # dsh-minato-bridge: read-only snapshot (merged into this insert list, not a new one)");
+                    ins.AddRange(entry);
+                    outLines.InsertRange(last + 1, ins);
+                }
+                string result = string.Join("\r\n", outLines.ToArray());
+                if (!PatchEntryWellFormed(result))
+                {
+                    System.IO.File.Copy(backup, profPatch, true);
+                    detail = "合并后**结构校验不通过**（已还原）";
+                    return false;
+                }
+                System.IO.File.WriteAllText(profPatch, result);
+                detail = "已写入 ✓ 备份：" + System.IO.Path.GetFileName(backup);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                try { if (System.IO.File.Exists(backup)) System.IO.File.Copy(backup, profPatch, true); } catch { }
+                detail = ex.Message;
+                return false;
+            }
+        }
+
         /// <summary>`cordis.patch.yml` 里的 `- id: shio-bridge` 条目是否**结构正确** ✓。
         /// ★ 动机（用户实测后提出，G4 类）：原来只 `IndexOf("shio-bridge")` ✗ ——
         ///   **字符串在 ≠ 条目可用** ✗：把整个条目压平成同一缩进后，YAML 结构是坏的 ✗
