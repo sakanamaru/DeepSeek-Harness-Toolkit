@@ -58,7 +58,7 @@ namespace Dsht.Platform.Windows
                 if (!string.IsNullOrWhiteSpace(env))
                 {
                     string rawEnv = env.Trim();
-                    try { return System.IO.Path.GetFullPath(rawEnv); }
+                    try { return RealPath(System.IO.Path.GetFullPath(rawEnv)); }   // C2: resolve the real target - a junction to the real data root must not bypass the gate
                     catch { return rawEnv; }
                 }
                         return Path.Combine(_stateDir, "backup");
@@ -81,7 +81,7 @@ namespace Dsht.Platform.Windows
                 if (!string.IsNullOrWhiteSpace(env))
                 {
                     string rawEnv = env.Trim();
-                    try { return System.IO.Path.GetFullPath(rawEnv); }
+                    try { return RealPath(System.IO.Path.GetFullPath(rawEnv)); }   // C2: resolve the real target - a junction to the real data root must not bypass the gate
                     catch { return rawEnv; }
                 }
                 string[] candidates = DefaultDataRoots();
@@ -155,5 +155,39 @@ namespace Dsht.Platform.Windows
                 return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DeepSeekHarnessLauncher");
             }
         }
+
+        /// <summary>Resolve the real target of a path (follows symlinks, junctions and 8.3 names).
+        /// Returns the original value when it cannot be resolved, so behaviour never becomes more permissive.</summary>
+        internal static string RealPath(string p)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(p)) return p;
+                if (!System.IO.Directory.Exists(p) && !System.IO.File.Exists(p)) return p;
+                IntPtr h = CreateFileW(p, 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero);
+                if (h == IntPtr.Zero || h == new IntPtr(-1)) return p;
+                try
+                {
+                    System.Text.StringBuilder sb = new System.Text.StringBuilder(1024);
+                    uint got = GetFinalPathNameByHandleW(h, sb, (uint)sb.Capacity, 0);
+                    if (got <= 0 || got >= sb.Capacity) return p;
+                    string s = sb.ToString();
+                    if (s.StartsWith(@"\\?\UNC\", StringComparison.Ordinal)) s = @"\\" + s.Substring(8);
+                    else if (s.StartsWith(@"\\?\", StringComparison.Ordinal)) s = s.Substring(4);
+                    return string.IsNullOrEmpty(s) ? p : s;
+                }
+                finally { try { CloseHandle(h); } catch { } }
+            }
+            catch { return p; }
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern IntPtr CreateFileW(string name, uint access, uint share, IntPtr sec, uint disp, uint flags, IntPtr tmpl);
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern uint GetFinalPathNameByHandleW(IntPtr h, System.Text.StringBuilder buf, uint len, uint flags);
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool CloseHandle(IntPtr h);
     }
 }
