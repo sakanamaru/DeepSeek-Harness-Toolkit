@@ -297,7 +297,7 @@ static class ContractTests
             Environment.SetEnvironmentVariable("DSH_HOME", null);
             string ldr2 = new Dsht.Platform.Linux.LinuxPaths().DataRoot;
             Check("Linux DataRoot 回退到 <home>/.dsh", ldr2 != null && ldr2.EndsWith(".dsh"));
-            Check("Linux BackupsRoot = StateDir/backup", new Dsht.Platform.Linux.LinuxPaths().BackupsRoot.EndsWith("backup"));
+            // ★ 架构审计（S3）：这里原来断言的是**死代码** `IPaths.BackupsRoot` ✗（已随接口成员删除 ✓）
             // ★★ 架构审计抓到（G3）：上面那条测的是 **IPaths.BackupsRoot** ✗ —— 而它**没有任何生产调用点** ✗
             //   → 真正在用的是 `IBackupSource.BackupsRoot` ✓ 而它**从来没被测过** ✗✗
             //   → 这正是"我那次归一化修复修在了死代码里"**没有任何门槛能发现**的原因 ✓
@@ -468,7 +468,7 @@ static class ContractTests
         {
             Environment.SetEnvironmentVariable("DSH_HOME", @"C:\tmp\v3-win-home");
             Check("Windows DataRoot 优先取 DSH_HOME", new Dsht.Platform.Windows.WindowsPaths().DataRoot == @"C:\tmp\v3-win-home");
-            Check("BackupsRoot 跟随数据根？不——跟随状态目录（与 v2.x 一致）", new Dsht.Platform.Windows.WindowsPaths().BackupsRoot.EndsWith("backup"));
+            // ★ 架构审计（S3）：这里原来断言的是**死代码** `IPaths.BackupsRoot` ✗（已随接口成员删除 ✓）
             Environment.SetEnvironmentVariable("DSH_HOME", null);
             string wdr = new Dsht.Platform.Windows.WindowsPaths().DataRoot;
             Check("未设置时回退到 <home>/.dsh（与 v2.x 一致）", wdr != null && wdr.EndsWith(".dsh"));
