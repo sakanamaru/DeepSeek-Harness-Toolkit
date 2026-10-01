@@ -355,6 +355,13 @@ namespace Dsht.Platform.Linux
         {
             int skippedNested = 0;
             src = src.TrimEnd('\\', '/'); dst = dst.TrimEnd('\\', '/');
+            // ★★★ 架构审计抓到（MAJOR C3）：只在**源**侧跳过 reparse point ✗
+            //   → 而**目标**侧的 junction / 符号链接会被**写穿** ✗✗
+            //   → 数据根里一个名为 sessions 的 junction 会让恢复**写到根外** ✗（且没有任何包含性检查 ✗）
+            // ✓ 现在：**目标侧也查** ✓✓ 是 reparse point 就拒绝写入（宁可失败也不写穿 ✓）
+            bool dstIsLink = false;
+            try { if (Directory.Exists(dst)) dstIsLink = (File.GetAttributes(dst) & FileAttributes.ReparsePoint) != 0; } catch { }
+            if (dstIsLink) { if (!skipLocked) throw new IOException("destination is a reparse point: " + dst); return skippedNested; }
             Directory.CreateDirectory(dst);
             string[] subs;
             try { subs = Directory.GetDirectories(src); } catch { subs = new string[0]; }
@@ -377,6 +384,9 @@ namespace Dsht.Platform.Linux
                 try
                 {
                     if ((File.GetAttributes(f) & FileAttributes.ReparsePoint) != 0) continue;
+                    // ★ 同上：**目标文件**是 reparse point 也不能写穿 ✓✓（写之前查一次 ✓）
+                    string dstFileGuard = Path.Combine(dst, Path.GetFileName(f));
+                    try { if (File.Exists(dstFileGuard) && (File.GetAttributes(dstFileGuard) & FileAttributes.ReparsePoint) != 0) continue; } catch { }
                     using (FileStream s = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
                     using (FileStream t = new FileStream(Path.Combine(dst, Path.GetFileName(f)), FileMode.Create, FileAccess.Write, FileShare.None))
                         s.CopyTo(t);
