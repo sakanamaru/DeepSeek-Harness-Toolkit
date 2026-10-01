@@ -92,19 +92,6 @@ namespace Dsht.Platform.Windows
             return result;
         }
 
-        /// <summary>读取目录快照（名字 + 直接子条目名）供领域层做有效性判定。</summary>
-        public static DirSnapshot SnapshotDir(string dir)
-        {
-            string name = Path.GetFileName(dir.TrimEnd('\\', '/'));
-            List<string> entries = new List<string>();
-            try
-            {
-                foreach (string f in Directory.GetFiles(dir)) entries.Add(Path.GetFileName(f));
-                foreach (string d in Directory.GetDirectories(dir)) entries.Add(Path.GetFileName(d));
-            }
-            catch { }
-            return new DirSnapshot(name, entries.ToArray());
-        }
 
         public long DirSize(string path)
         {
