@@ -1460,10 +1460,15 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             //   ① 说"不联网（余额查询除外）" ✗ —— 但**根本没有余额查询** ✓ 而真联网的命令有 6 条 ✗
             //   ② 说"写操作一律先备份" ✗ —— 改设置/改 profile/改快捷方式都**不**备份 ✗
             // ✓ 现在：**逐条如实** ✓✓（联网命令点名 ✓ 备份范围说清 ✓）
-            Console.WriteLine(T("本程序只读写本机。会联网的只有：check / update-info / update-center / install / update / verify-install --url；其余命令不联网。",
-                                "Works locally only. The only commands that use the network are: check, update-info, update-center, install, update, verify-install --url. Everything else stays offline."));
-            Console.WriteLine(T("restore / wipe / update / import 之前会先自动备份并打印位置（可回滚）；改设置、改 profile、改快捷方式不会。",
-                                "restore, wipe, update and import back up first and print where; settings, profile and shortcut edits do not."));
+            // ★★ 第 2 轮审查抓到：我上一版**仍然不实** ✗✗
+            //   ① 漏了 `doctor` ✗ —— 它会对 npm registry 发一次 HTTP GET（Program.cs 的 Doctor → IHttpProbe.Responds ✓
+            //      而 GUI 自己也写着"进这一页会自动跑一次 doctor（会检查网络…）" ✓ 项目里 compare_markers 还专门忽略它的 Network 行 ✓）
+            //   ② 把 `wipe` 列进"会先备份" ✗ —— 而 wipe **现在根本不删任何东西** ✓（它只打印手动删除路径 ✓ 也从不备份 ✓）
+            // ✓ 现在：**逐条对齐代码** ✓✓
+            Console.WriteLine(T("本程序只读写本机。会联网的只有：check / update-info / update-center / doctor / install / update / verify-install --url；其余命令不联网。",
+                                "Works locally only. The only commands that use the network are: check, update-info, update-center, doctor, install, update, verify-install --url. Everything else stays offline."));
+            Console.WriteLine(T("restore 之前会先自动备份并打印位置（可回滚）；update / import 会尝试先备份，失败时仍继续。wipe 现在只打印手动删除路径、不删也不备份。改设置、改 profile、改快捷方式不备份。",
+                                "restore always backs up first and prints where; update and import try to and continue if that fails. wipe only prints the path to delete by hand - it neither deletes nor backs up. Settings, profile and shortcut edits are not backed up."));
             return 0;
         }
 
@@ -2150,6 +2155,22 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     return System.IO.Directory.Exists(pkgDir)
                         ? T("备份未完成（缺少完成标记 ✓ 可能是中断/磁盘满）：", "backup is incomplete (no completion marker): ") + System.IO.Path.GetFileName(pkgDir)
                         : null;
+                // ★ 第 2 轮抓到：标记里写着 `failed=<n>` ✓（平台侧真的写 ✓）而这里**只读 files= 与 sha256=** ✗
+                //   → 工具自己在备份时说了"该备份不完整" ✓ backup-list --verify 也这么报 ✓
+                //     而 restore 却当它完整 ✓✗ → **同一个包两套结论** ✓
+                // ✓ 现在：**failed>0 也算不完整** ✓✓
+                try
+                {
+                    string allTxt = System.IO.File.ReadAllText(mf);
+                    System.Text.RegularExpressions.Match fm = System.Text.RegularExpressions.Regex.Match(allTxt, "failed=(\\d+)");
+                    if (fm.Success)
+                    {
+                        int failedN;
+                        if (int.TryParse(fm.Groups[1].Value, out failedN) && failedN > 0)
+                            return T("备份不完整（标记里记着 " + failedN + " 项没能备份 ✓）：", "backup is incomplete (the marker records " + failedN + " items that could not be backed up): ") + System.IO.Path.GetFileName(pkgDir);
+                    }
+                }
+                catch { }
                 int want = -1;
                 string[] ls = System.IO.File.ReadAllLines(mf);
                 for (int i = 0; i < ls.Length; i++) { if (ls[i].StartsWith("files=", StringComparison.Ordinal)) int.TryParse(ls[i].Substring(6).Trim(), out want); }
@@ -2185,6 +2206,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     Console.WriteLine("BACKUP_VERIFY " + name + " incomplete " + T("未完成（无完成标记 —— 备份可能被中断）", "incomplete (no completion marker - the backup may have been interrupted)"));
                     continue;
                 }
+                
                 int want = -1;
                 try
                 {
@@ -3112,6 +3134,17 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 string latest = null;
                 for (int i = all.Count - 1; i >= 0; i--) { if (BackupPackage.IsValidPackage(all[i].Snapshot)) { latest = all[i].Path; break; } }
                 if (latest == null) { Console.WriteLine("RESTORE_FAIL " + T("无有效备份", "no valid backup")); return 0; }
+                // ★★ 第 2 轮审查抓到：**自动选出的包也要过完整性闸门** ✓✓（我上一版只堵了 --path 分支 ✗）
+                //   → 否则被中断的包只要是最新的一个，就仍会被恢复并打印 RESTORE_OK ✗
+                {
+                    string autoTrunc = BackupTruncatedReason(latest);
+                    if (!string.IsNullOrEmpty(autoTrunc) && !Has(args, "--force"))
+                    {
+                        Console.WriteLine("RESTORE_FAIL " + autoTrunc + T("；确认要用它恢复请加 --force", "; add --force to restore from it anyway"));
+                        return 0;
+                    }
+                    if (!string.IsNullOrEmpty(autoTrunc)) Console.WriteLine("RESTORE_WARN " + autoTrunc);
+                }
                 bkDir = latest;
             }
 
@@ -3200,7 +3233,9 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     bkDir = p;
                     // 完成性闸门 ✓✓：放在**路径校验通过之后** —— 不存在的路径与根外路径都到不了这里 ✓（这正是上一版放错位置的原因 ✗）。
                     // 条件用 !IsNullOrEmpty ✓ 且只在"原因非空"时拦 ✓ → **最多少报，绝不误拦** ✓✓。
-                    string truncReason = BackupTruncatedReason(p);   // ★ 自动选择分支也要走这道闸门 ✓✓（原来只对 --path 生效 ✗）
+                    // ★★ 第 2 轮审查抓到：这道闸门**只在显式 --path 分支** ✗✗（我上一版的注释还声称覆盖了自动分支 ✗）
+            //   → 不带 --path 时，中断的包只要是最新的就仍会被恢复并打印 RESTORE_OK ✗
+            string truncReason = BackupTruncatedReason(p);
                     if (!string.IsNullOrEmpty(truncReason) && !Has(args, "--force"))
                     {
                         Console.WriteLine("DRYRUN_FAIL " + truncReason + T("；确认要预览它请加 --force", "; add --force to preview it anyway"));

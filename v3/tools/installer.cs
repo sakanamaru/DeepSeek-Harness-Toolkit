@@ -886,7 +886,7 @@ internal static class Installer
                     "这个目录里找不到 dsh-minato.exe / hashes.txt / uninstall.exe 中的任何一个：" + Environment.NewLine + target + Environment.NewLine + Environment.NewLine +
                     "为了不误删别人的 bin\\ gui\\ plugin\\ 等目录，本工具**拒绝在这里执行强制卸载** ✓",
                     AppName + " 卸载", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return 0;
+                return 2;   // ★ 第 2 轮抓到：拒绝却返回 0 ✗ → 自动化（winget/Scoop/ARP）会以为卸载成功了 ✗✓ 改成 2 ✓
             }
             else if (!looksOurs)
         {

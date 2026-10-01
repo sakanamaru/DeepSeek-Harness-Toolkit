@@ -35,7 +35,10 @@ namespace Dsht.Platform.Windows
                     p.BeginErrorReadLine();
                     if (!p.WaitForExit(timeoutMs)) { try { p.Kill(); } catch { } return ""; }
                     try { p.WaitForExit(); } catch { }
-                    lock (sb) { return sb.ToString(); }
+                    // ★ 第 2 轮抓到（回归 ✓✓）：v2 的 RunCapture 返回 so.Trim() ✓ 而这里没 trim ✗
+                    //   → 版本字符串带回车换行 → installed == latest 永远为假 → 更新中心把"已是最新"报成"比最新还新" ✗
+                    //   → 换行还会把 UPDATECENTER_ITEM 标记行劈成两行 → GUI 显示"最新 unknown" ✗
+                    lock (sb) { return sb.ToString().Trim(); }
                 }
             }
             catch { return ""; }
