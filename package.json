@@ -1,0 +1,29 @@
+{
+  "name": "dsh-minato-bridge",
+  "version": "0.1.0",
+  "description": "Optional read-only bridge for DeepSeek Harness: writes a small JSON snapshot of dsh session/token state for DeepSeek Harness Toolkit (dsh-minato). This root manifest exists so the repository itself can be installed as a plugin by URL.",
+  "type": "module",
+  "main": "plugin/dsh-minato-bridge/index.js",
+  "exports": {
+    ".": "./plugin/dsh-minato-bridge/index.js"
+  },
+  "files": [
+    "plugin/dsh-minato-bridge/index.js",
+    "plugin/dsh-minato-bridge/snapshot.js",
+    "plugin/dsh-minato-bridge/cordis.patch.yml",
+    "plugin/dsh-minato-bridge/README.md"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "toolkit",
+    "observability"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./plugin/dsh-minato-bridge/cordis.patch.yml"
+    }
+  }
+}

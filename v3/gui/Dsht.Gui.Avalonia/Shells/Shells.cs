@@ -2214,6 +2214,10 @@ namespace Dsht.Gui.Avalonia.Shells
                 tut.Children.Add(T("怎么装进 desktop（由桌面端自己管理，本工具只能给你路径）", 12, Palette.Text, FontWeight.SemiBold));
                 tut.Children.Add(T("在桌面端的「添加插件」对话框里，下面两条**任选一条**粘进去（它接受 npm 包名 / GitHub 地址 / 本地目录路径）：", 11.5, Palette.TextDim));
                 tut.Children.Add(T("A · 仓库地址（要带子目录，只填仓库根不行）", 11, Palette.TextFaint));
+                // ★ 实测过的反面例子（用户真机踩到 ✓）：只填仓库根地址**必然**被 dsh 拒绝 ✓
+                //   报错原文：「这个包没有声明组合包，不能作为插件管理」✓
+                //   原因：仓库根目录**没有 package.json** ✗ → dsh 找不到 dsh.bundle 声明 ✓
+                tut.Children.Add(T("❌ 只填 https://github.com/sakanamaru/dsh-minato 会被拒绝（报「这个包没有声明组合包」）—— 因为仓库根没有 package.json，插件在子目录里。", 10.5, Palette.TextFaint));
                 try
                 {
                     SelectableTextBlock ga = new SelectableTextBlock
