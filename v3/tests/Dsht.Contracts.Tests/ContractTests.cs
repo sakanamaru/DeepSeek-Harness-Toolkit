@@ -357,14 +357,14 @@ static class ContractTests
         Check("Linux 路径**不**被转成反斜杠（共享代码审计抓到的高严重度 bug ✗）", Dsht.Domain.Services.FileUrlConverter.ToPath("file:///home/u/a.yml#x", out frag2) == "/home/u/a.yml" && frag2 == "x");
         Check("Linux 路径的 %20 解码后仍是正斜杠", Dsht.Domain.Services.FileUrlConverter.ToPath("file:///home/u/a%20b/c.yml", out frag2) == "/home/u/a b/c.yml");
 
-        string yml = "insert:\n  - id: subagent-acp-生成式 AI 工具\n    name: '@deepseek-ai/dsh-subagent-acp'\n";
-        Check("EntryLocator 命中行号", Dsht.Domain.Services.EntryLocator.FindLine(yml, "subagent-acp-生成式 AI 工具") == 2);
+        string yml = "insert:\n  - id: subagent-acp-demo-suffix\n    name: '@deepseek-ai/dsh-subagent-acp'\n";
+        Check("EntryLocator 命中行号", Dsht.Domain.Services.EntryLocator.FindLine(yml, "subagent-acp-demo-suffix") == 2);
         Check("EntryLocator 未命中 → 0", Dsht.Domain.Services.EntryLocator.FindLine(yml, "nope") == 0);
 
-        string fail = "Error: plugin tree failed to load\n  failed to apply loader entry include (cordis:include)\n  failed to apply loader entry subagent-acp-生成式 AI 工具 (@deepseek-ai/dsh-subagent-acp)\n  provider \"生成式 AI 工具\" cannot enforce maxDepth\n  at file:///C:/x/y.yml#subagent-acp-生成式 AI 工具\n  set maxDepth: 'provider-managed'\n";
+        string fail = "Error: plugin tree failed to load\n  failed to apply loader entry include (cordis:include)\n  failed to apply loader entry subagent-acp-demo-suffix (@deepseek-ai/dsh-subagent-acp)\n  provider \"demo-suffix\" cannot enforce maxDepth\n  at file:///C:/x/y.yml#subagent-acp-demo-suffix\n  set maxDepth: 'provider-managed'\n";
         BootDiagResult br = Dsht.Domain.Services.BootDiagParser.Parse(fail, Loc7, ExistsTrue);
         Check("识别 + Kind=maxDepth-missing", br.Recognized && br.Kind == "maxDepth-missing");
-        Check("取带 @ 的包名（最内层）", br.Plugin == "@deepseek-ai/dsh-subagent-acp" && br.Entry == "subagent-acp-生成式 AI 工具");
+        Check("取带 @ 的包名（最内层）", br.Plugin == "@deepseek-ai/dsh-subagent-acp" && br.Entry == "subagent-acp-demo-suffix");
         Check("Hint 取自输出", br.Hint == "set maxDepth: 'provider-managed'");
         Check("FILE/LINE 来自定位结果", br.File == "C:\\x\\y.yml" && br.Line == 7);
 
