@@ -33,16 +33,29 @@ namespace Dsht.Domain.Services
             string[] parts = p.Split(new char[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
             string prefix = null;
             int start = 0;
+            int floor = 0;   // ★ C10：栈底这几段**不能被 `..` 弹掉**（UNC 的 server\share 就是根 ✓）
+            bool unc = p.Length >= 2 && (p[0] == '\\' || p[0] == '/') && (p[1] == '\\' || p[1] == '/');
             if (parts.Length > 0 && parts[0].Length == 2 && parts[0][1] == ':') { prefix = parts[0]; start = 1; }   // 盘符 C:
             else if (p.Length > 0 && (p[0] == '\\' || p[0] == '/')) { prefix = ""; start = 0; }                     // 根 / 或 \
             var stack = new System.Collections.Generic.List<string>();
+            // ★ C10：UNC 形式 `\\server\share\...` 的**前两段是根** ✓ → 记进 floor ✓ 并跳过 ✓
+            //   （架构审计：原来 `\\server\share\..\..\x` 会把 share 和 server 都弹掉 ✗
+            //     → 返回一个"看起来像根路径"的东西 ✗ —— 与"逃逸必须返回 null"的契约不符 ✓
+            //     虽然 IsSubPath 那边仍然 fail-closed ✓ 但**契约本身必须成立** ✓✓）
+            if (unc && parts.Length >= 2)
+            {
+                stack.Add(parts[0]);
+                stack.Add(parts[1]);
+                floor = 2;
+                start = 2;
+            }
             for (int i = start; i < parts.Length; i++)
             {
                 string s = parts[i];
                 if (s == ".") continue;
                 if (s == "..")
                 {
-                    if (stack.Count == 0) return null;   // ★ 逃逸 → 不安全 ✓✓
+                    if (stack.Count <= floor) return null;   // ★ 逃逸 → 不安全 ✓✓（UNC 根段不许被弹 ✓）
                     stack.RemoveAt(stack.Count - 1);
                     continue;
                 }
@@ -50,7 +63,7 @@ namespace Dsht.Domain.Services
             }
             string body = string.Join(sep.ToString(), stack.ToArray());
             if (prefix == null) return body;
-            if (prefix.Length == 0) return sep + body;
+            if (prefix.Length == 0) return (unc ? sep.ToString() + sep : sep.ToString()) + body;   // ★ C10：UNC 保留两个前导分隔符 ✓
             return prefix + sep + body;
         }
 
