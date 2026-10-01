@@ -311,10 +311,11 @@ dsh plugin --profile web add "<repo>/plugin/dsh-minato-bridge"
 
 ## リポジトリ直下がこうなっている理由
 
-直下にはサブフォルダに入りそうに見えるファイルがありますが、**移動できません**。v2 のリリースと検証の連鎖が
-それらを**パスで**参照しているためです（トラストアンカー、コンパイラのアイコン、埋め込みロゴ、ビルドスクリプト、
-マニフェスト、署名公開鍵）。移動するとリリースビルドかレディネスゲートが失敗します。
+v2 のツリーは [`v2/`](v2) に移りました：ソース、テスト、トラストアンカー、署名公開鍵、ビルドスクリプト、
+マニフェスト、アプリケーションマニフェストをまとめて移動し、直下には**本当に必要なファイル**だけが残っています。
+残っているものはすべて**パスで参照されている**ためです：CI が `/win32icon:icon.ico` と
+`/resource:logo.png` を渡し、GitHub が 3 つの README と `LICENSE` を読み、
+プラグインインストーラが `package.json` を読みます。
 **どのファイルが誰から参照され、動かすと何が壊れるか**は
-[`docs/repo-layout.md`](docs/repo-layout.md) に列挙してあります。v2 を独立フォルダへ移す計画
-（最初の試行が止まった 2 つの不変条件を含む）は
-[`docs/v2-migration-plan.md`](docs/v2-migration-plan.md) にあります。
+[`docs/repo-layout.md`](docs/repo-layout.md) に列挙してあります。移動の手順（以前の試行が
+止まったパス結合を含む）は [`docs/v2-migration-plan.md`](docs/v2-migration-plan.md) にあります。

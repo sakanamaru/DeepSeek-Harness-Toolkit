@@ -313,9 +313,10 @@ The basis for judgement should be **whether you can check it yourself**: every a
 
 ## Why the repository root looks like this
 
-The root carries a few files that look like they belong in subfolders. They do not: the v2 release and verification
-chain references them **by path** - the trust anchor, the compiler icon, the embedded logo, the build script, the
-manifest and the signing key - and moving them breaks the release build or the readiness gate. Which file is
-referenced by what, and what moving it would break, is written down in
-[`docs/repo-layout.md`](docs/repo-layout.md). A plan to move the v2 tree into its own folder, including the two
-invariants that stopped the first attempt, is in [`docs/v2-migration-plan.md`](docs/v2-migration-plan.md).
+The v2 tree now lives in [`v2/`](v2): source, tests, the trust anchor, the signing key, the build script, the
+manifest and the application manifest all moved together, so the root is down to the files that genuinely have to
+be there. What remains is there **because something references it by path**: the CI workflow passes
+`/win32icon:icon.ico` and `/resource:logo.png`, GitHub reads the three READMEs and `LICENSE`, and the plugin
+installer reads `package.json`. Which file is referenced by what, and what moving it would break, is written down
+in [`docs/repo-layout.md`](docs/repo-layout.md); how the move was done - including the path couplings that stopped
+the earlier attempts - is in [`docs/v2-migration-plan.md`](docs/v2-migration-plan.md).

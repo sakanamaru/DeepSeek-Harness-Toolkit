@@ -116,6 +116,10 @@ static class GuiLogicTests
         {
             p = Path.Combine(d, "gui_v2.cs");
             if (File.Exists(p)) return p;
+            // 布局自适应（2026-10 迁移）：v2 树也可能在 v2\ 子目录里 ——
+            // 只向上找是找不到"搬进子目录"的文件的（曾让这条 i18n 检查在 CI 直接红）。
+            p = Path.Combine(Path.Combine(d, "v2"), "gui_v2.cs");
+            if (File.Exists(p)) return p;
             try { d = Path.GetDirectoryName(d); } catch { d = null; }
         }
         return null;

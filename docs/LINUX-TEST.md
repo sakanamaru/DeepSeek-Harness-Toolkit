@@ -25,16 +25,16 @@ sudo apt-get update && sudo apt-get install -y dotnet-sdk-8.0
 
 ## 2. 构建
 
-在仓库根目录（含 `DeepSeekHarnessToolkit.Core.csproj` 与 `dsh_v2.cs`）：
+在 `v2/` 目录（含 `DeepSeekHarnessToolkit.Core.csproj` 与 `dsh_v2.cs`；v2 整棵树在 2026-10 移入 `v2/`）：
 
 ```bash
-dotnet publish DeepSeekHarnessToolkit.Core.csproj -c Release -r linux-x64 \
+dotnet publish v2/DeepSeekHarnessToolkit.Core.csproj -c Release -r linux-x64 \
   --self-contained false -p:PublishSingleFile=true
 ```
 
 产物：
 ```
-bin/Release/net8.0/linux-x64/publish/DeepSeek Harness Toolkit
+v2/bin/Release/net8.0/linux-x64/publish/DeepSeek Harness Toolkit
 ```
 
 > 说明：CI 的 `v3-linux` job 现在会产出并校验 `dsh-minato-linux-x64.tar.gz`（两份 CLI + 自包含 GUI + `.desktop` + 图标 + 冒烟脚本 + sha256 ✓），可用 `v3/tools/verify-linux.sh` 校验。下面从源码构建的步骤仍然适用于想自己编译的人。

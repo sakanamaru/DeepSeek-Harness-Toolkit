@@ -6,7 +6,20 @@ All notable changes to **dsh-minato** (unofficial). Full release notes, assets a
 
 ---
 
-## v3.0.0 — 未发布 / Unreleased
+## 仓库结构 — v2 整棵树移入 `v2/`（2026-10-02）
+
+**Repository layout — the v2 tree moved into `v2/` (2026-10-02)**
+
+- 根目录条目 **24 → 14**：`dsh_v2.cs` / `gui_v2.cs` / `verify.ps1` / `hashes.txt` / `build_exe.cmd` /
+  `app.manifest` / `DeepSeekHarnessToolkit.Core.csproj` / `.dsh_launcher_root` / `src/` / `tests/` / `keys/`
+  全部移入 `v2/`，并同步更新 CI、就绪度门槛、测试与文档里的路径引用。
+- **不影响任何已发布产物**：v2 的每个发布包自带 `verify.ps1`，其公钥回退按 **tag** 从 raw 下载
+  （tag 不可变）→ 老版本用户的校验链不受影响。
+- 顺带修掉一个**潜伏的 CI 故障**：`.dsh_launcher_root` 曾被取消跟踪，而发布清单与 upload-package.zip
+  仍按路径取它 → `build` job 会在 `Get-FileHash` 处失败，且发布包会丢掉卸载器的"防误删"闸门。
+  现已恢复跟踪（它是**随包分发**的标记，不是运行时产物）。
+- 顺带修掉两处**按相对路径读文件**的测试：`unit_tests.cs` 的夹具路径与 `gui_logic_tests.cs` 的
+  `SrcPath()` —— 搬进子目录后它们会读不到文件，后者还会让 **i18n 强制检查整块静默跳过**。
 
 ### Added / 新增（V3 工具箱线 · 2026-09-29）
 

@@ -1,5 +1,6 @@
 ﻿# DeepSeek Harness Toolkit - 集成测试（端到端打桩矩阵）
-# 用法:  pwsh -NoProfile -File tests\integration.ps1 [-RepoRoot <仓库根>]   （默认取脚本上级目录）
+# 用法:  pwsh -NoProfile -File v2\tests\integration.ps1 [-RepoRoot <仓库根或 v2 根>]
+#        默认取脚本上级目录，并自动识别两种布局（v2 树在仓库根 / 在 v2\ 子目录）
 # 退出码: 0=全过（SKIP 不计失败）, 1=有失败, 2=环境/锚点错误
 # 说明: ① 只碰打桩数据目录 ~/.dsh_test，绝不接触真实 ~/.dsh；
 #       ② 变体 A=端口打桩（菜单/卸载流程全可测）；变体 C=真实端口（仅测"运行中"路径，3080 未开时相关用例标 SKIP）；
@@ -8,6 +9,11 @@
 param([string]$RepoRoot = "")
 $ErrorActionPreference = 'Stop'
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
+# 布局自适应（2026-10 迁移）：v2 树既可能在仓库根，也可能在 v2\ 子目录 → 两种都能跑
+if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot 'dsh_v2.cs'))) {
+    $alt = Join-Path $RepoRoot 'v2'
+    if (Test-Path -LiteralPath (Join-Path $alt 'dsh_v2.cs')) { $RepoRoot = $alt }
+}
 $src = Join-Path $RepoRoot 'dsh_v2.cs'
 if (-not (Test-Path -LiteralPath $src)) { Write-Error "找不到 $src"; exit 2 }
 $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"

@@ -105,7 +105,15 @@ Gate 'gate5 real write verifiable' ($LASTEXITCODE -eq 0) $rdet
 $chainChanged = ''
 $gitRan = $false
 try {
-    $chainChanged = (& git -C $Repo diff --name-only origin/main -- verify.ps1 2>&1 | Out-String).Trim()
+    # v2 树可能在仓库根，也可能在 v2/ 子目录（2026-10 迁移）→ 两处布局都自适应，迁移前后都成立
+    $v2root = if (Test-Path (Join-Path $Repo 'v2\dsh_v2.cs')) { Join-Path $Repo 'v2' } else { $Repo }
+    $v2anchor = if ($v2root -eq $Repo) { 'verify.ps1' } else { 'v2/verify.ps1' }
+    # 信任锚比的是**内容**：基线（origin/main）里它在哪、工作树里它又在哪，可能不同 → 各自解析。
+    # （旧的 --name-only 形式一旦路径变了就把"搬家"报成"改动"→ 永远红 ✗）
+    $baseAnchor = 'v2/verify.ps1'
+    & git -C $Repo cat-file -e 'origin/main:verify.ps1' 2>$null
+    if ($LASTEXITCODE -eq 0) { $baseAnchor = 'verify.ps1' }
+    $chainChanged = (& git -C $Repo diff ('origin/main:' + $baseAnchor) $v2anchor 2>&1 | Out-String).Trim()
     $gitRan = ($LASTEXITCODE -eq 0)
 } catch { $gitRan = $false }
 $itemsOk = $false; $stepsOk = $false
@@ -114,14 +122,14 @@ if (Test-Path $wf) {
     $itemsOk = $wt2.Contains("'DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe'")
     $stepsOk = $wt2.Contains('/out:unittests.exe') -and $wt2.Contains('core_check.exe') -and $wt2.Contains('/out:DeepSeek Harness Toolkit.exe')
 }
-Gate 'invariant release chain' ($gitRan -and [string]::IsNullOrWhiteSpace($chainChanged) -and $itemsOk -and $stepsOk) $(if ([string]::IsNullOrWhiteSpace($chainChanged) -and $itemsOk -and $stepsOk) { 'verify.ps1 未动（git 已比对）；16 项清单与 csc 发布步骤完好' } else { 'verify.ps1 改动:[' + ($chainChanged -replace "`r?`n", ',') + '] 清单=' + $itemsOk + ' 步骤=' + $stepsOk })
+Gate 'invariant release chain' ($gitRan -and [string]::IsNullOrWhiteSpace($chainChanged) -and $itemsOk -and $stepsOk) $(if ([string]::IsNullOrWhiteSpace($chainChanged) -and $itemsOk -and $stepsOk) { 'verify.ps1 内容与 origin/main 逐字一致（路径按各自 revision 解析）；16 项清单与 csc 发布步骤完好' } else { 'verify.ps1 改动:[' + ($chainChanged -replace "`r?`n", ',') + '] 清单=' + $itemsOk + ' 步骤=' + $stepsOk })
 
 # ---- 不变量：v2.x 发布构建**真的能编译**（行为校验，比"文件没改"强）----
 # 起因：v2.8 阶段 3 把 Linux 实现放进 src\Platform\Linux 后，build_exe.cmd 的写死目录列表漏了它，
 # 于是本地重编译脚本连续几轮都是坏的（CI 用 -Recurse 所以发布没受影响）——这条不变量就是补这个盲区。
 $v2out = Join-Path $env:TEMP 'dsht_v2_buildgate.exe'
 Remove-Item $v2out -Force -ErrorAction SilentlyContinue
-$v2src = @('dsh_v2.cs') + @(Get-ChildItem (Join-Path $Repo 'src') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
+$v2src = @((Join-Path $v2root 'dsh_v2.cs')) + @(Get-ChildItem (Join-Path $v2root 'src') -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object FullName)
 $v2build = (Invoke-External { & $csc /nologo /optimize+ /target:exe /warn:4 ("/out:" + $v2out) $v2src 2>&1 }) | Out-String
 $v2ok = (Test-Path $v2out)
 Gate 'invariant v2.x release build' $v2ok $(if ($v2ok) { ('csc 编译 ' + $v2src.Count + ' 个源文件通过（dsh_v2.cs + src/**）') } else { '编译失败：' + (($v2build -split "`r?`n" | Where-Object { $_ -match 'error ' } | Select-Object -First 2) -join ' / ') })

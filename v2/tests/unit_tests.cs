@@ -611,10 +611,21 @@ public static class UnitTests
 
         // ---- v2.7 profile 诊断与修复（profilecheck / bootdiag / profilepatch）----
         Console.WriteLine("[V27] profilecheck / bootdiag / profilepatch");
-        string fixDir = Path.Combine("tests", "fixtures");
+        // 布局自适应（2026-10 迁移）：v2 树可能在仓库根，也可能在 v2\tests →
+        // 逐个候选探测，避免"相对 CWD 的固定路径"在搬家后静默读到空文件（曾让 24 项 CI 用例红）。
+        string fixDir = null;
+        foreach (string cand in new string[] {
+            Path.Combine("tests", "fixtures"),
+            Path.Combine("v2", "tests", "fixtures"),
+            Path.Combine("..", "tests", "fixtures"),
+            Path.Combine("..", "v2", "tests", "fixtures") })
+        {
+            if (File.Exists(Path.Combine(cand, "profile_broken.yaml"))) { fixDir = cand; break; }
+        }
+        if (fixDir == null) { fixDir = Path.Combine("tests", "fixtures"); }
         string fBroken = Path.Combine(fixDir, "profile_broken.yaml");
         string fFixed = Path.Combine(fixDir, "profile_fixed.yaml");
-        Check(File.Exists(fBroken) && File.Exists(fFixed), "fixtures present (tests/fixtures/*.yaml)");
+        Check(File.Exists(fBroken) && File.Exists(fFixed), "fixtures present (" + fixDir + "/*.yaml)");
         string tBroken = File.Exists(fBroken) ? File.ReadAllText(fBroken, new UTF8Encoding(false)) : "";
         string tFixed = File.Exists(fFixed) ? File.ReadAllText(fFixed, new UTF8Encoding(false)) : "";
 

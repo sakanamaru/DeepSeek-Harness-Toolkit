@@ -1,7 +1,7 @@
 # V3 底层重构 · 开发者说明
 
-> 本目录是 **v2.x 的平行树**：`main` 上 v2.x 的 `dsh_v2.cs` + `src/**` + `verify.ps1` + 16 项发布清单
-> **保持不变、随时可发布**；V3 在这里独立演进，达到切换门槛后再接管。
+> 本目录是 **v2.x 的平行树**：v2.x 的 `v2/dsh_v2.cs` + `v2/src/**` + `v2/verify.ps1` + 16 项发布清单
+> **保持不变、随时可发布**（v2 整棵树已移入 `v2/`）；V3 在这里独立演进，达到切换门槛后再接管。
 > 设计与决策依据：`设计说明`。
 >
 > **关于分支与提交历史**：V3 工作全部在 `v3-linux` 分支上，且已 **rebase 到 `main` 之上**——
@@ -35,7 +35,7 @@ v3/
     verify_domain_pure.ps1  领域层纯净度守卫（扫描前剥离注释）
     compare_markers.ps1     与 v2.x 的标记行契约比对（可 -Fixtures 造受控备份）
     verify_restore_apply.ps1 真实 restore 的端到端验证（隔离数据根 + --apply，含"零越界"证明）
-    verify_release.ps1      发布物校验（v2.x verify.ps1 等价物，含校验器自证）
+    verify_release.ps1      发布物校验（v2.x `v2/verify.ps1` 等价物，含校验器自证）
 ```
 
 ---
@@ -80,7 +80,7 @@ powershell -ExecutionPolicy Bypass -File v3\tests\verify_switchover.ps1 -Repo .
 # gate1 标记行契约 21/21（含受控备份模式）  gate2 契约测试 334/334
 # gate3 Win/Linux 双跑：已在 CI 真跑通过（run 36385480118）  gate4 发布物校验（含篡改自证）
 # gate5 真实写操作可验证 25/25（隔离根真实写盘 + 零越界）
-# 不变量：发布链未动（verify.ps1 / 16 项清单 / csc 步骤）· v2.x 发布构建可编译 · 含非 ASCII 的 .ps1 都带 BOM · 领域层纯净度
+# 不变量：发布链未动（v2/verify.ps1 按内容比对 / 16 项清单 / csc 步骤）· v2.x 发布构建可编译 · 含非 ASCII 的 .ps1 都带 BOM · 领域层纯净度
 ```
 
 `dotnet`（net8.0）路径由 CI 负责：`.github/workflows/build-release.yml` 的 `v3-contracts` job
@@ -182,7 +182,7 @@ gh run watch                        # windows-latest + ubuntu-latest
 
 > 注意：workflow 的 `push.branches` 原本只有 `main`，所以"推 v3-linux 就会跑 CI"曾经**不成立**
 > （推了也不会触发）——现已加入 `'v3*'`。若你只想跑一次、不想再推：`gh workflow run build-release.yml --ref v3-linux`
-> （手动触发会连 `build` job 一起跑，并在分支上提交一次 CI 生成的 `hashes.txt`）。
+> （手动触发会连 `build` job 一起跑，并在分支上提交一次 CI 生成的 `v2/hashes.txt`）。
 
 跑完后删分支即可（不影响 main）：
 
@@ -194,7 +194,7 @@ git branch -D v3-linux
 **或者**：你放行让我推送（我会推同样的分支，不碰 main），我负责跑通并把结果写回文档。
 
 > 说明：`v3-linux` 分支上是**未合并的 41 个本地提交**（含 v2.8 阶段的拆分/接缝/Linux 实现 + V3 全部工作）。
-> main 上仍是 `8f885ce`，`verify.ps1` 与 16 项发布清单完好，**随时可发布**。
+> main 上仍是 `8f885ce`，`v2/verify.ps1` 与 16 项发布清单完好，**随时可发布**。
 ---
 
 ## 7. 怎么安全地测试写操作（真实 restore/export/delete）

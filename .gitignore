@@ -24,8 +24,11 @@ obj/
 /unittests.exe
 /guilogictests.exe
 
-# 运行时标记（v2 启动器写的，不进仓库）
-.dsh_launcher_root
+# .dsh_launcher_root **必须留在版本库里**（2026-10 修正）：它不是运行时产物，而是
+# v2 发布包**随包分发**的"防误删"标记 —— src/Cli/Program.Cli.cs 严格校验它（内容含产品名）
+# 才允许清除数据，且 src/Platform/Windows/Program.Platform.cs 只读不写、程序永不自行补建。
+# CI 的发布清单与 upload-package.zip 都按路径取它 → 取消跟踪会让 build job 在
+# Get-FileHash 处直接失败，并让发布包丢掉这道闸门。
 
 # 发布/打包产物（只在 GitHub Release 里）
 *.tar.gz

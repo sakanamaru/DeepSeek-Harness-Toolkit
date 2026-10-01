@@ -295,8 +295,10 @@ dsh plugin --profile web add "<本仓库路径>/plugin/dsh-minato-bridge"
 
 ## 根目录为什么长这样
 
-根目录里有些文件看起来该放进子目录，但**不能搬**：v2 的发布与校验链**按路径**引用它们 ——
-信任锚、编译器图标、内嵌 logo、构建脚本、清单与签名公钥 —— 搬动会让发布构建或就绪度门槛直接失败。
-**哪个文件被谁引用、搬了会坏什么**，逐条写在 [`docs/repo-layout.md`](docs/repo-layout.md) 里。
-把 v2 整棵树搬进单独目录的方案（含第一次尝试卡住的两条不变量）在
+v2 整棵树现在都在 [`v2/`](v2) 里：源码、测试、信任锚、签名公钥、构建脚本、清单与应用清单一起搬走，
+根目录只剩下**确实必须留在那里**的文件。留下的每一个都是因为**有东西按路径引用它**：
+CI 传 `/win32icon:icon.ico` 与 `/resource:logo.png`，GitHub 读三个 README 与 `LICENSE`，
+插件安装读 `package.json`。
+**哪个文件被谁引用、搬了会坏什么**，逐条写在 [`docs/repo-layout.md`](docs/repo-layout.md) 里；
+这次搬迁是怎么做的（含前几次卡住的路径耦合）在
 [`docs/v2-migration-plan.md`](docs/v2-migration-plan.md)。

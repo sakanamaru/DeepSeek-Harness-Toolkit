@@ -29,8 +29,8 @@ jobs:
         shell: pwsh
         run: |
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          $src = @('dsh_v2.cs') + (Get-ChildItem src -Recurse -Filter *.cs | ForEach-Object FullName)
-          & $csc /nologo /target:exe /define:UNIT /out:unittests.exe $src tests\unit_tests.cs /warn:4
+          $src = @("$PWD\v2\dsh_v2.cs") + (Get-ChildItem "$PWD\v2\src" -Recurse -Filter *.cs | ForEach-Object FullName)
+          & $csc /nologo /target:exe /define:UNIT /out:unittests.exe $src "$PWD\v2\tests\unit_tests.cs" /warn:4
           if ($LASTEXITCODE -ne 0) { throw "unit test build failed" }
           .\unittests.exe
           if ($LASTEXITCODE -ne 0) { throw "unit tests failed" }
@@ -39,19 +39,19 @@ jobs:
         shell: pwsh
         run: |
           dotnet --list-sdks
-          dotnet build DeepSeekHarnessToolkit.Core.csproj -c Release --nologo
+          dotnet build v2/DeepSeekHarnessToolkit.Core.csproj -c Release --nologo
           if ($LASTEXITCODE -ne 0) { throw "dotnet build failed (stage 2 core project)" }
-          Get-Item "bin\Release\net8.0\DeepSeek Harness Toolkit.dll" | Select-Object Name,Length
+          Get-Item "v2\bin\Release\net8.0\DeepSeek Harness Toolkit.dll" | Select-Object Name,Length
       - name: Compile GUI variants (attached + standalone) — regression guard only
         shell: pwsh
         run: |
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          $src = @('dsh_v2.cs') + (Get-ChildItem src -Recurse -Filter *.cs | ForEach-Object FullName)
+          $src = @("$PWD\v2\dsh_v2.cs") + (Get-ChildItem "$PWD\v2\src" -Recurse -Filter *.cs | ForEach-Object FullName)
           & $csc /nologo /optimize+ /target:exe /win32icon:icon.ico /out:core_check.exe $src /warn:4
           if ($LASTEXITCODE -ne 0) { throw "core compile failed (guard)" }
-          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico /win32manifest:app.manifest /resource:logo.png /out:gui_check.exe gui_v2.cs /warn:4
+          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico "/win32manifest:$PWD\v2\app.manifest" /resource:logo.png /out:gui_check.exe "$PWD\v2\gui_v2.cs" /warn:4
           if ($LASTEXITCODE -ne 0) { throw "GUI (attached) compile failed" }
-          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico /win32manifest:app.manifest /resource:logo.png /resource:core_check.exe,DSHCore.exe /out:gui_standalone_check.exe gui_v2.cs /warn:4
+          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico "/win32manifest:$PWD\v2\app.manifest" /resource:logo.png /resource:core_check.exe,DSHCore.exe /out:gui_standalone_check.exe "$PWD\v2\gui_v2.cs" /warn:4
           if ($LASTEXITCODE -ne 0) { throw "GUI (standalone) compile failed" }
           Remove-Item core_check.exe, gui_check.exe, gui_standalone_check.exe -ErrorAction SilentlyContinue
           Write-Output "GUI variants compile clean (/warn:4, embedded logo + core)"
@@ -60,7 +60,7 @@ jobs:
         run: |
           # 与 gui_v2.cs 同程序集编译；/main: 指定测试入口（gui_v2.cs 自带 WinForms 入口）
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          & $csc /nologo /target:exe /main:GuiLogicTests /out:guilogictests.exe gui_v2.cs tests\gui_logic_tests.cs /warn:4
+          & $csc /nologo /target:exe /main:GuiLogicTests /out:guilogictests.exe "$PWD\v2\gui_v2.cs" "$PWD\v2\tests\gui_logic_tests.cs" /warn:4
           if ($LASTEXITCODE -ne 0) { throw "GUI logic test build failed" }
           .\guilogictests.exe
           if ($LASTEXITCODE -ne 0) { throw "GUI logic tests failed" }
@@ -69,7 +69,7 @@ jobs:
       - name: Run integration tests (stubbed matrix, no real ~/.dsh touched)
         shell: pwsh
         run: |
-          .\tests\integration.ps1 -RepoRoot (Get-Location).Path
+          .\v2\tests\integration.ps1 -RepoRoot (Join-Path (Get-Location).Path 'v2')
           if ($LASTEXITCODE -ne 0) { throw "integration tests failed" }
 
   v3-contracts:
@@ -208,7 +208,7 @@ jobs:
         shell: pwsh
         run: |
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          $src = @('dsh_v2.cs') + (Get-ChildItem src -Recurse -Filter *.cs | ForEach-Object FullName)
+          $src = @("$PWD\v2\dsh_v2.cs") + (Get-ChildItem "$PWD\v2\src" -Recurse -Filter *.cs | ForEach-Object FullName)
           & $csc /nologo /optimize+ /target:exe /win32icon:icon.ico "/out:DeepSeek Harness Toolkit.exe" $src /warn:4
           if ($LASTEXITCODE -ne 0) { throw "csc build failed" }
           Get-Item "DeepSeek Harness Toolkit.exe" | Select-Object Name,Length
@@ -225,7 +225,7 @@ jobs:
         shell: pwsh
         run: |
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico /win32manifest:app.manifest /resource:logo.png "/out:Toolkit GUI.exe" gui_v2.cs /warn:4
+          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico "/win32manifest:$PWD\v2\app.manifest" /resource:logo.png "/out:Toolkit GUI.exe" "$PWD\v2\gui_v2.cs" /warn:4
           if ($LASTEXITCODE -ne 0) { throw "GUI build failed" }
           Get-Item "Toolkit GUI.exe" | Select-Object Name,Length
 
@@ -233,17 +233,17 @@ jobs:
         shell: pwsh
         run: |
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico /win32manifest:app.manifest /resource:logo.png "/resource:DeepSeek Harness Toolkit.exe,DSHCore.exe" "/out:Toolkit GUI Standalone.exe" gui_v2.cs /warn:4
+          & $csc /nologo /optimize+ /target:winexe /win32icon:icon.ico "/win32manifest:$PWD\v2\app.manifest" /resource:logo.png "/resource:DeepSeek Harness Toolkit.exe,DSHCore.exe" "/out:Toolkit GUI Standalone.exe" "$PWD\v2\gui_v2.cs" /warn:4
           if ($LASTEXITCODE -ne 0) { throw "GUI standalone build failed" }
           Get-Item "Toolkit GUI Standalone.exe" | Select-Object Name,Length
 
       - name: Regenerate hashes.txt from CI build
         shell: pwsh
         run: |
-          $files = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','.github/SECURITY.md','verify.ps1','.dsh_launcher_root')
-          $files += (Get-ChildItem src -Recurse -Filter *.cs | ForEach-Object { $_.FullName.Replace((Get-Location).Path + '\','') })
+          $files = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','v2\dsh_v2.cs','v2\build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','.github/SECURITY.md','v2\verify.ps1','v2\.dsh_launcher_root')
+          $files += (Get-ChildItem v2\src -Recurse -Filter *.cs | ForEach-Object { $_.FullName.Replace((Get-Location).Path + '\','') })
           # L-2：版本号从 AssemblyVersion 动态派生（取 major.minor.build 三段），避免每次 bump 手改 hashes 头（旧版本号残留）
-          $verMatch = (Select-String -Path dsh_v2.cs -Pattern 'AssemblyVersion\("(\d+)\.(\d+)\.(\d+)\.\d+"' | Select-Object -First 1).Matches[0]
+          $verMatch = (Select-String -Path v2\dsh_v2.cs -Pattern 'AssemblyVersion\("(\d+)\.(\d+)\.(\d+)\.\d+"' | Select-Object -First 1).Matches[0]
           $verLine = ($verMatch.Groups[1].Value + '.' + $verMatch.Groups[2].Value + '.' + $verMatch.Groups[3].Value)
           $lines = New-Object System.Collections.Generic.List[string]
           $lines.Add('# SHA-256 checksum manifest - DeepSeek Harness Toolkit V' + $verLine)
@@ -252,10 +252,13 @@ jobs:
           $lines.Add('')
           foreach ($f in $files) {
             $h = (Get-FileHash $f -Algorithm SHA256).Hash.ToLowerInvariant()
-            $lines.Add("$h  $f")
+            # 清单里的名字是**发布包内**的相对路径：v2 源码在仓库里位于 v2\，但发布包里仍是平铺的
+            # 清单名字必须与**发布包内**的实际条目一致：Compress-Archive 只取叶子名，
+            # 所以 `.github/SECURITY.md` 在包里叫 `SECURITY.md`（原清单写成 .github/SECURITY.md → 对不上）
+            $lines.Add("$h  " + ($f -replace '^v2[\\/]', '' -replace '^\.github[\\/]', ''))
           }
-          [System.IO.File]::WriteAllLines((Join-Path $PWD 'hashes.txt'), $lines, (New-Object System.Text.UTF8Encoding($false)))
-          Get-Content hashes.txt
+          [System.IO.File]::WriteAllLines((Join-Path $PWD 'v2\hashes.txt'), $lines, (New-Object System.Text.UTF8Encoding($false)))
+          Get-Content v2\hashes.txt
 
       - name: Sign hashes.txt (maintainer GPG key, from secrets)
         shell: bash
@@ -268,10 +271,10 @@ jobs:
           #  path form (D:\a\_temp) mangles backslash escapes.)
           gpg --version | head -1
           echo "$GPG_PRIVATE_KEY" | gpg --batch --import
-          gpg --batch --yes --detach-sign --armor hashes.txt
+          gpg --batch --yes --detach-sign --armor v2/hashes.txt
           # self-check before shipping: the imported key includes the public part
-          gpg --batch --verify hashes.txt.asc hashes.txt
-          ls -l hashes.txt.asc
+          gpg --batch --verify v2/hashes.txt.asc v2/hashes.txt
+          ls -l v2/hashes.txt.asc
           echo "gpg fingerprint:"
 
           gpg --batch --with-colons --list-keys | awk -F: '/^pub/{next} /^fpr/{print $10}'
@@ -286,7 +289,7 @@ jobs:
             Write-Output "detached HEAD (tag-triggered build): hashes.txt generated locally, commit skipped"
             exit 0
           }
-          git add hashes.txt
+          git add v2/hashes.txt
           git commit -m "build: regenerate hashes.txt from CI build" 2>$null
           if ($LASTEXITCODE -eq 0) {
             git push
@@ -347,7 +350,7 @@ jobs:
           if ($tag -in @('main','master','')) { $tag = "${{ inputs.release_tag }}" }
           if ($tag -eq '') { $tag = 'dev' }
           $zipName = "DeepSeek-Harness-Toolkit_${tag}_upload-package.zip"
-          $items = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','START-GUI.cmd','START-CLI.cmd','READ-ME-FIRST.txt','dsh_v2.cs','build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','.github/SECURITY.md','verify.ps1','.gitignore','hashes.txt','hashes.txt.asc','.dsh_launcher_root','src')
+          $items = @('DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe','START-GUI.cmd','START-CLI.cmd','READ-ME-FIRST.txt','v2\dsh_v2.cs','v2\build_exe.cmd','icon.ico','logo.png','README.md','README_zh-CN.md','LICENSE','.github/SECURITY.md','v2\verify.ps1','.gitignore','v2\hashes.txt','v2\hashes.txt.asc','v2\.dsh_launcher_root','v2\src')
           Compress-Archive -Path $items -DestinationPath $zipName -CompressionLevel Optimal
           Write-Output ("zip: " + [math]::Round((Get-Item $zipName).Length/1KB,1) + " KB")
 
@@ -384,8 +387,8 @@ jobs:
           Upload "DeepSeek Harness Toolkit.exe" $tag $env:GITHUB_REPOSITORY
           Upload "Toolkit GUI.exe" $tag $env:GITHUB_REPOSITORY
           Upload "Toolkit GUI Standalone.exe" $tag $env:GITHUB_REPOSITORY
-          Upload "hashes.txt" $tag $env:GITHUB_REPOSITORY
-          Upload "hashes.txt.asc" $tag $env:GITHUB_REPOSITORY
+          Upload "v2\hashes.txt" $tag $env:GITHUB_REPOSITORY
+          Upload "v2\hashes.txt.asc" $tag $env:GITHUB_REPOSITORY
           $assets = gh release view $tag --repo $env:GITHUB_REPOSITORY --json assets --jq '.assets[].name'
           # 改名迁移安全网：只清理核心 exe 的历史命名残留（DeepSeek.Harness.Toolkit.<版本>.exe 等），
           # 保留 Toolkit.GUI.exe 等其他合法资产（GUI 面板是与核心并列的独立发布物）
@@ -403,8 +406,8 @@ jobs:
             DeepSeek Harness Toolkit.exe
             Toolkit GUI.exe
             Toolkit GUI Standalone.exe
-            hashes.txt
-            hashes.txt.asc
+            v2/hashes.txt
+            v2/hashes.txt.asc
             DeepSeek-Harness-Toolkit_*_upload-package.zip
   # ---------------------------------------------------------------------------
   # V3 Windows package. Mirrors the v3-linux job: same three shapes, same
