@@ -96,15 +96,22 @@ Gate 'gate5 real write verifiable' ($LASTEXITCODE -eq 0) $rdet
 # 真正必须守住的是"发布与校验链"：verify.ps1（信任锚，指纹锁死）、发布步骤的 csc 命令、以及 16 项发布清单。
 # build_exe.cmd 于 v2.7.3 被**有意**改成递归收集源码（此前写死目录列表漏了 src\Platform\Linux → CS0246），
 # 所以它不再参与"未改动"比对，改由下面的"v2.x 发布构建能编译"这条**行为**不变量来守（比文本比对更强）。
+# ★ 架构审计抓到（G5）：原来把 git 失败也吞成空串 ✗ → git 不可用/仓库缺失时这条"空过" ✗✗
+#   → 它本该是"信任锚没被动过"的守卫 ✓ 结果没比对也报 READY ✗
+# ✓ 现在：git 必须真的跑成功 ✓✓ 否则这条不变量判为未就绪 ✓（不静默通过 ✓）
 $chainChanged = ''
-try { $chainChanged = (& git -C $Repo diff --name-only origin/main -- verify.ps1 2>&1 | Out-String).Trim() } catch { $chainChanged = '' }
+$gitRan = $false
+try {
+    $chainChanged = (& git -C $Repo diff --name-only origin/main -- verify.ps1 2>&1 | Out-String).Trim()
+    $gitRan = ($LASTEXITCODE -eq 0)
+} catch { $gitRan = $false }
 $itemsOk = $false; $stepsOk = $false
 if (Test-Path $wf) {
     $wt2 = [System.IO.File]::ReadAllText($wf)
     $itemsOk = $wt2.Contains("'DeepSeek Harness Toolkit.exe','Toolkit GUI.exe','Toolkit GUI Standalone.exe'")
     $stepsOk = $wt2.Contains('/out:unittests.exe') -and $wt2.Contains('core_check.exe') -and $wt2.Contains('/out:DeepSeek Harness Toolkit.exe')
 }
-Gate 'invariant release chain' ([string]::IsNullOrWhiteSpace($chainChanged) -and $itemsOk -and $stepsOk) $(if ([string]::IsNullOrWhiteSpace($chainChanged) -and $itemsOk -and $stepsOk) { 'verify.ps1 未动；16 项清单与 csc 发布步骤完好' } else { 'verify.ps1 改动:[' + ($chainChanged -replace "`r?`n", ',') + '] 清单=' + $itemsOk + ' 步骤=' + $stepsOk })
+Gate 'invariant release chain' ($gitRan -and [string]::IsNullOrWhiteSpace($chainChanged) -and $itemsOk -and $stepsOk) $(if ([string]::IsNullOrWhiteSpace($chainChanged) -and $itemsOk -and $stepsOk) { 'verify.ps1 未动（git 已比对）；16 项清单与 csc 发布步骤完好' } else { 'verify.ps1 改动:[' + ($chainChanged -replace "`r?`n", ',') + '] 清单=' + $itemsOk + ' 步骤=' + $stepsOk })
 
 # ---- 不变量：v2.x 发布构建**真的能编译**（行为校验，比"文件没改"强）----
 # 起因：v2.8 阶段 3 把 Linux 实现放进 src\Platform\Linux 后，build_exe.cmd 的写死目录列表漏了它，
@@ -129,6 +136,32 @@ foreach ($f in @(Get-ChildItem $Repo -Recurse -Filter *.ps1 -ErrorAction Silentl
     if ($nonAscii -and -not $hasBom) { $bomBad += $f.FullName.Replace($Repo.TrimEnd('\') + '\', '') }
 }
 Gate 'invariant ps1 utf8 bom' ($bomBad.Count -eq 0) $(if ($bomBad.Count -eq 0) { '含非 ASCII 的 .ps1 全部带 BOM' } else { '缺 BOM：' + ($bomBad -join ', ') })
+
+# ---- 门槛⑥/⑦（架构审计 G6 补上）：本地门槛必须和 CI 跑同一批测试 ----
+# 起因：CI 跑契约测试与 GUI 逻辑测试 ✓ 而本地这个聚合门槛从来不跑它们 ✗
+#   → 开发者按文档跑"切换就绪度"以为全绿 ✓ 实际 348 项契约 + 58 项 GUI 解析一项没验 ✗
+# 纪律：跑不了就说跑不了 ✓ 不假装通过 ✓（缺 .NET SDK → NOT READY 并说明原因 ✓）
+$dotnetExe = Join-Path $env:USERPROFILE '.dotnet\dotnet.exe'
+if (-not (Test-Path $dotnetExe)) { $dotnetExe = 'dotnet' }
+$ctOut = ''
+$ctRc = 2
+try {
+    $ctOut = (Invoke-External { & $dotnetExe run --project (Join-Path $Repo 'v3\tests\Dsht.Contracts.Tests') -c Release --nologo 2>&1 }) | Out-String
+    $ctRc = $LASTEXITCODE
+} catch { $ctRc = 2 }
+$ctM = [regex]::Match($ctOut, '==\s*(\d+)/(\d+) passed, (\d+) failed ==')
+$ctDet = if ($ctM.Success) { $ctM.Groups[1].Value + '/' + $ctM.Groups[2].Value + ' 通过' } else { '未解析到结果行（.NET SDK 缺失或构建失败）' }
+Gate 'gate6 contract tests' ($ctRc -eq 0) $ctDet
+
+$glOut = ''
+$glRc = 2
+try {
+    $glOut = (Invoke-External { & $dotnetExe run --project (Join-Path $Repo 'v3\gui\Dsht.Gui.LogicTests') -c Release --nologo 2>&1 }) | Out-String
+    $glRc = $LASTEXITCODE
+} catch { $glRc = 2 }
+$glM = [regex]::Match($glOut, '==\s*(\d+)/(\d+) passed, (\d+) failed ==')
+$glDet = if ($glM.Success) { $glM.Groups[1].Value + '/' + $glM.Groups[2].Value + ' 通过（标记行解析）' } else { '未解析到结果行（.NET SDK 缺失或构建失败）' }
+Gate 'gate7 gui logic tests' ($glRc -eq 0) $glDet
 
 # ---- 领域层纯净度 ----
 $pure = (Invoke-External { & powershell -ExecutionPolicy Bypass -File (Join-Path $Repo 'v3\tests\verify_domain_pure.ps1') -Repo $Repo 2>&1 }) | Out-String   # 审计 M8：这一条原来**没包装** ✗ → 子进程一写 stderr 就杀掉整个门槛（输出层假绿 ✓）
