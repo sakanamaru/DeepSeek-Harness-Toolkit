@@ -154,16 +154,28 @@ if (-not (Test-Path $PayloadZip)) { throw "载荷 zip 不存在：$PayloadZip" }
 if (-not (Get-Variable -Name verNum -ErrorAction SilentlyContinue)) {
     $verNum = "$Version".Trim().TrimStart('v', 'V')
 }
-if ($verNum -notmatch '^\d+(\.\d+){0,3}$') {
-    throw "版本号必须是数字点分形式（如 3.0.0）✓ 收到的是「$Version」✗（tag 名要先去 v ✓）"
+# ★★★ **发版修复（2026-10-01）—— 认「预发布后缀」，但程序集版本必须纯数字** ✓✓
+#   ✗ 原来只认 `^\d+(\.\d+){0,3}$` ✗ → `3.0.0-preview.1` 被**直接拒绝** ✗
+#     → 而工作流那边是**静默换成 3.0.0** ✗ → 两边一起把预发布版本坑掉 ✓
+#   ✗ 而且 `AssemblyVersion("$verNum.0")` 用带后缀的值会变成
+#     `"3.0.0-preview.1.0"` ✗ → **非法程序集版本** ✗（CS7034 一类 ✓）
+#   ✓ 现在：**显示版本保留后缀** ✓✓（`3.0.0-preview.1` ✓）
+#     · **程序集版本取数字部分并补到 4 段** ✓（`3.0.0-preview.1` → `3.0.0.0` ✓）
+#     · 仍然拒绝分支名/乱码 ✓（不匹配就报错说清 ✓ 不静默 ✓）
+if ($verNum -notmatch '^\d+(\.\d+){0,3}(-[0-9A-Za-z][0-9A-Za-z.\-]*)?$') {
+    throw "版本号必须是数字点分形式（可带预发布后缀，如 3.0.0 或 3.0.0-preview.1）✓ 收到的是「$Version」✗（tag 名要先去 v ✓）"
 }
-Write-Host "版本号: $Version → $verNum ✓"
+$verCore = ($verNum -split '-')[0]
+$verParts = @($verCore -split '\.')
+while ($verParts.Count -lt 4) { $verParts += '0' }
+$asmVer = ($verParts[0..3] -join '.')
+Write-Host "版本号: $Version → 显示 $verNum · 程序集 $asmVer ✓"
 
 # ---- ② AssemblyInfo（csc 没有 /version: ✓ 必须自己给 ✓ 否则 ARP 里显示 0.0.0 ✗）----
 $ai = @"
 using System.Reflection;
-[assembly: AssemblyVersion("$verNum.0")]
-[assembly: AssemblyFileVersion("$verNum.0")]
+[assembly: AssemblyVersion("$asmVer")]
+[assembly: AssemblyFileVersion("$asmVer")]
 [assembly: AssemblyTitle("dsh-minato setup")]
 [assembly: AssemblyProduct("dsh-minato")]
 [assembly: AssemblyCompany("dsh-minato (unofficial)")]
