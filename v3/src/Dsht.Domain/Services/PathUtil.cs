@@ -77,8 +77,18 @@ namespace Dsht.Domain.Services
             string na = NormalizeLexical(parent);
             string nb = NormalizeLexical(child);
             if (na == null || nb == null) return false;   // 有逃逸 → 不在子树内 ✓✓
-            string a = TrimTrailingSep(na).ToLowerInvariant();
-            string b = TrimTrailingSep(nb).ToLowerInvariant();
+            // ★★ 架构审计抓到（C9）：原来**无条件转小写** ✗
+            //   → 而 Linux 上 `/bk` 与 `/BK` 是**两个不同目录** ✓
+            //     → 于是"包含性判定"比文件系统**更宽松** ✗ → 接受了 OS 认为在根外的路径 ✗
+            //   ✓ 现在：**只在 Windows 风格路径上做大小写折叠** ✓✓
+            //     · 判据：含 `\` 或盘符（`X:`）→ Windows 语义（不区分大小写 ✓）
+            //     · 其余（`/` 分隔 ✓）→ **保持大小写敏感** ✓（与 POSIX 一致 ✓）
+            //   · 纯函数 ✓ 不看平台 API ✓ 领域纯净不破 ✓
+            bool caseFold = na.IndexOf('\\') >= 0 || nb.IndexOf('\\') >= 0
+                            || (na.Length >= 2 && na[1] == ':') || (nb.Length >= 2 && nb[1] == ':');
+            string a = TrimTrailingSep(na);
+            string b = TrimTrailingSep(nb);
+            if (caseFold) { a = a.ToLowerInvariant(); b = b.ToLowerInvariant(); }
             if (b == a) return true;
             return b.StartsWith(a + "\\", StringComparison.Ordinal) || b.StartsWith(a + "/", StringComparison.Ordinal);
         }
