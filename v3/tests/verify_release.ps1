@@ -66,8 +66,14 @@ function Invoke-Checks([string]$dir, [string]$wantVersion) {
     }
     C 'C3 清单内文件哈希一致' ($mismatch -eq 0) ("不一致 " + $mismatch + " 个")
 
-    $extraFiles = @(Get-ChildItem -LiteralPath $dir -File | Where-Object { $_.Name -ne 'hashes.txt' -and -not $map.ContainsKey($_.Name) })
-    C 'C4 无清单外文件' ($extraFiles.Count -eq 0) (($extraFiles | ForEach-Object { $_.Name }) -join ',')
+    # ★ 审查抓到：原来**只扫顶层** ✗ → 藏在子目录里的文件（如 gui\evil.dll）既不被哈希也不被计数 ✗
+    #   而标题却写着"磁盘上无清单外文件" ✗✗ → **声称的比实际检查的多** ✓
+    # ✓ 现在：**递归扫全部** ✓✓ 并按**相对路径**与清单比对 ✓
+    $extraFiles = @(Get-ChildItem -LiteralPath $dir -File -Recurse | Where-Object {
+        $rel = $_.FullName.Substring($dir.Length).TrimStart('\','/').Replace('\','/')
+        $rel -ne 'hashes.txt' -and -not $map.ContainsKey($rel) -and -not $map.ContainsKey($_.Name)
+    })
+    C 'C4 无清单外文件（递归）' ($extraFiles.Count -eq 0) (($extraFiles | ForEach-Object { $_.FullName.Substring($dir.Length) }) -join ',')
 
     $selfHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLower()
     C 'C5 自身完整性（exe 与清单一致）' ($map.ContainsKey('dsht.exe') -and $map['dsht.exe'] -eq $selfHash)

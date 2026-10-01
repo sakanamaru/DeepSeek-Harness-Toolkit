@@ -1011,7 +1011,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             if (string.IsNullOrEmpty(dshLatest)) dshLatest = "unknown";
             string dshState = "unknown";
             if (dshInstalled != "unknown" && dshLatest != "unknown")
-                dshState = dshInstalled == dshLatest ? "up-to-date" : (dshInstalled.CompareTo(dshLatest) < 0 ? "update-available" : "newer-than-latest");
+                dshState = dshInstalled == dshLatest ? "up-to-date" : (Dsht.Domain.Services.VersionComparer.Compare(dshInstalled, dshLatest) < 0 ? "update-available" : "newer-than-latest");   // ★ 审查抓到：原来用字典序 ✗ → 1.9.0 会被判成比 1.10.0 新 ✗✓
             ids.Add("webui");
             lines.Add("UPDATECENTER_ITEM webui kind=webui installed=" + dshInstalled + " latest=" + dshLatest + " state=" + dshState);
             lines.Add("UPDATECENTER_URL webui https://github.com/deepseek-ai/deepseek-harness");
@@ -1107,6 +1107,13 @@ Console.WriteLine("  config-get | config-set <key> <value>");
         private static string NpmRepoOf(string pkg)
         {
             if (string.IsNullOrEmpty(pkg)) return "";
+            // ★★★ 审查抓到：包名来自**插件自己的 package.json** ✗ → 未校验就拼进 cmd.exe ✗✗
+            //   → `{"name":"x & calc"}` 这种名字会**执行任意命令** ✓（打开 GUI「更新」页即触发 ✓）
+            //   → 项目对 registry 和 npm 版本都做了白名单 ✓ 唯独漏了包名 ✓
+            // ✓ 现在：**npm 合法包名白名单** ✓✓（作用域名 + 包名 ✓ 不合规直接不问 npm ✓）
+            if (!System.Text.RegularExpressions.Regex.IsMatch(pkg,
+                    @"^(@[a-z0-9\-~][a-z0-9\-._~]*/)?[a-z0-9\-~][a-z0-9\-._~]*$"))
+                return "";
             string[] tries = PlatformIsWindows()
                 ? new string[] { "cmd.exe|/c npm view " + pkg + " repository.url", "npm.cmd|view " + pkg + " repository.url" }
                 : new string[] { "npm|view " + pkg + " repository.url", System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local/node/bin/npm") + "|view " + pkg + " repository.url" };
@@ -1308,7 +1315,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             Console.WriteLine("UPDATEINFO_REGISTRY " + (string.IsNullOrEmpty(reg2) ? "default" : reg2.Trim()));
             string state = "unknown";
             if (installed != null && installed.Length > 0 && latest.Length > 0)
-                state = installed == latest ? "up-to-date" : (installed.CompareTo(latest) < 0 ? "update-available" : "newer-installed");
+                state = installed == latest ? "up-to-date" : (Dsht.Domain.Services.VersionComparer.Compare(installed, latest) < 0 ? "update-available" : "newer-installed");   // ★ 审查抓到：字典序 ✗ → 改用正确比较器 ✓✓
             Console.WriteLine("UPDATEINFO_STATE " + state);
             // 回滚候选：最新的 -pre-update 备份，以及它旁挂文件里记录的当时版本 ✓
             try
@@ -1449,8 +1456,14 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             Console.WriteLine(T("非官方工具，与 DeepSeek 官方无关。", "Unofficial tool; not affiliated with DeepSeek."));
             Console.WriteLine(T("仓库：", "Repository: ") + "https://github.com/sakanamaru/dsh-minato");
             Console.WriteLine(T("许可：MIT", "License: MIT"));
-            Console.WriteLine(T("本程序只读写本机：不联网（余额查询除外，需显式开启）；写操作一律先备份、可回滚。",
-                                "Works locally only: no network (except the opt-in balance check); every write is backed up first and can be rolled back."));
+            // ★ 审查抓到：这句话有**两处不实** ✗✗
+            //   ① 说"不联网（余额查询除外）" ✗ —— 但**根本没有余额查询** ✓ 而真联网的命令有 6 条 ✗
+            //   ② 说"写操作一律先备份" ✗ —— 改设置/改 profile/改快捷方式都**不**备份 ✗
+            // ✓ 现在：**逐条如实** ✓✓（联网命令点名 ✓ 备份范围说清 ✓）
+            Console.WriteLine(T("本程序只读写本机。会联网的只有：check / update-info / update-center / install / update / verify-install --url；其余命令不联网。",
+                                "Works locally only. The only commands that use the network are: check, update-info, update-center, install, update, verify-install --url. Everything else stays offline."));
+            Console.WriteLine(T("restore / wipe / update / import 之前会先自动备份并打印位置（可回滚）；改设置、改 profile、改快捷方式不会。",
+                                "restore, wipe, update and import back up first and print where; settings, profile and shortcut edits do not."));
             return 0;
         }
 
@@ -1843,6 +1856,14 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             string file, cmdArgs;
             if (PlatformIsWindows())
             {
+                // ★ 审查抓到：profile 直接来自参数 ✗ 未校验就拼进 cmd.exe ✗
+                //   → `start --profile "web & <任意命令>"` 会执行它 ✓（同样的值在 bridge-install / profilepatch 里是**有白名单**的 ✓）
+                // ✓ 现在：与那两处**同一条白名单** ✓✓
+                if (!System.Text.RegularExpressions.Regex.IsMatch(profile ?? "", @"^[A-Za-z0-9._\-]+$"))
+                {
+                    Console.WriteLine("START_FAIL " + T("profile 名不合法（只允许字母数字 . _ -）：" + profile, "invalid profile name: " + profile));
+                    return 0;
+                }
                 file = "cmd.exe";                                   // npm 的 dsh 是 .cmd 垫片，必须经 cmd 包装
                 cmdArgs = "/c dsh --profile " + profile + " --port " + port;
             }
@@ -2121,7 +2142,14 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             try
             {
                 string mf = pkgDir + ".manifest";
-                if (!System.IO.File.Exists(mf)) return null;
+                // ★★★ 审查抓到：完成标记**最后才写** ✗（中断可被精确识别 ✓）而这里缺标记却返回 null ✗
+                //   → 调用方把 null 当成"没被截断" ✓ → **中断的包会被照常恢复并打印 RESTORE_OK** ✗✗
+                //   → 而 `backup-list --verify` 明明把它标成 incomplete ✓（工具知道这个事实却忽略了 ✓）
+                // ✓ 现在：**缺标记就是"未完成"** ✓✓（照旧可用 --force 强行使用 ✓ 但要用户明说 ✓）
+                if (!System.IO.File.Exists(mf))
+                    return System.IO.Directory.Exists(pkgDir)
+                        ? T("备份未完成（缺少完成标记 ✓ 可能是中断/磁盘满）：", "backup is incomplete (no completion marker): ") + System.IO.Path.GetFileName(pkgDir)
+                        : null;
                 int want = -1;
                 string[] ls = System.IO.File.ReadAllLines(mf);
                 for (int i = 0; i < ls.Length; i++) { if (ls[i].StartsWith("files=", StringComparison.Ordinal)) int.TryParse(ls[i].Substring(6).Trim(), out want); }
@@ -3064,7 +3092,11 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     else Console.WriteLine("RESTORE_FAIL " + T("无效备份目录", "invalid backup directory"));
                     return 0;
                 }
-                bkDir = pathArg.Trim().Trim('"');
+                // ★ 审查抓到：上面校验的是 ResolveBackupPath 的结果 ✗，而这里用的是**原始参数** ✗
+                //   → 只给名字时（GUI 就是这样）校验看的是 &lt;备份根&gt;/&lt;名字&gt;，实际读的却是 &lt;当前目录&gt;/&lt;名字&gt; ✗✗
+                //   → 可能失败，也可能把当前目录里同名的 dsh-data-* 目录恢复进数据根 ✓
+                // ✓ 现在：**校验与操作同一个值** ✓✓
+                bkDir = Dsht.Domain.Services.PathValidator.ResolveBackupPath(pathArg.Trim().Trim('"'), bk.BackupsRoot);
                 string trunc = BackupTruncatedReason(bkDir);
                 if (!string.IsNullOrEmpty(trunc) && !Has(args, "--force"))
                 {
@@ -3168,7 +3200,7 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                     bkDir = p;
                     // 完成性闸门 ✓✓：放在**路径校验通过之后** —— 不存在的路径与根外路径都到不了这里 ✓（这正是上一版放错位置的原因 ✗）。
                     // 条件用 !IsNullOrEmpty ✓ 且只在"原因非空"时拦 ✓ → **最多少报，绝不误拦** ✓✓。
-                    string truncReason = BackupTruncatedReason(p);
+                    string truncReason = BackupTruncatedReason(p);   // ★ 自动选择分支也要走这道闸门 ✓✓（原来只对 --path 生效 ✗）
                     if (!string.IsNullOrEmpty(truncReason) && !Has(args, "--force"))
                     {
                         Console.WriteLine("DRYRUN_FAIL " + truncReason + T("；确认要预览它请加 --force", "; add --force to preview it anyway"));

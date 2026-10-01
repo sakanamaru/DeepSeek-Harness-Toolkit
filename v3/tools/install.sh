@@ -534,7 +534,16 @@ if [ -f "$PREFIX/hashes.txt" ]; then
             warn "已安装，但请从官方 Releases 重新下载核对 ✓"
             exit 3
         fi
-        ok "指纹全部一致 ✓（$checked 项）"
+        # ★★★ 审查抓到：这里只比"清单里列出的" ✓ 而**从不检查清单覆盖了多少载荷** ✗✗
+        #   清单只列 2 个文件、载荷有 248 个 → 两个都对 → 照样打印"指纹全部一致" ✗（246 个文件根本没校验 ✓）
+        # ✓ 现在：**覆盖率也要过** ✓✓（清单项数 + 缺失 必须与实际载荷文件数一致 ✓ 差值说明清单不全 ✓）
+        cov_total=$((checked + missing))
+        if [ "$cov_total" -lt "$total" ]; then
+            warn "**清单只覆盖 $cov_total / $total 个文件** ✗ 覆盖不全 → **不算通过** ✓"
+            warn "已安装，但请从官方 Releases 重新下载核对 ✓"
+            exit 3
+        fi
+        ok "指纹全部一致 ✓（$checked 项，覆盖 $cov_total/$total ✓）"
     else
         warn "没有 sha256sum，跳过指纹自检（**未校验** ✓ 不是通过 ✓）"
     fi

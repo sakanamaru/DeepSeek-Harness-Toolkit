@@ -858,9 +858,35 @@ internal static class Installer
             //       都会让**这一份安装永远卸不掉** ✗（只能手动删 ✓）
             //   ✓ 现在：**`--force` 跳过身份检查** ✓✓ 但**大声说明** ✓ 且**仍然只删清单里的文件** ✓
             //     （安全边界不动 ✓：清单 + 生成物 + 空目录 ✓ 越界条目已被 M2 的围栏挡住 ✓✓）
-            if (ForceInstall && !looksOurs)
+            // ★★★ 审查抓到（CRITICAL ✗✗）：日志写着"只删清单里的文件、不会删别的东西" ✗
+            //   而 `--force` 时**身份检查被跳过** ✓ → 后面的 `gui\` / `bin\` / `plugin\` / `app-*` 是**整目录递归删** ✗
+            //   → 在**不是**本工具安装目录的地方跑 `uninstall.exe --force`（例如某个 .NET 项目的根 ✓ 那里也有 `bin\` ✓）
+            //     → **会把用户的 `bin\` / `gui\` / `plugin\` 整个删掉** ✗✗ 而且退出码 0 ✓
+            // ✓ 现在：**必须至少有一个" unmistakable 是我们"的文件** ✓✓ 才允许那些整目录删除 ✓
+            //   · 否则**一个字节都不删** ✓ 并如实说明原因 ✓（逃生口还在 ✓ 但不会误伤别人 ✓）
+            bool forceOurs = looksOurs;
+            if (ForceInstall && !forceOurs)
             {
-                Log("**--force：跳过身份检查** ✓ 用户明确要求 ✓ 仍然**只删清单里的文件** ✓ 不会删别的东西 ✓");
+                try
+                {
+                    foreach (string sig in new string[] { "dsh-minato.exe", ".dsh-minato-install", "hashes.txt", "uninstall.exe" })
+                        if (File.Exists(Path.Combine(target, sig))) { forceOurs = true; break; }
+                }
+                catch { }
+                if (forceOurs)
+                    Log("**--force：跳过身份检查** ✓ 用户明确要求 ✓ 目录里有本工具的文件 ✓ 会删：清单内文件 + 安装器生成物（gui/ bin/ plugin/ app-*）✓");
+                else
+                    Log("**--force：但这个目录里连一个本工具的文件都没有** ✗ → **一个字节都不删** ✓（避免删掉别人的 bin/ gui/ plugin/ ✓）");
+            }
+            if (!forceOurs && ForceInstall)
+            {
+                Log("拒绝卸载：目录不像本工具安装目录 ✓ 已如实说明 ✓ 什么都没删 ✓");
+                if (!silent) MessageBox.Show(
+                    "没有删除任何东西。" + Environment.NewLine + Environment.NewLine +
+                    "这个目录里找不到 dsh-minato.exe / hashes.txt / uninstall.exe 中的任何一个：" + Environment.NewLine + target + Environment.NewLine + Environment.NewLine +
+                    "为了不误删别人的 bin\\ gui\\ plugin\\ 等目录，本工具**拒绝在这里执行强制卸载** ✓",
+                    AppName + " 卸载", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return 0;
             }
             else if (!looksOurs)
         {
@@ -1407,9 +1433,9 @@ internal static class Installer
                 }
                 if (full == null) { Log("清单里有但包里没有（跳过 ✓ 不误报 ✗）: " + name); continue; }
                 // ✓ 审计 #3：**必须限制在 staging 内** ✗（Path.Combine 接受绝对路径与 `..\..` ✗）
+                string fullAbs = "";
                 if (stagingFull.Length > 0)
                 {
-                    string fullAbs = "";
                     try { fullAbs = Path.GetFullPath(full); } catch { }
                     if (fullAbs.Length == 0 || !fullAbs.StartsWith(stagingFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                     {
@@ -1417,11 +1443,21 @@ internal static class Installer
                         LastVerifyResult = "清单条目指向包外：" + name;
                         return "清单条目指向包外：" + name;
                     }
-                    verified.Add(fullAbs);
                 }
-                checkedCount++;
+                // ★★★ 审查抓到（fail-open ✗✗）：原来**先把文件记进 verified 并给 checkedCount 加一** ✓
+                //   → 然后再算哈希 ✓ 而算不出来时（文件被占用/读不了 ✓ Sha256Of 内部吞异常返回 null ✓）
+                //     → `continue` **跳过比对** ✗ → 覆盖度检查看到它在 verified 里 ✓ → **被当成"已完整校验"** ✗✗
+                //   → 攻击者只要让某个载荷文件在校验时读不了，就能让它**免于校验** ✓
+                // ✓ 现在：**哈希算不出来 = 拒绝安装** ✓✓（fail-closed ✓ 不再有"算不出就跳过" ✓）
                 string got = Sha256Of(full);
-                if (string.IsNullOrEmpty(got)) continue;
+                if (string.IsNullOrEmpty(got))
+                {
+                    Log("读不到文件、算不出指纹 ✗ " + name + " → **拒绝安装** ✓（不把算不出当成通过 ✓）");
+                    LastVerifyResult = "无法校验（读不到文件）：" + name;
+                    return "无法校验（读不到文件）：" + name;
+                }
+                verified.Add(fullAbs);
+                checkedCount++;
                 if (!string.Equals(want, got, StringComparison.OrdinalIgnoreCase))
                 {
                     mismatch++;
