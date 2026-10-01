@@ -644,6 +644,72 @@ static class ContractTests
         Check("往返：第三次 disable 是翻转而非追加（行数不变）", rt3.Split('\n').Length == rt2.Split('\n').Length);
         Check("往返：最终状态为 disabled: true 且无 disabled: false 残留", rt3.Contains("disabled: true") && !rt3.Contains("disabled: false"));
         Check("往返：enable→disable 再 enable 仍不堆积", CountTopRows(Dsht.Domain.Services.PatchPlanner.PlanEnable(rt3, "demo").NewText) == 1);
+        // ============================================================================
+        // [29] 备份 / 恢复 / 删除 **真实写盘往返**（架构审计 G2：唯一能毁数据的引擎原本零覆盖 ✗）
+        //   为什么必须有：Create / Restore / Delete 是**唯一会动用户数据**的代码 ✓
+        //   而在此之前**没有任何门槛**调用过它们 ✗（只在 CLI 真机跑过 ✓）
+        //   安全：全程在 %TEMP% 的随机目录里 ✓ 备份根用 DSH_MINATO_BACKUP_DIR 指到那里 ✓
+        //         **绝不触碰真实数据根** ✓ 结束即清理 ✓
+        // ============================================================================
+        Console.WriteLine("[29] 备份/恢复/删除：真实写盘往返（隔离目录）");
+        {
+            string bkRootTmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsht-bk-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            string dataSrc = System.IO.Path.Combine(bkRootTmp, "data");
+            string bkDirTmp = System.IO.Path.Combine(bkRootTmp, "bk");
+            string dataDst = System.IO.Path.Combine(bkRootTmp, "restored");
+            try
+            {
+                System.IO.Directory.CreateDirectory(System.IO.Path.Combine(dataSrc, "storages"));
+                System.IO.File.WriteAllText(System.IO.Path.Combine(dataSrc, "storages", "a.txt"), "ALPHA");
+                System.IO.File.WriteAllText(System.IO.Path.Combine(dataSrc, "storages", "b.txt"), "BETA");
+                System.IO.Directory.CreateDirectory(System.IO.Path.Combine(dataSrc, "sessions"));
+                System.IO.File.WriteAllText(System.IO.Path.Combine(dataSrc, "sessions", "s1.json"), "{\"x\":1}");
+                System.IO.Directory.CreateDirectory(bkDirTmp);
+                string oldEnv = Environment.GetEnvironmentVariable("DSH_MINATO_BACKUP_DIR");
+                Environment.SetEnvironmentVariable("DSH_MINATO_BACKUP_DIR", bkDirTmp);
+
+                Dsht.Domain.Abstractions.IBackupSource bks;
+                if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+                    bks = new Dsht.Platform.Windows.WindowsBackupSource(new Dsht.Platform.Windows.WindowsPaths());
+                else
+                    bks = new Dsht.Platform.Linux.LinuxBackupSource(new Dsht.Platform.Linux.LinuxPaths());
+
+                Check("备份根：相对/环境变量值被归一化成绝对路径", !string.IsNullOrEmpty(bks.BackupsRoot) && System.IO.Path.IsPathRooted(bks.BackupsRoot));
+
+                Dsht.Domain.Model.BackupResult bkRes = bks.Create(dataSrc, Dsht.Domain.Model.BackupKind.Manual, 3, null);
+                Check("备份：返回了包路径", bkRes != null && !string.IsNullOrEmpty(bkRes.Path));
+                Check("备份：完成标记（.manifest）存在", bkRes != null && System.IO.File.Exists(bkRes.Path + ".manifest"));
+                Check("备份：内容都在（storages + sessions）",
+                    bkRes != null && System.IO.Directory.Exists(System.IO.Path.Combine(bkRes.Path, "storages"))
+                    && System.IO.File.Exists(System.IO.Path.Combine(bkRes.Path, "sessions", "s1.json")));
+
+                Dsht.Domain.Model.RestoreOutcome rsOut = bks.Restore(bkRes.Path, dataDst, null);
+                Check("恢复：报告成功", rsOut != null && rsOut.Ok);
+                Check("恢复：文件内容一致",
+                    System.IO.File.Exists(System.IO.Path.Combine(dataDst, "storages", "a.txt"))
+                    && System.IO.File.ReadAllText(System.IO.Path.Combine(dataDst, "storages", "a.txt")) == "ALPHA"
+                    && System.IO.File.ReadAllText(System.IO.Path.Combine(dataDst, "storages", "b.txt")) == "BETA");
+                Check("恢复：嵌套目录也回来了", System.IO.File.Exists(System.IO.Path.Combine(dataDst, "sessions", "s1.json")));
+
+                string manifestTxt = System.IO.File.ReadAllText(bkRes.Path + ".manifest");
+                // ★ 我的第一个断言写错了 ✓（实测抓到 ✓）：平台侧的 Create 只写 files=/bytes=/failed=/finished= ✓
+                //   而 sha256= 是 **CLI 层** AddContentHashToMarker 补的 ✓（只有走 CLI 才有 ✓ 不是平台职责 ✓）
+                Check("标记：含 files= 与 finished=（平台侧职责）", manifestTxt.Contains("files=") && manifestTxt.Contains("finished="));
+
+                bks.Delete(bkRes.Path);
+                Check("删除：包目录真的没了", !System.IO.Directory.Exists(bkRes.Path));
+
+                Environment.SetEnvironmentVariable("DSH_MINATO_BACKUP_DIR", oldEnv);
+            }
+            catch (Exception ex)
+            {
+                Check("备份/恢复往返：未抛异常（" + ex.GetType().Name + ": " + ex.Message + "）", false);
+            }
+            finally
+            {
+                try { System.IO.Directory.Delete(bkRootTmp, true); } catch { }
+            }
+        }
         Console.WriteLine("== " + _pass + "/" + (_pass + _fail) + " passed, " + _fail + " failed ==");
         return _fail == 0 ? 0 : 1;
     }
