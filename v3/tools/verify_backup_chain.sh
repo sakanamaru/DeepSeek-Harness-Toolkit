@@ -95,7 +95,12 @@ if [ "$(id -u)" != "0" ]; then
   printf 'R\n' > "$U/storages/r.txt"; printf 'S\n' > "$U/secret/s.txt"; chmod 000 "$U/secret"
   UO=$(DSH_HOME="$U" $T $CLI backup --to "$BKROOT" 2>&1 | tr -d '\r')
   echo "$UO" | grep -q 'BACKUP_INCOMPLETE' && ok "不可读目录被如实报告（BACKUP_INCOMPLETE ✓）" || bad "静默少备份 ✗✗"
-  echo "$UO" | grep -q 'BACKUP_OK' && ok "同时给出包路径（部分成功 ✓）" || bad "未给路径 ✗"
+  # ★★ 这条断言原来是：要求"不完整时**也**打印 BACKUP_OK" ✗ —— 那正是后来**故意修掉**的行为 ✓✓
+  #   · 起因：GUI 只看 `BACKUP_OK` ✗ → 部分失败的备份被 GUI 报成**成功** ✗
+  #   · 修法：**不完整就不报 OK** ✓（现在只打 `BACKUP_INCOMPLETE <包路径> …` ✓）
+  #   · 而**包路径没丢** ✓ —— 它就跟在 `BACKUP_INCOMPLETE` **同一行**上 ✓✓
+  #   → 所以断言改成检查"不完整标记**带包路径**" ✓ 测的是**新的、更诚实**的行为 ✓
+  echo "$UO" | grep -qE 'BACKUP_INCOMPLETE +[^ ]*dsh-data-' && ok "不完整标记**带包路径**（部分成功 ✓）" || bad "未给路径 ✗"
   chmod 755 "$U/secret" 2>/dev/null
 else
   echo "  [SKIP] 以 root 运行 → 不可读目录测不了（权限对 root 无效 ✓）"
