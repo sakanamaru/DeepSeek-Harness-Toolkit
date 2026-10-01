@@ -888,7 +888,7 @@ internal static class Installer
                     AppName + " 卸载", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return 2;   // ★ 第 2 轮抓到：拒绝却返回 0 ✗ → 自动化（winget/Scoop/ARP）会以为卸载成功了 ✗✓ 改成 2 ✓
             }
-            else if (!looksOurs)
+            else if (!forceOurs)   // ★ 第 3 轮抓到：原来写 !looksOurs ✗ → 带 --force 且找到我们文件时反而落进"拒绝"分支 ✗ → 逃生口**不可达** ✗✓ 改成 forceOurs ✓
         {
             Log("拒绝卸载：这个目录里**没有本工具的文件** → 它不像安装目录 ✓ **一个字节都不删** ✓");
             if (!silent) MessageBox.Show(

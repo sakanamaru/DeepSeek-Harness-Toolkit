@@ -2974,7 +2974,13 @@ Console.WriteLine("  config-get | config-set <key> <value>");
             if (r.SkippedNested > 0)
                 Console.WriteLine(T("已跳过 " + r.SkippedNested + " 个嵌套备份目录（dsh-data-*），不复制进本次备份。",
                                     "Skipped " + r.SkippedNested + " nested backup folder(s) (dsh-data-*), not copied into this backup."));
-            Console.WriteLine("BACKUP_OK " + r.Path);
+            // ★★ 第 3 轮审查抓到：**先打印 BACKUP_OK、之后才看 FailedCopies** ✗✗
+            //   → 一个部分失败的备份同时打印"成功"和"不完整" ✓ 而 GUI 只看 BACKUP_OK ✓ → 报成成功 ✗
+            // ✓ 现在：**不完整就不报 OK** ✓✓（GUI 因此如实显示未完成 ✓）
+            if (r.FailedCopies > 0)
+                Console.WriteLine("BACKUP_INCOMPLETE " + r.Path + " " + T("有 " + r.FailedCopies + " 项没能备份 ✓ 这个包**不完整** ✓（restore 会要求 --force）", "the package is incomplete: " + r.FailedCopies + " items could not be backed up"));
+            else
+                Console.WriteLine("BACKUP_OK " + r.Path);
             int _wsDone = PackageAllWorkspaces(r.Path, reg);
             if (_wsDone > 0) Console.WriteLine("BACKUP_WORKSPACES " + _wsDone + T(" 个工作区已打包（新格式 _workspace/<名称>/.dshws ✓）", " workspaces packaged (new layout _workspace/<name>/.dshws)"));
             AddContentHashToMarker(r.Path);   // 标记补内容哈希 ✓（能发现"计数对但内容残" ✗✓）
@@ -3254,6 +3260,17 @@ Console.WriteLine("  config-get | config-set <key> <value>");
                 List<BackupEntry> all = bk.ListRaw();
                 for (int i = all.Count - 1; i >= 0; i--) { if (BackupPackage.IsValidPackage(all[i].Snapshot)) { bkDir = all[i].Path; break; } }
                 if (bkDir == null) { Console.WriteLine("DRYRUN_FAIL " + T("无有效备份", "no valid backup")); return 0; }
+                // ★ 第 3 轮抓到：**dry-run 的自动分支也没有闸门** ✗ → 会对真实 restore 会拒的包打印 DRYRUN_OK ✗
+                //   → 同一个包两套结论 ✓（正是本文件反复强调不能有的那种不一致 ✓）
+                {
+                    string autoTrunc2 = BackupTruncatedReason(bkDir);
+                    if (!string.IsNullOrEmpty(autoTrunc2) && !Has(args, "--force"))
+                    {
+                        Console.WriteLine("DRYRUN_FAIL " + autoTrunc2 + T("；确认要预览它请加 --force", "; add --force to preview it anyway"));
+                        return 0;
+                    }
+                    if (!string.IsNullOrEmpty(autoTrunc2)) Console.WriteLine("DRYRUN_WARN " + autoTrunc2);
+                }
             }
             else
             {

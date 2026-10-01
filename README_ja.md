@@ -203,7 +203,7 @@ dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r linux-x64 --self-co
 |---|---|
 | `v3/tests/verify_switchover.ps1` | 9 つの準備ゲートを一度に。まずこれを実行。 |
 | `v3/tests/compare_markers.ps1` | CLI の機械可読出力が v2.x の契約と一致し続けていること。 |
-| `v3/tests/verify_fixes.ps1` | 修正済みの 71 件が今もコード内で修正されていること。 |
+| `v3/tests/verify_fixes.ps1` | 修正済みの 70 件が今もコード内で修正されていること。 |
 | `v3/tests/verify_restore_apply.ps1` | 隔離ルートへの**実際の**復元と、外への書き込みゼロ。 |
 | `v3/tests/Dsht.Contracts.Tests` | ドメインとプラットフォームの契約 334 件。 |
 | `v3/gui/Dsht.Gui.LogicTests` | GUI のマーカー解析 58 件。 |

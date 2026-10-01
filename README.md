@@ -138,9 +138,9 @@ parse results instead of guessing from prose.
 This section states only what the code does. If a claim here is not backed by the code, it is a bug; please report it.
 
 - **Local only.** The tool reads and writes your own machine. It contacts the network **only** in these commands:
-  `check`, `update-info`, `update-center`, `install`, `update`, and `verify-install --url`. Everything else — status,
+  `check`, `update-info`, `update-center`, `doctor`, `install`, `update`, and `verify-install --url`. Everything else — status,
   sessions, backup, restore, doctor, logs — never opens a connection.
-- **Writes are protected where it matters.** Before `restore`, `wipe`, `update` and `import`, a backup is taken first
+- **Writes are protected where it matters.** Before `restore` a backup is always taken first; `update` and `import` try to and continue if that fails; `wipe` only prints the path to delete by hand and neither deletes nor backs up
   and its location is printed, so a failed operation can be rolled back. Not every write is preceded by a backup:
   settings changes (`config-set`, `backup-dir --set`), profile patches and shortcut/PATH edits are not.
 - **Your data is not deleted by uninstall.** Uninstall removes the tool's own files. Data removal is a separate,
@@ -203,7 +203,7 @@ Every claim in this README is checked by a gate that can be run locally:
 |---|---|
 | `v3/tests/verify_switchover.ps1` | All nine readiness gates at once — the single command to run. |
 | `v3/tests/compare_markers.ps1` | The CLI's machine-readable output still matches the v2.x contract. |
-| `v3/tests/verify_fixes.ps1` | 71 previously-fixed defects are still fixed in the source. |
+| `v3/tests/verify_fixes.ps1` | 70 previously-fixed defects are still fixed in the source. |
 | `v3/tests/verify_restore_apply.ps1` | A real restore into an isolated root, with zero writes outside it. |
 | `v3/tests/Dsht.Contracts.Tests` | 334 domain and platform contract checks. |
 | `v3/gui/Dsht.Gui.LogicTests` | 58 GUI marker-parsing checks. |

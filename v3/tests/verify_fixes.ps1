@@ -146,7 +146,7 @@ if ($onlyCode.Count -eq 0 -and $onlyTable.Count -eq 0) { Write-Host "  [OK]   �
 # （命令面有"一一对应"自检 ✓ 但总项数一直没有断言 ✗ —— 本轮补上 ✓）
 # 审计发现（门槛完整性审计 §5.3）：原来是 67，而表里有 **71** 项 → **最多 4 项可被静默删掉** ✗
 # → 现在**必须正好等于表长** ✓（任何一项被删都会红 ✓）
-$EXPECTED_MIN_CHECKS = 71
+$EXPECTED_MIN_CHECKS = 70   # ★ 第 3 轮抓到：删掉那条不可达检查后表只剩 70 项 ✗ 而这里还是 71 ✗ → 门槛永远红 ✗✓ 已对齐 ✓
 if ($checks.Count -lt $EXPECTED_MIN_CHECKS) {
     $miss += ("检查表项数不足：" + $checks.Count + " < " + $EXPECTED_MIN_CHECKS)
     Write-Host ("  [MISS] 检查表项数不足：只有 " + $checks.Count + " 项（需 >= " + $EXPECTED_MIN_CHECKS + "）")

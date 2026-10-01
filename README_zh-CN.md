@@ -135,9 +135,8 @@ dsh-minato version | about | selftest
 
 本节只陈述代码的行为。如果这里写了代码没做的事，那就是 bug，请提 issue。
 
-- **只在本机。** 工具只读写你自己的机器。**只有**这些命令会联网：`check`、`update-info`、`update-center`、
-  `install`、`update`、`verify-install --url`。其余（status、sessions、backup、restore、doctor、日志）**绝不联网**。
-- **该保护的地方有保护。** `restore`、`wipe`、`update`、`import` 之前会**先备份**并打印位置，失败可回滚。
+- **只在本机。** 工具只读写你自己的机器。**只有**这些命令会联网：`check`、`update-info`、`update-center`、`doctor`、`install`、`update`、`verify-install --url`。其余（status、sessions、backup、restore、doctor、日志）**绝不联网**。
+- **该保护的地方有保护。** `restore` 之前**总会**先备份；`update`/`import` 会尝试备份、失败仍继续；`wipe` 只打印手动删除路径、不删也不备份并打印位置，失败可回滚。
   但**并非所有写操作**都会先备份：改设置（`config-set`、`backup-dir --set`）、改 profile、改快捷方式/PATH 不会。
 - **卸载不会删你的数据。** 卸载只删本工具自己的文件；删数据是另一个需要你明确发起的动作。
 - **备份的完整性是**校验**出来的，不是假设的。** 包里有**最后写入**的完成标记与逐文件哈希；
@@ -195,7 +194,7 @@ dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r linux-x64 --self-co
 |---|---|
 | `v3/tests/verify_switchover.ps1` | 九道就绪门槛一次跑完 —— 想只跑一条就跑它。 |
 | `v3/tests/compare_markers.ps1` | 命令行的机器可读输出仍与 v2.x 契约一致。 |
-| `v3/tests/verify_fixes.ps1` | 71 个已修缺陷**仍然**在源码里被修着。 |
+| `v3/tests/verify_fixes.ps1` | 70 个已修缺陷**仍然**在源码里被修着。 |
 | `v3/tests/verify_restore_apply.ps1` | 在隔离根里做一次**真实**恢复，且**零越界写入**。 |
 | `v3/tests/Dsht.Contracts.Tests` | 334 项领域与平台契约检查。 |
 | `v3/gui/Dsht.Gui.LogicTests` | 58 项图形界面标记解析检查。 |
