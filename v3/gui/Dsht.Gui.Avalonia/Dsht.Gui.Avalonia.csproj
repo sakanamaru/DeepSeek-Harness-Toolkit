@@ -17,6 +17,24 @@
     <ApplicationIcon>Assets\logo-icon.ico</ApplicationIcon>
     <RootNamespace>Dsht.Gui.Avalonia</RootNamespace>
     <!-- Avalonia 自带 DPI 处理，不需要 Win32 清单 -->
+
+    <!--
+      ★ 体积（2026-10 实测）：GUI 是三个发布物里最大的一块 —— 自包含目录未压缩约 100 MB / 225 个文件，
+      占 Windows 包（74 MB zip）的 60% 以上。开裁剪后 GUI 的 zip 从 43.7 MB 降到 19.3 MB（-56%），
+      整个包 74 MB → 约 50 MB（-33%）。
+
+      为什么这个项目敢开：本 GUI 的界面**全部由 C# 构建**（Shells/Shells.cs），两个 .axaml 只声明
+      具名元素与 FluentTheme，**零 {Binding} / ReflectionBinding / Behaviors** —— 没有反射式绑定可被裁掉，
+      而"反射式绑定被裁掉"正是 Avalonia 裁剪最常见的翻车点。
+
+      只开 partial 不开 full：full 会连框架里带反射的路径一起裁，收益不成比例、风险大得多。
+      也刻意**不做** PublishSingleFile：实测单文件+压缩只再多省 3.5 MB（zip 43.7 → 40.2 MB），
+      代价是首次运行要往临时目录解包原生库 —— 不划算。
+
+      ⚠️ 裁剪失败**只在运行时暴露**（构建通过 ≠ 能跑）→ 改这个开关后必须真机开一次 GUI 才算验证过。
+    -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
   </PropertyGroup>
 
   <ItemGroup>
@@ -40,6 +58,9 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.1" />
     <PackageReference Include="Avalonia.Diagnostics" Version="11.2.1" Condition="'$(Configuration)' == 'Debug'" />
     <PackageReference Include="FluentIcons.Avalonia" Version="1.1.265" />
-    <PackageReference Include="Avalonia.Xaml.Behaviors" Version="11.2.0.1" />
+    <!--
+      ★ 已删除 Avalonia.Xaml.Behaviors：全仓库搜 Interaction.Behaviors / xmlns:behaviors 只有这一行引用，
+      即**声明了却从未使用**。删掉它同时去掉一份反射式的行为库（对裁剪也更安全）。
+    -->
   </ItemGroup>
 </Project>

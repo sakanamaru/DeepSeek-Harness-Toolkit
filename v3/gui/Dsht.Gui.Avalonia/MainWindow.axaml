@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Dsht.Gui.Avalonia.MainWindow"
-        Title="dsh-minato — V3 预览"
+        Title="dsh-minato — V3"
         Width="1320" Height="840"
         MinWidth="1080" MinHeight="640"
         WindowStartupLocation="CenterScreen"
@@ -17,7 +17,7 @@
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
           <StackPanel VerticalAlignment="Center" Spacing="1">
             <TextBlock x:Name="BrandTitle" Text="dsh-minato" FontSize="13.5" FontWeight="SemiBold" />
-            <TextBlock x:Name="BrandSub" Text="V3 · 跨平台 GUI 预览" FontSize="10.5" />
+            <TextBlock x:Name="BrandSub" Text="V3 · 跨平台 GUI" FontSize="10.5" />
           </StackPanel>
         </StackPanel>
         <StackPanel x:Name="AppBarRight" Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">

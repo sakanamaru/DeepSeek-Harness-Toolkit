@@ -21,6 +21,30 @@ All notable changes to **dsh-minato** (unofficial). Full release notes, assets a
 - 顺带修掉两处**按相对路径读文件**的测试：`unit_tests.cs` 的夹具路径与 `gui_logic_tests.cs` 的
   `SrcPath()` —— 搬进子目录后它们会读不到文件，后者还会让 **i18n 强制检查整块静默跳过**。
 
+## 体积 — GUI 开启裁剪（2026-10-02）
+
+**Size — the GUI is now trimmed (2026-10-02)**
+
+- **Windows 包 74 MB → 约 50 MB（-33%）**；GUI 自身的 zip 从 43.7 MB 降到 19.3 MB（-56%）。
+- 做法：`Dsht.Gui.Avalonia.csproj` 开 `PublishTrimmed` + `TrimMode=partial`。
+  之所以敢开：本 GUI 的界面**全部由 C# 构建**，两个 `.axaml` 只声明具名元素与主题，
+  **零 `{Binding}` / `ReflectionBinding` / `Behaviors`** —— 没有反射式绑定可被裁掉，
+  而"反射式绑定被裁掉"正是 Avalonia 裁剪最常见的翻车点。只开 partial 不开 full。
+- 顺手删掉 **`Avalonia.Xaml.Behaviors`**：全仓库搜 `Interaction.Behaviors` 只有那一行引用，
+  即**声明了却从未使用**（顺带去了一份反射式行为库）。
+- **刻意不做 `PublishSingleFile`**：实测单文件+压缩只再多省 3.5 MB（zip 43.7 → 40.2 MB），
+  代价是首次运行要往临时目录解包原生库 —— 不划算。
+- ⚠️ 裁剪失败**只在运行时暴露**（构建通过 ≠ 能跑）→ CI 新增
+  **`Smoke test the packaged GUI opens a window`**：真的启动打包后的 GUI，要求
+  ① 活过 10 秒 ② **真的创建了窗口**（`MainWindowHandle ≠ 0`）。
+  此前**没有任何 job 会启动 GUI**（`verify-linux.sh` 只检查 `gui/dsht-gui` 存在）。
+- 顺带：GUI 窗口标题与副标题里的「预览」字样去掉（`v3.0.0` 已是正式版）。
+
+## v3.0.0 — 2026-10-02（首个正式版 / first stable release）
+
+> 这个标题原先写的是「未发布 / Unreleased」—— 实际上 v3.0.0 已正式发布
+> （GitHub 上 `isPrerelease = false`，且标记为 Latest）。
+
 ### Added / 新增（V3 工具箱线 · 2026-09-29）
 
 - **V3 命令行（`dsh-minato`）**：31 个具名命令 + 无参数数字菜单 —— 安装/更新/卸载、起停、状态、体检、会话、profile 扫描与处方、备份/恢复/导出/删除、配置读写、引导诊断、自检、快捷方式、`about`，以及新增的 `log`、`update-info`、`import`、`wipe`、`verify-install`。
@@ -53,6 +77,7 @@ All notable changes to **dsh-minato** (unofficial). Full release notes, assets a
   No embedded CJK font in the GUI; the log/update centre, tray and shortcuts exist as CLI commands but are not wired into GUI pages yet.
 - 经典 v2.x 线若在 Linux 上从源码构建，`start` / `stop` / `shortcut` 接缝不可用；Linux 上请使用 V3 CLI。
   The classic v2.x line's start/stop/shortcut seams do not work if it is built from source on Linux; use the V3 CLI there.
+
 ## v2.8.0 — 未发布 / Unreleased
 
 ### Docs / 文档（2026-09-28）

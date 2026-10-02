@@ -553,6 +553,33 @@ jobs:
           $h = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           Set-Content -Path "$zip.sha256" -Value "$h  $zip" -Encoding ascii
           Get-Content "$zip.sha256"
+
+      # ★ 体积裁剪（PublishTrimmed）的失败**只在运行时暴露** ✗ —— 构建通过 ≠ 能跑 ✓
+      #   所以这里真的把**打包后的** GUI 启动一次（旁边就有 CLI，最接近用户拿到的那份）：
+      #     ① 进程活过 10 秒   ② 而且**真的创建了窗口**（MainWindowHandle ≠ 0）
+      #   裁剪最常见的事故是"启动即崩 / 窗口建不起来"，这两条都能抓到 ✓✓
+      #   （此前**没有任何 job 会启动 GUI** ✗ —— verify-linux.sh 只检查 `gui/dsht-gui` 存在 ✓）
+      - name: Smoke test the packaged GUI opens a window (trim safety)
+        shell: pwsh
+        run: |
+          $guiDir = "dsh-minato-win-x64/gui"
+          $exe = Join-Path $guiDir "dsht-gui.exe"
+          if (-not (Test-Path $exe)) { throw "GUI exe missing in the package: $exe" }
+          # 隔离数据根：绝不碰真实 ~/.dsh
+          $env:DSH_HOME = Join-Path $env:RUNNER_TEMP "gui-smoke"
+          New-Item -ItemType Directory -Path $env:DSH_HOME -Force | Out-Null
+          $p = Start-Process -FilePath (Resolve-Path $exe).Path -WorkingDirectory (Resolve-Path $guiDir).Path -PassThru
+          Start-Sleep -Seconds 10
+          $p.Refresh()
+          if ($p.HasExited) {
+            throw ("GUI exited within 10s (exit code " + $p.ExitCode + ") - trimming probably removed something it needs at runtime")
+          }
+          if ($p.MainWindowHandle -eq 0) {
+            Stop-Process -Id $p.Id -Force
+            throw "GUI process is alive but never created a window (trimming or a missing dependency)"
+          }
+          Stop-Process -Id $p.Id -Force
+          Write-Output ("GUI smoke ok: window created, stayed alive 10s (pid " + $p.Id + ")")
       - name: Build the self-extracting installer (win-x64)
         shell: pwsh
         run: |
