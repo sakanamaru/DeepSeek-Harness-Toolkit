@@ -6,64 +6,45 @@ All notable changes to **dsh-minato** (unofficial). Full release notes, assets a
 
 ---
 
-## 仓库结构 — v2 整棵树移入 `v2/`（2026-10-02）
+## v3.0.1 — 2026-10-03（响应性与界面整理 / responsiveness & UI tidy-up）
 
-**Repository layout — the v2 tree moved into `v2/` (2026-10-02)**
+### Added / 新增
 
-- 根目录条目 **24 → 14**：`dsh_v2.cs` / `gui_v2.cs` / `verify.ps1` / `hashes.txt` / `build_exe.cmd` /
-  `app.manifest` / `DeepSeekHarnessToolkit.Core.csproj` / `.dsh_launcher_root` / `src/` / `tests/` / `keys/`
-  全部移入 `v2/`，并同步更新 CI、就绪度门槛、测试与文档里的路径引用。
-- **不影响任何已发布产物**：v2 的每个发布包自带 `verify.ps1`，其公钥回退按 **tag** 从 raw 下载
-  （tag 不可变）→ 老版本用户的校验链不受影响。
-- 顺带修掉一个**潜伏的 CI 故障**：`.dsh_launcher_root` 曾被取消跟踪，而发布清单与 upload-package.zip
-  仍按路径取它 → `build` job 会在 `Get-FileHash` 处失败，且发布包会丢掉卸载器的"防误删"闸门。
-  现已恢复跟踪（它是**随包分发**的标记，不是运行时产物）。
-- 顺带修掉两处**按相对路径读文件**的测试：`unit_tests.cs` 的夹具路径与 `gui_logic_tests.cs` 的
-  `SrcPath()` —— 搬进子目录后它们会读不到文件，后者还会让 **i18n 强制检查整块静默跳过**。
+- **DeepSeek 余额检测**：设置里填入自己的 key（`balance_key`）后，概览页显示**充值余额 / 活动赠送余额**；
+  未绑定则整卡隐藏，且**一个网络请求都不发**。CLI 新增只读命令 `balance`。
+  **DeepSeek balance** (topped-up / granted) on the overview page once you set your own key; hidden and offline when unset.
+- **概览自动刷新**：实时 0.5s / 快 1s / 中 3s / 慢 5s / 暂停 / 自定义（0.5–3600s），只在概览与看板生效。
+- **启动页可自选**（`gui_start_page`）。
+- **体检逐行出结果**：`doctor --stream` 边算边打 —— 列表先出现，结果一行一行补上。
+- **桥接插件 0.2.0**：新增「真在动」信号（相邻两拍之间事件序号变过），长生成中途也判得准。
 
-## 响应性 — 点击立刻换页 + 加载反馈 + 体检/更新逐行出结果（2026-10-02）
+### Fixed / 修复
 
-**Responsiveness — instant page switch, visible loading, row-by-row results (2026-10-02)**
+- **不再把「挂在 dsh 里」说成「运行中」**：`live` 只表示会话还挂在 dsh 进程内（桌面端开着时它 store 里的会话
+  全是 `live`，哪怕几天没碰）→ 现在如实分三态：**运行中 / 挂着 · 最后活动 N 前 / 活动未知**，计数改名「dsh 活跃」；
+  插件仍是 0.1.0 时用**最后活动时间**兜底 → 老用户同样吃到这条修复。
+- **点击后零反馈**：原来进页要等 CLI 跑完才重画（实测 `doctor` 6.5 秒、`update-center` 7.9 秒里屏幕一动不动）
+  → 现在点击**立刻换页**（先显示旧数据）+ 加载指示（如实写为什么等）+ 数据到账淡入 160 毫秒。
+- **排队的刷新会提前熄灯** → 改为「还有排队就继续亮」。
+- **发布清单名字与包内实际条目对不上**（清单写 `.github/SECURITY.md`，zip 里是 `SECURITY.md`）。
+- **两处自检漏检**：`verify_fixes` 的命令面清单、`compare_markers` 的忽略规则（空值键在行尾 Trim 后匹配不到）。
+- **`.dsh_launcher_root` 曾被取消跟踪**（发布清单与 zip 仍按路径取它 → `build` job 会失败、发布包会丢卸载闸门）→ 已恢复跟踪。
 
-- **实测**（自包含单文件 CLI，win-x64）：`doctor` **6.5s**（含 npm registry 探测，最长 4s）、
-  `update-center` **7.9s**（查 GitHub + npm）。而切页流程是"点完 → 等 CLI 跑完 → 才重建界面"
-  —— **期间屏幕纹丝不动** ✗✗ 这就是"延迟还在"的真相：不是没修，是**点击后零反馈** ✗✓
-- **点击立刻换页**：导航先**立刻**把页面换出去（有旧数据先显示旧数据 ✓ stale-while-revalidate），
-  数据在后台刷新、到账再画一次 → 换页 0ms 级 ✓✓
-- **加载反馈**：每次刷新亮一枚浮层（有旧数据 → 右上角小转标；首次进入 → 居中加载卡）。
-  文案**如实写**哪页要等多久、为什么（体检写明"npm registry 那项最长 4 秒"、更新写明"要查 GitHub"）——
-  不写"请稍候"这种空话 ✗
-- **内容淡入**：数据到账那一笔 0→1 淡入 160ms（用户要求的"动画过渡" ✓）。整段动画包 try/catch，
-  任何一环失败就"直接可见" —— **动画绝不许有把界面变黑的模式** ✓✓
-- **体检/更新两页改流式（杀软式"列表先出、逐行出结果"，用户建议 ✓）**：
-  - CLI 新增 `--stream`（仅 v3 ✓ GUI 专用 ✓）。**默认输出逐字不变** —— 已用 HEAD 基线做**字节级比对**
-    （doctor / update-center 均 identical ✓）→ v2.x 标记契约 / compare_markers / 347 项契约测试全不动 ✓✓
-  - `doctor --stream`：条目**边算边打**，汇总行挪到末尾；实现上给 `DoctorCollect` 传一个
-    带"逐条发射"回调的容器（`Collection<T>.InsertItem` 虚拦截）→ **方法体一行没改** ✓
-  - `update-center --stream`：webui 的慢网络查询**后台先起跑、最后再等** → 桌面端/本工具/插件**秒出**、
-    webui 最后出 ✓；默认行序靠 `InsertRange(0)` 保持不变 ✓
-  - GUI：体检页从"只列错误/提醒"升级为**全部条目逐行显示**（通过项也可见 ✓ 一眼看清查了什么）+
-    尾部"…其余项检测中"行 ✓；更新页每行**重解析部分文本**（解析器本就按前缀扫行、位置无关 ✓）✓
-- **顺带修掉**：排队的刷新还没轮到时，中间那一笔画完就把加载指示熄了 ✗ → 改为"还有排队就继续亮" ✓
+### Changed / 变更
 
-## 体积 — GUI 开启裁剪（2026-10-02）
+- **GUI 体积 −33%**：启用 `PublishTrimmed` + `TrimMode=partial`（敢开的原因：界面全部由 C# 构建、**零反射式绑定**）。
+  Windows 自包含包 **约 74 MB → 约 50 MB**；GUI 自身压缩包 43.7 → 19.3 MB。刻意**不做** `PublishSingleFile`
+  （只再多省 3.5 MB，代价是首次运行要把原生库解包到临时目录）。顺手删掉从未被引用的 `Avalonia.Xaml.Behaviors`。
+- **CI 新增 GUI 窗口冒烟**：真的启动打包后的 GUI，要求活过 10 秒**且真的创建了窗口**（此前没有任何 job 会启动 GUI）。
+- **设置页分类 + 选择框**：「界面与启动（含排障开关）」「dsh · 更新 · 数据 · 余额」「其它」；枚举型配置一律下拉选择。
+- **体检不再自动运行**：进页只显示上次结果，点「运行体检」才跑。
+- **形态与插件页的安装教程移到底部。**
+- **v2 整棵树移入 `v2/`**：仓库根条目 **24 → 14**；不影响任何已发布产物（v2 发布包自带 `verify.ps1`，
+  公钥回退按不变的 **tag** 下载）✓
+- **文档统一**：三语 README 重写为同一套骨架（动机 / 功能 / 安装 / 快速上手 / 图形界面 / 命令行 / 安全与隐私 /
+  已知限制 / 可选插件 / 许可与致谢）；发版说明与本日志统一为 Added / Fixed / Changed 骨架。
 
-**Size — the GUI is now trimmed (2026-10-02)**
-
-- **Windows 包 74 MB → 约 50 MB（-33%）**；GUI 自身的 zip 从 43.7 MB 降到 19.3 MB（-56%）。
-- 做法：`Dsht.Gui.Avalonia.csproj` 开 `PublishTrimmed` + `TrimMode=partial`。
-  之所以敢开：本 GUI 的界面**全部由 C# 构建**，两个 `.axaml` 只声明具名元素与主题，
-  **零 `{Binding}` / `ReflectionBinding` / `Behaviors`** —— 没有反射式绑定可被裁掉，
-  而"反射式绑定被裁掉"正是 Avalonia 裁剪最常见的翻车点。只开 partial 不开 full。
-- 顺手删掉 **`Avalonia.Xaml.Behaviors`**：全仓库搜 `Interaction.Behaviors` 只有那一行引用，
-  即**声明了却从未使用**（顺带去了一份反射式行为库）。
-- **刻意不做 `PublishSingleFile`**：实测单文件+压缩只再多省 3.5 MB（zip 43.7 → 40.2 MB），
-  代价是首次运行要往临时目录解包原生库 —— 不划算。
-- ⚠️ 裁剪失败**只在运行时暴露**（构建通过 ≠ 能跑）→ CI 新增
-  **`Smoke test the packaged GUI opens a window`**：真的启动打包后的 GUI，要求
-  ① 活过 10 秒 ② **真的创建了窗口**（`MainWindowHandle ≠ 0`）。
-  此前**没有任何 job 会启动 GUI**（`verify-linux.sh` 只检查 `gui/dsht-gui` 存在）。
-- 顺带：GUI 窗口标题与副标题里的「预览」字样去掉（`v3.0.0` 已是正式版）。
+---
 
 ## v3.0.0 — 2026-10-02（首个正式版 / first stable release）
 
