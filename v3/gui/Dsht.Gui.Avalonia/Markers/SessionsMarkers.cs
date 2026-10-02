@@ -50,7 +50,13 @@ namespace Dsht.Gui.Avalonia.Markers
 
         /// <summary>★ 2026-10-02 诚实化：`live` 只表示"还挂在 dsh 进程里"✗ 不是"在跑"✗✓
         /// 桌面端开着 → 它 store 里的会话全是 live（哪怕几天没碰 ✓）→ 原来一律显示"运行中"是**过度断言** ✗。
-        /// 现在：active 已知 → 运行中 / 挂着；未知 → "dsh 内挂着（活动未知）" ✗ 不猜 ✗✓。</summary>
+        /// 三档判据（越靠前越精确 ✓）：
+        ///   ① active 已知（插件 0.2.0）→ 运行中 / 挂着（dsh 内未动）✓✓
+        ///   ② active 未知（插件还是 0.1.0 ✓ **绝大多数现有用户**）→ 用**最后活动时间**兜底，
+        ///      且**明说依据**（"按最后活动判断" ✓）✗ 不冒充精确 ✗
+        ///   ③ 连最后活动也没有 → "活动未知" ✗ 不猜 ✗</summary>
+        private const int RecentMinutes = 15;   // 15 分钟内有活动 → 按"在跑"判断 ✓（长生成中途 lastPromptAt 不更新 ✗ 所以给得宽 ✓）
+
         public string LiveText
         {
             get
@@ -58,7 +64,37 @@ namespace Dsht.Gui.Avalonia.Markers
                 if (!LiveKnown) return Blank ? "空会话" : "运行态未知";
                 if (!Live) return Blank ? "空会话" : "已结束";
                 if (ActiveKnown) return Active ? "运行中" : "挂着（dsh 内未动）";
+                int age = LastAgeMinutes;
+                if (age >= 0 && age <= RecentMinutes) return "运行中（按最后活动判断）";
+                if (age >= 0) return "挂着 · 最后活动 " + LastAgeText;
                 return "dsh 内挂着（活动未知）";
+            }
+        }
+
+        /// <summary>最后活动距今多少分钟（-1 = 没有该字段 / 解析不了 → **未知** ✗ 不猜 ✗）。</summary>
+        public int LastAgeMinutes
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(Last)) return -1;
+                DateTime t;
+                if (!DateTime.TryParse(Last, CultureInfo.InvariantCulture,
+                        DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out t)) return -1;
+                double m = (DateTime.UtcNow - t).TotalMinutes;
+                return m < 0 ? 0 : (int)m;   // 时钟回拨 → 当作"刚刚" ✓（绝不显示负数 ✗）
+            }
+        }
+
+        /// <summary>人话相对时间（"5 分钟前" / "3 小时前" / "2 天前"）；取不到 → 空串 ✓。</summary>
+        public string LastAgeText
+        {
+            get
+            {
+                int m = LastAgeMinutes;
+                if (m < 0) return "";
+                if (m < 60) return m + " 分钟前";
+                if (m < 60 * 24) return (m / 60) + " 小时前";
+                return (m / (60 * 24)) + " 天前";
             }
         }
 

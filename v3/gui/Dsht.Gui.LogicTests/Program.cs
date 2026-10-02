@@ -49,7 +49,15 @@ namespace Dsht.Gui.LogicTests
             //   三个新状态的契约 ✓✓
             Check("行：active=1 解析 + lastActive 保留", a.Active && a.ActiveKnown && a.LastActive == "2026-09-23T01:48:30Z");
             Check("行：live=1 active=0 → 挂着（不是运行中 ✓ 也不是未知 ✓）", SessionsMarkers.Parse(real.Replace("active=1", "active=0")).Rows[0].ActiveKnown && !SessionsMarkers.Parse(real.Replace("active=1", "active=0")).Rows[0].Active && SessionsMarkers.Parse(real.Replace("active=1", "active=0")).Rows[0].LiveText == "挂着（dsh 内未动）");
-            Check("行：live=1 无 active → 活动未知（不假装在跑 ✗ 也不假装没动 ✗）", SessionsMarkers.Parse(real.Replace(" active=1 lastActive=2026-09-23T01:48:30Z", "")).Rows[0].Live && !SessionsMarkers.Parse(real.Replace(" active=1 lastActive=2026-09-23T01:48:30Z", "")).Rows[0].ActiveKnown && SessionsMarkers.Parse(real.Replace(" active=1 lastActive=2026-09-23T01:48:30Z", "")).Rows[0].LiveText == "dsh 内挂着（活动未知）");
+            // ★ 兜底档（**绝大多数现有用户**：插件还是 0.1.0 ✗ 没有 active 字段 ✓）→ 按最后活动时间判断 ✓ 并明说依据 ✓
+            string noActive = real.Replace(" active=1 lastActive=2026-09-23T01:48:30Z", "");
+            SessionRow na = SessionsMarkers.Parse(noActive).Rows[0];
+            Check("行：无 active + 最后活动很久以前 → 「挂着 · 最后活动 N 天前」（不冒充精确 ✓）", na.Live && !na.ActiveKnown && na.LiveText.StartsWith("挂着 · 最后活动") && na.LastAgeMinutes > 60 * 24);
+            string freshLast = noActive.Replace("last=2026-09-23T01:48:28Z", "last=" + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+            Check("行：无 active + 15 分钟内有过活动 → 「运行中（按最后活动判断）」", SessionsMarkers.Parse(freshLast).Rows[0].LiveText == "运行中（按最后活动判断）");
+            string noActiveNoLast = noActive.Replace("last=2026-09-23T01:48:28Z", "last=unknown");
+            SessionRow nn = SessionsMarkers.Parse(noActiveNoLast).Rows[0];
+            Check("行：无 active 也无最后活动 → 「dsh 内挂着（活动未知）」（不猜 ✓✓）", !nn.ActiveKnown && nn.LastAgeMinutes == -1 && nn.LiveText == "dsh 内挂着（活动未知）");
             Check("行：磁盘来源下 live 不可信（显示运行态未知，不谎报已结束）", !SessionsMarkers.Parse(real.Replace("SESSIONS_SOURCE snapshot", "SESSIONS_SOURCE disk")).Rows[0].LiveKnown && SessionsMarkers.Parse(real.Replace("SESSIONS_SOURCE snapshot", "SESSIONS_SOURCE disk")).Rows[0].LiveText == "运行态未知");
             Check("行：时间戳保留 ISO 文本", a.Created == "2026-09-23T01:48:28Z" && a.Last == "2026-09-23T01:48:28Z");
             Check("行：token 用人读格式（K/M，InvariantCulture）", a.InText == "5.2M" && a.OutText == "68.9K" && a.CacheReadText == "5.0M");
