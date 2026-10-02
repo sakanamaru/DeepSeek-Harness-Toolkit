@@ -27,7 +27,7 @@ namespace Dsht.Gui.LogicTests
                 "SESSIONS_LIVE 1\n" +
                 "SESSIONS_SOURCE snapshot\n" +
                 "SESSIONS_ROOT C:\\Users\\x\\.dsh\\storages\\session_projcache\\sessions\n" +
-                "SESSION 0052ed1f-1b9a-4cac-a27a-310abb951edc title=会话%20A%25B created=2026-09-23T01:48:28Z last=2026-09-23T01:48:28Z turns=1 steps=50 in=5161243 out=68886 cacheRead=4964096 hit=96.2 decode=195.7 ttft=187588 ctx=0.0 blank=0 live=1\n" +
+                "SESSION 0052ed1f-1b9a-4cac-a27a-310abb951edc title=会话%20A%25B created=2026-09-23T01:48:28Z last=2026-09-23T01:48:28Z turns=1 steps=50 in=5161243 out=68886 cacheRead=4964096 hit=96.2 decode=195.7 ttft=187588 ctx=0.0 blank=0 live=1 active=1 lastActive=2026-09-23T01:48:30Z\n" +
                 "SESSION abc12345 created=unknown last=unknown turns=0 steps=0 in=0 out=0 cacheRead=0 hit=unknown decode=unknown ttft=unknown ctx=unknown blank=1 live=0\n" +
                 "SESSIONS_TOTAL in=5161243 out=68886 cacheRead=4964096 hit=97.1 decode=108.6";
 
@@ -45,6 +45,11 @@ namespace Dsht.Gui.LogicTests
             Check("行：命中率/速度/压力解析为数值", Math.Abs(a.HitPercent - 96.2) < 0.001 && Math.Abs(a.DecodeTps - 195.7) < 0.001 && Math.Abs(a.CtxPercent - 0.0) < 0.001);
             Check("行：ttft 原值", a.TtftMs == 187588);
             Check("行：快照来源下 live 可信（夹具来源是 snapshot）", a.Live && !a.Blank && a.LiveText == "运行中" && a.LiveKnown);
+            // ★ 2026-10-02：`live` ≠ 在动 ✓（用户实测"没在运行显示 运行6"：桌面端开着 → store 里全是 live ✗）
+            //   三个新状态的契约 ✓✓
+            Check("行：active=1 解析 + lastActive 保留", a.Active && a.ActiveKnown && a.LastActive == "2026-09-23T01:48:30Z");
+            Check("行：live=1 active=0 → 挂着（不是运行中 ✓ 也不是未知 ✓）", SessionsMarkers.Parse(real.Replace("active=1", "active=0")).Rows[0].ActiveKnown && !SessionsMarkers.Parse(real.Replace("active=1", "active=0")).Rows[0].Active && SessionsMarkers.Parse(real.Replace("active=1", "active=0")).Rows[0].LiveText == "挂着（dsh 内未动）");
+            Check("行：live=1 无 active → 活动未知（不假装在跑 ✗ 也不假装没动 ✗）", SessionsMarkers.Parse(real.Replace(" active=1 lastActive=2026-09-23T01:48:30Z", "")).Rows[0].Live && !SessionsMarkers.Parse(real.Replace(" active=1 lastActive=2026-09-23T01:48:30Z", "")).Rows[0].ActiveKnown && SessionsMarkers.Parse(real.Replace(" active=1 lastActive=2026-09-23T01:48:30Z", "")).Rows[0].LiveText == "dsh 内挂着（活动未知）");
             Check("行：磁盘来源下 live 不可信（显示运行态未知，不谎报已结束）", !SessionsMarkers.Parse(real.Replace("SESSIONS_SOURCE snapshot", "SESSIONS_SOURCE disk")).Rows[0].LiveKnown && SessionsMarkers.Parse(real.Replace("SESSIONS_SOURCE snapshot", "SESSIONS_SOURCE disk")).Rows[0].LiveText == "运行态未知");
             Check("行：时间戳保留 ISO 文本", a.Created == "2026-09-23T01:48:28Z" && a.Last == "2026-09-23T01:48:28Z");
             Check("行：token 用人读格式（K/M，InvariantCulture）", a.InText == "5.2M" && a.OutText == "68.9K" && a.CacheReadText == "5.0M");

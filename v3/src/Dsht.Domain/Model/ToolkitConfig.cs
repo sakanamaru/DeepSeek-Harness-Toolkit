@@ -26,12 +26,17 @@ namespace Dsht.Domain.Model
         /// <summary>是否扫会话文件得出主/子代理归类：on / off（关掉更快 ✓ 但子代理统计为空 ✓）</summary>
         public bool ScanChildren = true;
 
+        // —— 界面偏好（2026-10-02 用户要求："启动默认打开页面设置里可自选" ✓✓）——
+        /// <summary>GUI 启动时默认打开的页面（0=概览 … 9=日志；索引即 GUI 的 NavItems ✓）。
+        /// 默认 1（看板）。**纯 GUI 偏好** ✓：CLI 自己不消费它，只是替 GUI 存（与 browser_mode 同类 ✓）。</summary>
+        public int GuiStartPage = 1;
+
         public ToolkitConfig Copy()
         {
             ToolkitConfig c = new ToolkitConfig();
             c.Lang = Lang; c.Host = Host; c.Workspace = Workspace; c.KeepBackups = KeepBackups;
             c.CheckUpdate = CheckUpdate; c.CheckDshUpdate = CheckDshUpdate; c.DshVersions = DshVersions;
-            c.UpdateChannel = UpdateChannel; c.CloseAction = CloseAction; c.AutoStart = AutoStart; c.AutoStartTarget = AutoStartTarget; c.BrowserMode = BrowserMode; c.UiParallel = UiParallel; c.ScanChildren = ScanChildren;
+            c.UpdateChannel = UpdateChannel; c.CloseAction = CloseAction; c.AutoStart = AutoStart; c.AutoStartTarget = AutoStartTarget; c.BrowserMode = BrowserMode; c.UiParallel = UiParallel; c.ScanChildren = ScanChildren; c.GuiStartPage = GuiStartPage;
             return c;
         }
     }

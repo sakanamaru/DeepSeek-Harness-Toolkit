@@ -47,6 +47,12 @@ namespace Dsht.Domain.Services
             if (k == "auto_start_target") return (v == "auto" || v == "desktop" || v == "web") ? null : "bad-value";
             if (k == "browser_mode") return (v == "auto" || v == "snap" || v == "direct" || v == "xdg") ? null : "bad-value";
             if (k == "ui_parallel" || k == "scan_children") return (v == "on" || v == "off") ? null : "bad-value";
+            // ★ GUI 启动页（2026-10-02 ✓）：值是 NavItems 的索引 → 只认 0..9 ✓（越界一律拒绝 ✗ 不猜 ✗）
+            if (k == "gui_start_page")
+            {
+                int n;
+                return (int.TryParse(v, out n) && n >= 0 && n <= 9) ? null : "bad-value";
+            }
             return "unknown-key";
         }
 
@@ -73,6 +79,7 @@ namespace Dsht.Domain.Services
             else if (k == "browser_mode") c.BrowserMode = v;
             else if (k == "ui_parallel") c.UiParallel = v != "off";
             else if (k == "scan_children") c.ScanChildren = v != "off";
+            else if (k == "gui_start_page") { int n; if (int.TryParse(v, out n) && n >= 0 && n <= 9) c.GuiStartPage = n; }   // 越界保持原值 ✓（Validate 已拦 ✓ 这里是双保险 ✓）
             return c;
         }
     }

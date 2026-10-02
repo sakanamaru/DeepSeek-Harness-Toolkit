@@ -104,6 +104,25 @@ namespace Dsht.Gui.Avalonia
             //   更新页要跑 `update-center`（7.9s，查 GitHub）—— 期间 BuildShell 一次都不执行，
             //   屏幕纹丝不动 ✓ 看起来就是"卡死" ✓✓
             //   ✓ 现在：首屏**先**画骨架 + 加载浮层（不等数据 ✓），数据到了再画一次 ✓
+            // ★★★ 启动页可自选（2026-10-02 用户要求："启动默认打开页面设置里可自选" ✓✓）
+            //   读 config 的 gui_start_page ✓（0..9 = NavItems 索引 ✓）—— 必须在**首帧之前**读好 ✗
+            //   否则第一拍建在默认页上 ✗ → 同步读一次 config-get（~90ms ✓ 只此一次 ✓）
+            //   读不到 / 越界 → 停在默认页 ✓ **绝不因偏好而拒绝启动** ✓✓
+            try
+            {
+                string cfgText = Run(CliPath(), "config-get");
+                string[] cfgLines = cfgText.Replace("\r\n", "\n").Split('\n');
+                for (int i = 0; i < cfgLines.Length; i++)
+                {
+                    string t3 = cfgLines[i].Trim();
+                    if (t3.StartsWith("CONFIG gui_start_page ", StringComparison.Ordinal))
+                    {
+                        int np;
+                        if (int.TryParse(t3.Substring("CONFIG gui_start_page ".Length).Trim(), out np) && np >= 0 && np < NavItems.Length) _mainSection = np;
+                    }
+                }
+            }
+            catch { }
             _loading = true;
             BuildShell();
             Refresh();

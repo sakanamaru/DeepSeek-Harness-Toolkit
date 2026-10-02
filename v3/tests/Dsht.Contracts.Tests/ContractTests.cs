@@ -600,6 +600,15 @@ static class ContractTests
         Check("快照：v1（无 live）仍被接受且 live=false", sn.Length == 1 && sn[0].Live == false);
         Dsht.Domain.Model.SessionStat[] s2 = Dsht.Domain.Services.SessionStats.ParseSnapshot(snap.Replace("\"formatVersion\":1", "\"formatVersion\":2").Replace("\"blank\":true", "\"blank\":true,\"live\":true"));
         Check("快照：v2（含 live）被接受且 live 生效", s2.Length == 1 && s2[0].Live);
+        // ★ 2026-10-02：live ≠ 在动（用户实测"没在运行显示 运行6"→ 桌面端 store 里全是 live ✗）
+        //   active/lastActiveAt 是 v2 的**可选追加** ✓ 老插件没有 → HasActive=false（未知 ✗ 不假装 ✗✓）
+        Dsht.Domain.Model.SessionStat[] s3 = Dsht.Domain.Services.SessionStats.ParseSnapshot(
+            snap.Replace("\"formatVersion\":1", "\"formatVersion\":2").Replace("\"blank\":true", "\"blank\":true,\"live\":true,\"active\":true,\"lastActiveAt\":\"2026-10-02T00:00:03Z\""));
+        Check("快照：active=true 读到 + lastActiveAt 保留", s3.Length == 1 && s3[0].Active && s3[0].HasActive && s3[0].LastActiveAt == "2026-10-02T00:00:03Z");
+        Check("快照：没有 active 字段 → HasActive=false（未知 ✓ 不是 false ✓✓）", s2.Length == 1 && !s2[0].HasActive && !s2[0].Active);
+        Dsht.Domain.Model.SessionStat[] s4 = Dsht.Domain.Services.SessionStats.ParseSnapshot(
+            snap.Replace("\"formatVersion\":1", "\"formatVersion\":2").Replace("\"blank\":true", "\"blank\":true,\"live\":true,\"active\":false"));
+        Check("快照：active=false 读到（明确知道没动 ✓）", s4.Length == 1 && s4[0].HasActive && !s4[0].Active);
         Check("快照：formatVersion 不认（v3）→ 空数组（诚实降级）", Dsht.Domain.Services.SessionStats.ParseSnapshot(snap.Replace("\"formatVersion\":1", "\"formatVersion\":3")).Length == 0);
         Check("快照：无 sessions 字段 → 空数组", Dsht.Domain.Services.SessionStats.ParseSnapshot("{\"formatVersion\":1}").Length == 0);
         List<Dsht.Domain.Model.SessionStat> tl = new List<Dsht.Domain.Model.SessionStat>();

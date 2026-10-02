@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildSnapshot, collectSessions, defaultOutFile, writeSnapshot, apply, SNAPSHOT_FORMAT_VERSION } from "../snapshot.js";
+import { buildSnapshot, collectSessions, defaultOutFile, writeSnapshot, apply, markActivity, SNAPSHOT_FORMAT_VERSION } from "../snapshot.js";
 import { name as pluginName, inject as pluginInject } from "../index.js";
 
 let pass = 0;
@@ -329,5 +329,28 @@ await check("**dispose 时清掉 live 标记** ✓（F8：否则 dsh 退出后�
 	fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// ---- ⑩ 实时活动（2026-10-02 用户实测反馈"没有在运行，却显示 运行 6"的根治 ✓✓）----
+await check("**markActivity：seq 差值 = 真在动**（首拍无基线 → 未知 ✗ 不假装 ✗）", async () => {
+	const prevSeq = new Map();
+	const prevActiveAt = new Map();
+	const rows1 = markActivity([{ id: "a", live: true, seq: 5 }, { id: "b", live: true, seq: 9 }], prevSeq, prevActiveAt, "2026-10-02T00:00:00Z");
+	assert.equal("active" in rows1[0], false, "首拍没有基线 → 不写字段（未知 ✓）");
+	const rows2 = markActivity([{ id: "a", live: true, seq: 6 }, { id: "b", live: true, seq: 9 }], prevSeq, prevActiveAt, "2026-10-02T00:00:03Z");
+	assert.equal(rows2[0].active, true, "seq 5→6 变了 → active=true ✓");
+	assert.equal(rows2[1].active, false, "seq 9→9 没变 → active=false（明确知道没动 ✓ 不是未知 ✓）");
+	assert.equal(rows2[0].lastActiveAt, "2026-10-02T00:00:03Z", "观测到活动就记时间 ✓");
+	const rows3 = markActivity([{ id: "a", live: true, seq: 6 }], prevSeq, prevActiveAt, "2026-10-02T00:00:06Z");
+	assert.equal(rows3[0].active, false, "之后安静 → active=false ✓");
+	assert.equal(rows3[0].lastActiveAt, "2026-10-02T00:00:03Z", "lastActiveAt 粘性 ✓ 之后每拍都带 ✓");
+});
+
+await check("**buildSnapshot 透传活动三件（C# ParseSnapshot 按键取值 ✓）+ 格式版本不变（老工具箱兼容 ✓）", async () => {
+	const snap = buildSnapshot([{ id: "a", live: true, active: true, lastActiveAt: "2026-10-02T00:00:03Z", seq: 7 }], "2026-10-02T00:00:03Z", 3000);
+	const txt = JSON.stringify(snap);
+	assert.ok(txt.indexOf('"active":true') >= 0, "active=true 必须写出 ✓");
+	assert.ok(txt.indexOf('"lastActiveAt":"2026-10-02T00:00:03Z"') >= 0, "lastActiveAt 必须写出 ✓");
+	assert.ok(txt.indexOf('"seq":7') >= 0, "seq 必须写出 ✓");
+	assert.equal(SNAPSHOT_FORMAT_VERSION, 2, "版本仍是 2（可选字段追加 ✓ v1/v2 解析器都认 ✓）");
+});
+
 console.log("\n== " + pass + " passed, " + fail + " failed ==");
-if (fail > 0) console.log("失败：" + failures.join(" / "));

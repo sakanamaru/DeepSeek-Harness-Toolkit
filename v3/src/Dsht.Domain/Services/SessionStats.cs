@@ -90,6 +90,10 @@ namespace Dsht.Domain.Services
                 s.LastPromptAt = Str(n, "lastPromptAt");
                 s.Blank = n.Get("blank") != null && n.Get("blank").AsBool(false);
                 s.Live = n.Get("live") != null && n.Get("live").AsBool(false);
+                // ★ v2 追加（2026-10-02，可选字段 ✓ 老插件没有 → HasActive=false → 未知 ✗ 不假装 ✗）
+                s.HasActive = n.Get("active") != null;
+                s.Active = s.HasActive && n.Get("active").AsBool(false);
+                s.LastActiveAt = Str(n, "lastActiveAt");
                 s.Turns = Num(n, "turns");
                 s.Steps = Num(n, "steps");
                 s.LlmMs = Num(n, "llmMs");

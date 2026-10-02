@@ -410,7 +410,7 @@ namespace Dsht.Gui.Avalonia.Shells
             left.Children.Add(T(host.IsSessionsSection ? "会话列表" : "页面", 13, Palette.Text, FontWeight.SemiBold));
             if (host.IsSessionsSection)
             {
-                left.Children.Add(Segmented(new string[] { "全部", "非空", "运行中" }, host.Filter, delegate(int i) { host.SetFilter(i); }));
+                left.Children.Add(Segmented(new string[] { "全部", "非空", "dsh 内" }, host.Filter, delegate(int i) { host.SetFilter(i); }));
                 left.Children.Add(MasterList(host));
             }
             Border leftCard = new Border
@@ -878,7 +878,7 @@ namespace Dsht.Gui.Avalonia.Shells
             string tag = filtered ? (host.SubTab == 2 ? "（子代理）" : "（父会话）") : "";
             Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
             g.Children.Add(KpiCard(Symbol.ChatMultiple, "会话总数" + tag, d == null ? "—" : (filtered ? fCount : d.Count).ToString(),
-                "非空 " + (d == null ? "—" : (filtered ? fNonBlank : d.NonBlank).ToString()) + " · 运行中 " + (d == null ? "—" : (filtered ? fLive : d.Live).ToString()) + " · 子代理 " + (d == null ? "—" : (filtered ? fSubs : d.SubAgentCount).ToString()) + " / 根 " + (d == null ? "—" : (filtered ? fCount - fSubs : d.RootCount).ToString()), Palette.Text, 0, -1));
+                "非空 " + (d == null ? "—" : (filtered ? fNonBlank : d.NonBlank).ToString()) + " · dsh 活跃 " + (d == null ? "—" : (filtered ? fLive : d.Live).ToString()) + "（在动看每行状态 ✓「挂着」= 还在 dsh 里但没动 ✓） · 子代理 " + (d == null ? "—" : (filtered ? fSubs : d.SubAgentCount).ToString()) + " / 根 " + (d == null ? "—" : (filtered ? fCount - fSubs : d.RootCount).ToString()), Palette.Text, 0, -1));
             double hitPct = filtered ? (hitDen > 0 ? hitNum / hitDen : -1) : (d == null ? -1 : d.TotalHitPercent);
             g.Children.Add(KpiCard(Symbol.Database, "缓存命中率" + tag, PctText(hitPct),
                 "缓存读 " + (d == null ? "—" : SessionRow.Human(filtered ? fCache : d.TotalCacheRead)), Palette.Good, 1, hitPct));
@@ -916,7 +916,7 @@ namespace Dsht.Gui.Avalonia.Shells
         private static Control Toolbar(MainWindow host)
         {
             Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
-            Control filters = Segmented(new string[] { "全部", "非空", "运行中" }, host.Filter, delegate(int i) { host.SetFilter(i); });
+            Control filters = Segmented(new string[] { "全部", "非空", "dsh 内" }, host.Filter, delegate(int i) { host.SetFilter(i); });
             Grid.SetColumn(filters, 0);
 
             StackPanel sorts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(14, 0, 0, 0), HorizontalAlignment = HorizontalAlignment.Right };
@@ -1789,6 +1789,21 @@ namespace Dsht.Gui.Avalonia.Shells
                 {
                     edit.Children.Add(T(c.Value, 12, Palette.TextFaint));
                 }
+                else if (c.Key == "gui_start_page")
+                {
+                    // ★ 启动页选择器（2026-10-02 用户要求"设置里可自选" ✓✓）：选**页面名** ✗ 不是裸数字 ✗
+                    //   ComboBox 的 SelectedIndex 恰好就是 NavItems 的索引 = 配置值 ✓✓
+                    int sp;
+                    if (!int.TryParse(c.Value, out sp) || sp < 0 || sp >= MainWindow.NavItems.Length) sp = 1;
+                    ComboBox cb = new ComboBox { MinWidth = 230, FontSize = 12, ItemsSource = MainWindow.NavItems, SelectedIndex = sp };
+                    // ★ 先设 SelectedIndex、后挂事件 ✓ —— 初始化那一拍不会触发一次多余的写盘 ✓
+                    cb.SelectionChanged += delegate
+                    {
+                        if (cb.SelectedIndex >= 0 && cb.SelectedIndex < MainWindow.NavItems.Length)
+                            host.SetConfig("gui_start_page", cb.SelectedIndex.ToString());
+                    };
+                    edit.Children.Add(cb);
+                }
                 else if (c.IsSwitch)
                 {
                     string[] opts = new string[] { "on", "off" };
@@ -2069,7 +2084,7 @@ namespace Dsht.Gui.Avalonia.Shells
             if (deskUp) formText = "desktop（官方桌面端）";
             row1.Children.Add(StatCard(Symbol.Box, "当前形态", formText, "来自 profile 的 dsh.profile.bundles", Palette.Text, -1, 0, 4));
             row1.Children.Add(StatCard(Symbol.PuzzlePiece, "profile / 插件", (pf == null ? "—" : pf.Count.ToString()) + " / " + thirdCount, bundleCount + " 个组合包（含官方）", Palette.Text, -1, 1, 4));
-            row1.Children.Add(StatCard(Symbol.ChatMultiple, "会话", se == null ? "—" : se.Count.ToString(), "非空 " + (se == null ? "—" : se.NonBlank.ToString()) + " · 运行中 " + (se == null ? "—" : se.Live.ToString()), Palette.Text, -1, 2, 4));
+            row1.Children.Add(StatCard(Symbol.ChatMultiple, "会话", se == null ? "—" : se.Count.ToString(), "非空 " + (se == null ? "—" : se.NonBlank.ToString()) + " · dsh 活跃 " + (se == null ? "—" : se.Live.ToString()), Palette.Text, -1, 2, 4));
             row1.Children.Add(StatCard(Symbol.DataUsage, "累计输入 token", se == null ? "—" : SessionRow.Human(se.TotalIn), "输出 " + (se == null ? "—" : SessionRow.Human(se.TotalOut)), Palette.Text, -1, 3, 4));
             s.Children.Add(row1);
 

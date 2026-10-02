@@ -503,12 +503,14 @@ namespace Dsht.Cli
             Console.WriteLine("CONFIG browser_mode " + _cfg.BrowserMode);
             Console.WriteLine("CONFIG ui_parallel " + (_cfg.UiParallel ? "on" : "off"));
             Console.WriteLine("CONFIG scan_children " + (_cfg.ScanChildren ? "on" : "off"));
+            Console.WriteLine("CONFIG gui_start_page " + _cfg.GuiStartPage);   // ★ 界面偏好（2026-10-02 用户要求"启动默认打开页面可自选" ✓）
             // 备注行 ✓✓：GUI 原样显示在对应设置项下面 ✓（"出现什么问题时试哪个" ✓）
             Console.WriteLine("CONFIGNOTE browser_mode " + T("【浏览器打不开时改这个】auto=自动（先 snap run firefox → 再直开 → 最后 xdg-open）/ snap=只走 snap（Ubuntu 的 snap 版 firefox 必须这样 ✓）/ direct=只直开 firefox / xdg=只交给系统默认", "when the browser will not open"));
             Console.WriteLine("CONFIGNOTE ui_parallel " + T("【切页卡顿时改这个】on=并行取数据（快 ✓ 默认）/ off=串行（老行为，个别环境下更稳）", "when switching pages feels slow"));
             Console.WriteLine("CONFIGNOTE scan_children " + T("【会话页想更快时关掉】on=扫描会话文件得出主/子代理归类（默认 ✓ 197 个会话约 200ms）/ off=不扫（会话页更快，但子代理统计会为空）", "to make the sessions page faster"));
             Console.WriteLine("CONFIGNOTE auto_start " + T("【不想让 GUI 自动起 dsh 时关掉】on=GUI 启动时自动启动（默认）/ off=不自动", "if you do not want the GUI to auto-start dsh"));
             Console.WriteLine("CONFIGNOTE auto_start_target " + T("【开机自启启动什么】auto=按平台（Windows/macOS 启动官方桌面端，Linux 启动 dsh web）/ desktop=官方桌面端 / web=dsh web", "what to start at login"));
+            Console.WriteLine("CONFIGNOTE gui_start_page " + T("【GUI 启动先开哪页】0=概览 1=看板 2=会话与Token 3=形态与插件 4=备份 5=体检 6=设置 7=说明 8=更新 9=日志（默认 1）", "which page the GUI opens first"));
             return 0;
         }
         /// <summary>config-set <key> <value>：白名单内才写盘，否则 CONFIGSET_FAIL 原因。</summary>

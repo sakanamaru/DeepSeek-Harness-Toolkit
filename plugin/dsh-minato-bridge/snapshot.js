@@ -102,6 +102,10 @@ export function buildSnapshot(sessions, generatedAt, intervalMs) {
 		const meta = unitValue(v, "sessionListMetadata") || {};
 		const header = s.header || {};
 		const row = { id: strOrUndef(s.id) || "", live: s.live === true };
+		// ★ 2026-10-02：实时活动三件（由 apply 按 seq 差值算出后**传进来** ✓ 这里只透传 ✓ 纯函数 ✓）
+		if (s.active === true) row.active = true;         // ✓ 只写真 true ✓（false 由 markActivity 显式写 ✓）
+		put(row, "lastActiveAt", strOrUndef(s.lastActiveAt));
+		put(row, "seq", numOrUndef(s.seq));
 		// 标题可能来自投影单元，也可能来自 header ✓（两种都试 ✓）
 		put(row, "title", strOrUndef(unitValue(v, "title")) || strOrUndef(header.title));
 		put(row, "cwd", strOrUndef(header.cwd) || strOrUndef(s.cwd));
@@ -217,9 +221,11 @@ export async function collectSessions(ctx) {
 			const n = normalize(item, fromStore);
 			if (!n) continue;
 			let values = {};
+			let seqv;   // ★ 2026-10-02：活 Session 的 seq（"真在动"的证据 ✓）—— 声明在 try 外 ✗ 作用域 ✗ 上一版就是在块外引用块内变量 → ReferenceError 被吞 → 空列表 → 不写快照 ✗✗（测试抓到 ✓）
 			try {
 				// ✓ P1：**只把活 Session 交给 snapshot()** ✓（record 不行 ✗）
 				const target = liveById.get(n.id) || (fromStore ? n.session : null);
+				seqv = target ? numOrUndef(target.seq) : undefined;
 				const snap =
 					target && ctx.sessionProjections && typeof ctx.sessionProjections.snapshot === "function"
 						? await ctx.sessionProjections.snapshot(target)
@@ -238,13 +244,57 @@ export async function collectSessions(ctx) {
 			//     · 活跃会话即使还没有投影值也发行 ✓（`live:true` 是磁盘投影拿不到的事实 ✓）
 			const hasValues = values && Object.keys(values).length > 0;
 			if (hasValues || n.live === true) {
-				list.push({ id: n.id, live: n.live, values, header: n.header });
+				list.push({ id: n.id, live: n.live, values, header: n.header, seq: seqv });
 			}
 		}
 	} catch {
 		/* 只读桥：任何异常都降级为空列表 ✓ 绝不打断 dsh ✓ */
 	}
 	return list;
+}
+
+/**
+ * 纯函数 ✓（不碰 ctx/磁盘/时钟 → 可单测）：按"**相邻两拍之间 seq 是否变过**"给行打实时活动标记 ✓✓
+ *
+ * ★★ 动机（2026-10-02 用户实测反馈"没有在运行，却显示 运行 6"）✗✗
+ *   `live` 只表示"**还在 dsh 进程里挂着**"——桌面端开着时它 store 里的 6 个会话**全是 live** ✗
+ *   哪怕其中 5 个已经几天没碰 ✓✓。而"真在动"唯一可靠的进程内证据是 **seq（事件序号）变了** ✓：
+ *   long 生成中途 lastPromptAt 不更新 ✗ 但 seq 一直在加 ✓。
+ *
+ * 规则（诚实边界 ✓✓）：
+ *   · 有基线、seq 变了      → `active: true`（这一拍在动 ✓）
+ *   · 有基线、seq 没变      → `active: false`（**明确知道没动** ✓ 不是"不知道" ✓）
+ *   · 没有基线 / 取不到 seq → 不写字段（**未知** ✗ 绝不假装 ✗）
+ *   · `lastActiveAt` 一旦观测到活动就**粘性**带上（之后每拍都带着最近活动时间 ✓）
+ *
+ * @param {Array} sessions collectSessions 的行（含可选 seq）
+ * @param {Map} prevSeq id → 上一拍的 seq（**就地更新**为这一拍的值 ✓）
+ * @param {Map} prevActiveAt id → 最近活动 ISO（粘性 ✓）
+ * @param {string} nowIso 本拍时间
+ */
+export function markActivity(sessions, prevSeq, prevActiveAt, nowIso) {
+	const rows = [];
+	for (const s of sessions || []) {
+		if (!s) continue;
+		const row = Object.assign({}, s);   // 浅拷贝 ✓ 不改入参 ✓
+		const seq = numOrUndef(s.seq);
+		if (seq !== undefined) {
+			const prev = prevSeq.get(s.id);
+			if (prev !== undefined) {
+				if (prev !== seq) {
+					row.active = true;
+					prevActiveAt.set(s.id, nowIso);
+				} else {
+					row.active = false;   // ★ 明确知道没动 ✓（写 false → C# 侧 HasActive=true ✓）
+				}
+			}
+			prevSeq.set(s.id, seq);
+		}
+		const la = prevActiveAt.get(s.id);
+		if (la) row.lastActiveAt = la;
+		rows.push(row);
+	}
+	return rows;
 }
 
 /**
@@ -264,6 +314,9 @@ export function apply(ctx, config) {
 	const rawInterval = Number(cfg.intervalMs);
 	const interval = Number.isFinite(rawInterval) ? Math.min(Math.max(1000, rawInterval), 3600000) : 3000;
 	let disposed = false;
+	// ★ 2026-10-02：seq 差值的记忆（"真在动"的唯一实时证据 ✓ 见 markActivity ✓）
+	const lastSeq = new Map();
+	const lastActiveAt = new Map();
 	const tick = async () => {
 		// P3 FIX (plugin audit MAJOR): disposed was only checked on entry, so a tick already
 		// awaiting listSessions resumed after the dispose handler cleared the live flags and
@@ -275,7 +328,9 @@ export function apply(ctx, config) {
 			if (disposed) return;   // P3 FIX: re-check after the await
 			// ✓ 零会话**不写** ✓（避免用空数据覆盖上一份好的 ✓）
 			if (sessions.length === 0) return;
-			writeSnapshot(outFile, buildSnapshot(sessions, new Date().toISOString(), interval));
+			const now = new Date().toISOString();
+			// ★ 先按 seq 差值打"真在动"标记 ✓ 再组装 ✓（`live` ≠ 在动 ✗ 见 markActivity 注释 ✓）
+			writeSnapshot(outFile, buildSnapshot(markActivity(sessions, lastSeq, lastActiveAt, now), now, interval));
 		} catch {
 			/* 只读桥：静默降级 ✓ */
 		}

@@ -15,8 +15,20 @@ namespace Dsht.Domain.Model
         public bool Blank;                  // 空会话（dsh 自己标的）
 
         /// <summary>是否**正在运行**（来自桥接插件的快照：dsh `listSessions()` 的 `live` 标记）。
-        /// 磁盘投影拿不到这个事实，所以插件缺失时恒为 false —— 这是"面板少了实时部分"的诚实体现。</summary>
+        /// 磁盘投影拿不到这个事实，所以插件缺失时恒为 false —— 这是"面板少了实时部分"的诚实体现。
+        /// ★ 语义边界（2026-10-02 实测定稿 ✓）：`live` 只表示"**dsh 进程内还挂着这个会话**"
+        ///   —— 桌面端开着时它 store 里的 6 个会话**全是 live** ✗ 哪怕 5 个几天没碰 ✓✓
+        ///   所以"真在动"要看 <see cref="Active"/>（seq 在插件相邻两拍之间变过 ✓）。</summary>
         public bool Live;
+
+        /// <summary>**真在动**：插件的相邻两拍（默认 3 秒）之间该会话的 `seq` 变过 ✓✓
+        /// 这是"有事件在发生"的进程内实时事实 —— long 生成中途 lastPromptAt 不会变 ✗ 但 seq 会 ✓。
+        /// 存在性用 <see cref="HasActive"/> 判定（插件太老/首拍无基线 → 未知 ✗ 不假装 false ✓）。</summary>
+        public bool Active;
+        /// <summary>插件有没有给出 `active` 字段（没有 = 该事实未知 ✓）。</summary>
+        public bool HasActive;
+        /// <summary>最近一次观测到活动的时间（ISO；插件按 seq 变化更新 ✓ 空串 = 未知）。</summary>
+        public string LastActiveAt = "";
 
         public long Turns, Steps;
         public long LlmMs, ToolMs, TtftMs, DecodeMs, DecodeTokens, TtftSteps;

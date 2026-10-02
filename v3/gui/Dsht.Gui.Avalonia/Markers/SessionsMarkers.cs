@@ -31,6 +31,11 @@ namespace Dsht.Gui.Avalonia.Markers
         public bool Live;
         /// <summary>是否**知道**运行态（只有桥接插件快照才提供 live；磁盘投影没有这个事实）。</summary>
         public bool LiveKnown;
+        // ★ 2026-10-02：`live` ≠ "在动"（桌面端开着时 store 里**全是 live** ✗ 用户实测"没在运行显示 运行6" ✓）
+        //   `active` = 插件相邻两拍之间 seq 变过 = 真在动 ✓；存在性判定（unknown ≠ false ✓）
+        public bool Active;
+        public bool ActiveKnown;
+        public string LastActive = "";
 
         /// <summary>相对最大输入量的条形长度（0–100，由 SessionsView.AttachBars 计算）</summary>
         public int TokenBar;
@@ -40,10 +45,22 @@ namespace Dsht.Gui.Avalonia.Markers
         /// <summary>标题（空则给一个人话兜底，不留空白让人猜）。</summary>
         public string TitleText { get { return string.IsNullOrEmpty(Title) ? "（未命名会话）" : Title; } }
 
-        /// <summary>状态语义：0=运行中 1=已结束 2=空会话（颜色由界面层决定）。</summary>
+        /// <summary>状态语义：0=运行中(dsh 内) 1=已结束 2=空会话（颜色由界面层决定）。</summary>
         public int StatusKind { get { return Live ? 0 : (Blank ? 2 : 1); } }
 
-        public string LiveText { get { if (!LiveKnown) return Blank ? "空会话" : "运行态未知"; return Live ? "运行中" : (Blank ? "空会话" : "已结束"); } }
+        /// <summary>★ 2026-10-02 诚实化：`live` 只表示"还挂在 dsh 进程里"✗ 不是"在跑"✗✓
+        /// 桌面端开着 → 它 store 里的会话全是 live（哪怕几天没碰 ✓）→ 原来一律显示"运行中"是**过度断言** ✗。
+        /// 现在：active 已知 → 运行中 / 挂着；未知 → "dsh 内挂着（活动未知）" ✗ 不猜 ✗✓。</summary>
+        public string LiveText
+        {
+            get
+            {
+                if (!LiveKnown) return Blank ? "空会话" : "运行态未知";
+                if (!Live) return Blank ? "空会话" : "已结束";
+                if (ActiveKnown) return Active ? "运行中" : "挂着（dsh 内未动）";
+                return "dsh 内挂着（活动未知）";
+            }
+        }
 
         public string HitText { get { return HitPercent < 0 ? "unknown" : HitPercent.ToString("0.0", CultureInfo.InvariantCulture) + "%"; } }
         public string DecodeText { get { return DecodeTps < 0 ? "unknown" : DecodeTps.ToString("0.0", CultureInfo.InvariantCulture) + " tok/s"; } }
@@ -328,6 +345,11 @@ namespace Dsht.Gui.Avalonia.Markers
             r.CtxPercent = Pct(Get(kv, "ctx"));
             r.Blank = Get(kv, "blank") == "1";
             r.Live = Get(kv, "live") == "1";
+            // ★ 2026-10-02：真在动（插件相邻两拍 seq 变过 ✓）；unknown → ActiveKnown=false ✗ 不假装 ✗
+            string act = Get(kv, "active");
+            r.Active = act == "1";
+            r.ActiveKnown = act == "1" || act == "0";
+            r.LastActive = Decode(Clean(Get(kv, "lastActive")));
             return r;
         }
 

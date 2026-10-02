@@ -185,7 +185,11 @@ namespace Dsht.Cli
                     + " ttft=" + (s.TtftMs > 0 ? s.TtftMs.ToString(System.Globalization.CultureInfo.InvariantCulture) : "unknown")
                     + " ctx=" + Num1(SessionStats.ContextPressurePercent(s))
                     + " blank=" + (s.Blank ? "1" : "0")
-                    + " live=" + (s.Live ? "1" : "0"));
+                    // ★ 2026-10-02：`live` 只表示"dsh 进程内还挂着"（桌面端开着时 store 里全是 live ✗）
+                    //   `active` 才是"真在动"（插件相邻两拍之间 seq 变过 ✓）；未知 → unknown ✗ 不假装 0 ✓
+                    + " live=" + (s.Live ? "1" : "0")
+                    + " active=" + (s.HasActive ? (s.Active ? "1" : "0") : "unknown")
+                    + " lastActive=" + (string.IsNullOrEmpty(s.LastActiveAt) ? "unknown" : MarkerText.Encode(s.LastActiveAt)));
             }
             Console.WriteLine("SESSIONS_TOTAL in=" + (tot.UncachedInputTokens + tot.CacheReadTokens)
                 + " out=" + tot.OutputTokens

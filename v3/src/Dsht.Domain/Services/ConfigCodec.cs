@@ -77,6 +77,12 @@ namespace Dsht.Domain.Services
             else if (t.StartsWith("browser_mode=", StringComparison.Ordinal)) c.BrowserMode = t.Substring("browser_mode=".Length).Trim();
             else if (t.StartsWith("ui_parallel=", StringComparison.Ordinal)) c.UiParallel = t.Substring("ui_parallel=".Length).Trim() != "off";
             else if (t.StartsWith("scan_children=", StringComparison.Ordinal)) c.ScanChildren = t.Substring("scan_children=".Length).Trim() != "off";
+            else if (t.StartsWith("gui_start_page=", StringComparison.Ordinal))
+            {
+                // 与白名单同一条规则 ✓：0..9 之外不认（保持默认 ✓ 不猜 ✗）——旧配置文件没有这行 → 默认 1 ✓
+                int n;
+                if (int.TryParse(t.Substring("gui_start_page=".Length).Trim(), out n) && n >= 0 && n <= 9) c.GuiStartPage = n;
+            }
             }
             return c;
         }
@@ -99,6 +105,7 @@ namespace Dsht.Domain.Services
             sb.Append("browser_mode=").Append(c.BrowserMode).Append("\r\n");
             sb.Append("ui_parallel=").Append(c.UiParallel ? "on" : "off").Append("\r\n");
             sb.Append("scan_children=").Append(c.ScanChildren ? "on" : "off").Append("\r\n");
+            sb.Append("gui_start_page=").Append(c.GuiStartPage).Append("\r\n");
             return sb.ToString();
         }
 
