@@ -99,6 +99,13 @@ namespace Dsht.Gui.Avalonia
             InitChrome();
             for (int i = 0; i < 5; i++) BindShell(i);
             for (int i = 0; i < 4; i++) BindStyle(i);
+            // ★★★ 用户反馈「延迟还在」：根因不在切页慢，而在**点击后零反馈** ✗✗
+            //   实测（2026-10-02）：体检页要跑 `doctor`（6.5s，含 npm registry 探测）、
+            //   更新页要跑 `update-center`（7.9s，查 GitHub）—— 期间 BuildShell 一次都不执行，
+            //   屏幕纹丝不动 ✓ 看起来就是"卡死" ✓✓
+            //   ✓ 现在：首屏**先**画骨架 + 加载浮层（不等数据 ✓），数据到了再画一次 ✓
+            _loading = true;
+            BuildShell();
             Refresh();
         }
 
@@ -1031,6 +1038,11 @@ namespace Dsht.Gui.Avalonia
             _mainSection = idx;
             _subTab = 0;
             SortMode = 0;
+            // ★★★ 用户反馈「延迟还在」：点完页面 → 屏幕什么都不变 → 等 CLI 跑完才换页 ✗✗
+            //   ✓ 现在：**点击立刻换页**（有旧数据先显示旧数据 ✓ stale-while-revalidate），
+            //     同时亮加载浮层 ✓ 数据在后台刷新，到了再画一次 ✓✓ —— 换页从此是 0ms 级 ✓
+            _loading = true;
+            BuildShell();
             Refresh();
         }
 
@@ -1106,8 +1118,30 @@ namespace Dsht.Gui.Avalonia
             // （用户要求：那种提示改成"窗口内右下角弹窗" ✓ 原来是页面流里的一张卡片 ✗）
             Grid wrap = new Grid();
             wrap.Children.Add(Shells.Shells.Build(_shell, this));
+            // ★ 加载浮层（不挡交互 ✓）：有旧数据时旧数据照常显示 + 右上角小转标；没有时居中加载卡 ✓
+            if (_loading) wrap.Children.Add(LoadingLayer());
             wrap.Children.Add(ToastLayer());
             body.Content = wrap;
+            // ★ 内容淡入（用户要求的「动画过渡」✓）：**只在"数据刚到"的那一次**淡入 160ms ✓
+            //   点击瞬切的那次（_loading=true）**不淡** ✓ —— 反馈要立刻，过渡要柔和 ✓✓
+            //   实现：先把 Opacity 置 0，一拍（40ms）后置 1 → DoubleTransition 自动补间 ✓
+            //   整段包 try/catch ✗ 任何一环失败就"直接可见" ✓✓ —— 动画绝不许有把界面变黑的模式 ✗
+            if (!_loading)
+            {
+                try
+                {
+                    wrap.Opacity = 0;
+                    wrap.Transitions = new global::Avalonia.Animation.Transitions
+                    {
+                        new global::Avalonia.Animation.DoubleTransition { Property = Visual.OpacityProperty, Duration = TimeSpan.FromMilliseconds(160) }
+                    };
+                    global::Avalonia.Threading.DispatcherTimer fadeTimer = new global::Avalonia.Threading.DispatcherTimer();
+                    fadeTimer.Interval = TimeSpan.FromMilliseconds(40);
+                    fadeTimer.Tick += delegate { fadeTimer.Stop(); wrap.Opacity = 1; };
+                    fadeTimer.Start();
+                }
+                catch { wrap.Opacity = 1; }   // ★ 保险 ✓✓
+            }
             // 有新的操作日志 → 弹一次 ✓（去重：同一条不重复弹 ✓）
             if (!string.IsNullOrEmpty(_actionLog) && _actionLog != _lastToasted)
             {
@@ -1170,6 +1204,114 @@ namespace Dsht.Gui.Avalonia
             if (_toast != null) _toast.IsVisible = false;
         }
 
+        // —— 加载反馈（用户反馈「延迟还在」的根治：**点击必须立刻有反应** ✓）——
+        private bool _loading;
+        /// <summary>一次刷新正在后台跑 ✓。BuildShell 据此决定画不画加载浮层 ✓。</summary>
+        public bool IsLoading { get { return _loading; } }
+        /// <summary>体检页的**逐行实时列表** ✓（`doctor --stream` 来一条记一条 ✓）。
+        ///   跨刷新保留 ✓ → 重进体检页时**旧列表先显示**，新结果再逐行覆盖 ✓✓（杀软式 ✓ 用户建议 ✓）。</summary>
+        private List<string> _doctorLive = new List<string>();
+        public List<string> DoctorLive { get { return _doctorLive; } }
+        /// <summary>当前页面有没有旧数据可显示 ✓ —— 决定浮层做"右上角小转标"还是"居中加载卡" ✓。</summary>
+        public bool HasRenderableData
+        {
+            get { return _rawOutput.Length > 0 || _doctor != null || _data != null || _backups != null || _profiles != null || _doctorLive.Count > 0; }
+        }
+        /// <summary>加载浮层的文案要**诚实** ✗ 不写"请稍候"这种空话 ✓ —— 哪页要等、为什么等，如实写 ✓。
+        ///   （实测 2026-10-02：体检 `doctor` 6.5s —— 其中一项要探测 npm registry；更新 `update-center` 7.9s —— 要查 GitHub ✓）</summary>
+        public string LoadingHint
+        {
+            get
+            {
+                switch (_mainSection)
+                {
+                    case 5: return "正在体检：其中一项要探测 npm registry，离线也得等它超时（约几秒）";
+                    case 8: return "正在查询 GitHub / npm registry（耗时取决于网络，约几秒）";
+                    case 0:
+                    case 1: return "正在读取 dsh 状态…";
+                    case 7: return "正在读取安装信息…";
+                    default: return "正在读取…";
+                }
+            }
+        }
+
+        /// <summary>加载浮层 ✓✓ 全程 `IsHitTestVisible=false` ✓ 不挡点击 ✓。
+        ///   ① 有旧数据 → 右上角小转标（旧数据照常显示 ✓ 不断档 ✓ stale-while-revalidate）
+        ///   ② 无旧数据 → 居中卡片（转圈 + **诚实**的等待原因 ✓）</summary>
+        private Control LoadingLayer()
+        {
+            if (HasRenderableData)
+            {
+                StackPanel sp = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
+                sp.Children.Add(Spinner(13, 2));
+                sp.Children.Add(new TextBlock { Text = "正在刷新…", FontSize = 11, Foreground = Palette.TextDim, VerticalAlignment = VerticalAlignment.Center });
+                return new Border
+                {
+                    Child = sp,
+                    Background = Palette.CardBg,
+                    BorderBrush = Palette.Border,
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(999),
+                    Padding = new Thickness(10, 5),
+                    Margin = new Thickness(0, 14, 18, 0),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    VerticalAlignment = VerticalAlignment.Top,
+                    IsHitTestVisible = false,
+                    BoxShadow = new BoxShadows(new BoxShadow { Blur = 14, OffsetY = 3, Color = Color.FromArgb(50, 0, 0, 0) })
+                };
+            }
+            // 首次进入该页（还没有任何数据）：居中卡片，别让用户对着空白页猜
+            StackPanel card = new StackPanel { Spacing = 10 };
+            Control ringBig = Spinner(28, 3);
+            ringBig.HorizontalAlignment = HorizontalAlignment.Center;
+            card.Children.Add(ringBig);
+            card.Children.Add(new TextBlock { Text = "首次进入本页，正在读取", FontSize = 13, FontWeight = FontWeight.SemiBold, Foreground = Palette.Text, HorizontalAlignment = HorizontalAlignment.Center });
+            card.Children.Add(new TextBlock { Text = LoadingHint, FontSize = 11.5, Foreground = Palette.TextDim, TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Center });
+            return new Border
+            {
+                Child = card,
+                Background = Palette.CardBg,
+                BorderBrush = Palette.Border,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(12),
+                Padding = new Thickness(26, 22),
+                MaxWidth = 420,
+                Margin = new Thickness(24),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false,
+                BoxShadow = new BoxShadows(new BoxShadow { Blur = 24, OffsetY = 6, Color = Color.FromArgb(60, 0, 0, 0) })
+            };
+        }
+
+        /// <summary>转圈指示 ✓。用 DispatcherTimer 驱动（不赌动画 API ✓）；元素**脱离视觉树就停表** ✓✓
+        ///   —— BuildShell 每次整体重建 → 旧浮层必然脱离 → 表必然停 ✓ 不泄漏 ✓。
+        ///   起表失败就退化为静止圆环 ✓：宁可没有动画，不许它影响功能 ✓。</summary>
+        private static global::Avalonia.Controls.Shapes.Ellipse Spinner(double size, double stroke)
+        {
+            global::Avalonia.Controls.Shapes.Ellipse ring = new global::Avalonia.Controls.Shapes.Ellipse
+            {
+                Width = size,
+                Height = size,
+                Stroke = Palette.Accent,
+                StrokeThickness = stroke,
+                StrokeDashArray = new global::Avalonia.Collections.AvaloniaList<double>(new double[] { System.Math.PI * size * 0.3, System.Math.PI * size * 0.7 })
+            };
+            RotateTransform rt = new RotateTransform(0);
+            ring.RenderTransform = rt;
+            ring.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
+            try
+            {
+                global::Avalonia.Threading.DispatcherTimer tm = new global::Avalonia.Threading.DispatcherTimer();
+                tm.Interval = TimeSpan.FromMilliseconds(40);
+                tm.Tick += delegate { rt.Angle = (rt.Angle + 30) % 360; };
+                tm.Start();
+                ring.DetachedFromVisualTree += delegate { tm.Stop(); };
+            }
+            catch { }
+            return ring;
+        }
+
         private bool _busy;
         private bool _refreshQueued;
         /// <summary>刷新 ✓。**用户反馈（2026-09-30）**：「按钮交互还是有延迟，并且不低」✓
@@ -1182,6 +1324,7 @@ namespace Dsht.Gui.Avalonia
         {
             if (_busy) { _refreshQueued = true; return; }   // ✓ 不丢 ✓ 排队再刷 ✓
             _busy = true;
+            _loading = true;   // ★ 每次刷新都亮加载浮层 ✓（在 RefreshGuardedAsync 的 finally 里熄灭 ✓）
             _ = RefreshGuardedAsync();
         }
 
@@ -1241,9 +1384,21 @@ namespace Dsht.Gui.Avalonia
             try { await RefreshAsync(); }
             // ✓ 用户反馈（2026-09-30）：刷新期间的点击原来被**直接丢掉** ✗ → 表现"点了没反应" ✓
             //   现在：收尾时若**有排队的刷新** → 立刻再刷一次 ✓✓
-            finally { _busy = false; if (_refreshQueued) { _refreshQueued = false; Refresh(); } }
+            finally
+            {
+                // ★ 统一在这里画**最后一次** ✓：数据到手 + 加载浮层熄灭，一笔到位 ✓
+                //   （旧代码在 RefreshAsync 的 5 条路径里各画一次 → 分散且必然在数据前多画一次空页 ✗）
+                _busy = false;
+                // ★ 后面**还有排队的刷新** → 指示灯继续亮着 ✓（别让中间那笔画完就灭 ✗
+                //   否则"体检→更新"连点时，更新页会有一段时间**没有指示却还在等数据** ✗✗）
+                _loading = _refreshQueued;
+                BuildShell();
+                if (_refreshQueued) { _refreshQueued = false; Refresh(); }   // ✓ 不丢 ✓ 排队再刷 ✓
+            }
         }
 
+        // ★ RefreshAsync **只取数据，不画界面** ✓（画界面统一在 RefreshGuardedAsync 的 finally ✓ 一笔到位 ✓）
+        //   —— 旧版在 5 条路径里各画一次：既分散，也让"取数据中"永远得不到一次即时换页 ✗
         private async System.Threading.Tasks.Task RefreshAsync()
         {
             string cli = CliPath();
@@ -1252,7 +1407,6 @@ namespace Dsht.Gui.Avalonia
             {
                 _data = null;
                 _rawOutput = "未找到工具箱 CLI。请把 dsh-minato.exe（或 dsht.exe / dsht_v3.exe）放到本程序同目录，或设置环境变量 DSHT_CLI 指向它。";
-                BuildShell();
                 return;
             }
 
@@ -1284,7 +1438,6 @@ namespace Dsht.Gui.Avalonia
                 _backups = SummaryMarkers.ParseBackups(tBk.Result);
                 }   // ✗ 原来带 --detail → 每份备份都要算目录大小（重 I/O ✗）→ 概览每次刷新都卡几秒 ✓✓ 这里只要 Count/Latest ✓ 不需要大小 ✓（方案 A ✓）
                 if (_doctor == null) _doctor = new DoctorSummary();
-                BuildShell();
                 return;
             }
             if (_mainSection == 3)
@@ -1293,11 +1446,35 @@ namespace Dsht.Gui.Avalonia
                 _profiles = ProfilesMarkers.Parse(_rawOutput);
                 for (int i = 0; i < _rawOutput.Length && _profilesRoot.Length == 0; i++) { }
                 _profilesRoot = ProfilesRootFrom(cli);
-                BuildShell();
                 return;
             }
             if (!IsSessionsSection)
             {
+                // ★ 体检 / 更新两页走**流式**（`--stream` ✓）：列表先出来、逐行出结果 —— 杀软式（用户建议 2026-10-02 ✓）。
+                //   CLI 默认输出逐字不变（已用 HEAD 基线字节级比对 ✓）→ 契约/测试全不动 ✓；
+                //   顺带体检页还多了"全部条目"列表（原来只列 错误/提醒 ✓）。
+                if (_mainSection == 5)
+                {
+                    _doctorLive = new List<string>();   // ★ 换新列表：点击那一笔画的是旧树 ✓ 首行到达后才开始逐行替换 ✓
+                    _rawOutput = "";
+                    string full = await System.Threading.Tasks.Task.Run(delegate
+                    {
+                        return RunStreaming(cli, "doctor --stream", delegate(string ln) { StreamLine(ln, true); });
+                    });
+                    _rawOutput = full;
+                    _doctor = SummaryMarkers.ParseDoctor(full);   // 汇总行在**末尾** ✓ 解析器按前缀认、不挑位置 ✓
+                    return;
+                }
+                if (_mainSection == 8)
+                {
+                    _rawOutput = "";   // 更新页渲染器每次**重解析** RawOutput ✓（部分文本也认 ✓）→ 逐行追加即可 ✓
+                    string full = await System.Threading.Tasks.Task.Run(delegate
+                    {
+                        return RunStreaming(cli, "update-center --stream", delegate(string ln) { StreamLine(ln, false); });
+                    });
+                    _rawOutput = full;
+                    return;
+                }
                 // 日志页要带**当前筛选** ✓ 用动态命令 ✓（其余页用 NavCli 的固定命令 ✓）
                 // ★★★ **重大修正（2026-10-01）** ✗✗ —— 这是我上一轮引入的 bug ✓
                 //   ✗ 原来写的是：`sectionCmd = await Task.Run(() => Run(cli, string.Join(" ", NavCli[…])));` ✗✗
@@ -1314,7 +1491,6 @@ namespace Dsht.Gui.Avalonia
                     : string.Join(" ", (_mainSection >= 0 && _mainSection < NavCli.Length && NavCli[_mainSection] != null ? NavCli[_mainSection] : new string[0]));
                 _rawOutput = await System.Threading.Tasks.Task.Run(delegate { return RunCached(cli, sectionCmd); });
                 if (_mainSection == 5) _doctor = SummaryMarkers.ParseDoctor(_rawOutput);   // 体检页吃解析结果，不是只吃原文
-                BuildShell();
                 return;
             }
 
@@ -1333,7 +1509,6 @@ namespace Dsht.Gui.Avalonia
                 for (int i = 0; i < rows.Count; i++) vms.Add(new SessionRowVm(rows[i]));
                 _rows = vms;
             }
-            BuildShell();
         }
 
         /// <summary>从 CLI 的 SESSIONS_ROOT 风格路径推出 profiles 根（profiles 命令不直接给，这里用数据根 + profiles）。</summary>
@@ -1511,6 +1686,60 @@ namespace Dsht.Gui.Avalonia
             {
                 return "运行 CLI 失败: " + ex.Message;
             }
+        }
+
+        /// <summary>流式跑一条 CLI 命令 ✓（`--stream` 专用 ✓）：stdout **每读到一行就回调**。
+        ///   ★ 回调发生在**后台线程** → GUI 侧必须自己包 Dispatcher.UIThread.Post ✓（见 StreamLine ✓）。
+        ///   stderr 用后台任务**先排空** ✓✓ —— 与 Run 同一套防死锁姿势 ✓
+        ///   （子进程往 stderr 狂写时管道写满会把自己卡死 ✗）。
+        ///   返回完整全文 ✓（供 `_rawOutput` 与解析器收尾用 ✓）。</summary>
+        private static string RunStreaming(string cli, string args, System.Action<string> onLine)
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo(cli, args);
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                psi.StandardOutputEncoding = new UTF8Encoding(false);
+                psi.StandardErrorEncoding = new UTF8Encoding(false);
+                using (Process p = Process.Start(psi))
+                {
+                    System.Threading.Tasks.Task<string> seT = System.Threading.Tasks.Task.Run(delegate { return p.StandardError.ReadToEnd(); });
+                    StringBuilder sb = new StringBuilder();
+                    string ln;
+                    while ((ln = p.StandardOutput.ReadLine()) != null)
+                    {
+                        sb.Append(ln).Append("\r\n");
+                        if (onLine != null) { try { onLine(ln); } catch { } }
+                    }
+                    if (!p.WaitForExit(30000)) { try { p.Kill(); } catch { } return "（超时 30 秒，已结束该进程）"; }
+                    string err = seT.Result;
+                    if (!string.IsNullOrEmpty(err)) sb.Append("[stderr] ").Append(err);
+                    return sb.Length == 0 ? "（无输出）" : sb.ToString();
+                }
+            }
+            catch (Exception ex)
+            {
+                return "运行 CLI 失败: " + ex.Message;
+            }
+        }
+
+        /// <summary>把流式行**投递回 UI 线程** ✓：追加进原文 + 体检页记入逐行列表 + 立即重画 ✓✓。
+        ///   每行画一次 ✓（体检 ~14 行 / 更新 ~16 行 → 每次 BuildShell 只几毫秒 ✓ 可承受 ✓）。</summary>
+        private void StreamLine(string line, bool doctor)
+        {
+            global::Avalonia.Threading.Dispatcher.UIThread.Post(delegate
+            {
+                try
+                {
+                    _rawOutput += line + "\r\n";
+                    if (doctor && line.StartsWith("[", StringComparison.Ordinal)) _doctorLive.Add(line);   // 只收条目行（DOCTOR_BEGIN/汇总 行不进列表 ✓）
+                    BuildShell();
+                }
+                catch { }   // 一行画挂了不许断流 ✓
+            });
         }
     }
 }

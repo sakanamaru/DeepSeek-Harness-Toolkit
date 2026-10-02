@@ -21,6 +21,31 @@ All notable changes to **dsh-minato** (unofficial). Full release notes, assets a
 - 顺带修掉两处**按相对路径读文件**的测试：`unit_tests.cs` 的夹具路径与 `gui_logic_tests.cs` 的
   `SrcPath()` —— 搬进子目录后它们会读不到文件，后者还会让 **i18n 强制检查整块静默跳过**。
 
+## 响应性 — 点击立刻换页 + 加载反馈 + 体检/更新逐行出结果（2026-10-02）
+
+**Responsiveness — instant page switch, visible loading, row-by-row results (2026-10-02)**
+
+- **实测**（自包含单文件 CLI，win-x64）：`doctor` **6.5s**（含 npm registry 探测，最长 4s）、
+  `update-center` **7.9s**（查 GitHub + npm）。而切页流程是"点完 → 等 CLI 跑完 → 才重建界面"
+  —— **期间屏幕纹丝不动** ✗✗ 这就是"延迟还在"的真相：不是没修，是**点击后零反馈** ✗✓
+- **点击立刻换页**：导航先**立刻**把页面换出去（有旧数据先显示旧数据 ✓ stale-while-revalidate），
+  数据在后台刷新、到账再画一次 → 换页 0ms 级 ✓✓
+- **加载反馈**：每次刷新亮一枚浮层（有旧数据 → 右上角小转标；首次进入 → 居中加载卡）。
+  文案**如实写**哪页要等多久、为什么（体检写明"npm registry 那项最长 4 秒"、更新写明"要查 GitHub"）——
+  不写"请稍候"这种空话 ✗
+- **内容淡入**：数据到账那一笔 0→1 淡入 160ms（用户要求的"动画过渡" ✓）。整段动画包 try/catch，
+  任何一环失败就"直接可见" —— **动画绝不许有把界面变黑的模式** ✓✓
+- **体检/更新两页改流式（杀软式"列表先出、逐行出结果"，用户建议 ✓）**：
+  - CLI 新增 `--stream`（仅 v3 ✓ GUI 专用 ✓）。**默认输出逐字不变** —— 已用 HEAD 基线做**字节级比对**
+    （doctor / update-center 均 identical ✓）→ v2.x 标记契约 / compare_markers / 347 项契约测试全不动 ✓✓
+  - `doctor --stream`：条目**边算边打**，汇总行挪到末尾；实现上给 `DoctorCollect` 传一个
+    带"逐条发射"回调的容器（`Collection<T>.InsertItem` 虚拦截）→ **方法体一行没改** ✓
+  - `update-center --stream`：webui 的慢网络查询**后台先起跑、最后再等** → 桌面端/本工具/插件**秒出**、
+    webui 最后出 ✓；默认行序靠 `InsertRange(0)` 保持不变 ✓
+  - GUI：体检页从"只列错误/提醒"升级为**全部条目逐行显示**（通过项也可见 ✓ 一眼看清查了什么）+
+    尾部"…其余项检测中"行 ✓；更新页每行**重解析部分文本**（解析器本就按前缀扫行、位置无关 ✓）✓
+- **顺带修掉**：排队的刷新还没轮到时，中间那一笔画完就把加载指示熄了 ✗ → 改为"还有排队就继续亮" ✓
+
 ## 体积 — GUI 开启裁剪（2026-10-02）
 
 **Size — the GUI is now trimmed (2026-10-02)**

@@ -100,21 +100,49 @@ namespace Dsht.Cli
             }
             return 0;
         }
+        /// <summary>带"逐条发射"回调的 DocItem 容器 ✓（`doctor --stream` 专用 ✓）。
+        ///   ★ 技巧：DoctorCollect 里的 `items.Add(...)` **一行都不用改** ✓✓
+        ///     —— `Collection&lt;T&gt;.Add` 走 `InsertItem` 虚调用 ✓ 在这里拦下发一条打一条 ✓。</summary>
+        private sealed class EmitDocList : System.Collections.ObjectModel.Collection<DocItem>
+        {
+            private readonly System.Action<DocItem> _emit;
+            public EmitDocList(System.Action<DocItem> emit) { _emit = emit; }
+            protected override void InsertItem(int index, DocItem item)
+            {
+                base.InsertItem(index, item);
+                if (_emit != null) { try { _emit(item); } catch { } }
+            }
+        }
+
         private static int Doctor(string[] args, ServiceRegistry reg)
         {
-            List<DocItem> items = new List<DocItem>();
-            DoctorCollect(reg, items);
-            string summary = DoctorSummary.Summary(items);
-            Console.WriteLine(summary);
-            foreach (DocItem it in items)
-                Console.WriteLine("[" + DoctorSummary.Level(it.Level) + "] " + it.Cat + " " + it.Text);
+            // ★★ --stream（2026-10-02，GUI 专用 ✓）：**边算边打印**条目行，汇总行挪到**最后** ✓✓
+            //   —— 杀软式"列表先出来、逐行出结果"（用户建议 ✓）。慢项本来就在队尾：
+            //     System/Harness/Service/Workspace/Backup 先出（亚秒级 ✓），npm registry 探测（最长 4s）倒数第二 ✓
+            //   ★ 默认输出**逐字不变** ✓（汇总仍在最前 ✓）→ v2.x 标记契约 / compare_markers / 契约测试全不动 ✓✓
+            //   两边条目行格式**完全一致**（`[OK|WARN|ERROR] 类别 描述` ✓）→ GUI 的解析器按前缀扫行、
+            //     不挑位置（SummaryMarkers.ParseDoctor 对 DOCTOR_OK/WARN/ERROR 只认前缀 ✓）→ 流式文本可直接喂 ✓
+            bool stream = Has(args, "--stream");
+            if (stream) Console.WriteLine("DOCTOR_BEGIN");
+            EmitDocList items = new EmitDocList(stream
+                ? (System.Action<DocItem>)delegate(DocItem it) { Console.WriteLine("[" + DoctorSummary.Level(it.Level) + "] " + it.Cat + " " + it.Text); }
+                : null);
+            DoctorCollect(reg, items);   // 收集（流式时**逐条**随算随发 ✓）
+            List<DocItem> list = new List<DocItem>(items);
+            string summary = DoctorSummary.Summary(list);
+            Console.WriteLine(summary);   // 流式：汇总在**末尾**；默认：在**最前** ✓
+            if (!stream)
+            {
+                foreach (DocItem it in list)
+                    Console.WriteLine("[" + DoctorSummary.Level(it.Level) + "] " + it.Cat + " " + it.Text);
+            }
 
             string report = Flag(args, "--report");
             if (report == null) report = Flag(args, "-report");
             if (report != null)
             {
                 string text = DoctorReport.Build(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture), ToolkitVersion,
-                    Environment.OSVersion.VersionString, items,
+                    Environment.OSVersion.VersionString, list,
                     ConfigSummaryBuilder.Build(reg.Get<IConfigSource>().ReadConfig()),
                     LogSummaryBuilder.Build(reg.Get<ILogSource>().ReadLog()), summary);
                 try
@@ -126,7 +154,7 @@ namespace Dsht.Cli
             }
             return 0;
         }
-        private static void DoctorCollect(ServiceRegistry reg, List<DocItem> items)
+        private static void DoctorCollect(ServiceRegistry reg, System.Collections.Generic.IList<DocItem> items)
         {
             IToolchainQuery tc = reg.Get<IToolchainQuery>();
             IFileSystemQuery fs = reg.Get<IFileSystemQuery>();

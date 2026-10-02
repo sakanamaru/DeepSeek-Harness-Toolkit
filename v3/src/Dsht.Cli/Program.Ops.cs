@@ -46,25 +46,41 @@ namespace Dsht.Cli
         ///   `UPDATECENTER_NOTE <id> <说明>`      ← 更新前风险与确认要求 ✓
         ///   `UPDATECENTER_LOG <id> <一行日志>`   ← 更新日志（best-effort ✓ 取不到就说取不到 ✓）
         /// 纪律：**只读** ✓ 不改任何东西 ✓；取不到的字段写 `unknown` ✓ **不猜** ✗</summary>
-        private static int UpdateCenter(ServiceRegistry reg)
+        private static int UpdateCenter(ServiceRegistry reg, string[] args)
         {
             IToolchainQuery tc = reg.Get<IToolchainQuery>();
             List<string> ids = new List<string>();
             List<string> lines = new List<string>();
+            // ★★ --stream（2026-10-02，GUI 专用 ✓）：边算边打，`UPDATECENTER_OK <n>` 挪到**最后** ✓✓
+            //   —— 杀软式"列表先出来、逐行出结果"（用户建议 ✓）。GUI 的 UpdParse 按前缀扫行、
+            //   位置无关 ✓；`UPDATECENTER_BEGIN` 不在它的分支里 → 自动忽略 ✓。
+            //   ★ 默认输出**逐字不变** ✓（OK 行仍在最前、行序不变 ✓）→ 契约与测试全不动 ✓✓
+            bool stream = Has(args, "--stream");
+            if (stream) Console.WriteLine("UPDATECENTER_BEGIN");
+            System.Action<string> emit = stream ? (System.Action<string>)delegate(string l) { Console.WriteLine(l); } : null;
 
             // —— ① webui = dsh 本体（官方 npm 包 ✓）——
-            string dshInstalled = tc.DshVersion();
-            if (string.IsNullOrEmpty(dshInstalled)) dshInstalled = "unknown";
-            string dshLatest = VersionForChannel(tc, _cfg == null ? "rc" : _cfg.UpdateChannel);
-            if (string.IsNullOrEmpty(dshLatest)) dshLatest = "unknown";
-            string dshState = "unknown";
-            if (dshInstalled != "unknown" && dshLatest != "unknown")
-                dshState = dshInstalled == dshLatest ? "up-to-date" : (Dsht.Domain.Services.VersionComparer.Compare(dshInstalled, dshLatest) < 0 ? "update-available" : "newer-than-latest");   // ★ 审查抓到：原来用字典序 ✗ → 1.9.0 会被判成比 1.10.0 新 ✗✓
+            // ★ 慢的网络查询**先起跑**（后台 ✓），快项先算、最后再等它 ✓✓
+            //   --stream 时：desktop/minato/插件 秒出，webui 最后出 ✓（杀软式 ✓）
+            //   默认行序不变 ✓：webui 的行仍排**最前** → 末尾 InsertRange(0) ✓✓
+            //   线程安全 ✓：tc 只被这个后台任务用（②③④⑤ 都不碰 tc ✓）→ 无并发访问 ✓
             ids.Add("webui");
-            lines.Add("UPDATECENTER_ITEM webui kind=webui installed=" + dshInstalled + " latest=" + dshLatest + " state=" + dshState);
-            lines.Add("UPDATECENTER_URL webui https://github.com/deepseek-ai/deepseek-harness");
-            lines.Add("UPDATECENTER_NOTE webui " + T("更新前会**自动备份**数据根 ✓ 并保留回滚点 ✓；需要你确认后才执行 ✓",
-                "updating backs up the data root first and keeps a rollback point; it runs only after you confirm"));
+            System.Threading.Tasks.Task<List<string>> webuiT = System.Threading.Tasks.Task.Run(delegate
+            {
+                List<string> part = new List<string>();
+                string dshInstalled = tc.DshVersion();
+                if (string.IsNullOrEmpty(dshInstalled)) dshInstalled = "unknown";
+                string dshLatest = VersionForChannel(tc, _cfg == null ? "rc" : _cfg.UpdateChannel);
+                if (string.IsNullOrEmpty(dshLatest)) dshLatest = "unknown";
+                string dshState = "unknown";
+                if (dshInstalled != "unknown" && dshLatest != "unknown")
+                    dshState = dshInstalled == dshLatest ? "up-to-date" : (Dsht.Domain.Services.VersionComparer.Compare(dshInstalled, dshLatest) < 0 ? "update-available" : "newer-than-latest");   // ★ 审查抓到：原来用字典序 ✗ → 1.9.0 会被判成比 1.10.0 新 ✗✓
+                part.Add("UPDATECENTER_ITEM webui kind=webui installed=" + dshInstalled + " latest=" + dshLatest + " state=" + dshState);
+                part.Add("UPDATECENTER_URL webui https://github.com/deepseek-ai/deepseek-harness");
+                part.Add("UPDATECENTER_NOTE webui " + T("更新前会**自动备份**数据根 ✓ 并保留回滚点 ✓；需要你确认后才执行 ✓",
+                    "updating backs up the data root first and keeps a rollback point; it runs only after you confirm"));
+                return part;
+            });
 
             // —— ② desktop = 官方桌面端（**只能去官方安装页** ✓ 用户指定 ✓）——
             string deskPath = null;
@@ -80,19 +96,23 @@ namespace Dsht.Cli
                 try { System.Diagnostics.FileVersionInfo vi = System.Diagnostics.FileVersionInfo.GetVersionInfo(deskPath); if (vi != null && !string.IsNullOrEmpty(vi.FileVersion)) deskVer = vi.FileVersion; } catch { }
             }
             ids.Add("desktop");
-            lines.Add("UPDATECENTER_ITEM desktop kind=desktop installed=" + deskVer + " latest=unknown state=" + (deskPath == null ? "unknown" : "external"));
-            lines.Add("UPDATECENTER_URL desktop https://www.deepseek.com/en/harness/");
-            lines.Add("UPDATECENTER_NOTE desktop " + T("官方桌面端**不在本工具里更新** ✓ —— 去官方安装页自己下 ✓（本工具不重打包、也不改它 ✓）",
+            List<string> deskPart = new List<string>();
+            deskPart.Add("UPDATECENTER_ITEM desktop kind=desktop installed=" + deskVer + " latest=unknown state=" + (deskPath == null ? "unknown" : "external"));
+            deskPart.Add("UPDATECENTER_URL desktop https://www.deepseek.com/en/harness/");
+            deskPart.Add("UPDATECENTER_NOTE desktop " + T("官方桌面端**不在本工具里更新** ✓ —— 去官方安装页自己下 ✓（本工具不重打包、也不改它 ✓）",
                 "the desktop app is not updated here; download it from the official page"));
+            AddPart(lines, emit, deskPart);
 
             // —— ③ minato = 本工具自己（**不影响数据** ✓ 用户要求 ✓）——
             string selfVer = "unknown";
             try { selfVer = DshtVersionString(); } catch { }
             ids.Add("minato");
-            lines.Add("UPDATECENTER_ITEM minato kind=minato installed=" + selfVer + " latest=unknown state=unknown");
-            lines.Add("UPDATECENTER_URL minato https://github.com/sakanamaru/dsh-minato");
-            lines.Add("UPDATECENTER_NOTE minato " + T("本工具的更新**不碰你的数据** ✓（不动 ~/.dsh、不动备份、不动配置 ✓）；需要你确认 ✓",
+            List<string> minatoPart = new List<string>();
+            minatoPart.Add("UPDATECENTER_ITEM minato kind=minato installed=" + selfVer + " latest=unknown state=unknown");
+            minatoPart.Add("UPDATECENTER_URL minato https://github.com/sakanamaru/dsh-minato");
+            minatoPart.Add("UPDATECENTER_NOTE minato " + T("本工具的更新**不碰你的数据** ✓（不动 ~/.dsh、不动备份、不动配置 ✓）；需要你确认 ✓",
                 "updating this tool does not touch your data; it runs only after you confirm"));
+            AddPart(lines, emit, minatoPart);
 
             // —— ④ 已安装插件（从各 profile 的 node_modules 扫 ✓ 取 GitHub 地址 ✓✓）——
             try
@@ -123,13 +143,15 @@ namespace Dsht.Cli
                             if (string.IsNullOrEmpty(ver)) ver = "unknown";
                             string pid = "plugin:" + name;
                             ids.Add(pid);
-                            lines.Add("UPDATECENTER_ITEM " + pid + " kind=plugin installed=" + ver + " latest=unknown state=unknown profile=" + System.IO.Path.GetFileName(profDirs[i]));
+                            List<string> plugPart = new List<string>();
+                            plugPart.Add("UPDATECENTER_ITEM " + pid + " kind=plugin installed=" + ver + " latest=unknown state=unknown profile=" + System.IO.Path.GetFileName(profDirs[i]));
                             // package.json 没有 repository 时 **去问 npm** ✓✓（用户要求："插件尝试获取 GitHub 地址" ✓）
                             // 只在缺字段时才问 ✓（npm view 每次要 1~2 秒 ✗ 不能对每个插件都问 ✓）
                             if (string.IsNullOrEmpty(repo)) repo = NpmRepoOf(name);
-                            lines.Add("UPDATECENTER_URL " + pid + " " + (string.IsNullOrEmpty(repo) ? "unknown" : repo));
-                            lines.Add("UPDATECENTER_NOTE " + pid + " " + T("插件更新**先描述风险再确认** ✓（版本变化可能改行为 ✓）；更新前**自动备份** ✓ 插件由各自作者维护 ✓ 本工具不替它担保 ✓",
+                            plugPart.Add("UPDATECENTER_URL " + pid + " " + (string.IsNullOrEmpty(repo) ? "unknown" : repo));
+                            plugPart.Add("UPDATECENTER_NOTE " + pid + " " + T("插件更新**先描述风险再确认** ✓（版本变化可能改行为 ✓）；更新前**自动备份** ✓ 插件由各自作者维护 ✓ 本工具不替它担保 ✓",
                                 "plugin updates describe the risk and ask first; the data root is backed up"));
+                            AddPart(lines, emit, plugPart);
                         }
                     }
                 }
@@ -137,17 +159,44 @@ namespace Dsht.Cli
             catch { }
 
             // —— ⑤ 更新日志（best-effort ✓ 从 GitHub Releases 取 ✓ 取不到就明说 ✓）——
+            List<string> logPart = new List<string>();
             try
             {
                 string log = FetchLatestRelease("deepseek-ai", "deepseek-harness");
-                if (!string.IsNullOrEmpty(log)) lines.Add("UPDATECENTER_LOG webui " + log);
-                else lines.Add("UPDATECENTER_LOG webui " + T("取不到更新日志（网络不可达或仓库没有 Releases）", "no changelog available"));
+                if (!string.IsNullOrEmpty(log)) logPart.Add("UPDATECENTER_LOG webui " + log);
+                else logPart.Add("UPDATECENTER_LOG webui " + T("取不到更新日志（网络不可达或仓库没有 Releases）", "no changelog available"));
             }
-            catch { lines.Add("UPDATECENTER_LOG webui " + T("取不到更新日志", "no changelog available")); }
+            catch { logPart.Add("UPDATECENTER_LOG webui " + T("取不到更新日志", "no changelog available")); }
+            AddPart(lines, emit, logPart);
 
-            Console.WriteLine("UPDATECENTER_OK " + ids.Count);
-            for (int i = 0; i < lines.Count; i++) Console.WriteLine(lines[i]);
+            // —— ① 的结果现在才等（后台早就在跑 ✓）—— 快项已全部先出 ✓ webui 最后出 ✓
+            List<string> webuiPart;
+            try { webuiPart = webuiT.Result; }
+            catch
+            {
+                webuiPart = new List<string>();
+                webuiPart.Add("UPDATECENTER_ITEM webui kind=webui installed=unknown latest=unknown state=unknown");
+                webuiPart.Add("UPDATECENTER_URL webui https://github.com/deepseek-ai/deepseek-harness");
+                webuiPart.Add("UPDATECENTER_NOTE webui " + T("更新前会**自动备份**数据根 ✓ 并保留回滚点 ✓；需要你确认后才执行 ✓",
+                    "updating backs up the data root first and keeps a rollback point; it runs only after you confirm"));
+            }
+            lines.InsertRange(0, webuiPart);   // ★ 默认行序：webui 仍在**最前** ✓ 逐字不变 ✓✓
+            if (stream)
+            {
+                for (int w = 0; w < webuiPart.Count; w++) emit(webuiPart[w]);   // 流式：webui 最后出 ✓
+            }
+            Console.WriteLine("UPDATECENTER_OK " + ids.Count);   // 默认：汇总在**最前** ✓；流式：在**最后** ✓
+            if (!stream)
+            {
+                for (int i = 0; i < lines.Count; i++) Console.WriteLine(lines[i]);
+            }
             return 0;
+        }
+
+        /// <summary>把一段组件行并进总清单 ✓；流式时同时发射 ✓（--stream 用 ✓）。</summary>
+        private static void AddPart(List<string> lines, System.Action<string> emit, List<string> part)
+        {
+            for (int i = 0; i < part.Count; i++) { lines.Add(part[i]); if (emit != null) emit(part[i]); }
         }
         /// <summary>问 npm 要某个包的仓库地址 ✓（package.json 缺 repository 时的兜底 ✓）。
         /// 找不到 npm / 查不到 → 返回空串 ✓ **不猜** ✗（上层会写 unknown ✓）。</summary>

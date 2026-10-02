@@ -1277,26 +1277,50 @@ namespace Dsht.Gui.Avalonia.Shells
             DoctorSummary d = host.Doctor;
             StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
             if (host.SubTab == 1) { s.Children.Add(new Border { Child = RawCard(host, "原始输出", "doctor 的标记行与分级条目原文") }); return s; }
-            if (d == null || !d.Ok)
+            // ★ 汇总卡只在**结果全到且不在刷新**时显示 ✓
+            //   （流式时汇总行在**最后**才来 ✗ 刷新中显示的是**上一次**的结论 ✗ 顶着新行误导人 ✗✓）
+            if (d != null && d.Ok && !host.IsLoading)
             {
-                s.Children.Add(Card(T("还没有体检结果。进这一页会自动跑一次 doctor（会检查网络，可能需要几秒）。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));
-                return s;
+                IBrush b = d.Error > 0 ? Palette.Bad : (d.Warn > 0 ? Palette.Warn : Palette.Good);
+                StackPanel head = new StackPanel { Spacing = 6 };
+                StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+                row.Children.Add(new Ellipse { Width = 14, Height = 14, Fill = b, VerticalAlignment = VerticalAlignment.Center });
+                row.Children.Add(T(d.Headline, 24, b, FontWeight.Bold));
+                head.Children.Add(row);
+                head.Children.Add(T("错误 " + d.Error + " · 提醒 " + d.Warn + " · 通过 " + d.Pass + "（只依据工具箱自己的检查结果，不替它下别的结论）", 12, Palette.TextDim));
+                s.Children.Add(Card(head, new Thickness(0), new Thickness(18, 16)));
             }
-            IBrush b = d.Error > 0 ? Palette.Bad : (d.Warn > 0 ? Palette.Warn : Palette.Good);
-            StackPanel head = new StackPanel { Spacing = 6 };
-            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-            row.Children.Add(new Ellipse { Width = 14, Height = 14, Fill = b, VerticalAlignment = VerticalAlignment.Center });
-            row.Children.Add(T(d.Headline, 24, b, FontWeight.Bold));
-            head.Children.Add(row);
-            head.Children.Add(T("错误 " + d.Error + " · 提醒 " + d.Warn + " · 通过 " + d.Pass + "（只依据工具箱自己的检查结果，不替它下别的结论）", 12, Palette.TextDim));
-            s.Children.Add(Card(head, new Thickness(0), new Thickness(18, 16)));
 
-            if (d.ErrorLines.Count > 0 || d.WarnLines.Count > 0)
+            // ★★ 杀软式逐行列表（用户建议 2026-10-02 ✓）：`doctor --stream` **来一条画一条** ✓✓
+            //   点击瞬间先显示**上次的列表**，新结果逐行覆盖 ✓；这里列的是**全部**条目 ——
+            //   原来只列 错误/提醒 ✗ 通过项看不见 ✗ 现在一眼看清"查了什么、各是什么结果" ✓
+            if (host.DoctorLive.Count > 0)
             {
+                StackPanel list = new StackPanel { Spacing = 5 };
+                for (int i = 0; i < host.DoctorLive.Count; i++)
+                {
+                    string ln = host.DoctorLive[i];
+                    IBrush c = (ln.StartsWith("[ERROR", StringComparison.OrdinalIgnoreCase) || ln.StartsWith("[错误]", StringComparison.Ordinal)) ? Palette.Bad
+                        : (ln.StartsWith("[WARN", StringComparison.OrdinalIgnoreCase) || ln.StartsWith("[提醒]", StringComparison.Ordinal)) ? Palette.Warn
+                        : Palette.TextDim;
+                    list.Children.Add(T(ln, 12, c));
+                }
+                if (host.IsLoading)
+                    list.Children.Add(T("…其余项检测中（npm registry 可达性那项最慢，最长 4 秒）", 11, Palette.TextFaint));
+                s.Children.Add(Card(list, new Thickness(0), new Thickness(16, 14)));
+            }
+            else if (d != null && d.Ok && (d.ErrorLines.Count > 0 || d.WarnLines.Count > 0))
+            {
+                // 兜底：非流式数据源（防御 ✓）—— 保留旧渲染 ✓
                 StackPanel list = new StackPanel { Spacing = 6 };
                 for (int i = 0; i < d.ErrorLines.Count; i++) list.Children.Add(T(d.ErrorLines[i], 12, Palette.Bad));
                 for (int i = 0; i < d.WarnLines.Count; i++) list.Children.Add(T(d.WarnLines[i], 12, Palette.Warn));
                 s.Children.Add(Card(list, new Thickness(0), new Thickness(16, 14)));
+            }
+
+            if ((d == null || !d.Ok) && host.DoctorLive.Count == 0 && !host.IsLoading)
+            {
+                s.Children.Add(Card(T("还没有体检结果。进这一页会自动跑一次 doctor（会检查网络，可能需要几秒）。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));
             }
             // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）
             return s;
@@ -1604,6 +1628,11 @@ namespace Dsht.Gui.Avalonia.Shells
                 card.Children.Add(acts);
                 s.Children.Add(Card(card, new Thickness(0), new Thickness(16, 14)));
             }
+
+            // ★ 杀软式逐个出结果（用户建议 2026-10-02 ✓）：`update-center --stream` 让快项（桌面端/本工具/插件）
+            //   秒出、webui 的网络查询最后出 ✓ 刷新中在尾部明说"还有谁没回来" ✓ 不写"请稍候"这种空话 ✗
+            if (host.IsLoading)
+                s.Children.Add(Card(T("…其余组件查询中（webui 要查 npm / GitHub，最慢；完成后会自动补上）", 11.5, Palette.TextFaint), new Thickness(0), new Thickness(16, 14)));
 
             s.Children.Add(Card(T("纪律：**检查是只读的** ✓；**更新前一律自动备份** ✓（本工具自己的更新除外 —— 它不碰数据 ✓）；**desktop 只去官方安装页** ✓；**插件更新由你自行决定** ✓ 本工具只如实展示版本与地址 ✓", 11.5, Palette.TextFaint), new Thickness(0), new Thickness(16, 12)));
             return s;

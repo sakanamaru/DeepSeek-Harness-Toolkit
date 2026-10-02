@@ -54,7 +54,7 @@ namespace Dsht.Cli
             if (cmd == "wipe") return WipeCmd(args, reg);
             if (cmd == "import") return ImportCmd(args, reg);
             if (cmd == "update-info") return UpdateInfo(reg);
-            if (cmd == "update-center") return UpdateCenter(reg);
+            if (cmd == "update-center") return UpdateCenter(reg, args);   // args: --stream（GUI 流式 ✓ 默认输出不变 ✓）
             if (cmd == "log") return LogCmd(args, reg);
             if (cmd == "about") return AboutCmd();
             if (cmd == "shortcut") return ShortcutCmd(args);
