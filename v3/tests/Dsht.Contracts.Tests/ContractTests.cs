@@ -609,6 +609,19 @@ static class ContractTests
         Dsht.Domain.Model.SessionStat[] s4 = Dsht.Domain.Services.SessionStats.ParseSnapshot(
             snap.Replace("\"formatVersion\":1", "\"formatVersion\":2").Replace("\"blank\":true", "\"blank\":true,\"live\":true,\"active\":false"));
         Check("快照：active=false 读到（明确知道没动 ✓）", s4.Length == 1 && s4[0].HasActive && !s4[0].Active);
+        // ★ DeepSeek 余额解析（2026-10-02 用户要求"余额检测" ✓ 纯函数 ✓ 形状不认 → 不认 ✗ 绝不冒充数字 ✓✓）
+        string bj = "{\"is_available\":true,\"balance_infos\":[{\"currency\":\"CNY\",\"total_balance\":\"110.00\",\"granted_balance\":\"10.00\",\"topped_up_balance\":\"100.00\"}]}";
+        Dsht.Domain.Services.BalanceInfo b0 = Dsht.Domain.Services.BalanceJson.Parse(bj);
+        Check("余额：充值/赠送/总计/币种逐字读到 ✓", b0.Parsed && b0.IsAvailable && b0.Currency == "CNY" && b0.Topup == "100.00" && b0.Granted == "10.00" && b0.Total == "110.00");
+        Check("余额：垃圾/空 → 不认（绝不抛 ✗ 绝不假数字 ✓）",
+            !Dsht.Domain.Services.BalanceJson.Parse("{\"oops\":1}").Parsed
+            && !Dsht.Domain.Services.BalanceJson.Parse("").Parsed
+            && !Dsht.Domain.Services.BalanceJson.Parse(null).Parsed
+            && !Dsht.Domain.Services.BalanceJson.Parse("{\"is_available\":true,\"balance_infos\":[]}").Parsed);
+        Check("余额：is_available 没给 → 当可用 ✗ 不因缺字段断言停用 ✗✓", Dsht.Domain.Services.BalanceJson.Parse("{\"balance_infos\":[{\"currency\":\"CNY\"}]}").IsAvailable);
+        Check("余额：is_available=false 如实读出 ✓", !Dsht.Domain.Services.BalanceJson.Parse(bj.Replace("\"is_available\":true", "\"is_available\":false")).IsAvailable);
+        Check("余额：多币种只取第一条 ✗ 不加总 ✗✓",
+            Dsht.Domain.Services.BalanceJson.Parse("{\"balance_infos\":[{\"currency\":\"CNY\",\"total_balance\":\"1\"},{\"currency\":\"USD\",\"total_balance\":\"2\"}]}").Total == "1");
         Check("快照：formatVersion 不认（v3）→ 空数组（诚实降级）", Dsht.Domain.Services.SessionStats.ParseSnapshot(snap.Replace("\"formatVersion\":1", "\"formatVersion\":3")).Length == 0);
         Check("快照：无 sessions 字段 → 空数组", Dsht.Domain.Services.SessionStats.ParseSnapshot("{\"formatVersion\":1}").Length == 0);
         List<Dsht.Domain.Model.SessionStat> tl = new List<Dsht.Domain.Model.SessionStat>();

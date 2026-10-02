@@ -112,13 +112,62 @@ namespace Dsht.Gui.Avalonia.Markers
                     case "update_channel": return "更新通道（stable / rc）";   // N16 FIX: the CLI accepts stable and rc, not beta
                     case "close_action": return "关闭窗口时的行为";
                     case "auto_start": return "启动时自动启动 dsh";
+                    case "auto_start_target": return "开机自启启动什么（auto / desktop / web）";
                     case "dsh_versions": return "已安装的 dsh 版本（只读）";
+                    // ★ 2026-10-02：排障开关与界面偏好的人话说明（设置页分类后按组显示 ✓）
+                    case "browser_mode": return "浏览器打开方式（Linux 打不开时换）";
+                    case "ui_parallel": return "切页卡顿时的排障开关：并行取数据";
+                    case "scan_children": return "会话页提速：是否扫子代理归类";
+                    case "gui_start_page": return "GUI 启动先开哪页（0=概览 … 9=日志）";
+                    case "gui_auto_refresh": return "概览页自动刷新间隔（off / 秒数）";
+                    case "balance_key": return "DeepSeek 平台 API key（余额检测；留空=未绑定 → 概览页不显示余额卡）";
                     default: return "";
                 }
             }
         }
         public bool ReadOnly { get { return Key == "dsh_versions"; } }
-        public bool IsSwitch { get { return Key == "check_update" || Key == "check_dsh_update" || Key == "auto_start"; } }
+        /// <summary>on/off 型配置 → 渲染成两枚按钮 ✓（2026-10-02 补上 ui_parallel / scan_children ✓ 原来它们被当自由文本 ✗）。</summary>
+        public bool IsSwitch { get { return Key == "check_update" || Key == "check_dsh_update" || Key == "auto_start" || Key == "ui_parallel" || Key == "scan_children"; } }
+    }
+
+    /// <summary>DeepSeek 余额（`balance` 命令的 BALANCE_* 行）✓ 2026-10-02 用户要求 ✓。
+    /// 诚实边界：`unbound` → GUI **整卡隐藏** ✓（用户要求"未绑定隐藏" ✓）；
+    /// 取不到 → Unavailable 带原因 ✗ 绝不冒充数字 ✓✓。</summary>
+    public sealed class BalanceSummary
+    {
+        public bool Ok;                     // 命令跑过（有 BALANCE_STATE 行 ✓）
+        public bool Bound;                  // bound = 绑了 key ✓
+        public string Currency = "";
+        public string Topup = "";           // 充值余额 ✓（BALANCE_TOPUP ✓）
+        public string Granted = "";         // 活动赠送余额 ✓（BALANCE_GRANTED ✓）
+        public string Total = "";           // 总计 ✓
+        public string Note = "";            // BALANCE_NOTE（账户不可用等 ✓ 如实转述 ✓）
+        public string Unavailable = "";    // BALANCE_UNAVAILABLE 原因 ✓（网络/key ✗ ≠ 0 ✓✓）
+        public bool HasNumbers { get { return Topup.Length > 0 || Granted.Length > 0 || Total.Length > 0; } }
+    }
+
+    public static class BalanceMarkers
+    {
+        public static BalanceSummary Parse(string output)
+        {
+            BalanceSummary b = new BalanceSummary();
+            if (string.IsNullOrEmpty(output)) return b;
+            string[] lines = output.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i] == null ? "" : lines[i].Trim();
+                if (line.Length == 0) continue;
+                if (line.StartsWith("BALANCE_STATE bound", StringComparison.Ordinal)) { b.Ok = true; b.Bound = true; continue; }
+                if (line.StartsWith("BALANCE_STATE unbound", StringComparison.Ordinal)) { b.Ok = true; b.Bound = false; continue; }
+                if (line.StartsWith("BALANCE_CURRENCY ", StringComparison.Ordinal)) { b.Currency = line.Substring("BALANCE_CURRENCY ".Length).Trim(); continue; }
+                if (line.StartsWith("BALANCE_TOPUP ", StringComparison.Ordinal)) { b.Topup = line.Substring("BALANCE_TOPUP ".Length).Trim(); continue; }
+                if (line.StartsWith("BALANCE_GRANTED ", StringComparison.Ordinal)) { b.Granted = line.Substring("BALANCE_GRANTED ".Length).Trim(); continue; }
+                if (line.StartsWith("BALANCE_TOTAL ", StringComparison.Ordinal)) { b.Total = line.Substring("BALANCE_TOTAL ".Length).Trim(); continue; }
+                if (line.StartsWith("BALANCE_NOTE ", StringComparison.Ordinal)) { b.Note = line.Substring("BALANCE_NOTE ".Length).Trim(); continue; }
+                if (line.StartsWith("BALANCE_UNAVAILABLE ", StringComparison.Ordinal)) { b.Unavailable = line.Substring("BALANCE_UNAVAILABLE ".Length).Trim(); continue; }
+            }
+            return b;
+        }
     }
 
     public static class ConfigMarkers

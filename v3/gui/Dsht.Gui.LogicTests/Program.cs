@@ -111,6 +111,14 @@ namespace Dsht.Gui.LogicTests
             Check("配置：解析 4 项且空值保留", cfg.Count == 4 && cfg[0].Key == "lang" && cfg[0].Value == "auto" && cfg[2].Value == "");
             Check("配置：说明文案与只读/开关判定", cfg[0].Desc.Contains("界面语言") && cfg[3].ReadOnly && cfg[0].IsSwitch == false && ConfigMarkers.Parse("CONFIG check_update on")[0].IsSwitch);
             Check("配置：脏行不炸（裸 CONFIG 不算条目）", ConfigMarkers.Parse("garbage\nCONFIG\nCONFIG x").Count == 1);
+            Check("配置：ui_parallel / scan_children 是开关（2026-10-02 补上 ✗ 原来当自由文本 ✗）",
+                ConfigMarkers.Parse("CONFIG ui_parallel off")[0].IsSwitch && ConfigMarkers.Parse("CONFIG scan_children off")[0].IsSwitch);
+            // ★ DeepSeek 余额（2026-10-02 用户要求"余额检测（自己填写 key）" ✓✓）
+            BalanceSummary bb = BalanceMarkers.Parse("BALANCE_STATE bound\nBALANCE_CURRENCY CNY\nBALANCE_TOPUP 100.00\nBALANCE_GRANTED 10.00\nBALANCE_TOTAL 110.00\nBALANCE_NOTE 账户当前不可用");
+            Check("余额：绑定时充值/赠送/总计/币种逐字读到 ✓", bb.Ok && bb.Bound && bb.Topup == "100.00" && bb.Granted == "10.00" && bb.Total == "110.00" && bb.Currency == "CNY" && bb.Note.Contains("不可用"));
+            Check("余额：未绑定 → Bound=false（GUI 整卡隐藏 ✓ 用户要求 ✓）", BalanceMarkers.Parse("BALANCE_STATE unbound").Ok && !BalanceMarkers.Parse("BALANCE_STATE unbound").Bound);
+            Check("余额：取不到 → Unavailable 带原因 ✗ 绝不冒充数字 ✓✓", BalanceMarkers.Parse("BALANCE_STATE bound\nBALANCE_UNAVAILABLE 网络不通").Unavailable.Contains("网络不通") && !BalanceMarkers.Parse("BALANCE_STATE bound\nBALANCE_UNAVAILABLE 网络不通").HasNumbers);
+            Check("余额：空输入不抛", !BalanceMarkers.Parse("").Ok && !BalanceMarkers.Parse(null).Ok);
             List<BackupItem> bi = BackupItems.Parse("BACKUP_LIST_OK 2\n/path/a\nBACKUP_ITEM dsh-data-1 Manual 16 2026-09-28 19:01:30\nBACKUP_ITEM dsh-data-2 Auto 2048 2026-09-27 10:00:00");
             Check("备份：解析 2 条（类型/大小/时间）", bi.Count == 2 && bi[0].KindText == "手动" && bi[0].Bytes == 16 && bi[1].KindText == "自动" && bi[1].Time == "2026-09-27 10:00:00");
             Check("备份：人读大小", bi[1].SizeText == "2.0K" && bi[0].SizeText == "16");

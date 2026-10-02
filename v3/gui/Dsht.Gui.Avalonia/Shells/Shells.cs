@@ -1277,6 +1277,12 @@ namespace Dsht.Gui.Avalonia.Shells
             DoctorSummary d = host.Doctor;
             StackPanel s = new StackPanel { Margin = PageMargin, Spacing = 14 };
             if (host.SubTab == 1) { s.Children.Add(new Border { Child = RawCard(host, "原始输出", "doctor 的标记行与分级条目原文") }); return s; }
+            // ★★ 体检改为**按钮触发**（2026-10-02 用户要求："体检不自动运行，用按钮触发" ✓✓）
+            //   doctor 最长 6.5 秒（含 npm registry 探测 ✓）—— 每次进页自动跑是纯浪费 ✗ 上次的结果保留着 ✓
+            StackPanel runBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            runBar.Children.Add(PrimaryButton("运行体检", delegate { host.RunDoctorNow(); }));
+            runBar.Children.Add(T("进这一页**不再自动跑** doctor（它最长要 6.5 秒 ✓）；点按钮才跑、逐行出结果，上次的结果保留着 ✓", 11, Palette.TextDim));
+            s.Children.Add(Card(runBar, new Thickness(0), new Thickness(16, 14)));
             // ★ 汇总卡只在**结果全到且不在刷新**时显示 ✓
             //   （流式时汇总行在**最后**才来 ✗ 刷新中显示的是**上一次**的结论 ✗ 顶着新行误导人 ✗✓）
             if (d != null && d.Ok && !host.IsLoading)
@@ -1320,7 +1326,7 @@ namespace Dsht.Gui.Avalonia.Shells
 
             if ((d == null || !d.Ok) && host.DoctorLive.Count == 0 && !host.IsLoading)
             {
-                s.Children.Add(Card(T("还没有体检结果。进这一页会自动跑一次 doctor（会检查网络，可能需要几秒）。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));
+                s.Children.Add(Card(T("还没有体检结果。点上面的「运行体检」跑一次（会检查网络，最长约 6.5 秒）。", 12, Palette.TextDim), new Thickness(0), new Thickness(16, 14)));
             }
             // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）
             return s;
@@ -1770,68 +1776,125 @@ namespace Dsht.Gui.Avalonia.Shells
             sum.Children.Add(Chip("只读 " + roCount + "", Palette.TextFaint, Palette.CardHover));
             s.Children.Add(Card(sum, new Thickness(0), new Thickness(14, 10)));
             s.Children.Add(Card(T("配置写入会立即生效并落盘（CLI 的 config-set）；键名与 v2.x 完全一致，可用文本编辑器对照。", 11.5, Palette.TextFaint), new Thickness(0), new Thickness(16, 12)));
-            for (int i = 0; i < items.Count; i++)
-            {
-                ConfigItem c = items[i];
-                StackPanel row = new StackPanel { Spacing = 8 };
-                StackPanel head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-                head.Children.Add(T(c.Key, 12.5, Palette.Text, FontWeight.SemiBold));
-                head.Children.Add(T(c.Desc, 11.5, Palette.TextDim));
-                row.Children.Add(head);
-                // 备注 ✓✓（用户要求：""备注一下发生什么问题可以尝试启用和禁用"" ✓）
-                // CLI 的 `CONFIGNOTE <key> <说明>` 原样显示在这个键下面 ✓ 没有备注就不显示 ✓
-                string note = NoteFor(host.RawOutput, c.Key);
-                if (!string.IsNullOrEmpty(note))
-                    row.Children.Add(T(note, 11, Palette.Warn));
-
-                StackPanel edit = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-                if (c.ReadOnly)
-                {
-                    edit.Children.Add(T(c.Value, 12, Palette.TextFaint));
-                }
-                else if (c.Key == "gui_start_page")
-                {
-                    // ★ 启动页选择器（2026-10-02 用户要求"设置里可自选" ✓✓）：选**页面名** ✗ 不是裸数字 ✗
-                    //   ComboBox 的 SelectedIndex 恰好就是 NavItems 的索引 = 配置值 ✓✓
-                    int sp;
-                    if (!int.TryParse(c.Value, out sp) || sp < 0 || sp >= MainWindow.NavItems.Length) sp = 1;
-                    ComboBox cb = new ComboBox { MinWidth = 230, FontSize = 12, ItemsSource = MainWindow.NavItems, SelectedIndex = sp };
-                    // ★ 先设 SelectedIndex、后挂事件 ✓ —— 初始化那一拍不会触发一次多余的写盘 ✓
-                    cb.SelectionChanged += delegate
-                    {
-                        if (cb.SelectedIndex >= 0 && cb.SelectedIndex < MainWindow.NavItems.Length)
-                            host.SetConfig("gui_start_page", cb.SelectedIndex.ToString());
-                    };
-                    edit.Children.Add(cb);
-                }
-                else if (c.IsSwitch)
-                {
-                    string[] opts = new string[] { "on", "off" };
-                    for (int k = 0; k < opts.Length; k++)
-                    {
-                        string val = opts[k];
-                        bool active = c.Value == val;
-                        // 统一到工厂 ✓（原来裸 Button ✗）—— 当前值用 accent 实心 ✓ 另一个用幽灵 ✓
-                        Button ob = active
-                            ? PrimaryButton(val, delegate { host.SetConfig(c.Key, val); })
-                            : GhostButton(T(val, 11.5, Palette.TextDim), delegate { host.SetConfig(c.Key, val); }, true);
-                        edit.Children.Add(ob);
-                    }
-                }
-                else
-                {
-                    TextBox box = new TextBox { Text = c.Value, Width = 260, FontSize = 12 };
-                    edit.Children.Add(box);
-                    Button save = PrimaryButton("保存", delegate { host.SetConfig(c.Key, box.Text == null ? "" : box.Text.Trim()); });
-                    edit.Children.Add(save);
-                    if (c.Key == "ws") edit.Children.Add(T("留空=自动探测；填了必须存在", 11, Palette.TextFaint));
-                }
-                row.Children.Add(edit);
-                s.Children.Add(Card(row, new Thickness(0), new Thickness(16, 12)));
-            }
+            // ★★ 设置分类渲染（2026-10-02 用户要求："把设置界面分类，然后做到更简单一点（选择框）" ✓✓）
+            //   ① 分两组：界面与启动 / dsh·更新·数据·余额 ✓ 没归组的（只读项等）→ 「其它」原样显示 ✓
+            //   ② 枚举型配置一律**下拉选择框** ✗ 不再手敲 ✗（lang/host/通道/关闭行为/自启目标/浏览器方式/启动页/刷新间隔 ✓）
+            string[] guiKeys = new string[] { "gui_start_page", "gui_auto_refresh", "lang", "browser_mode", "ui_parallel", "scan_children" };
+            string[] dshKeys = new string[] { "auto_start", "auto_start_target", "check_update", "check_dsh_update", "update_channel", "close_action", "host", "keep_backups", "ws", "balance_key" };
+            List<ConfigItem> placed = new List<ConfigItem>();
+            RenderSettingsGroup(s, host, PickItems(items, guiKeys, placed), "界面与启动（含排障开关）");
+            RenderSettingsGroup(s, host, PickItems(items, dshKeys, placed), "dsh · 更新 · 数据 · 余额");
+            RenderSettingsGroup(s, host, RestItems(items, placed), "其它");
             // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）
             return s;
         }
+        // —— 设置页的分组渲染辅助（2026-10-02 用户要求"分类 + 选择框" ✓✓）——
+
+        /// <summary>按 keys 的顺序从 items 里挑出该组的配置项（挑过的记进 placed ✓ 不重复 ✓）。</summary>
+        private static List<ConfigItem> PickItems(List<ConfigItem> items, string[] keys, List<ConfigItem> placed)
+        {
+            List<ConfigItem> g = new List<ConfigItem>();
+            for (int k = 0; k < keys.Length; k++)
+                for (int i = 0; i < items.Count; i++)
+                    if (items[i].Key == keys[k] && !placed.Contains(items[i])) { g.Add(items[i]); placed.Add(items[i]); }
+            return g;
+        }
+
+        /// <summary>没被任何组挑走的 → 原样显示在「其它」（如只读 dsh_versions ✓）。</summary>
+        private static List<ConfigItem> RestItems(List<ConfigItem> items, List<ConfigItem> placed)
+        {
+            List<ConfigItem> g = new List<ConfigItem>();
+            for (int i = 0; i < items.Count; i++) if (!placed.Contains(items[i])) g.Add(items[i]);
+            return g;
+        }
+
+        private static void RenderSettingsGroup(StackPanel s, MainWindow host, List<ConfigItem> group, string title)
+        {
+            if (group == null || group.Count == 0) return;
+            s.Children.Add(Card(T(title, 13, Palette.Text, FontWeight.SemiBold), new Thickness(0), new Thickness(16, 12)));
+            for (int i = 0; i < group.Count; i++) s.Children.Add(SettingsItemCard(host, group[i]));
+        }
+
+        /// <summary>枚举型配置的**合法取值**（做成选择框 ✗ 不再手敲 ✗）。返回 null = 不是枚举（走文本框/开关）✓。
+        /// 必须与 CLI 白名单（ConfigValidator ✓）**逐字一致** ✗ 否则选择框会写进被拒的值 ✗✗。</summary>
+        private static string[] OptionsFor(string key)
+        {
+            switch (key)
+            {
+                case "lang": return new string[] { "auto", "zh", "en" };
+                case "host": return new string[] { "127.0.0.1", "localhost" };
+                case "update_channel": return new string[] { "stable", "rc" };
+                case "close_action": return new string[] { "ask", "tray", "exit" };
+                case "auto_start_target": return new string[] { "auto", "desktop", "web" };
+                case "browser_mode": return new string[] { "auto", "snap", "direct", "xdg" };
+                case "gui_auto_refresh": return new string[] { "off", "0.5", "1", "3", "5" };
+                case "gui_start_page": return MainWindow.NavItems;   // 索引即值 ✓（0..9 ✓）
+                default: return null;
+            }
+        }
+
+        /// <summary>单个配置项的卡片（key + 人话说明 + CONFIGNOTE 备注 + 编辑控件 ✓）。</summary>
+        private static Control SettingsItemCard(MainWindow host, ConfigItem c)
+        {
+            StackPanel row = new StackPanel { Spacing = 8 };
+            StackPanel head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            head.Children.Add(T(c.Key, 12.5, Palette.Text, FontWeight.SemiBold));
+            head.Children.Add(T(c.Desc, 11.5, Palette.TextDim));
+            row.Children.Add(head);
+            // 备注 ✓✓（用户要求："备注一下发生什么问题可以尝试启用和禁用" ✓）—— CONFIGNOTE 原样显示 ✓
+            string note = NoteFor(host.RawOutput, c.Key);
+            if (!string.IsNullOrEmpty(note)) row.Children.Add(T(note, 11, Palette.Warn));
+
+            StackPanel edit = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            if (c.ReadOnly)
+            {
+                edit.Children.Add(T(c.Value, 12, Palette.TextFaint));
+            }
+            else if (OptionsFor(c.Key) != null)
+            {
+                // ★ 选择框（用户要求 ✓✓）：枚举型配置一律下拉选 ✓
+                string[] opts = OptionsFor(c.Key);
+                int idx;
+                if (c.Key == "gui_start_page")
+                {
+                    int sp; if (!int.TryParse(c.Value, out sp) || sp < 0 || sp >= opts.Length) sp = 1; idx = sp;
+                }
+                else idx = Array.IndexOf(opts, c.Value);
+                ComboBox cb = new ComboBox { MinWidth = 200, FontSize = 12, ItemsSource = opts, SelectedIndex = idx };
+                // ★ 先设 SelectedIndex、后挂事件 ✓ —— 初始化那一拍不写盘 ✓
+                cb.SelectionChanged += delegate
+                {
+                    if (cb.SelectedIndex >= 0 && cb.SelectedIndex < opts.Length)
+                        host.SetConfig(c.Key, c.Key == "gui_start_page" ? cb.SelectedIndex.ToString() : opts[cb.SelectedIndex]);
+                };
+                edit.Children.Add(cb);
+            }
+            else if (c.IsSwitch)
+            {
+                string[] opts2 = new string[] { "on", "off" };
+                for (int k = 0; k < opts2.Length; k++)
+                {
+                    string val = opts2[k];
+                    bool active = c.Value == val;
+                    Button ob = active
+                        ? PrimaryButton(val, delegate { host.SetConfig(c.Key, val); })
+                        : GhostButton(T(val, 11.5, Palette.TextDim), delegate { host.SetConfig(c.Key, val); }, true);
+                    edit.Children.Add(ob);
+                }
+            }
+            else
+            {
+                TextBox box = new TextBox { Text = c.Value, Width = 300, FontSize = 12 };
+                edit.Children.Add(box);
+                Button save = PrimaryButton("保存", delegate { host.SetConfig(c.Key, box.Text == null ? "" : box.Text.Trim()); });
+                edit.Children.Add(save);
+                if (c.Key == "ws") edit.Children.Add(T("留空=自动探测；填了必须存在", 11, Palette.TextFaint));
+                if (c.Key == "balance_key") edit.Children.Add(T("⚠ 明文本地保存（只在你机器上 ✓ 不上传 ✓）；留空=未绑定，概览页不显示余额卡", 11, Palette.Warn));
+            }
+            row.Children.Add(edit);
+            return Card(row, new Thickness(0), new Thickness(16, 12));
+        }
+
         /// <summary>看板图表：近 N 天新增会话（柱状，N = 7/14/30 可切）+ 缓存命中率分布（柱状）。
         /// **手绘**（Grid + Border 柱），不引入任何图表依赖；日期用 ISO 字符串前缀比对，不做时区/日历运算（不猜）。</summary>
         private static Control ChartsBody(MainWindow host)
@@ -2095,6 +2158,73 @@ namespace Dsht.Gui.Avalonia.Shells
             Control r2c3 = StatCard(Symbol.Stethoscope, "体检", dc == null || !dc.Ok ? "未运行" : dc.Headline, "点下面按钮运行 doctor", dc != null && dc.Error > 0 ? Palette.Bad : (dc != null && dc.Warn > 0 ? Palette.Warn : Palette.Good), -1, 1, 2); Grid.SetColumn(r2c3, 1); Grid.SetRow(r2c3, 2); row2.Children.Add(r2c3);
             s.Children.Add(row2);
 
+            // ★★ DeepSeek 余额检测（2026-10-02 用户要求："DSH余额检测（自己填写key）…未绑定隐藏，绑定显示充值余额/活动赠送余额" ✓✓）
+            //   未绑 key → **整卡隐藏** ✓（用户要求 ✓）；绑了 → 充值 / 活动赠送 ✓
+            //   取不到 → 如实写原因 ✗ 绝不冒充数字 ✓✓（key 在设置页填：balance_key ✓）
+            if (host.Balance != null && host.Balance.Ok && host.Balance.Bound)
+            {
+                Dsht.Gui.Avalonia.Markers.BalanceSummary ba = host.Balance;
+                StackPanel bcard = new StackPanel { Spacing = 8 };
+                StackPanel bh = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+                bh.Children.Add(T("DeepSeek 余额", 13, Palette.Text, FontWeight.SemiBold));
+                if (ba.Currency.Length > 0 && ba.Currency != "unknown") bh.Children.Add(Chip("币种 " + ba.Currency, Palette.TextFaint, Palette.CardHover));
+                bcard.Children.Add(bh);
+                if (ba.HasNumbers)
+                {
+                    Grid bgrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*") };
+                    Control bc1 = StatCard(Symbol.DataUsage, "充值余额", ba.Topup.Length > 0 ? ba.Topup : "unknown", "自己充值的余额", Palette.Accent, -1, 0, 2);
+                    Grid.SetColumn(bc1, 0); bgrid.Children.Add(bc1);
+                    Control bc2 = StatCard(Symbol.Box, "活动赠送余额", ba.Granted.Length > 0 ? ba.Granted : "unknown", "平台活动赠送的余额", Palette.Good, -1, 1, 2);
+                    Grid.SetColumn(bc2, 1); bgrid.Children.Add(bc2);
+                    bcard.Children.Add(bgrid);
+                    if (ba.Total.Length > 0 && ba.Total != "unknown") bcard.Children.Add(T("总计 " + ba.Total, 11.5, Palette.TextDim));
+                }
+                else
+                {
+                    bcard.Children.Add(T("暂未取到余额 ✗ 不猜数字 ✓（" + (ba.Unavailable.Length > 0 ? ba.Unavailable : "原因未知") + "）", 11.5, Palette.Warn));
+                }
+                if (ba.Note.Length > 0) bcard.Children.Add(T(ba.Note, 11, Palette.Warn));
+                s.Children.Add(Card(bcard, new Thickness(0), new Thickness(16, 14)));
+            }
+
+            // ★★ 概览自动刷新（2026-10-02 用户要求："快1秒 中3秒 慢5秒 实时0.5秒 暂停和自定义" ✓✓）
+            //   只在概览/看板页生效 ✓（设置页的 gui_auto_refresh 也能改 ✓）；0.5 秒档 = 后台连续刷新 ✓
+            //   每一拍都要起一个 CLI 进程 ✓ CPU/IO 有真实成本 ✓ —— 如实写在旁边 ✓✓
+            {
+                StackPanel arBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+                arBar.Children.Add(T("自动刷新", 12, Palette.Text, FontWeight.SemiBold));
+                string[] arLabels = new string[] { "暂停", "实时 0.5 秒", "快 1 秒", "中 3 秒", "慢 5 秒", "自定义…" };
+                string[] arValues = new string[] { "off", "0.5", "1", "3", "5", "" };
+                double cur = host.AutoRefreshSeconds;
+                int sel = 0;
+                if (cur > 0)
+                {
+                    sel = 5;
+                    if (Math.Abs(cur - 0.5) < 0.01) sel = 1;
+                    else if (Math.Abs(cur - 1) < 0.01) sel = 2;
+                    else if (Math.Abs(cur - 3) < 0.01) sel = 3;
+                    else if (Math.Abs(cur - 5) < 0.01) sel = 4;
+                }
+                ComboBox arCb = new ComboBox { MinWidth = 150, FontSize = 12, ItemsSource = arLabels, SelectedIndex = sel };
+                // ★ 先设 SelectedIndex、后挂事件 ✓ —— 初始化那一拍不会触发一次多余的写盘 ✓
+                arCb.SelectionChanged += async delegate
+                {
+                    int idx = arCb.SelectedIndex;
+                    if (idx < 0) return;
+                    if (idx == 5)
+                    {
+                        string typed = await PromptDialog.Ask(host, "自定义刷新间隔", "请输入秒数", "0.5 – 3600", "3");
+                        if (typed == null || typed.Trim().Length == 0) return;
+                        host.SetAutoRefresh(typed.Trim());
+                        return;
+                    }
+                    host.SetAutoRefresh(arValues[idx]);
+                };
+                arBar.Children.Add(arCb);
+                arBar.Children.Add(T("只在概览/看板页生效 ✓ 0.5 秒档 = 后台连续刷新（每一拍都起一个 CLI 进程 ✓ 有真实成本 ✓）", 10.5, Palette.TextFaint));
+                s.Children.Add(Card(arBar, new Thickness(0), new Thickness(16, 12)));
+            }
+
             // —— 快捷入口 ——
             Grid jumps = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*,*") };
             int[] targets = new int[] { 1, 2, 3, 4, 5 };
@@ -2218,6 +2348,9 @@ namespace Dsht.Gui.Avalonia.Shells
             //   **实测过的坑**（写进按钮下方说明 ✓ 用户会踩 ✓）：
             //     · 需要 pnpm ✗ 而 dsh **不会**替你装 ✓
             //     · 装上了但 patch 缺行 → **不会加载且不报错** ✗ → 命令会**如实报** ✓✓
+            // ★ 2026-10-02 用户要求："形态与插件页的安装教程可以放到最底部" ✓✓
+            //   → 先把这两张卡（按钮 + 教程）装进一个**捕获型委托**，等列表渲染完再调用 ✓
+            System.Action addBridgeCards = delegate
             {
                 StackPanel bc = new StackPanel { Spacing = 8 };
                 bc.Children.Add(T("可选的桥接插件", 13, Palette.Text, FontWeight.SemiBold));
@@ -2298,7 +2431,7 @@ namespace Dsht.Gui.Avalonia.Shells
                 tut.Children.Add(T("⚠ 装完还要看一步：桌面端**不会**替你往 desktop profile 的 cordis.patch.yml 里加 shio-bridge 行，缺了插件**不会加载**而 dsh **不报错**。装完告诉我（或看工具箱的输出），我帮你核对并补上。", 11, Palette.TextFaint));
                 s.Children.Add(Card(tut, new Thickness(0), new Thickness(16, 12)));
                 s.Children.Add(Card(bc, new Thickness(0), new Thickness(16, 14)));
-            }
+            };
 
             // —— 工具行：过滤 + 搜索（搜索框就地刷新下面的卡片列表，不重建整页，避免输入框丢焦点）——
             Grid tools = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
@@ -2342,6 +2475,8 @@ namespace Dsht.Gui.Avalonia.Shells
                     Line("• 官方 = @deepseek-ai/* 的组合包；第三方 = 你自己加的插件（例如 example-search-plugin）。")
                 }
             }, new Thickness(0), new Thickness(18, 16)));
+            // ★ 教程置底（2026-10-02 用户要求 ✓）：列表与说明之后才出现桥接插件卡片 + 安装教程 ✓✓
+            addBridgeCards();
             // 操作日志改为**右下角 toast** ✓✓（不再在页面流里占一张卡片 ✓）
             return s;
         }

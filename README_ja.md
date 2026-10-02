@@ -144,7 +144,8 @@ dsh-minato version | about | selftest
 この節はコードの挙動のみを述べます。ここに書いてあることをコードがしていなければ、それはバグです。
 
 - **ローカルのみ。** 自分のマシンを読み書きするだけです。ネットワークに接続するのは
-  `check`、`update-info`、`update-center`、`install`、`update`、`verify-install --url` の 6 つだけです。
+  `check`、`update-info`、`update-center`、`doctor`、`install`、`update`、`verify-install --url` の 7 つ、
+  および `balance`（**`balance_key` を設定している場合のみ** ✗ 未設定なら完全オフライン ✓）です。
   それ以外（status、sessions、backup、restore、ログ）は**接続しません**。（`doctor` が上のネットワーク一覧に
   入っているのは**意図的**です：チェックの一つが npm registry の到達性を調べ、オフライン時は失敗ではなく
   「到達不可」と報告します。）

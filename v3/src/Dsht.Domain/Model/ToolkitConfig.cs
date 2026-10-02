@@ -31,12 +31,23 @@ namespace Dsht.Domain.Model
         /// 默认 1（看板）。**纯 GUI 偏好** ✓：CLI 自己不消费它，只是替 GUI 存（与 browser_mode 同类 ✓）。</summary>
         public int GuiStartPage = 1;
 
+        /// <summary>概览/看板的**自动刷新间隔**（2026-10-02 用户要求 ✓）：
+        /// "off"（暂停 ✓ 默认）或秒数的文本形式（0.5–3600 ✓，如 "0.5"=实时 "1"=快 "3"=中 "5"=慢）。
+        /// **纯 GUI 偏好** ✓ 同上；文本保存与其它键一致（`config-set gui_auto_refresh 3` ✓）。</summary>
+        public string GuiAutoRefresh = "off";
+
+        /// <summary>DeepSeek 平台 API key（**余额检测用** ✓ 2026-10-02 用户要求"自己填写 key" ✓）。
+        /// 空 = 未绑定 → 概览页不显示余额卡 ✓（用户要求"未绑定隐藏" ✓）。
+        /// ⚠ **明文**保存在本机配置文件里 —— 只在用户自己的机器上 ✓ 不上传 ✓（CONFIGNOTE 如实写明 ✓）。
+        /// 不强制格式 ✗（不猜 sk- 前缀 ✓ 兼容平台将来换形式 ✓）。</summary>
+        public string BalanceKey = "";
+
         public ToolkitConfig Copy()
         {
             ToolkitConfig c = new ToolkitConfig();
             c.Lang = Lang; c.Host = Host; c.Workspace = Workspace; c.KeepBackups = KeepBackups;
             c.CheckUpdate = CheckUpdate; c.CheckDshUpdate = CheckDshUpdate; c.DshVersions = DshVersions;
-            c.UpdateChannel = UpdateChannel; c.CloseAction = CloseAction; c.AutoStart = AutoStart; c.AutoStartTarget = AutoStartTarget; c.BrowserMode = BrowserMode; c.UiParallel = UiParallel; c.ScanChildren = ScanChildren; c.GuiStartPage = GuiStartPage;
+            c.UpdateChannel = UpdateChannel; c.CloseAction = CloseAction; c.AutoStart = AutoStart; c.AutoStartTarget = AutoStartTarget; c.BrowserMode = BrowserMode; c.UiParallel = UiParallel; c.ScanChildren = ScanChildren; c.GuiStartPage = GuiStartPage; c.GuiAutoRefresh = GuiAutoRefresh; c.BalanceKey = BalanceKey;
             return c;
         }
     }

@@ -144,7 +144,8 @@ parse results instead of guessing from prose.
 This section states only what the code does. If a claim here is not backed by the code, it is a bug; please report it.
 
 - **Local only.** The tool reads and writes your own machine. It contacts the network **only** in these commands:
-  `check`, `update-info`, `update-center`, `doctor`, `install`, `update`, and `verify-install --url`. Everything else — status,
+  `check`, `update-info`, `update-center`, `doctor`, `install`, `update`, `verify-install --url`, and `balance` (only
+  when you have set `balance_key` in settings; without it the command is fully offline). Everything else — status,
   sessions, backup, restore, logs — never opens a connection. (`doctor` is in the list above on purpose: one of its
   checks probes npm-registry reachability, and it reports "unreachable" instead of failing when offline.)
 - **Writes are protected where it matters.** Before `restore` a backup is always taken first; `update` and `import` try to and continue if that fails; `wipe` only prints the path to delete by hand and neither deletes nor backs up

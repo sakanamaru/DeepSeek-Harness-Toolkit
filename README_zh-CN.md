@@ -140,7 +140,7 @@ dsh-minato version | about | selftest
 
 本节只陈述代码的行为。如果这里写了代码没做的事，那就是 bug，请提 issue。
 
-- **只在本机。** 工具只读写你自己的机器。**只有**这些命令会联网：`check`、`update-info`、`update-center`、`doctor`、`install`、`update`、`verify-install --url`。其余（status、sessions、backup、restore、日志）**绝不联网**。（`doctor` 出现在上面那份联网清单里是**故意的**：
+- **只在本机。** 工具只读写你自己的机器。**只有**这些命令会联网：`check`、`update-info`、`update-center`、`doctor`、`install`、`update`、`verify-install --url` 和 `balance`（**只在你填了 `balance_key` 之后**才联网 ✗ 没填时它完全离线 ✓）。其余（status、sessions、backup、restore、日志）**绝不联网**。（`doctor` 出现在上面那份联网清单里是**故意的**：
   它有一项检查会探测 npm registry 是否可达，离线时如实报「不可达」而不是失败。）
 - **该保护的地方有保护。** `restore` 之前**总会**先备份；`update`/`import` 会尝试备份、失败仍继续；`wipe` 只打印手动删除路径、不删也不备份并打印位置，失败可回滚。
   但**并非所有写操作**都会先备份：改设置（`config-set`、`backup-dir --set`）、改 profile、改快捷方式/PATH 不会。

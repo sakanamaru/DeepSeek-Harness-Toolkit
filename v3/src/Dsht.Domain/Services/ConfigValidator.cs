@@ -53,6 +53,15 @@ namespace Dsht.Domain.Services
                 int n;
                 return (int.TryParse(v, out n) && n >= 0 && n <= 9) ? null : "bad-value";
             }
+            // ★ 概览自动刷新（2026-10-02 ✓）：off / 空 = 暂停 ✓；或秒数 0.5–3600 ✓（越界拒绝 ✗ 不猜 ✗）
+            if (k == "gui_auto_refresh")
+            {
+                if (v.Length == 0 || v == "off") return null;
+                double sec;
+                return (double.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out sec) && sec >= 0.5 && sec <= 3600) ? null : "bad-value";
+            }
+            // ★ DeepSeek 余额检测的 key（2026-10-02 ✓）：自由文本，空 = 未绑定 ✓；不猜格式 ✗（明文本地存储 ✓ 见 CONFIGNOTE ✓）
+            if (k == "balance_key") return null;
             return "unknown-key";
         }
 
@@ -80,6 +89,17 @@ namespace Dsht.Domain.Services
             else if (k == "ui_parallel") c.UiParallel = v != "off";
             else if (k == "scan_children") c.ScanChildren = v != "off";
             else if (k == "gui_start_page") { int n; if (int.TryParse(v, out n) && n >= 0 && n <= 9) c.GuiStartPage = n; }   // 越界保持原值 ✓（Validate 已拦 ✓ 这里是双保险 ✓）
+            else if (k == "gui_auto_refresh")
+            {
+                if (v.Length == 0 || v == "off") c.GuiAutoRefresh = "off";
+                else
+                {
+                    double sec;
+                    if (double.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out sec) && sec >= 0.5 && sec <= 3600)
+                        c.GuiAutoRefresh = sec.ToString(System.Globalization.CultureInfo.InvariantCulture);   // 归一化保存（0.50 → 0.5 ✓）
+                }
+            }
+            else if (k == "balance_key") c.BalanceKey = v;
             return c;
         }
     }

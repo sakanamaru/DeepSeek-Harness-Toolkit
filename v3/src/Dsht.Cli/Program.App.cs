@@ -592,8 +592,8 @@ namespace Dsht.Cli
             //      而 GUI 自己也写着"进这一页会自动跑一次 doctor（会检查网络…）" ✓ 项目里 compare_markers 还专门忽略它的 Network 行 ✓）
             //   ② 把 `wipe` 列进"会先备份" ✗ —— 而 wipe **现在根本不删任何东西** ✓（它只打印手动删除路径 ✓ 也从不备份 ✓）
             // ✓ 现在：**逐条对齐代码** ✓✓
-            Console.WriteLine(T("本程序只读写本机。会联网的只有：check / update-info / update-center / doctor / install / update / verify-install --url；其余命令不联网。",
-                                "Works locally only. The only commands that use the network are: check, update-info, update-center, doctor, install, update, verify-install --url. Everything else stays offline."));
+            Console.WriteLine(T("本程序只读写本机。会联网的只有：check / update-info / update-center / doctor / install / update / verify-install --url / balance（仅当你在设置里填了 balance_key ✓）；其余命令不联网。",
+                                "Works locally only. The only commands that use the network are: check, update-info, update-center, doctor, install, update, verify-install --url, and balance (only when you have set balance_key in settings). Everything else stays offline."));
             Console.WriteLine(T("restore 之前会先自动备份并打印位置（可回滚）；update / import 会尝试先备份，失败时仍继续。wipe 现在只打印手动删除路径、不删也不备份。改设置、改 profile、改快捷方式不备份。",
                                 "restore always backs up first and prints where; update and import try to and continue if that fails. wipe only prints the path to delete by hand - it neither deletes nor backs up. Settings, profile and shortcut edits are not backed up."));
             return 0;

@@ -55,6 +55,7 @@ namespace Dsht.Cli
             if (cmd == "import") return ImportCmd(args, reg);
             if (cmd == "update-info") return UpdateInfo(reg);
             if (cmd == "update-center") return UpdateCenter(reg, args);   // args: --stream（GUI 流式 ✓ 默认输出不变 ✓）
+            if (cmd == "balance") return Balance(reg);   // ★ DeepSeek 余额检测（只读 ✓ key 来自配置 ✗ 不进命令行 ✓）
             if (cmd == "log") return LogCmd(args, reg);
             if (cmd == "about") return AboutCmd();
             if (cmd == "shortcut") return ShortcutCmd(args);
@@ -210,6 +211,7 @@ namespace Dsht.Cli
             Console.WriteLine("  profiles | profilecheck [--dir <d>] [--file <yaml>] [--diag] | profilepatch --profile <name> --id <entry> [--enable] [--yes]");
             Console.WriteLine("  sessions | log [--lines <n>] [--level info|warn|error] [--grep <text>] [--export <file> [--yes]]");
             Console.WriteLine("  update-info | update-center | update [--yes]");
+            Console.WriteLine("  balance（DeepSeek 余额检测 ✓ 只读 ✓ 需先在设置里填 balance_key ✓）");
 Console.WriteLine("  config-get | config-set <key> <value>");
             Console.WriteLine("  install [--install-node] [--version <v>] [--list] [--yes] | update [--version <v>] [--list] [--yes] | uninstall [--yes]");
             Console.WriteLine("  update-info（只读：当前/最新/来源/状态/回滚候选 ✓）");

@@ -120,6 +120,9 @@ namespace Dsht.Gui.Avalonia
                         int np;
                         if (int.TryParse(t3.Substring("CONFIG gui_start_page ".Length).Trim(), out np) && np >= 0 && np < NavItems.Length) _mainSection = np;
                     }
+                    // ★ 概览自动刷新（2026-10-02 ✓）：同一份 config-get 里顺手读 ✓ 不多起进程 ✓
+                    if (t3.StartsWith("CONFIG gui_auto_refresh ", StringComparison.Ordinal))
+                        ApplyAutoRefresh(t3.Substring("CONFIG gui_auto_refresh ".Length).Trim());
                 }
             }
             catch { }
@@ -1236,6 +1239,48 @@ namespace Dsht.Gui.Avalonia
         {
             get { return _rawOutput.Length > 0 || _doctor != null || _data != null || _backups != null || _profiles != null || _doctorLive.Count > 0; }
         }
+
+        // —— 概览自动刷新（2026-10-02 用户要求："快1秒 中3秒 慢5秒 实时0.5秒 暂停和自定义" ✓✓）——
+        private global::Avalonia.Threading.DispatcherTimer _autoTimer;
+        private double _autoRefreshSeconds;   // 0 = 暂停 ✓
+        /// <summary>当前自动刷新间隔（秒；0 = 暂停 ✓）。只在概览/看板页生效 ✓。</summary>
+        public double AutoRefreshSeconds { get { return _autoRefreshSeconds; } }
+        /// <summary>应用间隔 ✓（**不落盘** ✓ 落盘交给 SetAutoRefresh ✓）：0 = 停表 ✓。
+        /// 越界/不认 → 暂停 ✓（Validate 已拦 ✓ 这里是双保险 ✓）。</summary>
+        private void ApplyAutoRefresh(string val)
+        {
+            double sec;
+            string t = val == null ? "" : val.Trim();
+            if (t.Length == 0 || t == "off") sec = 0;
+            else if (!double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out sec) || sec < 0.5 || sec > 3600) sec = 0;
+            _autoRefreshSeconds = sec;
+            if (_autoTimer != null) { _autoTimer.Stop(); _autoTimer = null; }
+            if (sec > 0)
+            {
+                _autoTimer = new global::Avalonia.Threading.DispatcherTimer();
+                _autoTimer.Interval = TimeSpan.FromSeconds(sec);
+                _autoTimer.Tick += delegate
+                {
+                    // 只在概览/看板页刷 ✓ 且**不打断**正在跑的刷新 ✓
+                    // （跳过本拍 ✗ 不排队 ✓ —— 0.5 秒间隔时若排队会连环补拍 ✗ 变成永不停 ✓✓）
+                    if (IsOverviewLike && !_busy) Refresh();
+                };
+                _autoTimer.Start();
+            }
+        }
+        /// <summary>设置自动刷新（UI 入口 ✓）：立即生效 + 落盘（config-set gui_auto_refresh ✓）。</summary>
+        public void SetAutoRefresh(string val)
+        {
+            ApplyAutoRefresh(val);
+            SetConfig("gui_auto_refresh", val == null || val.Trim().Length == 0 ? "off" : val.Trim());
+        }
+
+        // —— DeepSeek 余额检测（2026-10-02 用户要求 ✓✓）——
+        private Dsht.Gui.Avalonia.Markers.BalanceSummary _balance;
+        private System.DateTime _balanceAt = System.DateTime.MinValue;
+        /// <summary>余额（`balance` 命令 ✓ 只在绑了 key 时有内容 ✓ 未绑定 → 概览页**整卡隐藏** ✓）。
+        /// 取值节奏：60 秒最多一次 ✓ ✗ 不跟 0.5 秒的自动刷新一起打接口 ✗✓（那是打别人的 API ✗✗）。</summary>
+        public Dsht.Gui.Avalonia.Markers.BalanceSummary Balance { get { return _balance; } }
         /// <summary>加载浮层的文案要**诚实** ✗ 不写"请稍候"这种空话 ✓ —— 哪页要等、为什么等，如实写 ✓。
         ///   （实测 2026-10-02：体检 `doctor` 6.5s —— 其中一项要探测 npm registry；更新 `update-center` 7.9s —— 要查 GitHub ✓）</summary>
         public string LoadingHint
@@ -1416,6 +1461,32 @@ namespace Dsht.Gui.Avalonia
             }
         }
 
+        /// <summary>手动运行体检（2026-10-02 用户要求："体检不自动运行，用按钮触发" ✓✓）。
+        /// 与原来进页自动跑的是**同一条流式路径** ✓（杀软式逐行出结果 ✓）；正在忙时如实说 ✗ 不排队 ✗（体检 6.5 秒，排队会等很久 ✗✗）。</summary>
+        public void RunDoctorNow()
+        {
+            if (_busy) { ShowToast("正在刷新中 ✓ 稍等一下再运行体检"); return; }
+            string cli = CliPath();
+            if (cli == null) { ShowToast("未找到工具箱 CLI ✗ 把 dsh-minato.exe 放到 gui\\ 旁边试试"); return; }
+            _busy = true;
+            _loading = true;
+            BuildShell();   // 先亮指示 ✓（按钮反馈立刻可见 ✓）
+            _ = System.Threading.Tasks.Task.Run(delegate
+            {
+                _doctorLive = new List<string>();   // 换新列表 ✓（引用替换 ✓ 正在显示的旧树不受影响 ✓）
+                _rawOutput = "";
+                string full = RunStreaming(cli, "doctor --stream", delegate(string ln) { StreamLine(ln, true); });
+                _rawOutput = full;
+                _doctor = SummaryMarkers.ParseDoctor(full);   // 汇总行在末尾 ✓ 解析器按前缀认 ✓
+                global::Avalonia.Threading.Dispatcher.UIThread.Post(delegate
+                {
+                    _loading = false;
+                    _busy = false;
+                    BuildShell();
+                });
+            });
+        }
+
         // ★ RefreshAsync **只取数据，不画界面** ✓（画界面统一在 RefreshGuardedAsync 的 finally ✓ 一笔到位 ✓）
         //   —— 旧版在 5 条路径里各画一次：既分散，也让"取数据中"永远得不到一次即时换页 ✗
         private async System.Threading.Tasks.Task RefreshAsync()
@@ -1457,6 +1528,22 @@ namespace Dsht.Gui.Avalonia
                 _backups = SummaryMarkers.ParseBackups(tBk.Result);
                 }   // ✗ 原来带 --detail → 每份备份都要算目录大小（重 I/O ✗）→ 概览每次刷新都卡几秒 ✓✓ 这里只要 Count/Latest ✓ 不需要大小 ✓（方案 A ✓）
                 if (_doctor == null) _doctor = new DoctorSummary();
+
+                // ★ DeepSeek 余额检测（2026-10-02 用户要求 ✓✓）：与状态刷新**分开** ✗
+                //   60 秒最多取一次 ✓ ✗ 不跟 0.5 秒自动刷新一起打接口 ✗✓（未绑 key 时 CLI 秒回 unbound ✓ 不联网 ✓）
+                if ((System.DateTime.UtcNow - _balanceAt).TotalSeconds > 60)
+                {
+                    _balanceAt = System.DateTime.UtcNow;   // 先占位 ✓ 防止并行两拍重复打 ✓
+                    _ = System.Threading.Tasks.Task.Run(delegate
+                    {
+                        string b = Run(cli, "balance");
+                        global::Avalonia.Threading.Dispatcher.UIThread.Post(delegate
+                        {
+                            _balance = Dsht.Gui.Avalonia.Markers.BalanceMarkers.Parse(b);
+                            BuildShell();
+                        });
+                    });
+                }
                 return;
             }
             if (_mainSection == 3)
@@ -1474,14 +1561,10 @@ namespace Dsht.Gui.Avalonia
                 //   顺带体检页还多了"全部条目"列表（原来只列 错误/提醒 ✓）。
                 if (_mainSection == 5)
                 {
-                    _doctorLive = new List<string>();   // ★ 换新列表：点击那一笔画的是旧树 ✓ 首行到达后才开始逐行替换 ✓
-                    _rawOutput = "";
-                    string full = await System.Threading.Tasks.Task.Run(delegate
-                    {
-                        return RunStreaming(cli, "doctor --stream", delegate(string ln) { StreamLine(ln, true); });
-                    });
-                    _rawOutput = full;
-                    _doctor = SummaryMarkers.ParseDoctor(full);   // 汇总行在**末尾** ✓ 解析器按前缀认、不挑位置 ✓
+                    // ★★ 体检**不自动运行**（2026-10-02 用户要求："体检不自动运行，用按钮触发" ✓✓）
+                    //   进页只显示**上次**的结果 ✓（有旧数据先显示旧数据 ✓ 没有就显示引导卡 ✓）
+                    //   —— doctor 最长 6.5 秒（含 npm registry 探测 ✓）每次进页白跑一遍 ✗ 纯浪费 ✗
+                    //   手动跑：体检页的「运行体检」按钮 → RunDoctorNow()（同一条流式路径 ✓ 逐行出结果 ✓）
                     return;
                 }
                 if (_mainSection == 8)
