@@ -1,7 +1,7 @@
 # DeepSeek Harness Toolkit — `dsh-minato`
 
 **给 DeepSeek Harness（dsh）Web UI 用的安装 / 监控 / 备份 / 修复工具箱：不用终端，双击即用。**
-支持 Windows 与 Linux。只在本机读写，不上传任何数据。
+支持 Windows 与 Linux。只在本机运行：无遥测、无账号、不上传任何数据。
 
 > ⚠️ **非官方工具。** 本项目与 DeepSeek 官方无关，也未获其认可或授权；它只是驱动你已有的 `dsh` 命令行。
 >
@@ -61,8 +61,9 @@
 
 从 [Releases](../../releases) 下载 `dsh-minato-<版本>-win-x64-setup.exe` 并运行。
 
-- 安装器**没有数字签名**，首次运行可能出现 SmartScreen「未知发布者」提示。这正是未签名程序的样子 ——
-  请先用公布的 `.sha256` 校验下载。
+- 安装器**没有数字签名**，首次运行可能出现 SmartScreen「未知发布者」提示。这是**有意的，不是疏漏**：
+  Windows 产物目前**没有受信任的 Authenticode 发布者**，所以根本没有签名可验。完整性另行提供 ——
+  公布的 `.sha256`，以及带 GPG 签名的 `hashes.txt` —— 运行前请先用它们核对。
 - 想用免安装版？下载 `dsh-minato-win-x64.zip`，解压后运行 `gui\dsht-gui.exe`。
 
 ### Linux
@@ -139,7 +140,8 @@ dsh-minato version | about | selftest
 
 本节只陈述代码的行为。如果这里写了代码没做的事，那就是 bug，请提 issue。
 
-- **只在本机。** 工具只读写你自己的机器。**只有**这些命令会联网：`check`、`update-info`、`update-center`、`doctor`、`install`、`update`、`verify-install --url`。其余（status、sessions、backup、restore、doctor、日志）**绝不联网**。
+- **只在本机。** 工具只读写你自己的机器。**只有**这些命令会联网：`check`、`update-info`、`update-center`、`doctor`、`install`、`update`、`verify-install --url`。其余（status、sessions、backup、restore、日志）**绝不联网**。（`doctor` 出现在上面那份联网清单里是**故意的**：
+  它有一项检查会探测 npm registry 是否可达，离线时如实报「不可达」而不是失败。）
 - **该保护的地方有保护。** `restore` 之前**总会**先备份；`update`/`import` 会尝试备份、失败仍继续；`wipe` 只打印手动删除路径、不删也不备份并打印位置，失败可回滚。
   但**并非所有写操作**都会先备份：改设置（`config-set`、`backup-dir --set`）、改 profile、改快捷方式/PATH 不会。
 - **卸载不会删你的数据。** 卸载只删本工具自己的文件；删数据是另一个需要你明确发起的动作。
@@ -212,12 +214,13 @@ dotnet publish v3/src/Dsht.Cli/Dsht.Cli.csproj -c Release -r linux-x64 --self-co
 
 ## 状态
 
-**V3 是预览版。** 命令行与 Linux 工具已完整，并在真机上验证过；图形界面十个页面已功能齐全，仍在打磨。
-**V2.x 会继续维护**，直到 V3 功能完全对等。
+**V3 已发布 —— `3.0.0` 是首个正式版。** 命令行与 Linux 工具已完整，并在真机上验证过；
+图形界面十个页面已功能齐全，仍在打磨。**V2.x 会继续维护**（老用户仍可下载），但新功能只进 V3。
 
 已知限制，如实写明：
 
-- Windows 产物**没有数字签名**（免费代码签名的申请被拒）。请校验哈希。
+- Windows 产物**没有数字签名** —— 没有受信任的 Authenticode 发布者（免费代码签名的申请被拒）。
+  请改用它校验 `.sha256` 与 GPG 签名。
 - `verify_fixes.ps1` 是**文本匹配**：它能确认"修复还在代码里"，**不能**确认那段代码可达。
 - 图形界面基于 Avalonia，因此**不是零依赖** —— 项目其余部分是。
 

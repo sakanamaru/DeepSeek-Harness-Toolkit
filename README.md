@@ -1,7 +1,7 @@
 # DeepSeek Harness Toolkit — `dsh-minato`
 
 **A no-terminal-needed installer, monitor, backup and repair toolbox for the DeepSeek Harness (dsh) Web UI.**
-Windows and Linux. Runs locally, writes nothing anywhere else.
+Windows and Linux. Runs locally. No telemetry, no accounts, no uploads.
 
 > ⚠️ **Unofficial.** This project is not affiliated with, endorsed by, or connected to DeepSeek. It is a third-party
 > helper that drives the `dsh` command line you already have.
@@ -64,7 +64,9 @@ figure appears in these images.
 Download `dsh-minato-<version>-win-x64-setup.exe` from [Releases](../../releases) and run it.
 
 - The installer is **not digitally signed**, so SmartScreen may show an "unknown publisher" warning the first time.
-  That is what an unsigned binary looks like — verify the download against the published `.sha256` first.
+  This is **deliberate, not an oversight**: the Windows artefacts currently carry **no trusted Authenticode
+  publisher**, so there is no signature to check. Integrity is provided separately instead — the published
+  `.sha256`, and the GPG-signed `hashes.txt` — so verify the download against those before running it.
 - Prefer a portable copy? Use `dsh-minato-win-x64.zip`, unzip, and run `gui\dsht-gui.exe`.
 
 ### Linux
@@ -143,7 +145,8 @@ This section states only what the code does. If a claim here is not backed by th
 
 - **Local only.** The tool reads and writes your own machine. It contacts the network **only** in these commands:
   `check`, `update-info`, `update-center`, `doctor`, `install`, `update`, and `verify-install --url`. Everything else — status,
-  sessions, backup, restore, doctor, logs — never opens a connection.
+  sessions, backup, restore, logs — never opens a connection. (`doctor` is in the list above on purpose: one of its
+  checks probes npm-registry reachability, and it reports "unreachable" instead of failing when offline.)
 - **Writes are protected where it matters.** Before `restore` a backup is always taken first; `update` and `import` try to and continue if that fails; `wipe` only prints the path to delete by hand and neither deletes nor backs up
   and its location is printed, so a failed operation can be rolled back. Not every write is preceded by a backup:
   settings changes (`config-set`, `backup-dir --set`), profile patches and shortcut/PATH edits are not.
@@ -221,12 +224,14 @@ The same gates run in CI on every push, on Windows and Linux.
 
 ## Status
 
-**V3 is a preview.** The CLI and the Linux tools are complete and verified on real machines; the GUI is feature-
-complete for the ten pages above and is being polished. **V2.x remains maintained** until V3 reaches full parity.
+**V3 is released — `3.0.0` is the first stable version.** The CLI and the Linux tools are complete and verified on
+real machines; the GUI is feature-complete for the ten pages above and is being polished. **V2.x remains
+maintained** for existing users, but new work goes into V3.
 
 Known limitations, stated plainly:
 
-- The Windows artefacts are **not digitally signed** (a free code-signing application was declined). Verify hashes.
+- The Windows artefacts are **not digitally signed** — no trusted Authenticode publisher (a free code-signing
+  application was declined). Verify the `.sha256` and the GPG signature instead.
 - `verify_fixes.ps1` matches text; it can confirm a fix is present, not that it is reachable.
 - The GUI is built on Avalonia and therefore is not dependency-free, unlike the rest of the project.
 

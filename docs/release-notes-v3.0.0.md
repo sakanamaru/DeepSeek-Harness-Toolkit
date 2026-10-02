@@ -2,15 +2,19 @@
   <img src="https://raw.githubusercontent.com/sakanamaru/dsh-minato/main/logo.png" alt="dsh-minato" width="180">
 </p>
 
-# dsh-minato 3.0.0（首个 3.0 预览版 / first 3.0 preview）
+# dsh-minato 3.0.0（首个正式版 / first stable release）
 
 > ⚠️ 非官方工具，由社区独立开发，与 DeepSeek 官方无关。本工具不是 dsh 插件：它是独立进程，不注入 dsh，dsh 没装也能用。
 
 ## v3.0.0 — 2026-10-02
 
-**首个正式版。** 相对 `v2.7.3`（仍在 Releases 里可下载）的主要变化：
+**首个正式版（stable）。** 相对 `v2.7.3`（仍在 Releases 里可下载）的主要变化：
 
-- **V3 跨平台 CLI + GUI**：Windows 与 Linux 同一套命令面；Avalonia 九页图形界面（概览 / 看板 / 会话与 Token / 形态与插件 / 备份 / 体检 / 设置 / 更新 / 日志）
+> **版本号怎么读**：`v3.0.0` 这个 tag 就是**正式版**（GitHub 上 `isPrerelease = false`，标记为 Latest）。
+> 本页下方出现的 `preview.1 / preview.2 / preview.3` 是 **v3.0.0 自己的开发阶段记录**
+> （同一天内逐轮收敛），**不是**说这个版本仍然是预览版。
+
+- **V3 跨平台 CLI + GUI**：Windows 与 Linux 同一套命令面；Avalonia **十页**图形界面（概览 / 看板 / 会话与 Token / 形态与插件 / 备份 / 体检 / 设置 / **说明** / 更新 / 日志）
 - **备份/恢复引擎重写**：完成标记 + 内容哈希 + 恢复前自动锚点（可回滚）+ 截断包拒收 + 不写穿符号链接
 - **47 项缺陷修复**（三轮子代理复审 + 真机审查逐条修）
 - **工程债清偿**：CLI 拆分（单文件 3595 → 1060 行，-70.5%）、备份引擎两端去重（各 -111 行）、删除无人调用的死代码（-78 行）
@@ -42,7 +46,11 @@
 - 发布产物不再混入 v2 旧产物：v2 的 build job 原来对任何 tag 触发，v3 tag 上会产出 v2 的 exe 与 zip；现在只对 v2* tag 触发。
 - 单文件产物开启 EnableCompressionInSingleFile（体积更小）。
 
-## v3.0.0-preview.1 — 2026-10-02
+## 开发阶段记录 / development stages
+
+> 以下各节是 v3.0.0 在同一天内逐轮收敛的过程记录，**内容都已包含在正式版里**。
+
+### v3.0.0-preview.1 — 2026-10-02
 
 ### Added / 新增
 

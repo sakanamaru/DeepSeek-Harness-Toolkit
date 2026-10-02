@@ -235,6 +235,7 @@ Write-Host '== 本地覆盖不到的检查（**只由 CI 跑** ✓ 如实列出 
 Write-Host ('  · shell 验证脚本 ' + $shScripts.Count + ' 个（在 ubuntu-latest 的 job 里执行）：' + (($shScripts | ForEach-Object { $_.Name }) -join ', '))
 Write-Host '  · Linux 平台实现（LinuxBackupSource / LinuxPaths / LinuxToolchainQuery 等）只在 ubuntu-latest 被编译与运行'
 Write-Host '  · V3 Linux / Windows 打包 job 只在 v3*/main 的 push 上跑（本机不打包）'
+Write-Host '  · **v2 的单元测试与 GUI 逻辑测试**：本门槛只**编译** v2（invariant v2.x release build），**不跑**这两组 → 本地补跑：v2\tests\replicate_ci.ps1 -Fast（完整复刻加 -Fast 之外的全部步骤）'
 Write-Host '  · 因此：**本地全绿不等于 CI 全绿** ✓ 推之前建议看一眼 gh run list ✓'
 Write-Host ''
 Write-Host '== V3 切换就绪度 =='
