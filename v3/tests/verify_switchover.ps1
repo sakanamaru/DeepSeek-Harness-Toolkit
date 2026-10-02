@@ -110,11 +110,16 @@ try {
     $v2anchor = if ($v2root -eq $Repo) { 'verify.ps1' } else { 'v2/verify.ps1' }
     # 信任锚比的是**内容**：基线（origin/main）里它在哪、工作树里它又在哪，可能不同 → 各自解析。
     # （旧的 --name-only 形式一旦路径变了就把"搬家"报成"改动"→ 永远红 ✗）
-    $baseAnchor = 'v2/verify.ps1'
-    & git -C $Repo cat-file -e 'origin/main:verify.ps1' 2>$null
-    if ($LASTEXITCODE -eq 0) { $baseAnchor = 'verify.ps1' }
-    $chainChanged = (& git -C $Repo diff ('origin/main:' + $baseAnchor) $v2anchor 2>&1 | Out-String).Trim()
+    # ★ 这两句必须走 Invoke-External ✗：**"基线里没有这个路径"是要靠 rc 判断的正常情况，不是错误** ✓
+    #   而 PS 5.1 会把原生命令写到 stderr 的内容当成**终止错误**（本脚本是 Stop）✗ → 直接进 catch
+    #   → $gitRan=$false → **假红** ✗✗（v2 迁移并进 main 之后，origin/main 上确实没有 verify.ps1 了，
+    #   cat-file -e 于是打印 "fatal: path 'verify.ps1' does not exist" —— 合并后第一次跑就是这样红的 ✓）
+    #   → 改用**不写 stderr** 的 rev-parse --quiet --verify ✓，并用现成的 Invoke-External 兜住 rc ✓
+    [void](Invoke-External { & git -C $Repo rev-parse --quiet --verify 'origin/main:verify.ps1' })
+    $baseAnchor = if ($LASTEXITCODE -eq 0) { 'verify.ps1' } else { 'v2/verify.ps1' }
+    $chainChanged = (Invoke-External { & git -C $Repo diff ('origin/main:' + $baseAnchor) $v2anchor 2>&1 }) | Out-String
     $gitRan = ($LASTEXITCODE -eq 0)
+    $chainChanged = $chainChanged.Trim()
 } catch { $gitRan = $false }
 $itemsOk = $false; $stepsOk = $false
 if (Test-Path $wf) {
