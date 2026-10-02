@@ -53,6 +53,7 @@ $checks = @(
   @('命令 bridge-install',       'cmd == "bridge-install"', 1),
   @('命令 update-center',        'cmd == "update-center"', 1),
   @('命令 autostart',            'cmd == "autostart"', 1),
+  @('命令 balance',              'cmd == "balance"', 1),
   @('多工作区前置约束',          '_wss.Length >= 2 ? null', 1),
   @('通道说明',                  'CHANNEL_NOTE', 1),
   # ---- 命令面（31 个 ✓）：删掉任何一个 = **静默失去一个功能** ✗ ----
