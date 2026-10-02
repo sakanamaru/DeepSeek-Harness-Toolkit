@@ -14,6 +14,34 @@ Windows と Linux に対応。すべて手元のマシン内で完結します�
   <img src="logo.png" alt="dsh-minato" width="180">
 </p>
 
+## スクリーンショット
+
+以下はすべて実物の画面で、**フィクスチャのデータディレクトリ**に対して撮影したものです ——
+実在のセッション・パス・数値は写っていません。
+
+| ダッシュボード | セッションと Token | バックアップ |
+|---|---|---|
+| ![ダッシュボード](docs/screenshots/gui-kanban.png) | ![セッション](docs/screenshots/gui-sessions.png) | ![バックアップ](docs/screenshots/gui-backup.png) |
+
+| ヘルスチェック | 設定 | 更新 |
+|---|---|---|
+| ![ヘルスチェック](docs/screenshots/gui-doctor.png) | ![設定](docs/screenshots/gui-settings.png) | ![更新](docs/screenshots/gui-update.png) |
+
+<details>
+<summary>残りのページ（概要 / プラグイン / このツールについて / ログ）と CLI</summary>
+
+| 概要 | プラグイン | このツールについて | ログ |
+|---|---|---|---|
+| ![概要](docs/screenshots/gui-overview.png) | ![プラグイン](docs/screenshots/gui-plugins.png) | ![について](docs/screenshots/gui-about.png) | ![ログ](docs/screenshots/gui-logs.png) |
+
+| CLI メニュー | CLI 状態 |
+|---|---|
+| ![CLI メニュー](docs/screenshots/cli-menu.png) | ![CLI 状態](docs/screenshots/cli-status.png) |
+
+</details>
+
+---
+
 ## なぜ作ったか
 
 `dsh` はコマンドラインツールです。導入・起動・バックアップ・そして「起動しない理由」の調査はすべてターミナル作業で、
@@ -90,32 +118,6 @@ cd dsh-minato-linux-x64
 | **このツールについて** | バージョン・謝辞、そして本ツールが**意図的にやらないこと**。 |
 | **更新** | dsh・デスクトップアプリ・本ツール・プラグインの更新。 |
 | **ログ** | ランチャーログの絞り込み・検索・書き出し。 |
-
-各ページのスクリーンショットは下にあります。
-
-<details>
-<summary>スクリーンショット</summary>
-
-以下はすべて実物の画面で、**フィクスチャのデータディレクトリ**に対して撮影したものです ——
-実在のセッション・パス・数値は写っていません。
-
-| ダッシュボード | セッションと Token | バックアップ |
-|---|---|---|
-| ![ダッシュボード](docs/screenshots/gui-kanban.png) | ![セッション](docs/screenshots/gui-sessions.png) | ![バックアップ](docs/screenshots/gui-backup.png) |
-
-| ヘルスチェック | 設定 | 更新 |
-|---|---|---|
-| ![ヘルスチェック](docs/screenshots/gui-doctor.png) | ![設定](docs/screenshots/gui-settings.png) | ![更新](docs/screenshots/gui-update.png) |
-
-| 概要 | プラグイン | このツールについて | ログ |
-|---|---|---|---|
-| ![概要](docs/screenshots/gui-overview.png) | ![プラグイン](docs/screenshots/gui-plugins.png) | ![について](docs/screenshots/gui-about.png) | ![ログ](docs/screenshots/gui-logs.png) |
-
-| CLI メニュー | CLI 状態 |
-|---|---|
-| ![CLI メニュー](docs/screenshots/cli-menu.png) | ![CLI 状態](docs/screenshots/cli-status.png) |
-
-</details>
 
 ---
 

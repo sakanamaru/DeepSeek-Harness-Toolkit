@@ -13,6 +13,33 @@
   <img src="logo.png" alt="dsh-minato" width="180">
 </p>
 
+## 截图
+
+下面全部是真实界面，采集自一份**夹具数据目录** —— 图中不出现任何真实会话、路径或数字。
+
+| 看板 | 会话与 Token | 备份 |
+|---|---|---|
+| ![看板](docs/screenshots/gui-kanban.png) | ![会话](docs/screenshots/gui-sessions.png) | ![备份](docs/screenshots/gui-backup.png) |
+
+| 体检 | 设置 | 更新 |
+|---|---|---|
+| ![体检](docs/screenshots/gui-doctor.png) | ![设置](docs/screenshots/gui-settings.png) | ![更新](docs/screenshots/gui-update.png) |
+
+<details>
+<summary>其余页面（概览 / 形态与插件 / 说明 / 日志）与命令行</summary>
+
+| 概览 | 形态与插件 | 说明 | 日志 |
+|---|---|---|---|
+| ![概览](docs/screenshots/gui-overview.png) | ![插件](docs/screenshots/gui-plugins.png) | ![说明](docs/screenshots/gui-about.png) | ![日志](docs/screenshots/gui-logs.png) |
+
+| 命令行菜单 | 命令行状态 |
+|---|---|
+| ![命令行菜单](docs/screenshots/cli-menu.png) | ![命令行状态](docs/screenshots/cli-status.png) |
+
+</details>
+
+---
+
 ## 为什么做这个
 
 `dsh` 是命令行工具：安装它、启动它、给它做备份、以及在它起不来时查出原因，都是终端里的活 ——
@@ -89,31 +116,6 @@ cd dsh-minato-linux-x64
 | **说明** | 版本、致谢，以及本工具**刻意不做**的事。 |
 | **更新** | 更新 dsh、桌面端、本工具或插件。 |
 | **日志** | 过滤、搜索、导出启动器日志。 |
-
-各页截图见下。
-
-<details>
-<summary>截图</summary>
-
-下面全部是真实界面，采集自一份**夹具数据目录** —— 图中不出现任何真实会话、路径或数字。
-
-| 看板 | 会话与 Token | 备份 |
-|---|---|---|
-| ![看板](docs/screenshots/gui-kanban.png) | ![会话](docs/screenshots/gui-sessions.png) | ![备份](docs/screenshots/gui-backup.png) |
-
-| 体检 | 设置 | 更新 |
-|---|---|---|
-| ![体检](docs/screenshots/gui-doctor.png) | ![设置](docs/screenshots/gui-settings.png) | ![更新](docs/screenshots/gui-update.png) |
-
-| 概览 | 形态与插件 | 说明 | 日志 |
-|---|---|---|---|
-| ![概览](docs/screenshots/gui-overview.png) | ![插件](docs/screenshots/gui-plugins.png) | ![说明](docs/screenshots/gui-about.png) | ![日志](docs/screenshots/gui-logs.png) |
-
-| 命令行菜单 | 命令行状态 |
-|---|---|
-| ![命令行菜单](docs/screenshots/cli-menu.png) | ![命令行状态](docs/screenshots/cli-status.png) |
-
-</details>
 
 ---
 

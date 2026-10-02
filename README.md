@@ -14,6 +14,34 @@ Windows and Linux. Runs locally. No telemetry, no accounts, no uploads.
   <img src="logo.png" alt="dsh-minato" width="180">
 </p>
 
+## Screenshots
+
+Everything below is the real interface, captured against a **fixture data directory** — no real session, path or
+figure appears in these images.
+
+| Dashboard | Sessions & tokens | Backup |
+|---|---|---|
+| ![Dashboard](docs/screenshots/gui-kanban.png) | ![Sessions](docs/screenshots/gui-sessions.png) | ![Backup](docs/screenshots/gui-backup.png) |
+
+| Health check | Settings | Update centre |
+|---|---|---|
+| ![Doctor](docs/screenshots/gui-doctor.png) | ![Settings](docs/screenshots/gui-settings.png) | ![Update](docs/screenshots/gui-update.png) |
+
+<details>
+<summary>The remaining pages (overview, plugins, about, logs) and the CLI</summary>
+
+| Overview | Plugins | About | Logs |
+|---|---|---|---|
+| ![Overview](docs/screenshots/gui-overview.png) | ![Plugins](docs/screenshots/gui-plugins.png) | ![About](docs/screenshots/gui-about.png) | ![Logs](docs/screenshots/gui-logs.png) |
+
+| CLI menu | CLI status |
+|---|---|
+| ![CLI menu](docs/screenshots/cli-menu.png) | ![CLI status](docs/screenshots/cli-status.png) |
+
+</details>
+
+---
+
 ## Why this exists
 
 `dsh` is a command-line tool. Installing it, starting it, backing it up and working out why it will not boot are all
@@ -91,32 +119,6 @@ Ten pages, all reachable from the left rail:
 | **About** | Version, credits, and what this tool deliberately does not do. |
 | **Update centre** | Update dsh, the desktop app, this tool or a plugin. |
 | **Logs** | Filter, search and export the launcher log. |
-
-Screenshots of every page are below.
-
-<details>
-<summary>Screenshots</summary>
-
-Everything here is the real interface, captured against a **fixture data directory** — no real session, path or
-figure appears in these images.
-
-| Dashboard | Sessions & tokens | Backup |
-|---|---|---|
-| ![Dashboard](docs/screenshots/gui-kanban.png) | ![Sessions](docs/screenshots/gui-sessions.png) | ![Backup](docs/screenshots/gui-backup.png) |
-
-| Health check | Settings | Update centre |
-|---|---|---|
-| ![Doctor](docs/screenshots/gui-doctor.png) | ![Settings](docs/screenshots/gui-settings.png) | ![Update](docs/screenshots/gui-update.png) |
-
-| Overview | Plugins | About | Logs |
-|---|---|---|---|
-| ![Overview](docs/screenshots/gui-overview.png) | ![Plugins](docs/screenshots/gui-plugins.png) | ![About](docs/screenshots/gui-about.png) | ![Logs](docs/screenshots/gui-logs.png) |
-
-| CLI menu | CLI status |
-|---|---|
-| ![CLI menu](docs/screenshots/cli-menu.png) | ![CLI status](docs/screenshots/cli-status.png) |
-
-</details>
 
 ---
 
